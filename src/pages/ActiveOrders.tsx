@@ -8,6 +8,11 @@ import {
   useSendOrder,
 } from "../hooks/usePosData";
 import type { PosOrderResponse } from "../lib/posApi";
+import {
+  printKitchenTicket,
+  ticketCopyFromOrder,
+  type PrintResult,
+} from "../lib/kitchenTicketPrint";
 
 function statusBadge(order: PosOrderResponse): string {
   if (order.settlementStatus === "pending") return "badge-warning badge-dot";
@@ -30,6 +35,17 @@ export function ActiveOrders() {
   const orders = useRealtimeOrders(outletId);
   const sendOrder = useSendOrder(propertyId);
   const [settling, setSettling] = useState<PosOrderResponse | null>(null);
+  const [printNotes, setPrintNotes] = useState<
+    Record<string, { sent: boolean; print?: PrintResult }>
+  >({});
+
+  async function sendToKitchen(order: PosOrderResponse): Promise<void> {
+    const id = String(order.id);
+    await sendOrder.mutateAsync({ orderId: id });
+    setPrintNotes((notes) => ({ ...notes, [id]: { sent: true } }));
+    const print = await printKitchenTicket(ticketCopyFromOrder(order));
+    setPrintNotes((notes) => ({ ...notes, [id]: { sent: true, print } }));
+  }
 
   const open = orders.filter((o) => o.status === "open");
   const settled = orders.filter((o) => o.status !== "open");
@@ -104,6 +120,21 @@ export function ActiveOrders() {
                     </li>
                   )}
                 </ul>
+                {printNotes[String(order.id)]?.sent && (
+                  <div className="flex flex-wrap gap-2 text-[11px]" data-testid={`send-status-${order.id}`}>
+                    <span className="badge badge-success">ORDER SENT</span>
+                    {printNotes[String(order.id)]?.print?.ok === true && (
+                      <span className="badge badge-success" data-testid={`print-ok-${order.id}`}>
+                        PRINT SUCCESS
+                      </span>
+                    )}
+                    {printNotes[String(order.id)]?.print?.ok === false && (
+                      <span className="badge badge-danger" data-testid={`print-fail-${order.id}`}>
+                        PRINT FAILURE
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-display text-lg tabular-nums text-[var(--color-text-primary)]">
                     {order.totalAmount != null ? String(order.totalAmount) : "—"}
@@ -120,7 +151,7 @@ export function ActiveOrders() {
                     </button>
                     <button
                       data-testid={`send-${order.id}`}
-                      onClick={() => sendOrder.mutate({ orderId: String(order.id) })}
+                      onClick={() => void sendToKitchen(order)}
                       disabled={sendOrder.isPending}
                       className="btn-primary btn-sm"
                     >

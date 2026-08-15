@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { Icon } from "./Icon";
 import {
-  resolveRoomFolio,
   usePaymentProviderAccounts,
   usePropertyId,
   useSettleOrder,
@@ -10,7 +9,6 @@ import type { PosOrderResponse } from "../lib/posApi";
 
 const METHODS = [
   { id: "cash", label: "Cash" },
-  { id: "room_charge", label: "Room charge" },
   { id: "mobile_money", label: "Mobile money" },
 ] as const;
 
@@ -28,11 +26,6 @@ export function SettleDialog({
   const propertyId = usePropertyId();
   const settle = useSettleOrder(propertyId);
   const [method, setMethod] = useState<(typeof METHODS)[number]["id"]>("cash");
-  const [roomNumber, setRoomNumber] = useState("");
-  const [resolvedFolioId, setResolvedFolioId] = useState<string | null>(null);
-  const [resolvedGuest, setResolvedGuest] = useState<string | null>(null);
-  const [lookupError, setLookupError] = useState<string | null>(null);
-  const [lookupLoading, setLookupLoading] = useState(false);
   const [providerAccountId, setProviderAccountId] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const { data: providerAccounts = [] } = usePaymentProviderAccounts(propertyId);
@@ -40,43 +33,14 @@ export function SettleDialog({
   const canSubmit = useMemo(() => {
     if (settle.isPending) return false;
     if (method === "cash") return true;
-    if (method === "room_charge") {
-      return Boolean(resolvedFolioId) && Boolean(roomNumber.trim());
-    }
     return Boolean(providerAccountId) && Boolean(phoneNumber.trim());
-  }, [method, resolvedFolioId, roomNumber, providerAccountId, phoneNumber, settle.isPending]);
-
-  async function lookUpFolio(): Promise<void> {
-    setLookupLoading(true);
-    setLookupError(null);
-    setResolvedFolioId(null);
-    setResolvedGuest(null);
-    try {
-      const resolved = await resolveRoomFolio(propertyId, roomNumber);
-      if (!resolved) {
-        setLookupError(
-          `No open folio for room ${roomNumber.trim() || "—"}. Check the number or settle another way.`,
-        );
-        return;
-      }
-      setResolvedFolioId(resolved.folio.id ?? null);
-      setResolvedGuest(
-        `Folio ${resolved.folio.id?.slice(0, 8)}… · balance ${formatAmount(resolved.folio.balanceDue)}`,
-      );
-    } catch (error) {
-      setLookupError(error instanceof Error ? error.message : "Folio lookup failed");
-    } finally {
-      setLookupLoading(false);
-    }
-  }
+  }, [method, providerAccountId, phoneNumber, settle.isPending]);
 
   function submit(): void {
     settle.mutate(
       {
         orderId: String(order.id),
         method,
-        roomNumber,
-        folioId: resolvedFolioId ?? undefined,
         providerAccountId: providerAccountId || undefined,
         phoneNumber: phoneNumber || undefined,
       },
@@ -111,7 +75,7 @@ export function SettleDialog({
           </button>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="mt-4 grid grid-cols-2 gap-2">
           {METHODS.map((m) => (
             <button
               key={m.id}
@@ -127,44 +91,6 @@ export function SettleDialog({
             </button>
           ))}
         </div>
-
-        {method === "room_charge" && (
-          <div className="mt-4 space-y-2">
-            <label className="block text-[12px] font-medium text-[var(--color-text-secondary)]">
-              Room number
-            </label>
-            <div className="flex gap-2">
-              <input
-                data-testid="room-number"
-                value={roomNumber}
-                onChange={(e) => setRoomNumber(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void lookUpFolio();
-                }}
-                placeholder="e.g. 204"
-                className="input"
-              />
-              <button
-                data-testid="lookup-folio"
-                onClick={() => void lookUpFolio()}
-                disabled={!roomNumber.trim() || lookupLoading}
-                className="btn-primary btn-sm shrink-0"
-              >
-                {lookupLoading ? "Looking…" : "Look up"}
-              </button>
-            </div>
-            {resolvedGuest && (
-              <div className="badge badge-success" data-testid="resolved-folio">
-                {resolvedGuest}
-              </div>
-            )}
-            {lookupError && (
-              <div className="badge badge-danger" data-testid="lookup-error">
-                {lookupError}
-              </div>
-            )}
-          </div>
-        )}
 
         {method === "mobile_money" && (
           <div className="mt-4 space-y-2">

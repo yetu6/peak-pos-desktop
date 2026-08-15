@@ -1,0 +1,126 @@
+export interface KitchenTicketLine {
+  name: string;
+  quantity: string;
+  note?: string;
+}
+
+/** Device copy of a Peak kitchen ticket. No prices — Peak already owns those. */
+export interface KitchenTicketCopy {
+  ticketNumber?: string;
+  orderNumber?: string;
+  tableNumber?: string;
+  sentAt?: string;
+  status?: string;
+  lines: KitchenTicketLine[];
+}
+
+export interface PrintResult {
+  ok: boolean;
+  error?: string;
+}
+
+export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
+  const header = [
+    "KITCHEN TICKET",
+    ticket.ticketNumber ?? "ticket",
+    [
+      ticket.orderNumber ? `Order ${ticket.orderNumber}` : null,
+      ticket.tableNumber ? `Table ${ticket.tableNumber}` : null,
+    ]
+      .filter(Boolean)
+      .join("  "),
+    ticket.sentAt ? `Sent ${ticket.sentAt}` : null,
+    ticket.status ? `Status ${ticket.status}` : null,
+  ]
+    .filter((line) => line && line.length > 0)
+    .join("\n");
+
+  const lines = ticket.lines
+    .map((line) => {
+      const qty = line.quantity.trim() || "1";
+      const row = `${qty.padStart(3, " ")}  ${line.name}`;
+      return line.note?.trim() ? `${row}\n      ${line.note.trim()}` : row;
+    })
+    .join("\n");
+
+  return `${header}\n\n${lines || "(no items)"}\n`;
+}
+
+export function ticketCopyFromOrder(order: {
+  orderNumber?: string | null;
+  tableNumber?: string | null;
+  items?: Array<{
+    name?: string | null;
+    quantity?: number | string | null;
+    specialRequest?: string | null;
+  }> | null;
+}): KitchenTicketCopy {
+  return {
+    orderNumber: order.orderNumber ?? undefined,
+    tableNumber: order.tableNumber ?? undefined,
+    lines: (order.items ?? []).flatMap((item) => {
+      if (!item.name) return [];
+      return [
+        {
+          name: item.name,
+          quantity: String(item.quantity ?? 1),
+          note: item.specialRequest ?? undefined,
+        },
+      ];
+    }),
+  };
+}
+
+export function ticketCopyFromKitchenTicket(ticket: {
+  ticketNumber?: string | null;
+  orderId?: string | null;
+  sentAt?: string | null;
+  status?: string | null;
+  items?: Array<{
+    itemName?: string | null;
+    quantity?: number | string | null;
+    specialRequest?: string | null;
+  }> | null;
+}): KitchenTicketCopy {
+  return {
+    ticketNumber: ticket.ticketNumber ?? undefined,
+    orderNumber: ticket.orderId ? ticket.orderId.slice(0, 8) : undefined,
+    sentAt: ticket.sentAt ?? undefined,
+    status: ticket.status ?? undefined,
+    lines: (ticket.items ?? []).flatMap((item) => {
+      if (!item.itemName) return [];
+      return [
+        {
+          name: item.itemName,
+          quantity: String(item.quantity ?? 1),
+          note: item.specialRequest ?? undefined,
+        },
+      ];
+    }),
+  };
+}
+
+async function defaultInvoke(command: string, args: Record<string, unknown>): Promise<void> {
+  if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
+    throw new Error("No kitchen printer is configured");
+  }
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke(command, args);
+}
+
+/**
+ * Prints a copy of a Peak kitchen ticket. Failure is a device problem —
+ * callers must not void or unsend the Peak ticket.
+ */
+export async function printKitchenTicket(
+  ticket: KitchenTicketCopy,
+  invokeFn: (command: string, args: Record<string, unknown>) => Promise<unknown> = defaultInvoke,
+): Promise<PrintResult> {
+  try {
+    await invokeFn("print_kitchen_ticket", { ticket: { text: formatKitchenTicket(ticket) } });
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: message || "No kitchen printer is configured" };
+  }
+}

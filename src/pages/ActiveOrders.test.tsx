@@ -204,6 +204,8 @@ describe("ActiveOrders", () => {
     const sendButton = await screen.findByTestId("send-order-1");
     await userEvent.click(sendButton);
     await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledWith("property-1", "order-1"));
+    expect(await screen.findByTestId("send-status-order-1")).toHaveTextContent("ORDER SENT");
+    expect(await screen.findByTestId("print-fail-order-1")).toHaveTextContent("PRINT FAILURE");
   });
 
   it("clears the board when Peak publishes session closed on property operations", async () => {

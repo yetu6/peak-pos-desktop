@@ -6,6 +6,11 @@ import {
   useTransitionTicket,
 } from "../hooks/usePosData";
 import type { KitchenTicketResponse, TicketAction } from "../lib/posApi";
+import {
+  printKitchenTicket,
+  ticketCopyFromKitchenTicket,
+  type PrintResult,
+} from "../lib/kitchenTicketPrint";
 
 const NEXT_ACTION: Record<string, TicketAction> = {
   PENDING: "prepare",
@@ -40,6 +45,12 @@ export function Kitchen() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [voiding, setVoiding] = useState<KitchenTicketResponse | null>(null);
   const [voidReason, setVoidReason] = useState("");
+  const [printNotes, setPrintNotes] = useState<Record<string, PrintResult>>({});
+
+  async function reprint(ticket: KitchenTicketResponse): Promise<void> {
+    const result = await printKitchenTicket(ticketCopyFromKitchenTicket(ticket));
+    setPrintNotes((notes) => ({ ...notes, [String(ticket.id)]: result }));
+  }
 
   const active = useMemo(
     () =>
@@ -214,7 +225,24 @@ export function Kitchen() {
                   >
                     {ticket.status}
                   </span>
+                  {printNotes[String(ticket.id)]?.ok === false && (
+                    <span className="badge badge-danger" data-testid={`print-fail-${ticket.id}`}>
+                      PRINT FAILURE
+                    </span>
+                  )}
+                  {printNotes[String(ticket.id)]?.ok === true && (
+                    <span className="badge badge-success" data-testid={`print-ok-${ticket.id}`}>
+                      PRINT SUCCESS
+                    </span>
+                  )}
                   <div className="flex gap-2">
+                    <button
+                      data-testid={`reprint-${ticket.id}`}
+                      onClick={() => void reprint(ticket)}
+                      className="btn-tertiary btn-sm"
+                    >
+                      Reprint
+                    </button>
                     {(ticket.status === "PENDING" || ticket.status === "PREPARING") && (
                       <button
                         data-testid={`void-${ticket.id}`}
