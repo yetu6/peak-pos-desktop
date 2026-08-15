@@ -25,6 +25,7 @@ export class RealtimeClient {
   private readonly options: RealtimeClientOptions;
   private readonly backoff: Backoff;
   private readonly targets = new Set<string>();
+  private readonly targetCounts = new Map<string, number>();
   private readonly subscriptions = new Map<string, StompSubscription>();
   private stomp: Client | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -69,14 +70,22 @@ export class RealtimeClient {
 
   subscribe(target: SubscriptionTarget): void {
     const destination = destinationOf(target);
+    const count = (this.targetCounts.get(destination) ?? 0) + 1;
+    this.targetCounts.set(destination, count);
     this.targets.add(destination);
-    if (this.stomp?.connected) {
+    if (count === 1 && this.stomp?.connected) {
       this.subscribeDestination(destination);
     }
   }
 
   unsubscribe(target: SubscriptionTarget): void {
     const destination = destinationOf(target);
+    const remaining = (this.targetCounts.get(destination) ?? 0) - 1;
+    if (remaining > 0) {
+      this.targetCounts.set(destination, remaining);
+      return;
+    }
+    this.targetCounts.delete(destination);
     this.targets.delete(destination);
     this.subscriptions.get(destination)?.unsubscribe();
     this.subscriptions.delete(destination);

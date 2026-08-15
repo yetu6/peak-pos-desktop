@@ -114,6 +114,33 @@ describe("RealtimeClient", () => {
     client.dispose();
   });
 
+  it("keeps a shared destination subscribed until the last subscriber leaves", async () => {
+    const sockets: FakeSocket[] = [];
+    const client = new RealtimeClient({
+      createSocket: () => {
+        const s = new FakeSocket();
+        sockets.push(s);
+        return s as unknown as WebSocket;
+      },
+    });
+    const target = { kind: "propertyOperations" as const, propertyId: "p1" };
+    client.subscribe(target);
+    client.subscribe(target);
+    client.connect();
+    await flush();
+    sockets[0].open();
+    await flush();
+    expect(subscribeFrames(sockets[0].sentFrames())).toHaveLength(1);
+
+    client.unsubscribe(target);
+    expect(subscribeFrames(sockets[0].sentFrames())).toHaveLength(1);
+    expect(sockets[0].sentFrames().some((f) => f.startsWith("UNSUBSCRIBE\n"))).toBe(false);
+
+    client.unsubscribe(target);
+    expect(sockets[0].sentFrames().some((f) => f.startsWith("UNSUBSCRIBE\n"))).toBe(true);
+    client.dispose();
+  });
+
   it("resubscribes every target after a drop and reconnect", async () => {
     const sockets: FakeSocket[] = [];
     const client = new RealtimeClient({

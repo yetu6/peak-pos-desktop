@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -16,12 +16,35 @@ vi.mock("../lib/env", () => ({
   }),
 }));
 
-const { sendOrderSpy } = vi.hoisted(() => ({
+interface MockOrder {
+  id: string;
+  orderNumber: string;
+  orderType: string;
+  tableNumber: string | null;
+  status: string;
+  settlementStatus: string;
+  settlementMethod?: string;
+  totalAmount: number;
+  items: Array<{ id: string; name: string; quantity: number }>;
+}
+
+const { getOrderSpy, sendOrderSpy } = vi.hoisted(() => ({
+  getOrderSpy: vi.fn(async (_propertyId: string, orderId: string) => {
+    const order = ordersStore.get(orderId);
+    return order
+      ? { data: order, error: null }
+      : { data: null, error: { status: 404 } };
+  }),
   sendOrderSpy: vi.fn(async () => ({ data: {}, error: null })),
 }));
 
+const ordersStore = new Map<string, MockOrder>();
+
 vi.mock("../lib/posApi", () => ({
-  createPosApi: () => ({ sendOrder: sendOrderSpy }),
+  createPosApi: () => ({
+    getOrder: getOrderSpy,
+    sendOrder: sendOrderSpy,
+  }),
 }));
 
 class FakeSocket {
@@ -46,36 +69,36 @@ class FakeSocket {
     this.onopen?.();
     this.onmessage?.({ data: "CONNECTED\nversion:1.2\nheart-beat:0,0\n\n\0" });
   }
-  emit(body: string): void {
+  emit(body: string, destination = "/topic/outlets/outlet-1/orders"): void {
     const subId = this.sent
-      .find((f) => f.startsWith("SUBSCRIBE\n"))
+      .find((f) => f.startsWith("SUBSCRIBE\n") && f.includes(destination))
       ?.match(/^id:(.+)$/m)?.[1];
     this.onmessage?.({
-      data: `MESSAGE\ndestination:/topic/outlets/outlet-1/orders\nsubscription:${subId ?? "sub-0"}\n\n${body}\0`,
+      data: `MESSAGE\ndestination:${destination}\nsubscription:${subId ?? "sub-0"}\n\n${body}\0`,
     });
   }
 }
 
-function envelope(type: string, aggregateVersion: number, payload: Record<string, unknown>): string {
+function announce(sequenceId: number, type: string, orderId: string): string {
   const event: RealtimeEnvelope = {
-    sequenceId: aggregateVersion,
-    eventId: `evt-${aggregateVersion}`,
+    sequenceId,
+    eventId: `evt-${sequenceId}`,
     type,
     schemaVersion: 1,
     aggregateType: "POS_ORDER",
-    aggregateId: payload.id as string,
-    aggregateVersion,
+    aggregateId: orderId,
+    aggregateVersion: sequenceId,
     occurredAt: "2026-08-15T08:00:00Z",
     tenantId: "tenant-1",
     propertyId: "property-1",
     outletId: "outlet-1",
-    payload,
+    payload: { orderId },
   };
   return JSON.stringify(event);
 }
 
 async function flush(): Promise<void> {
-  for (let i = 0; i < 20; i++) await Promise.resolve();
+  for (let i = 0; i < 30; i++) await Promise.resolve();
 }
 
 function renderActiveOrders(backfill?: (after: number) => Promise<RealtimeEnvelope[]>) {
@@ -98,7 +121,24 @@ function renderActiveOrders(backfill?: (after: number) => Promise<RealtimeEnvelo
   return socket;
 }
 
+const OPEN_ORDER: MockOrder = {
+  id: "order-1",
+  orderNumber: "ORD-1042",
+  orderType: "DINE_IN",
+  tableNumber: "T12",
+  status: "open",
+  settlementStatus: "UNSETTLED",
+  totalAmount: 1180,
+  items: [{ id: "item-1", name: "Lunch", quantity: 1 }],
+};
+
 describe("ActiveOrders", () => {
+  afterEach(() => {
+    ordersStore.clear();
+    getOrderSpy.mockClear();
+    sendOrderSpy.mockClear();
+  });
+
   it("renders the empty state before any event arrives", async () => {
     const socket = renderActiveOrders();
     await flush();
@@ -109,133 +149,101 @@ describe("ActiveOrders", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows an order when order.created arrives over the STOMP stream", async () => {
+  it("fetches an order from REST when the stream announces it and re-renders on updates", async () => {
+    ordersStore.set("order-1", OPEN_ORDER);
     const socket = renderActiveOrders();
     await flush();
     socket.open();
     await flush();
-    socket.emit(
-      envelope("pos.order.created", 1, {
-        id: "order-1",
-        orderNumber: "ORD-1042",
-        orderType: "DINE_IN",
-        tableNumber: "T12",
-        status: "open",
-        settlementStatus: "UNSETTLED",
-        totalAmount: 1180,
-        items: [{ id: "item-1", name: "Lunch", quantity: 1 }],
-      }),
-    );
+
+    socket.emit(announce(1, "pos.order.created", "order-1"));
     expect(await screen.findByText("ORD-1042")).toBeInTheDocument();
     expect(screen.getByText(/T12/)).toBeInTheDocument();
     expect(screen.getByText("1180")).toBeInTheDocument();
+    expect(getOrderSpy).toHaveBeenCalledWith("property-1", "order-1");
+
+    ordersStore.set("order-1", {
+      ...OPEN_ORDER,
+      totalAmount: 1980,
+      items: [{ id: "item-1", name: "Lunch", quantity: 2 }],
+    });
+    socket.emit(announce(2, "pos.order.updated", "order-1"));
+    await waitFor(() => expect(screen.getByText("1980")).toBeInTheDocument());
   });
 
-  it("updates an order in place on order.updated and removes it on order.settled", async () => {
+  it("moves the order to the settled strip when the stream announces a settlement", async () => {
+    ordersStore.set("order-1", OPEN_ORDER);
     const socket = renderActiveOrders();
     await flush();
     socket.open();
     await flush();
-    socket.emit(
-      envelope("pos.order.created", 1, {
-        id: "order-1",
-        orderNumber: "ORD-1042",
-        orderType: "DINE_IN",
-        status: "open",
-        settlementStatus: "UNSETTLED",
-        totalAmount: 1180,
-        items: [],
-      }),
-    );
+    socket.emit(announce(1, "pos.order.created", "order-1"));
     await screen.findByText("ORD-1042");
 
-    socket.emit(
-      envelope("pos.order.updated", 2, {
-        id: "order-1",
-        orderNumber: "ORD-1042",
-        orderType: "DINE_IN",
-        status: "open",
-        settlementStatus: "PENDING",
-        totalAmount: 1770,
-        items: [],
-      }),
-    );
-    await waitFor(() => expect(screen.getByText("1770")).toBeInTheDocument());
-
-    socket.emit(
-      envelope("pos.order.settled", 3, {
-        id: "order-1",
-        orderNumber: "ORD-1042",
-        orderType: "DINE_IN",
-        status: "settled",
-        settlementStatus: "SETTLED",
-        totalAmount: 1770,
-        items: [],
-      }),
-    );
+    ordersStore.set("order-1", {
+      ...OPEN_ORDER,
+      status: "closed",
+      settlementStatus: "CONFIRMED",
+      settlementMethod: "cash",
+    });
+    socket.emit(announce(2, "pos.order.settled", "order-1"));
     await waitFor(() => {
-      // The open-order card is gone, the order moved to the settled strip.
       expect(screen.queryByTestId("order-1")).not.toBeInTheDocument();
       expect(screen.getByTestId("settled-order-1")).toBeInTheDocument();
+      expect(screen.getByTestId("settled-order-1")).toHaveTextContent("cash");
     });
   });
 
   it("sends the order to the kitchen from the card action", async () => {
+    ordersStore.set("order-1", OPEN_ORDER);
     const socket = renderActiveOrders();
     await flush();
     socket.open();
     await flush();
-    socket.emit(
-      envelope("pos.order.created", 1, {
-        id: "order-1",
-        orderNumber: "ORD-1042",
-        orderType: "DINE_IN",
-        status: "open",
-        settlementStatus: "UNSETTLED",
-        totalAmount: 1000,
-        items: [],
-      }),
-    );
+    socket.emit(announce(1, "pos.order.created", "order-1"));
     const sendButton = await screen.findByTestId("send-order-1");
     await userEvent.click(sendButton);
     await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledWith("property-1", "order-1"));
   });
 
-  it("renders backfilled committed orders before the socket opens and applies later live updates", async () => {
-    const backfilled = envelope("pos.order.created", 1, {
-      id: "order-1",
-      orderNumber: "ORD-1042",
-      orderType: "DINE_IN",
-      tableNumber: "T12",
-      status: "open",
-      settlementStatus: "UNSETTLED",
-      totalAmount: 1180,
-      items: [{ id: "item-1", name: "Lunch", quantity: 1 }],
-    });
-    const socket = renderActiveOrders(async () => [JSON.parse(backfilled) as RealtimeEnvelope]);
+  it("clears the board when Peak publishes session closed on property operations", async () => {
+    ordersStore.set("order-1", OPEN_ORDER);
+    const socket = renderActiveOrders();
     await flush();
-    // Backfill is emitted through the same pipeline, so the order is visible
-    // without the socket being open at all.
+    socket.open();
+    await flush();
+    expect(socket.sent.join("")).toContain("/topic/properties/property-1/operations");
+
+    socket.emit(announce(1, "pos.order.created", "order-1"));
     expect(await screen.findByText("ORD-1042")).toBeInTheDocument();
-    expect(screen.getByText(/T12/)).toBeInTheDocument();
+
+    socket.emit(
+      announce(2, "pos.session.closed", "session-1"),
+      "/topic/properties/property-1/operations",
+    );
+    await waitFor(() => {
+      expect(screen.queryByText("ORD-1042")).not.toBeInTheDocument();
+      expect(screen.getByText(/No orders on this connection yet/)).toBeInTheDocument();
+    });
+  });
+
+  it("rebuilds the board from backfilled announcements before the socket opens", async () => {
+    ordersStore.set("order-1", OPEN_ORDER);
+    const socket = renderActiveOrders(async () => [
+      JSON.parse(announce(1, "pos.order.created", "order-1")) as RealtimeEnvelope,
+    ]);
+    await flush();
+    expect(await screen.findByText("ORD-1042")).toBeInTheDocument();
+    expect(getOrderSpy).toHaveBeenCalledWith("property-1", "order-1");
 
     socket.open();
     await flush();
-    // The live duplicate of the backfilled position is dropped; the later
-    // committed update passes through and re-renders.
-    socket.emit(backfilled);
-    socket.emit(
-      envelope("pos.order.updated", 2, {
-        id: "order-1",
-        orderNumber: "ORD-1042",
-        orderType: "DINE_IN",
-        tableNumber: "T12",
-        status: "open",
-        settlementStatus: "UNSETTLED",
-        totalAmount: 1980,
-        items: [{ id: "item-1", name: "Lunch", quantity: 1 }],
-      }),
-    );
-    await waitFor(() => expect(screen.getByText("1980")).toBeInTheDocument());
+    // The resync invalidates all queries once on connect; the live duplicate of
+    // the backfilled announcement is then deduped by position and must not
+    // trigger another fetch.
+    const callsAfterConnect = getOrderSpy.mock.calls.length;
+    socket.emit(announce(1, "pos.order.created", "order-1"));
+    await flush();
+    expect(getOrderSpy.mock.calls.length).toBe(callsAfterConnect);
   });
 });

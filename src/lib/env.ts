@@ -31,3 +31,9 @@ export const API_BASE_URL: string =
 export const REALTIME_BRIDGE_URL: string =
   (import.meta.env.VITE_PEAK_REALTIME_BRIDGE_URL as string | undefined) ??
   "ws://localhost:5174/bridge";
+
+/**
+ * The browser cannot put identity headers on a WebSocket handshake. The
+ * realtime-bridge process does that, using either VITE_PEAK_* headers (the
+ * existing POS loop) or PEAK_OPS_TOKEN for a device-bound PIN session.
+ */

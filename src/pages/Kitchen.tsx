@@ -38,6 +38,8 @@ export function Kitchen() {
   const { data: tickets = [], isLoading } = useKitchenTickets(propertyId);
   const transition = useTransitionTicket(propertyId);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [voiding, setVoiding] = useState<KitchenTicketResponse | null>(null);
+  const [voidReason, setVoidReason] = useState("");
 
   const active = useMemo(
     () =>
@@ -212,26 +214,89 @@ export function Kitchen() {
                   >
                     {ticket.status}
                   </span>
-                  {action && (
-                    <button
-                      data-testid={`transition-${ticket.id}`}
-                      onClick={() =>
-                        transition.mutate({
-                          ticketId: String(ticket.id),
-                          action,
-                        })
-                      }
-                      disabled={transition.isPending}
-                      className="btn-primary btn-sm"
-                    >
-                      <Icon name="check" size={14} />
-                      {ACTION_LABEL[action]}
-                    </button>
-                  )}
+                  <div className="flex gap-2">
+                    {(ticket.status === "PENDING" || ticket.status === "PREPARING") && (
+                      <button
+                        data-testid={`void-${ticket.id}`}
+                        onClick={() => {
+                          setVoidReason("");
+                          setVoiding(ticket);
+                        }}
+                        className="btn-tertiary btn-sm"
+                      >
+                        Void
+                      </button>
+                    )}
+                    {action && (
+                      <button
+                        data-testid={`transition-${ticket.id}`}
+                        onClick={() =>
+                          transition.mutate({
+                            ticketId: String(ticket.id),
+                            action,
+                          })
+                        }
+                        disabled={transition.isPending}
+                        className="btn-primary btn-sm"
+                      >
+                        <Icon name="check" size={14} />
+                        {ACTION_LABEL[action]}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {voiding && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          data-testid="void-dialog"
+        >
+          <div className="card w-full max-w-sm p-5">
+            <div className="text-sm font-semibold text-[var(--color-text-primary)]">
+              Void {voiding.ticketNumber}
+            </div>
+            <div className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
+              A reason is required; Peak records it with the transition.
+            </div>
+            <input
+              data-testid="void-reason"
+              value={voidReason}
+              onChange={(e) => setVoidReason(e.target.value)}
+              placeholder="Reason (min 3 characters)"
+              className="input mt-3 w-full"
+            />
+            {transition.isError && (
+              <div className="badge badge-danger mt-3" data-testid="void-error">
+                {transition.error instanceof Error
+                  ? transition.error.message
+                  : "Void failed"}
+              </div>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setVoiding(null)} className="btn-tertiary btn-sm">
+                Cancel
+              </button>
+              <button
+                data-testid="confirm-void"
+                onClick={() =>
+                  transition.mutate(
+                    { ticketId: String(voiding.id), action: "void", reason: voidReason },
+                    { onSuccess: () => setVoiding(null) },
+                  )
+                }
+                disabled={voidReason.trim().length < 3 || transition.isPending}
+                className="btn-primary btn-sm"
+              >
+                <Icon name="x" size={14} />
+                Confirm void
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

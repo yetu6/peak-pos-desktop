@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Icon } from "../components/Icon";
+import { SettleDialog } from "../components/SettleDialog";
 import {
   usePropertyId,
   useRealtimeOrders,
@@ -10,8 +12,16 @@ import type { PosOrderResponse } from "../lib/posApi";
 function statusBadge(order: PosOrderResponse): string {
   if (order.settlementStatus === "pending") return "badge-warning badge-dot";
   if (order.status === "open") return "badge-brand badge-dot";
-  if (order.status === "settled") return "badge-success badge-dot";
+  if (order.status === "closed") return "badge-success badge-dot";
   return "badge-muted";
+}
+
+function settlementLabel(order: PosOrderResponse): string {
+  if (order.settlementStatus === "pending") return `settling · ${order.settlementMethod ?? ""}`;
+  if (order.settlementStatus === "confirmed" || order.settlementStatus === "transferred") {
+    return order.settlementMethod ?? "settled";
+  }
+  return order.status ?? "unknown";
 }
 
 export function ActiveOrders() {
@@ -19,6 +29,7 @@ export function ActiveOrders() {
   const outletId = useOutletId();
   const orders = useRealtimeOrders(outletId);
   const sendOrder = useSendOrder(propertyId);
+  const [settling, setSettling] = useState<PosOrderResponse | null>(null);
 
   const open = orders.filter((o) => o.status === "open");
   const settled = orders.filter((o) => o.status !== "open");
@@ -31,7 +42,8 @@ export function ActiveOrders() {
             Active Orders
           </h2>
           <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">
-            Reconstructed from the committed event stream — no fabricated state
+            REST is authoritative — the committed event stream announces changes and the
+            board refetches each order
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -48,8 +60,8 @@ export function ActiveOrders() {
             </div>
             <div className="empty-state-title">No orders on this connection yet</div>
             <div className="empty-state-desc">
-              Orders appear here in realtime as they are created on this outlet. The
-              event stream is the source of truth — this list is never fetched.
+              Orders appear here in realtime as they are created on this outlet. The event
+              stream announces every change; each order is fetched from REST.
             </div>
           </div>
         </div>
@@ -72,7 +84,7 @@ export function ActiveOrders() {
                     </div>
                   </div>
                   <span className={`badge ${statusBadge(order)}`}>
-                    {order.settlementStatus === "pending" ? "settling" : order.status}
+                    {settlementLabel(order)}
                   </span>
                 </div>
                 <ul className="space-y-1 border-y border-[var(--color-border-subtle)] py-2 text-[13px]">
@@ -96,15 +108,26 @@ export function ActiveOrders() {
                   <div className="font-display text-lg tabular-nums text-[var(--color-text-primary)]">
                     {order.totalAmount != null ? String(order.totalAmount) : "—"}
                   </div>
-                  <button
-                    data-testid={`send-${order.id}`}
-                    onClick={() => sendOrder.mutate({ orderId: String(order.id) })}
-                    disabled={sendOrder.isPending}
-                    className="btn-primary btn-sm"
-                  >
-                    <Icon name="kitchen" size={14} />
-                    Send to kitchen
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      data-testid={`settle-${order.id}`}
+                      onClick={() => setSettling(order)}
+                      disabled={order.settlementStatus === "pending"}
+                      className="btn-secondary btn-sm"
+                    >
+                      <Icon name="payments" size={14} />
+                      Settle
+                    </button>
+                    <button
+                      data-testid={`send-${order.id}`}
+                      onClick={() => sendOrder.mutate({ orderId: String(order.id) })}
+                      disabled={sendOrder.isPending}
+                      className="btn-primary btn-sm"
+                    >
+                      <Icon name="kitchen" size={14} />
+                      Send to kitchen
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -123,12 +146,17 @@ export function ActiveOrders() {
                     data-testid={`settled-${order.id}`}
                   >
                     {order.orderNumber}
+                    {order.settlementMethod ? ` · ${order.settlementMethod}` : ""}
                   </span>
                 ))}
               </div>
             </div>
           )}
         </>
+      )}
+
+      {settling && (
+        <SettleDialog order={settling} onClose={() => setSettling(null)} />
       )}
     </div>
   );

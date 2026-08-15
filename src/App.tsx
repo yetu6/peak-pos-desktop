@@ -4,13 +4,15 @@ import { ConnectivityIndicator } from "./components/ConnectivityIndicator";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { ActiveOrders } from "./pages/ActiveOrders";
 import { Kitchen } from "./pages/Kitchen";
+import { NewOrder } from "./pages/NewOrder";
 import { useRealtimeEvents } from "./realtime/RealtimeProvider";
-import { useOutletId } from "./hooks/usePosData";
+import { useOutletId, usePropertyId } from "./hooks/usePosData";
 
-type Page = "orders" | "kitchen";
+type Page = "orders" | "new" | "kitchen";
 
-const NAV: Array<{ page: Page; label: string; icon: "orders" | "kitchen" }> = [
+const NAV: Array<{ page: Page; label: string; icon: "orders" | "kitchen" | "plus" }> = [
   { page: "orders", label: "Active Orders", icon: "orders" },
+  { page: "new", label: "New Order", icon: "plus" },
   { page: "kitchen", label: "Kitchen", icon: "kitchen" },
 ];
 
@@ -26,11 +28,15 @@ function useClock(): string {
 export function App() {
   const [page, setPage] = useState<Page>("orders");
   const outletId = useOutletId();
+  const propertyId = usePropertyId();
   const clock = useClock();
   const [lastEvent, setLastEvent] = useState<string | null>(null);
 
+  // Session and payment events are published only on the property operations
+  // stream; outlet-scoped topics never see them. The client still dedupes by
+  // sequenceId when the same envelope also arrives on a scoped destination.
   useRealtimeEvents(
-    { kind: "outletOrders", outletId },
+    { kind: "propertyOperations", propertyId },
     (event) => setLastEvent(`${event.type} #${event.aggregateVersion ?? "?"}`),
   );
 
@@ -96,7 +102,7 @@ export function App() {
         </header>
 
         <main className="flex-1 overflow-auto p-6">
-          {page === "orders" ? <ActiveOrders /> : <Kitchen />}
+          {page === "orders" ? <ActiveOrders /> : page === "new" ? <NewOrder /> : <Kitchen />}
         </main>
       </div>
     </div>
