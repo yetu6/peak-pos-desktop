@@ -1,0 +1,41 @@
+{
+  "name": "peak-pos-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:journey": "vitest run tests/journey",
+    "bridge": "node scripts/realtime-bridge.mjs"
+  },
+  "dependencies": {
+    "@peak/hospitality-api-client": "file:../peak/api-client/artifacts/peak-hospitality-api-client-1.0.0.tgz",
+    "@stomp/stompjs": "^7.3.0",
+    "@tanstack/react-query": "^5.101.4",
+    "openapi-fetch": "0.17.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "^2.11.4",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.4",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@types/ws": "^8.5.12",
+    "@vitejs/plugin-react": "^6.0.5",
+    "jsdom": "^30.0.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10",
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,418 @@
+/* ============================================================
+   Peak POS Desktop — theme
+   Faithful port of the Safari POS design system
+   (see /home/mwombeki/Downloads/POS/ui/{global,components}.css)
+   Tokens → Tailwind v4 @theme so utilities stay composable.
+   ============================================================ */
+
+@import "tailwindcss";
+
+/* --- Local fonts (Inter variable + DM Serif Display) --- */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "DM Serif Display";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/dm-serif-display-latin.woff2") format("woff2");
+}
+
+/* ============================================================
+   1. Design Tokens (Safari POS light)
+   ============================================================ */
+@theme {
+  --color-brand: #0f766e;
+  --color-brand-hover: #0d6b63;
+  --color-brand-light: #e6f5f3;
+  --color-brand-dark: #094e48;
+  --color-gold: #d4a017;
+  --color-gold-light: #fdf6e3;
+
+  --color-bg: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f8fafb;
+  --color-surface-secondary: #f8fafb;
+  --color-surface-tertiary: #f1f3f5;
+
+  --color-text: #1a1d21;
+  --color-text-primary: #1a1d21;
+  --color-text-secondary: #4a5568;
+  --color-text-muted: #8896a6;
+  --color-text-tertiary: #6b7a90;
+
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-border-subtle: #edf2f7;
+
+  --color-success: #16a34a;
+  --color-success-light: #f0fdf4;
+  --color-success-border: #bbf7d0;
+  --color-warning: #f59e0b;
+  --color-warning-light: #fffbeb;
+  --color-warning-border: #fde68a;
+  --color-danger: #dc2626;
+  --color-danger-light: #fef2f2;
+  --color-danger-border: #fecaca;
+  --color-info: #2563eb;
+  --color-info-light: #eff6ff;
+  --color-info-border: #bfdbfe;
+  --color-accent: #7c3aed;
+  --color-accent-light: #f5f3ff;
+  --color-accent-border: #ddd6fe;
+
+  --color-pos-sidebar: #032421;
+
+  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: "DM Serif Display", Georgia, serif;
+  --font-mono: "SF Mono", "Fira Code", monospace;
+
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.06);
+}
+
+/* ============================================================
+   2. Dark theme — Safari POS Dark (class toggle)
+   ============================================================ */
+.dark-theme {
+  --color-bg: #0a1712;
+  --color-surface: #122019;
+  --color-surface-hover: #1b2c22;
+  --color-surface-secondary: #0e1b15;
+  --color-surface-tertiary: #20342a;
+
+  --color-text: #e1ece3;
+  --color-text-primary: #f1f7f0;
+  --color-text-secondary: #8faa98;
+  --color-text-muted: #5c7868;
+  --color-text-tertiary: #3d5446;
+
+  --color-border: #213a2c;
+  --color-border-strong: #335041;
+  --color-border-subtle: #172a20;
+
+  --color-brand: #1fae7c;
+  --color-brand-hover: #18966a;
+  --color-brand-light: #0e3527;
+  --color-brand-dark: #0c7755;
+  --color-gold: #c9a24b;
+  --color-gold-light: #2a2009;
+
+  --color-success: #2fc592;
+  --color-success-light: #0a2b1e;
+  --color-success-border: #134232;
+  --color-warning: #e0b84a;
+  --color-warning-light: #2a2008;
+  --color-warning-border: #4a380f;
+  --color-danger: #e3716e;
+  --color-danger-light: #2e1517;
+  --color-danger-border: #4e2226;
+  --color-info: #5aaeff;
+  --color-info-light: #0e2040;
+  --color-info-border: #1a3a65;
+  --color-accent: #a78bfa;
+  --color-accent-light: #1a1040;
+  --color-accent-border: #2d2060;
+}
+
+/* ============================================================
+   3. Base
+   ============================================================ */
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    font-family: var(--font-ui);
+    font-size: 0.8125rem; /* 13px — Safari POS text-base */
+    color: var(--color-text);
+    background: var(--color-bg);
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-muted);
+  }
+}
+
+/* ============================================================
+   4. Atoms — Buttons (min 44px touch targets)
+   ============================================================ */
+@layer components {
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 8px 16px;
+    border-radius: var(--radius-md, 8px);
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--color-brand);
+    background: var(--color-brand);
+    color: #fff;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 200ms ease;
+    user-select: none;
+  }
+  .btn-primary:hover {
+    background: var(--color-brand-hover);
+    border-color: var(--color-brand-hover);
+  }
+  .btn-primary:active {
+    transform: scale(0.98);
+  }
+  .btn-primary:disabled {
+    background: var(--color-surface-tertiary);
+    color: var(--color-text-muted);
+    border-color: var(--color-border);
+    cursor: not-allowed;
+  }
+  .btn-secondary {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+  }
+  .btn-secondary:hover {
+    background: var(--color-surface-hover);
+    border-color: var(--color-border-strong);
+    color: var(--color-text);
+  }
+  .btn-tertiary {
+    background: transparent;
+    border-color: transparent;
+    color: var(--color-text-secondary);
+  }
+  .btn-tertiary:hover {
+    background: var(--color-surface-hover);
+    color: var(--color-brand);
+  }
+  .btn-sm {
+    min-height: 32px;
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+
+  /* --- Badges --- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .badge-dot::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .badge-brand { background: var(--color-brand-light); color: var(--color-brand); }
+  .badge-success { background: var(--color-success-light); color: var(--color-success); }
+  .badge-warning { background: var(--color-warning-light); color: var(--color-warning); }
+  .badge-danger { background: var(--color-danger-light); color: var(--color-danger); }
+  .badge-info { background: var(--color-info-light); color: var(--color-info); }
+  .badge-muted { background: var(--color-surface-tertiary); color: var(--color-text-muted); }
+
+  /* --- Cards --- */
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 200ms ease;
+  }
+  .card:hover {
+    box-shadow: var(--shadow);
+  }
+
+  /* --- Glassmorphism surfaces (light + dark aware) --- */
+  .glass {
+    background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  }
+
+  /* --- KPI card (Safari POS spc-kpi-card) --- */
+  .kpi-card {
+    background: #f4fbfa;
+    border: 1px solid rgb(15 118 110 / 0.08);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 190px;
+    transition: transform 200ms ease, box-shadow 200ms ease;
+  }
+  .kpi-card:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow);
+  }
+  .kpi-value {
+    font-family: var(--font-display);
+    font-size: 20px;
+    color: var(--color-text-primary);
+  }
+  .kpi-label {
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+  .kpi-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .kpi-icon.tone-green { background: var(--color-success-light); color: var(--color-success); }
+  .kpi-icon.tone-brand { background: var(--color-brand-light); color: var(--color-brand); }
+  .kpi-icon.tone-accent { background: var(--color-accent-light); color: var(--color-accent); }
+  .kpi-icon.tone-danger { background: var(--color-danger-light); color: var(--color-danger); }
+  .kpi-icon.tone-warning { background: var(--color-warning-light); color: var(--color-warning); }
+
+  /* --- Pill filters --- */
+  .pill-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 9999px;
+    border: 1px solid var(--color-border);
+    background: transparent;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 200ms ease;
+  }
+  .pill-filter-btn:hover {
+    background: var(--color-surface-hover);
+    border-color: var(--color-border-strong);
+  }
+  .pill-filter-btn.active {
+    background: var(--color-brand-light);
+    border-color: var(--color-brand);
+    color: var(--color-brand);
+  }
+  .pill-count {
+    background: var(--color-surface-tertiary);
+    padding: 1px 6px;
+    border-radius: 9999px;
+    font-size: 10px;
+  }
+
+  /* --- Kitchen ticket card (KDS) --- */
+  .ticket-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: var(--shadow-sm);
+    transition: all 200ms ease;
+  }
+  .ticket-card:hover {
+    box-shadow: var(--shadow);
+  }
+  .ticket-card.ready {
+    border-color: var(--color-success-border);
+    background: color-mix(in srgb, var(--color-success-light) 45%, var(--color-surface));
+  }
+  .ticket-card.preparing {
+    border-color: var(--color-warning-border);
+  }
+  .ticket-age {
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-muted);
+  }
+  .ticket-age.late {
+    color: var(--color-danger);
+  }
+
+  /* --- Empty state --- */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    text-align: center;
+    gap: 8px;
+  }
+  .empty-state-icon {
+    font-size: 40px;
+    color: var(--color-text-muted);
+    opacity: 0.4;
+    margin-bottom: 4px;
+  }
+  .empty-state-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+  .empty-state-desc {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    max-width: 340px;
+  }
+
+  /* --- Shift pill (topbar) --- */
+  .shift-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--color-brand-light);
+    color: var(--color-brand);
+  }
+  .shift-pill .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .shift-pill.live {
+    background: var(--color-success-light);
+    color: var(--color-success);
+  }
+  .shift-pill.alert {
+    background: var(--color-warning-light);
+    color: var(--color-warning);
+  }
+  .shift-pill.down {
+    background: var(--color-danger-light);
+    color: var(--color-danger);
+  }
+}
