@@ -1,5 +1,11 @@
 import type { RealtimeEnvelope } from "../realtime/RealtimeEnvelope";
-import { API_BASE_URL, devIdentityFromEnv } from "./env";
+import { devIdentityFromEnv, type DevIdentity } from "./env";
+import { getApiBaseUrl } from "./peakConfig";
+import {
+  getOperationalSession,
+  SessionExpiredError,
+} from "./operationalSession";
+import { registerPropertyId, socketAlignedHeaders } from "./restAuth";
 
 export interface RealtimeBackfill {
   /** Fetches committed events strictly after `after` (ascending). */
@@ -21,26 +27,33 @@ interface ReplayPage {
   nextCursor: number | null;
 }
 
+function tryDevIdentity(): DevIdentity | null {
+  try {
+    return devIdentityFromEnv();
+  } catch {
+    return null;
+  }
+}
+
 /**
- * REST backfill for the dev runtime: replays the committed journal through the
- * same canonical envelope the live stream delivers, so a client that connects
- * late (or reconnects after a gap) sees every event exactly once.
- *
- * Auth stays on the header-identity POS loop. A PIN session authenticates the
- * socket via `PEAK_OPS_TOKEN` on the Node bridge; mixing that bearer with
- * identity headers is refused by Peak, so this fetch never sends `Authorization`.
+ * REST backfill for committed journal events. Auth matches the STOMP socket:
+ * `PEAK_OPS_TOKEN` bearer XOR X-Peak identity headers — never both. Peak
+ * refuses a mixed handshake, and mixing here would desync replay from live.
  */
-export function createRealtimeBackfill(baseUrl: string = API_BASE_URL): RealtimeBackfill {
-  const identity = devIdentityFromEnv();
+export function createRealtimeBackfill(baseUrl: string = getApiBaseUrl()): RealtimeBackfill {
   return {
     fetchEvents: async (after: number): Promise<RealtimeEnvelope[]> => {
+      const session = getOperationalSession();
+      const env = tryDevIdentity();
+      const propertyId = registerPropertyId(session, env);
+      if (!propertyId) {
+        throw new Error("A property id is required to backfill realtime events");
+      }
+      const headers = socketAlignedHeaders(session, env);
       const collected: RealtimeEnvelope[] = [];
       let cursor = after;
       for (let page = 0; page < MAX_REPLAY_PAGES; page++) {
-        const replay = await fetchReplayPage(baseUrl, identity.propertyId, cursor, {
-          tenantId: identity.tenantId,
-          userId: identity.userId,
-        });
+        const replay = await fetchReplayPage(baseUrl, propertyId, cursor, headers);
         if (replay.events.length === 0) {
           return collected;
         }
@@ -59,17 +72,15 @@ async function fetchReplayPage(
   baseUrl: string,
   propertyId: string,
   after: number,
-  identity: { tenantId: string; userId: string },
+  headers: Record<string, string>,
 ): Promise<ReplayPage> {
   const url =
     `${baseUrl}/api/v1/properties/${propertyId}/realtime/events` +
     `?after=${after}&limit=${REPLAY_PAGE_SIZE}`;
-  const response = await fetch(url, {
-    headers: {
-      "X-Peak-Tenant-Id": identity.tenantId,
-      "X-Peak-Tenant-User-Id": identity.userId,
-    },
-  });
+  const response = await fetch(url, { headers });
+  if (response.status === 401) {
+    throw new SessionExpiredError();
+  }
   if (!response.ok) {
     throw new Error(`Realtime backfill failed with HTTP ${response.status}`);
   }
@@ -79,8 +90,10 @@ async function fetchReplayPage(
 export function createRealtimeCursorStorage(
   storage: Pick<Storage, "getItem" | "setItem"> = localStorage,
 ): RealtimeCursorStorage {
-  const identity = devIdentityFromEnv();
-  const key = `${CURSOR_KEY}-${identity.propertyId}`;
+  const session = getOperationalSession();
+  const env = tryDevIdentity();
+  const propertyId = registerPropertyId(session, env) ?? "unknown";
+  const key = `${CURSOR_KEY}-${propertyId}`;
   return {
     get: () => {
       const raw = storage.getItem(key);

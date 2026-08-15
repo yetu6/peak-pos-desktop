@@ -7,16 +7,49 @@ import {
   type PosSessionResponse,
   type RoomResponse,
 } from "../lib/posApi";
-import { devIdentityFromEnv } from "../lib/env";
+import { devIdentityFromEnv, type DevIdentity } from "../lib/env";
+import { getApiBaseUrl } from "../lib/peakConfig";
 import { useRealtimeEvents } from "../realtime/RealtimeProvider";
 import { isOrderEvent } from "../realtime/subscriptions";
+import { fetchOutletMenu } from "../lib/menuCatalog";
+import { getOperationalSession } from "../lib/operationalSession";
+import { restRequestHeaders } from "../lib/restAuth";
+
+function tryDevIdentity(): DevIdentity | null {
+  try {
+    return devIdentityFromEnv();
+  } catch {
+    return null;
+  }
+}
 
 export function usePropertyId(): string {
+  const session = getOperationalSession();
+  if (session?.propertyId) return session.propertyId;
   return devIdentityFromEnv().propertyId;
 }
 
 export function useOutletId(): string {
+  const session = getOperationalSession();
+  if (session?.outletId) return session.outletId;
   return devIdentityFromEnv().outletId;
+}
+
+export function useOutletMenu() {
+  const propertyId = usePropertyId();
+  const outletId = useOutletId();
+  return useQuery({
+    queryKey: ["menu-items", propertyId, outletId],
+    enabled: Boolean(propertyId && outletId),
+    retry: false,
+    queryFn: () =>
+      fetchOutletMenu({
+        baseUrl: getApiBaseUrl(),
+        propertyId,
+        outletId,
+        headers: restRequestHeaders(getOperationalSession(), tryDevIdentity()),
+      }),
+  });
 }
 
 /**
@@ -125,8 +158,11 @@ export function usePosSession() {
   });
 
   const close = useMutation({
-    mutationFn: async (actualCash?: number) => {
+    mutationFn: async (actualCash: number) => {
       if (!storedId) return;
+      if (!Number.isFinite(actualCash)) {
+        throw new Error("Enter the cash in the drawer to close the till");
+      }
       const { data, error } = await createPosApi().closeSession(
         propertyId,
         storedId,

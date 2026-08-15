@@ -1,13 +1,9 @@
 /**
  * Dev-only realtime bridge.
  *
- * Browser WebSockets cannot carry the X-Peak-* identity headers the dev
- * runtime resolves (PEAK_ALLOW_HEADER_IDENTITY=true), so this tiny Node
- * process connects to the backend STOMP endpoint with those headers and
- * re-exposes the socket to the app on ws://localhost:5174/bridge.
- *
- * It forwards STOMP frames verbatim in both directions. Peak's contract is
- * unchanged: HTTP/REST creates truth, STOMP only delivers committed envelopes.
+ * Browser WebSockets cannot carry identity on the handshake, so this Node
+ * process connects to Peak's STOMP endpoint and re-exposes the socket on
+ * ws://localhost:5174/bridge. Frames are forwarded verbatim.
  *
  * Authentication is one of:
  *   - identity headers (default, the existing POS header-identity loop)
@@ -15,17 +11,21 @@
  * The two must not be combined: Peak refuses identity headers on an
  * authenticated principal.
  *
+ * After PIN the till POSTs { token } to /ops-token (localhost only). That
+ * switches subsequent upstream handshakes to the bearer and drops X-Peak-*.
+ *
  * Usage:  VITE_PEAK_TENANT_ID=... VITE_PEAK_USER_ID=... node scripts/realtime-bridge.mjs
  *     or: PEAK_OPS_TOKEN=ops_... node scripts/realtime-bridge.mjs
  */
+import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import { WebSocket } from "ws";
 
 const BACKEND_WS = process.env.PEAK_REALTIME_URL ?? "ws://localhost:8080/ws-connect";
 const PORT = Number(process.env.PEAK_BRIDGE_PORT ?? 5174);
-const tenantId = process.env.VITE_PEAK_TENANT_ID;
-const userId = process.env.VITE_PEAK_USER_ID;
-const opsToken = process.env.PEAK_OPS_TOKEN;
+let tenantId = process.env.VITE_PEAK_TENANT_ID;
+let userId = process.env.VITE_PEAK_USER_ID;
+let opsToken = process.env.PEAK_OPS_TOKEN;
 
 if (opsToken && (tenantId || userId)) {
   console.error(
@@ -41,23 +41,82 @@ if (!opsToken && (!tenantId || !userId)) {
   process.exit(1);
 }
 
-const handshakeHeaders = opsToken
-  ? {
+function handshakeHeaders() {
+  if (opsToken) {
+    return {
       Authorization: `Bearer ${opsToken}`,
       Origin: "http://localhost:5173",
-    }
-  : {
-      "X-Peak-Tenant-Id": tenantId,
-      "X-Peak-Tenant-User-Id": userId,
-      Origin: "http://localhost:5173",
     };
+  }
+  return {
+    "X-Peak-Tenant-Id": tenantId,
+    "X-Peak-Tenant-User-Id": userId,
+    Origin: "http://localhost:5173",
+  };
+}
 
-const wss = new WebSocketServer({ port: PORT });
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+}
+
+function isLocalAddress(address) {
+  return (
+    address === "127.0.0.1" ||
+    address === "::1" ||
+    address === ":ffff:127.0.0.1"
+  );
+}
+
+const server = createServer((req, res) => {
+  if (req.method === "OPTIONS" && req.url === "/ops-token") {
+    res.writeHead(204, corsHeaders());
+    res.end();
+    return;
+  }
+  if (req.method === "POST" && req.url === "/ops-token") {
+    if (!isLocalAddress(req.socket.remoteAddress ?? "")) {
+      res.writeHead(403, corsHeaders());
+      res.end("localhost only");
+      return;
+    }
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        const token = typeof body?.token === "string" ? body.token : "";
+        if (!token.startsWith("ops_")) {
+          res.writeHead(400, corsHeaders());
+          res.end("token must be an ops_ session");
+          return;
+        }
+        opsToken = token;
+        tenantId = undefined;
+        userId = undefined;
+        console.log("[bridge] switched to PEAK_OPS_TOKEN handshake");
+        res.writeHead(204, corsHeaders());
+        res.end();
+      } catch {
+        res.writeHead(400, corsHeaders());
+        res.end("invalid json");
+      }
+    });
+    return;
+  }
+  res.writeHead(404);
+  res.end();
+});
+
+const wss = new WebSocketServer({ server });
 console.log(`[bridge] listening on ws://localhost:${PORT}/bridge -> ${BACKEND_WS}`);
 
 wss.on("connection", (client) => {
   const upstream = new WebSocket(BACKEND_WS, {
-    headers: handshakeHeaders,
+    headers: handshakeHeaders(),
   });
 
   client.on("message", (data) => {
@@ -75,3 +134,5 @@ wss.on("connection", (client) => {
     client.close();
   });
 });
+
+server.listen(PORT);

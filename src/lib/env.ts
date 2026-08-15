@@ -24,6 +24,8 @@ export function devIdentityFromEnv(): DevIdentity {
   return { tenantId, userId, propertyId, outletId };
 }
 
+export { getApiBaseUrl } from "./peakConfig";
+
 export const API_BASE_URL: string =
   (import.meta.env.VITE_PEAK_API_URL as string | undefined) ??
   "http://localhost:8080";
@@ -36,4 +38,6 @@ export const REALTIME_BRIDGE_URL: string =
  * The browser cannot put identity headers on a WebSocket handshake. The
  * realtime-bridge process does that, using either VITE_PEAK_* headers (the
  * existing POS loop) or PEAK_OPS_TOKEN for a device-bound PIN session.
+ * After PIN the till posts the token to the bridge and never combines it
+ * with X-Peak-* on the same handshake.
  */

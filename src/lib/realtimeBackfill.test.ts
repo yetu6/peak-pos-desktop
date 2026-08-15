@@ -1,14 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RealtimeEnvelope } from "../realtime/RealtimeEnvelope";
+import {
+  clearOperationalSession,
+  SessionExpiredError,
+  setOperationalSession,
+} from "./operationalSession";
 
 vi.mock("./env", () => ({
   API_BASE_URL: "http://peak.test",
+  getApiBaseUrl: () => "http://peak.test",
   devIdentityFromEnv: () => ({
     tenantId: "t1",
     userId: "u1",
     propertyId: "p1",
     outletId: "o1",
   }),
+}));
+
+vi.mock("./peakConfig", () => ({
+  getApiBaseUrl: () => "http://peak.test",
 }));
 
 import { createRealtimeBackfill } from "./realtimeBackfill";
@@ -41,6 +51,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 describe("createRealtimeBackfill", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    clearOperationalSession();
   });
 
   it("follows Peak nextCursor until the journal page is empty", async () => {
@@ -84,5 +95,42 @@ describe("createRealtimeBackfill", () => {
   it("fails closed when Peak refuses the replay", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({}, 403)));
     await expect(createRealtimeBackfill().fetchEvents(0)).rejects.toThrow(/HTTP 403/);
+  });
+
+  it("sends the ops bearer alone after PIN so replay matches the socket", async () => {
+    setOperationalSession({
+      token: "ops_live",
+      expiresAt: "2026-08-16T05:00:00Z",
+      deviceId: "d1",
+      propertyId: "p1",
+      staffNumber: "0007",
+      tenantId: "t1",
+      userId: "u1",
+      outletId: "o1",
+    });
+    const fetchMock = vi.fn(async () => jsonResponse({ events: [], nextCursor: null }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createRealtimeBackfill().fetchEvents(4);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://peak.test/api/v1/properties/p1/realtime/events?after=4&limit=200",
+      {
+        headers: { Authorization: "Bearer ops_live" },
+      },
+    );
+  });
+
+  it("treats a 401 replay as an expired PIN session", async () => {
+    setOperationalSession({
+      token: "ops_dead",
+      expiresAt: "2026-08-15T00:00:00Z",
+      deviceId: "d1",
+      propertyId: "p1",
+      staffNumber: "0007",
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({}, 401)));
+    await expect(createRealtimeBackfill().fetchEvents(0)).rejects.toBeInstanceOf(
+      SessionExpiredError,
+    );
   });
 });

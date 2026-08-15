@@ -1,18 +1,26 @@
 import { createPeakHospitalityApiClient } from "@peak/hospitality-api-client";
-import { API_BASE_URL, devIdentityFromEnv } from "./env";
+import { devIdentityFromEnv, type DevIdentity } from "./env";
+import { getApiBaseUrl } from "./peakConfig";
+import { getOperationalSession } from "./operationalSession";
+import { restRequestHeaders } from "./restAuth";
+
+function tryDevIdentity(): DevIdentity | null {
+  try {
+    return devIdentityFromEnv();
+  } catch {
+    return null;
+  }
+}
 
 /**
- * Single shared API client. Every request carries the dev header identity so
- * the runtime resolves the same tenant context REST and WebSocket share.
+ * Shared hospitality API client. After PIN, uses Bearer `ops_…` when Peak's
+ * login JSON included tenantId, userId and propertyId (outletId may be null).
+ * Otherwise keeps the header-identity loop. Never sends both.
  */
 export function createApiClient() {
   return createPeakHospitalityApiClient({
-    baseUrl: API_BASE_URL,
-    headers: {
-      "X-Peak-Tenant-Id": devIdentityFromEnv().tenantId,
-      "X-Peak-Tenant-User-Id": devIdentityFromEnv().userId,
-      "Content-Type": "application/json",
-    },
+    baseUrl: getApiBaseUrl(),
+    headers: restRequestHeaders(getOperationalSession(), tryDevIdentity()),
   });
 }
 

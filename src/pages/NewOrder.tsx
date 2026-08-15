@@ -1,7 +1,6 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Icon } from "../components/Icon";
-import { useCreateOrder, usePosSession, usePropertyId } from "../hooks/usePosData";
-import { devMenuItems } from "../lib/menuCatalog";
+import { useCreateOrder, useOutletMenu, usePosSession, usePropertyId } from "../hooks/usePosData";
 
 interface CartLine {
   menuItemId: string;
@@ -14,12 +13,15 @@ const ORDER_TYPES = ["dine_in", "takeaway"] as const;
 export function NewOrder() {
   const { session, open, close } = usePosSession();
   const createOrder = useCreateOrder(usePropertyId());
-  const menu = useMemo(() => devMenuItems(), []);
+  const menuQuery = useOutletMenu();
+  const menu = menuQuery.data?.items ?? [];
+  const menuSource = menuQuery.data?.source;
   const [lines, setLines] = useState<CartLine[]>([]);
   const [orderType, setOrderType] = useState<(typeof ORDER_TYPES)[number]>("dine_in");
   const [tableNumber, setTableNumber] = useState("");
   const [specialRequest, setSpecialRequest] = useState("");
   const [created, setCreated] = useState<string | null>(null);
+  const [actualCash, setActualCash] = useState("");
 
   function addLine(item: (typeof menu)[number]): void {
     setCreated(null);
@@ -91,10 +93,18 @@ export function NewOrder() {
                   minute: "2-digit",
                 })}
               </span>
+              <input
+                data-testid="actual-cash"
+                type="number"
+                value={actualCash}
+                onChange={(event) => setActualCash(event.target.value)}
+                placeholder="Cash in drawer"
+                className="input w-32"
+              />
               <button
                 data-testid="close-session"
-                onClick={() => close.mutate(undefined)}
-                disabled={close.isPending}
+                onClick={() => close.mutate(Number(actualCash))}
+                disabled={close.isPending || !Number.isFinite(Number(actualCash)) || actualCash.trim() === ""}
                 className="btn-tertiary btn-sm"
               >
                 Close session
@@ -173,9 +183,12 @@ export function NewOrder() {
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-[var(--color-text-muted)]">
-              Dev catalog only — Peak exposes no menu read route yet. Prices are always
-              server-side.
+            <p className="text-[11px] text-[var(--color-text-muted)]" data-testid="menu-source">
+              {menuQuery.isError
+                ? "Could not load the outlet menu."
+                : menuSource === "peak"
+                  ? "Menu from Peak. Prices are always server-side."
+                  : "Dev catalog fallback — Peak menu GET returned 404. Prices are always server-side."}
             </p>
           </div>
 

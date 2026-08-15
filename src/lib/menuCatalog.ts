@@ -1,22 +1,26 @@
 /**
- * Dev-only menu catalog for the POS compose screen.
+ * Outlet menu for the New Order board.
  *
- * Peak exposes NO read route for menu items yet (only `POST
- * /pos-config/menu-items` for configuration), so the operator's register
- * cannot fetch the outlet menu. Until `GET /pos-config/menu-items` exists
- * (see KNOWN GAPS), the client boots from this catalog. The server is still
- * the source of truth for names, prices, and tax — the client only supplies
- * the `menuItemId`, exactly like the dev header identity.
+ * Prefers Peak `GET /api/v1/properties/{propertyId}/pos-config/menu-items?outletId=`
+ * (permission `pos.view`) and joins category names from
+ * `GET .../menu-categories?outletId=`. Falls back to the documented dev catalog
+ * only on HTTP 404. Other failures surface to the till. Prices stay server-side.
  *
- * Item ids must reference menu items actually seeded in the tenant property.
- * Override with real ids via the `VITE_PEAK_MENU_ITEMS` env var
- * (JSON array of { id, name, category }) — the journey test relies on it.
+ * Override fallback ids via `VITE_PEAK_MENU_ITEMS` (JSON array of
+ * { id, name, category }) — the journey test relies on it.
  */
 
 export interface DevMenuItem {
   id: string;
   name: string;
   category: string;
+}
+
+export type MenuSource = "peak" | "dev-catalog";
+
+export interface OutletMenu {
+  items: DevMenuItem[];
+  source: MenuSource;
 }
 
 const BUILTIN: DevMenuItem[] = [
@@ -33,12 +37,97 @@ export function devMenuItems(): DevMenuItem[] {
   if (!raw) return BUILTIN;
   try {
     const parsed = JSON.parse(raw) as DevMenuItem[];
-    if (Array.isArray(parsed) && parsed.every((i) => i?.id && i?.name)) {
+    if (Array.isArray(parsed) && parsed.every((item) => item?.id && item?.name)) {
       return parsed;
     }
   } catch {
-    // Fall through to the builtin catalog; a misconfigured override must not
-    // brick the register.
+    // A misconfigured override must not brick the register.
   }
   return BUILTIN;
+}
+
+function asRows(body: unknown): unknown[] {
+  if (Array.isArray(body)) return body;
+  if (body && typeof body === "object" && "items" in body) {
+    const items = (body as { items: unknown }).items;
+    return Array.isArray(items) ? items : [];
+  }
+  if (body && typeof body === "object" && "menuItems" in body) {
+    const items = (body as { menuItems: unknown }).menuItems;
+    return Array.isArray(items) ? items : [];
+  }
+  return [];
+}
+
+export function parseMenuItems(body: unknown): DevMenuItem[] {
+  return asRows(body).flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const record = row as Record<string, unknown>;
+    const id = record.id ?? record.menuItemId;
+    const name = record.name;
+    if (id == null || typeof name !== "string" || name.length === 0) return [];
+    const category =
+      (typeof record.category === "string" && record.category) ||
+      (typeof record.categoryName === "string" && record.categoryName) ||
+      "Menu";
+    return [{ id: String(id), name, category }];
+  });
+}
+
+function parseCategories(body: unknown): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const row of asRows(body)) {
+    if (!row || typeof row !== "object") continue;
+    const record = row as Record<string, unknown>;
+    if (record.id != null && typeof record.name === "string") {
+      map.set(String(record.id), record.name);
+    }
+  }
+  return map;
+}
+
+export async function fetchOutletMenu(args: {
+  baseUrl: string;
+  propertyId: string;
+  outletId: string;
+  headers: Record<string, string>;
+}): Promise<OutletMenu> {
+  const itemsUrl =
+    `${args.baseUrl}/api/v1/properties/${args.propertyId}/pos-config/menu-items` +
+    `?outletId=${encodeURIComponent(args.outletId)}`;
+  const response = await fetch(itemsUrl, { headers: args.headers });
+  if (response.status === 404) {
+    return { items: devMenuItems(), source: "dev-catalog" };
+  }
+  if (!response.ok) {
+    throw new Error(`Menu GET failed with HTTP ${response.status}`);
+  }
+  const raw = await response.json();
+  const categoriesUrl =
+    `${args.baseUrl}/api/v1/properties/${args.propertyId}/pos-config/menu-categories` +
+    `?outletId=${encodeURIComponent(args.outletId)}`;
+  let categoryNames = new Map<string, string>();
+  try {
+    const categoriesResponse = await fetch(categoriesUrl, { headers: args.headers });
+    if (categoriesResponse.ok) {
+      categoryNames = parseCategories(await categoriesResponse.json());
+    }
+  } catch {
+    // Category names are presentation only; items still render.
+  }
+  const items = asRows(raw).flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const record = row as Record<string, unknown>;
+    const id = record.id ?? record.menuItemId;
+    const name = record.name;
+    if (id == null || typeof name !== "string" || name.length === 0) return [];
+    const categoryId = record.categoryId != null ? String(record.categoryId) : undefined;
+    const category =
+      (typeof record.category === "string" && record.category) ||
+      (typeof record.categoryName === "string" && record.categoryName) ||
+      (categoryId ? categoryNames.get(categoryId) : undefined) ||
+      "Menu";
+    return [{ id: String(id), name, category }];
+  });
+  return { items, source: "peak" };
 }

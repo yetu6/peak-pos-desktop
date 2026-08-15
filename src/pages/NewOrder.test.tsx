@@ -5,6 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NewOrder } from "./NewOrder";
 
 vi.mock("../lib/env", () => ({
+  API_BASE_URL: "http://peak.test",
+  getApiBaseUrl: () => "http://peak.test",
+  REALTIME_BRIDGE_URL: "ws://localhost:5174/bridge",
   devIdentityFromEnv: () => ({
     tenantId: "tenant-1",
     userId: "user-1",
@@ -63,9 +66,18 @@ function renderNewOrder() {
 describe("NewOrder", () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      })),
+    );
   });
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
     localStorage.clear();
   });
 
@@ -91,9 +103,10 @@ describe("NewOrder", () => {
     );
     expect(await screen.findByTestId("session-open")).toBeInTheDocument();
 
+    await userEvent.type(screen.getByTestId("actual-cash"), "12000");
     await userEvent.click(screen.getByTestId("close-session"));
     await waitFor(() =>
-      expect(closeSessionSpy).toHaveBeenCalledWith("property-1", "session-1", undefined),
+      expect(closeSessionSpy).toHaveBeenCalledWith("property-1", "session-1", 12000),
     );
     expect(localStorage.getItem("peak-pos-session-property-1-outlet-1")).toBeNull();
   });
