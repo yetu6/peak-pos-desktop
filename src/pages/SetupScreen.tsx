@@ -21,23 +21,23 @@ export function SetupScreen() {
 
   return (
     <div
-      className="flex h-screen items-center justify-center bg-[var(--color-pos-sidebar)] p-6"
+      className="auth-shell flex h-screen items-center justify-center p-6"
       data-testid="setup-screen"
     >
       <span className="sr-only" data-testid="shell-state">
         UNPAIRED
       </span>
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/20 p-8">
+      <div className="glass-panel w-full max-w-md p-8">
         <div className="mb-6 flex items-center justify-center gap-2">
           <Icon name="peak-logo" size={28} className="text-[#D4A017]" />
-          <span className="font-display text-2xl text-white">Peak POS</span>
+          <span className="font-display text-2xl text-[var(--color-text-primary)]">Peak POS</span>
         </div>
-        <h1 className="text-center text-lg font-semibold text-white">Peak server</h1>
-        <p className="mt-2 text-center text-[13px] text-[rgba(255,255,255,0.65)]">
+        <h1 className="text-center text-lg font-semibold text-[var(--color-text-primary)]">Peak server</h1>
+        <p className="mt-2 text-center text-[13px] text-[var(--color-text-secondary)]">
           Enter this hotel's Peak address once. The till then generates its own key
           and waits for a manager to approve a pairing code.
         </p>
-        <label className="mt-5 block text-[11px] font-medium text-[rgba(255,255,255,0.55)]">
+        <label className="mt-5 block text-[11px] font-medium text-[var(--color-text-secondary)]">
           Peak URL
         </label>
         <input
@@ -48,7 +48,7 @@ export function SetupScreen() {
             if (event.key === "Enter") void submit();
           }}
           placeholder="https://peak.example.com"
-          className="input mt-1 w-full bg-white/5 text-white"
+          className="input mt-1 w-full bg-[var(--color-surface-hover)] text-[var(--color-text-primary)]"
           autoComplete="off"
         />
         {error && (

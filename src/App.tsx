@@ -111,7 +111,7 @@ function PosShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="glass flex h-14 shrink-0 items-center gap-4 border-b border-[var(--color-border)] px-5">
+        <header className="glass-bar sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 px-5">
           <span className="text-[13px] font-semibold text-[var(--color-text-secondary)]">
             {clock}
           </span>

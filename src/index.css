@@ -77,6 +77,39 @@
   --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
   --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.06);
+
+  /* --- Glass (light) ---
+     Tinted from the safari palette rather than neutral white, so a floating
+     layer still reads as this product and not a generic overlay. Three
+     elevations: a bar sits on the page, a panel lifts off it, a dialog owns
+     the screen. Blur rises and transparency falls as you climb. */
+  --glass-bar-bg: color-mix(in srgb, #ffffff 74%, transparent);
+  --glass-panel-bg: color-mix(in srgb, #ffffff 66%, transparent);
+  --glass-dialog-bg: color-mix(in srgb, #ffffff 88%, transparent);
+  --glass-border: color-mix(in srgb, #0f766e 16%, transparent);
+  --glass-specular: linear-gradient(
+    to right,
+    transparent,
+    rgb(255 255 255 / 0.95) 22%,
+    rgb(255 255 255 / 0.95) 78%,
+    transparent
+  );
+  --glass-wash: radial-gradient(
+    120% 100% at 12% 0%,
+    rgb(15 118 110 / 0.1),
+    transparent 62%
+  );
+  --glass-blur-bar: 14px;
+  --glass-blur-panel: 18px;
+  --glass-blur-dialog: 26px;
+  --glass-shadow: 0 8px 32px -12px rgb(9 78 72 / 0.28);
+  --glass-shadow-lg: 0 24px 56px -20px rgb(9 78 72 / 0.42);
+  --glass-scrim: rgb(10 23 18 / 0.45);
+
+  /* Standing light behind the auth glass. */
+  --auth-glow-brand: rgb(15 118 110 / 0.20);
+  --auth-glow-gold: rgb(212 160 23 / 0.14);
+  --auth-glow-deep: rgb(15 118 110 / 0.10);
 }
 
 /* ============================================================
@@ -121,6 +154,36 @@
   --color-accent: #a78bfa;
   --color-accent-light: #1a1040;
   --color-accent-border: #2d2060;
+
+  /* --- Glass (dark) ---
+     A dim dining room is the common case at night, so dark glass is built up
+     from the green-black surface rather than down from white. The specular
+     edge stays warm — it is the one place gold appears on chrome, and it is
+     what makes the layer read as an edge rather than a lighter rectangle. */
+  --glass-bar-bg: color-mix(in srgb, #122019 72%, transparent);
+  --glass-panel-bg: color-mix(in srgb, #122019 64%, transparent);
+  --glass-dialog-bg: color-mix(in srgb, #16241c 88%, transparent);
+  --glass-border: color-mix(in srgb, #31c795 22%, transparent);
+  --glass-specular: linear-gradient(
+    to right,
+    transparent,
+    rgb(201 162 75 / 0.5) 22%,
+    rgb(201 162 75 / 0.5) 78%,
+    transparent
+  );
+  --glass-wash: radial-gradient(
+    120% 100% at 12% 0%,
+    rgb(31 174 124 / 0.14),
+    transparent 62%
+  );
+  --glass-shadow: 0 8px 32px -12px rgb(0 0 0 / 0.7);
+  --glass-shadow-lg: 0 24px 56px -20px rgb(0 0 0 / 0.85);
+  --glass-scrim: rgb(3 10 7 / 0.62);
+
+  /* Brighter pools in the dark: the wash is the only light in the room. */
+  --auth-glow-brand: rgb(31 174 124 / 0.26);
+  --auth-glow-gold: rgb(201 162 75 / 0.16);
+  --auth-glow-deep: rgb(12 119 85 / 0.20);
 }
 
 /* ============================================================
@@ -272,12 +335,173 @@
     box-shadow: var(--shadow);
   }
 
-  /* --- Glassmorphism surfaces (light + dark aware) --- */
+  /* ==========================================================
+     Auth shell — setup, pairing, unlock
+
+     The three screens a till shows before anyone is signed in. Unlock is the
+     most-seen surface in the product; a waiter meets it a dozen times a
+     shift. It is the one place worth spending the design budget.
+
+     Glass needs something behind it to refract. Over a flat field a
+     translucent card is just a lighter rectangle, so the shell carries a
+     standing wash of brand light — two soft pools, teal and gold, placed
+     off-centre. Static, not drifting: this runs sixteen hours a day on a
+     till, and ambient motion is a distraction plus a GPU cost for nothing.
+     ========================================================== */
+  .auth-shell {
+    position: relative;
+    isolation: isolate;
+    background: var(--color-bg);
+
+    /* Translucency costs contrast, and these screens carry the instructions a
+       waiter reads at the start of a shift. The stock muted tone measures 2.86:1
+       on light glass and 3.38:1 on dark, both under WCAG AA for 11-13px text, so
+       the auth surfaces darken it to 4.67:1 and lighten it to 5.34:1. Scoped
+       here rather than changed globally: on solid surfaces the token is fine. */
+    --color-text-muted: #657185;
+  }
+  .dark-theme .auth-shell {
+    --color-text-muted: #7e9a88;
+  }
+  .auth-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(52% 44% at 18% 16%, var(--auth-glow-brand), transparent 70%),
+      radial-gradient(46% 40% at 84% 82%, var(--auth-glow-gold), transparent 72%),
+      radial-gradient(70% 60% at 50% 120%, var(--auth-glow-deep), transparent 70%);
+    pointer-events: none;
+  }
+
+  /* ==========================================================
+     Glass surfaces (light + dark aware)
+
+     Applied to chrome only — bars, dialogs, overlays, pills. Order lines,
+     prices and the menu grid stay on solid surfaces: a waiter reads those
+     at speed and under pressure, and translucency behind a number is a
+     legibility cost with no upside. Glass marks what floats, not what
+     matters.
+     ========================================================== */
+
+  /* The specular edge. A translucent rectangle reads as a lighter box; a
+     bright hairline along the lit edge is what reads as glass. */
+  .glass-bar,
+  .glass-panel,
+  .glass-dialog {
+    position: relative;
+    isolation: isolate;
+  }
+  .glass-bar::before,
+  .glass-panel::before,
+  .glass-dialog::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: var(--glass-specular);
+    opacity: 0.85;
+    pointer-events: none;
+  }
+
+  /* Elevation 1 — sits on the page. Top bars, sticky headers. */
+  .glass-bar {
+    background: var(--glass-bar-bg);
+    backdrop-filter: blur(var(--glass-blur-bar)) saturate(1.5);
+    -webkit-backdrop-filter: blur(var(--glass-blur-bar)) saturate(1.5);
+    border-bottom: 1px solid var(--glass-border);
+  }
+
+  /* Elevation 2 — lifts off the page. Side panels, drawers, summaries. */
+  .glass-panel {
+    background: var(--glass-panel-bg);
+    background-image: var(--glass-wash);
+    backdrop-filter: blur(var(--glass-blur-panel)) saturate(1.6);
+    -webkit-backdrop-filter: blur(var(--glass-blur-panel)) saturate(1.6);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    box-shadow: var(--glass-shadow);
+  }
+
+  /* Elevation 3 — owns the screen. Settle, void, shift close. */
+  .glass-dialog {
+    background: var(--glass-dialog-bg);
+    background-image: var(--glass-wash);
+    backdrop-filter: blur(var(--glass-blur-dialog)) saturate(1.7);
+    -webkit-backdrop-filter: blur(var(--glass-blur-dialog)) saturate(1.7);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    box-shadow: var(--glass-shadow-lg);
+  }
+
+  /* The scrim behind a dialog. Blurred so the room behind it recedes. */
+  .glass-scrim {
+    background: var(--glass-scrim);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+
+  /* A frosted chip for status and filters. */
+  .glass-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    background: var(--glass-panel-bg);
+    backdrop-filter: blur(10px) saturate(1.5);
+    -webkit-backdrop-filter: blur(10px) saturate(1.5);
+    border: 1px solid var(--glass-border);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  /* Backwards-compatible alias for the original primitive. */
   .glass {
-    background: color-mix(in srgb, var(--color-surface) 72%, transparent);
-    backdrop-filter: blur(14px) saturate(1.4);
-    -webkit-backdrop-filter: blur(14px) saturate(1.4);
-    border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+    background: var(--glass-bar-bg);
+    backdrop-filter: blur(var(--glass-blur-bar)) saturate(1.5);
+    -webkit-backdrop-filter: blur(var(--glass-blur-bar)) saturate(1.5);
+    border: 1px solid var(--glass-border);
+  }
+
+  /* A till may run on a locked-down webview without backdrop-filter, and a
+     translucent panel with nothing blurred behind it is unreadable. Fall
+     back to the opaque surface rather than shipping grey-on-grey. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass,
+    .glass-bar,
+    .glass-panel,
+    .glass-dialog,
+    .glass-pill {
+      background: var(--color-surface);
+      background-image: none;
+    }
+    .glass-scrim {
+      background: var(--glass-scrim);
+    }
+  }
+
+  /* Some staff turn transparency off at the OS level because it makes text
+     harder to read. Honour that: keep the shape, drop the translucency. */
+  @media (prefers-reduced-transparency: reduce) {
+    .glass,
+    .glass-bar,
+    .glass-panel,
+    .glass-dialog,
+    .glass-pill {
+      background: var(--color-surface);
+      background-image: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    .glass-bar::before,
+    .glass-panel::before,
+    .glass-dialog::before {
+      opacity: 0;
+    }
   }
 
   /* --- KPI card (Safari POS spc-kpi-card) --- */

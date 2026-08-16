@@ -34,42 +34,42 @@ export function PairingScreen() {
 
   return (
     <div
-      className="flex h-screen items-center justify-center bg-[var(--color-pos-sidebar)] p-6"
+      className="auth-shell flex h-screen items-center justify-center p-6"
       data-testid="pairing-screen"
     >
       <span className="sr-only" data-testid="shell-state">
         UNPAIRED
       </span>
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/20 p-8 text-center">
+      <div className="glass-panel w-full max-w-md p-8 text-center">
         <div className="mb-6 flex items-center justify-center gap-2">
           <Icon name="peak-logo" size={28} className="text-[#D4A017]" />
-          <span className="font-display text-2xl text-white">Peak POS</span>
+          <span className="font-display text-2xl text-[var(--color-text-primary)]">Peak POS</span>
         </div>
         {phase === "unpaired" || !pairing ? (
           <>
-            <h1 className="text-lg font-semibold text-white">Pair this register</h1>
-            <p className="mt-2 text-[13px] text-[rgba(255,255,255,0.65)]">
+            <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Pair this register</h1>
+            <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">
               Requesting a pairing code from Peak…
             </p>
           </>
         ) : (
           <>
-            <p className="text-[12px] font-medium uppercase tracking-wide text-[rgba(255,255,255,0.5)]">
+            <p className="text-[12px] font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
               Waiting for manager approval
             </p>
             <div
-              className="mt-4 font-mono text-5xl font-semibold tracking-[0.35em] text-white"
+              className="mt-4 font-mono text-5xl font-semibold tracking-[0.35em] text-[var(--color-text-primary)]"
               data-testid="pairing-code"
             >
               {pairing.pairingCode}
             </div>
-            <p className="mt-3 text-[12px] text-[rgba(255,255,255,0.55)]" data-testid="pairing-countdown">
+            <p className="mt-3 text-[12px] text-[var(--color-text-secondary)]" data-testid="pairing-countdown">
               {countdown.expired
                 ? "This code expired. Generate a new one."
                 : `Ask a manager to approve this code. ${countdown.label} left.`}
             </p>
             <p
-              className="mt-2 truncate text-[11px] text-[rgba(255,255,255,0.35)]"
+              className="mt-2 truncate text-[11px] text-[var(--color-text-muted)]"
               data-testid="device-code"
             >
               Device {identity?.deviceCode}

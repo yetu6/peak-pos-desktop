@@ -36,36 +36,36 @@ export function PinUnlock() {
 
   return (
     <div
-      className="flex h-screen items-center justify-center bg-[var(--color-pos-sidebar)] p-6"
+      className="auth-shell flex h-screen items-center justify-center p-6"
       data-testid="pin-screen"
     >
       <span className="sr-only" data-testid="shell-state">
         PAIRED_LOCKED
       </span>
-      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-black/20 p-8">
+      <div className="glass-panel w-full max-w-sm p-8">
         <div className="mb-5 flex items-center justify-center gap-2">
           <Icon name="peak-logo" size={24} className="text-[#D4A017]" />
-          <span className="font-display text-xl text-white">Peak POS</span>
+          <span className="font-display text-xl text-[var(--color-text-primary)]">Peak POS</span>
         </div>
-        <h1 className="text-center text-lg font-semibold text-white">Unlock register</h1>
-        <p className="mt-1 text-center text-[12px] text-[rgba(255,255,255,0.55)]">
+        <h1 className="text-center text-lg font-semibold text-[var(--color-text-primary)]">Unlock register</h1>
+        <p className="mt-1 text-center text-[12px] text-[var(--color-text-secondary)]">
           {till ? till : "Staff number and PIN for this till"}
         </p>
-        <label className="mt-5 block text-[11px] font-medium text-[rgba(255,255,255,0.55)]">
+        <label className="mt-5 block text-[11px] font-medium text-[var(--color-text-secondary)]">
           Staff number
         </label>
         <input
           data-testid="staff-number"
           value={staffNumber}
           onChange={(event) => setStaffNumber(event.target.value)}
-          className="input mt-1 w-full bg-white/5 text-white"
+          className="input mt-1 w-full bg-[var(--color-surface-hover)] text-[var(--color-text-primary)]"
           autoComplete="off"
         />
-        <label className="mt-3 block text-[11px] font-medium text-[rgba(255,255,255,0.55)]">
+        <label className="mt-3 block text-[11px] font-medium text-[var(--color-text-secondary)]">
           PIN
         </label>
         <div
-          className="mt-1 flex h-11 items-center justify-center rounded-lg border border-white/10 bg-white/5 font-mono text-lg tracking-[0.4em] text-white"
+          className="mt-1 flex h-11 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] font-mono text-lg tracking-[0.4em] text-[var(--color-text-primary)]"
           data-testid="pin-dots"
         >
           {"•".repeat(pin.length) || " "}
@@ -76,7 +76,7 @@ export function PinUnlock() {
               key={key}
               data-testid={`pin-key-${key}`}
               onClick={() => onKey(key)}
-              className="h-12 rounded-lg border border-white/10 text-sm font-medium text-white hover:bg-white/10"
+              className="h-12 rounded-lg border border-[var(--color-border)] text-sm font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-surface-hover)]"
             >
               {key}
             </button>

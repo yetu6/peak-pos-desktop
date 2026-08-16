@@ -52,10 +52,10 @@ export function SettleDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4"
       data-testid="settle-dialog"
     >
-      <div className="card w-full max-w-md p-5">
+      <div className="glass-dialog w-full max-w-md p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-[var(--color-text-primary)]">
