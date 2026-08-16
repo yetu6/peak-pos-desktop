@@ -47,10 +47,14 @@ export function PinUnlock() {
           <Icon name="peak-logo" size={24} className="text-[#D4A017]" />
           <span className="font-display text-xl text-[var(--color-text-primary)]">Peak POS</span>
         </div>
-        <h1 className="text-center text-lg font-semibold text-[var(--color-text-primary)]">Unlock register</h1>
-        <p className="mt-1 text-center text-[12px] text-[var(--color-text-secondary)]">
-          {till ? till : "Staff number and PIN for this till"}
-        </p>
+        {till && (
+          <p
+            className="text-center text-[13px] font-medium text-[var(--color-text-secondary)]"
+            data-testid="till-name"
+          >
+            {till}
+          </p>
+        )}
         <label className="mt-5 block text-[11px] font-medium text-[var(--color-text-secondary)]">
           Staff number
         </label>

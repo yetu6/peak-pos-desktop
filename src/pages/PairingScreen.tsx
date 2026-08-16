@@ -47,10 +47,7 @@ export function PairingScreen() {
         </div>
         {phase === "unpaired" || !pairing ? (
           <>
-            <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Pair this register</h1>
-            <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">
-              Requesting a pairing code from Peak…
-            </p>
+            <p className="text-[13px] text-[var(--color-text-secondary)]">Getting a code…</p>
           </>
         ) : (
           <>
@@ -64,9 +61,7 @@ export function PairingScreen() {
               {pairing.pairingCode}
             </div>
             <p className="mt-3 text-[12px] text-[var(--color-text-secondary)]" data-testid="pairing-countdown">
-              {countdown.expired
-                ? "This code expired. Generate a new one."
-                : `Ask a manager to approve this code. ${countdown.label} left.`}
+              {countdown.expired ? "Code expired" : `${countdown.label} left`}
             </p>
             <p
               className="mt-2 truncate text-[11px] text-[var(--color-text-muted)]"

@@ -32,22 +32,22 @@ export function SetupScreen() {
           <Icon name="peak-logo" size={28} className="text-[#D4A017]" />
           <span className="font-display text-2xl text-[var(--color-text-primary)]">Peak POS</span>
         </div>
-        <h1 className="text-center text-lg font-semibold text-[var(--color-text-primary)]">Peak server</h1>
-        <p className="mt-2 text-center text-[13px] text-[var(--color-text-secondary)]">
-          Enter this hotel's Peak address once. The till then generates its own key
-          and waits for a manager to approve a pairing code.
-        </p>
-        <label className="mt-5 block text-[11px] font-medium text-[var(--color-text-secondary)]">
-          Peak URL
+        <label
+          htmlFor="peak-url"
+          className="block text-[11px] font-medium text-[var(--color-text-secondary)]"
+        >
+          Server address
         </label>
         <input
+          id="peak-url"
           data-testid="peak-url"
           value={url}
           onChange={(event) => setUrl(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") void submit();
           }}
-          placeholder="https://peak.example.com"
+          placeholder="https://"
+          autoFocus
           className="input mt-1 w-full bg-[var(--color-surface-hover)] text-[var(--color-text-primary)]"
           autoComplete="off"
         />
@@ -62,7 +62,7 @@ export function SetupScreen() {
           disabled={pending}
           className="btn-primary mt-5 w-full"
         >
-          {pending ? "Saving…" : "Continue"}
+          {pending ? "Connecting…" : "Connect"}
         </button>
       </div>
     </div>
