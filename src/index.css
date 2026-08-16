@@ -543,6 +543,36 @@
   .kpi-icon.tone-danger { background: var(--color-danger-light); color: var(--color-danger); }
   .kpi-icon.tone-warning { background: var(--color-warning-light); color: var(--color-warning); }
 
+  /* Quantity stepper on the order card.
+     Sized for a finger on a till, not a mouse on a desk. These were 1.5 units of
+     horizontal padding and nothing else — roughly 18px of target on the control a
+     waiter taps most often in a service, and the one where a mis-tap silently
+     changes what the kitchen cooks. 40px keeps them inside the 44px the buttons
+     use while staying comfortably hittable in a row of order lines. */
+  .qty-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 10px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    font-size: 18px;
+    line-height: 1;
+    transition: background 150ms ease, border-color 150ms ease;
+  }
+  .qty-btn:hover {
+    background: var(--color-surface-hover);
+    border-color: var(--color-border-strong);
+  }
+  .qty-btn:active {
+    background: var(--color-brand-light);
+    border-color: var(--color-brand);
+  }
+
   /* --- Pill filters --- */
   .pill-filter-btn {
     display: inline-flex;

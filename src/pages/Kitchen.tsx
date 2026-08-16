@@ -132,11 +132,8 @@ export function Kitchen() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
-            Kitchen Display
+            Kitchen
           </h2>
-          <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">
-            Live ticket queue — updated in realtime from the committed event stream
-          </p>
         </div>
       </div>
 
@@ -174,7 +171,7 @@ export function Kitchen() {
             </div>
             <div className="empty-state-desc">
               {active.length === 0
-                ? "Tickets appear here in realtime when orders are sent from the floor."
+                ? "Tickets appear when the floor sends an order."
                 : "Clear the filter to see all active tickets."}
             </div>
           </div>

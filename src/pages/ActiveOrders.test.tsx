@@ -145,7 +145,7 @@ describe("ActiveOrders", () => {
     socket.open();
     await flush();
     expect(
-      await screen.findByText(/No orders on this connection yet/),
+      await screen.findByText(/No active orders/),
     ).toBeInTheDocument();
   });
 
@@ -225,7 +225,7 @@ describe("ActiveOrders", () => {
     );
     await waitFor(() => {
       expect(screen.queryByText("ORD-1042")).not.toBeInTheDocument();
-      expect(screen.getByText(/No orders on this connection yet/)).toBeInTheDocument();
+      expect(screen.getByText(/No active orders/)).toBeInTheDocument();
     });
   });
 

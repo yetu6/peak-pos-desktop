@@ -55,12 +55,8 @@ export function ActiveOrders() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
-            Active Orders
+            Active orders
           </h2>
-          <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">
-            REST is authoritative — the committed event stream announces changes and the
-            board refetches each order
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <span className="badge badge-brand">{open.length} open</span>
@@ -74,11 +70,8 @@ export function ActiveOrders() {
             <div className="empty-state-icon">
               <Icon name="orders" size={40} />
             </div>
-            <div className="empty-state-title">No orders on this connection yet</div>
-            <div className="empty-state-desc">
-              Orders appear here in realtime as they are created on this outlet. The event
-              stream announces every change; each order is fetched from REST.
-            </div>
+            <div className="empty-state-title">No active orders</div>
+            <div className="empty-state-desc">Orders appear here as they are sent.</div>
           </div>
         </div>
       ) : (

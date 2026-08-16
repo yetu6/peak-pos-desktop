@@ -77,12 +77,8 @@ export function NewOrder() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
-            New Order
+            New order
           </h2>
-          <p className="mt-1 text-[13px] text-[var(--color-text-muted)]">
-            Composes against the POS command API; every mutation carries its own
-            idempotency key
-          </p>
         </div>
         <div className="flex items-center gap-2">
           {session ? (
@@ -136,11 +132,8 @@ export function NewOrder() {
             <div className="empty-state-icon">
               <Icon name="clock" size={40} />
             </div>
-            <div className="empty-state-title">No open cashier session</div>
-            <div className="empty-state-desc">
-              Open the session for this outlet before taking orders. Peak has no route to
-              discover a session opened by another register — this register tracks its own.
-            </div>
+            <div className="empty-state-title">No open drawer</div>
+            <div className="empty-state-desc">Open one to start taking orders.</div>
           </div>
         </div>
       ) : (
@@ -161,7 +154,7 @@ export function NewOrder() {
                 data-testid="table-number"
                 value={tableNumber}
                 onChange={(e) => setTableNumber(e.target.value)}
-                placeholder="Table number (dine in)"
+                placeholder="Table"
                 className="input ml-auto w-44"
               />
             </div>
@@ -183,16 +176,20 @@ export function NewOrder() {
                 </button>
               ))}
             </div>
+            {/* A waiter can act on "the menu did not load". Which HTTP verb returned
+                what, and where prices are computed, are facts about Peak — they belong
+                in a log, not on a till in the middle of service. The fallback still
+                reports itself, because serving yesterday's menu silently is worse. */}
             <p className="text-[11px] text-[var(--color-text-muted)]" data-testid="menu-source">
               {menuQuery.isError
-                ? "Could not load the outlet menu."
+                ? "Menu unavailable. Ask a manager."
                 : menuSource === "peak"
-                  ? "Menu from Peak. Prices are always server-side."
-                  : "Dev catalog fallback — Peak menu GET returned 404. Prices are always server-side."}
+                  ? ""
+                  : "Menu may be out of date. Ask a manager."}
             </p>
           </div>
 
-          <div className="card h-fit p-4">
+          <div className="glass-panel h-fit p-4">
             <div className="text-sm font-semibold text-[var(--color-text-primary)]">
               Order · {totalLines} {totalLines === 1 ? "item" : "items"}
             </div>
@@ -211,20 +208,20 @@ export function NewOrder() {
                   <span className="min-w-0 truncate text-[var(--color-text)]">
                     {line.name}
                   </span>
-                  <span className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1">
                     <button
                       onClick={() => changeQuantity(line.menuItemId, -1)}
-                      className="rounded-md border border-[var(--color-border-subtle)] px-1.5 text-[var(--color-text-muted)]"
+                      className="qty-btn"
                       aria-label={`Decrease ${line.name}`}
                     >
                       −
                     </button>
-                    <span className="w-5 text-center font-mono text-xs">
+                    <span className="w-6 text-center font-mono text-sm tabular-nums">
                       {line.quantity}
                     </span>
                     <button
                       onClick={() => changeQuantity(line.menuItemId, 1)}
-                      className="rounded-md border border-[var(--color-border-subtle)] px-1.5 text-[var(--color-text-muted)]"
+                      className="qty-btn"
                       aria-label={`Increase ${line.name}`}
                     >
                       +
@@ -238,13 +235,13 @@ export function NewOrder() {
                 data-testid="special-request"
                 value={specialRequest}
                 onChange={(e) => setSpecialRequest(e.target.value)}
-                placeholder="Special request (single item)"
+                placeholder="Special request"
                 className="input mt-3 w-full"
               />
             )}
             {created && (
               <div className="badge badge-success mt-3" data-testid="order-created">
-                {created} created — it appears on Active Orders
+                {created} sent to Active orders
               </div>
             )}
             {createOrder.isError && (
