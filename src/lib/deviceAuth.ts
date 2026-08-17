@@ -16,10 +16,21 @@ export class StaffLoginRejectedError extends Error {
 }
 
 export interface PairingRequest {
+  pairingRequestId: string;
   deviceCode: string;
   pairingCode: string;
   fingerprint: string;
   expiresAt: string;
+}
+
+export type PairingWaitStatus = "pending" | "approved" | "expired" | "denied";
+
+export interface PairingStatus {
+  status: PairingWaitStatus;
+  deviceCode?: string;
+  expiresAt?: string;
+  terminalName?: string;
+  mode?: string;
 }
 
 export interface DeviceChallenge {
@@ -58,6 +69,9 @@ export function humanDeviceError(error: unknown): string {
   if (/HTTP 5\d\d/.test(msg)) {
     return "Peak is not responding. Try again in a moment.";
   }
+  if (/denied/i.test(msg)) {
+    return "This pairing was denied. Generate a new code.";
+  }
   if (/expired/i.test(msg)) {
     return "This code expired. Generate a new one.";
   }
@@ -80,10 +94,45 @@ export async function requestPairing(
     throw new Error(`Pairing request failed with HTTP ${response.status}`);
   }
   const body = (await readJson(response)) as PairingRequest;
-  if (!body?.deviceCode || !body.pairingCode) {
+  if (!body?.pairingRequestId || !body.deviceCode || !body.pairingCode) {
     throw new Error("Pairing request returned an incomplete response");
   }
   return body;
+}
+
+/** Truthful wait. Pending leaks no hotel. 404 is treated as expired. */
+export async function getPairingStatus(
+  baseUrl: string,
+  pairingRequestId: string,
+): Promise<PairingStatus> {
+  const response = await fetch(
+    `${baseUrl}/api/v1/devices/pairing-requests/${pairingRequestId}`,
+  );
+  if (response.status === 404) {
+    return { status: "expired" };
+  }
+  if (!response.ok) {
+    throw new Error(`Pairing status failed with HTTP ${response.status}`);
+  }
+  const body = (await readJson(response)) as Partial<PairingStatus>;
+  if (
+    body?.status !== "pending" &&
+    body?.status !== "approved" &&
+    body?.status !== "expired" &&
+    body?.status !== "denied"
+  ) {
+    throw new Error("Pairing status returned an incomplete response");
+  }
+  if (body.status !== "approved") {
+    return { status: body.status };
+  }
+  return {
+    status: "approved",
+    deviceCode: optionalId(body.deviceCode),
+    expiresAt: optionalId(body.expiresAt),
+    terminalName: optionalId(body.terminalName),
+    mode: optionalId(body.mode),
+  };
 }
 
 export async function issueChallenge(

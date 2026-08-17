@@ -27,6 +27,7 @@ describe("deviceAuth client", () => {
     const keys = await generateDeviceKeyPair();
     const fetchMock = vi.fn(async () =>
       jsonResponse({
+        pairingRequestId: "6f1a9c2e-6b1d-4a51-9f0e-2c7a5d3b8e14",
         deviceCode: "dev_abc",
         pairingCode: "418205",
         fingerprint: "AA:BB:CC:DD:EE:FF:00:11",
@@ -39,6 +40,9 @@ describe("deviceAuth client", () => {
 
     expect(issued.deviceCode).toBe("dev_abc");
     expect(issued.pairingCode).toBe("418205");
+    // The till polls status by this id, so losing it means a paired terminal
+    // that can never learn it was approved.
+    expect(issued.pairingRequestId).toBe("6f1a9c2e-6b1d-4a51-9f0e-2c7a5d3b8e14");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = (fetchMock.mock.calls[0] ?? []) as unknown as [string, RequestInit];
     expect(url).toBe("http://peak.test/api/v1/devices/pairing-requests");

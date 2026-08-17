@@ -1,4 +1,5 @@
 export interface PairingRecord {
+  pairingRequestId: string;
   pairingCode: string;
   fingerprint: string;
   expiresAt: string;

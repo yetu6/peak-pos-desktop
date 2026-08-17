@@ -12,8 +12,8 @@ import { applyOpsTokenToBridge } from "../lib/applyOpsToken";
 import {
   createStaffSession,
   DeviceNotApprovedError,
+  getPairingStatus,
   humanDeviceError,
-  issueChallenge,
   requestPairing,
   StaffLoginRejectedError,
 } from "../lib/deviceAuth";
@@ -79,6 +79,8 @@ export interface DeviceSessionProviderProps {
   applyOpsToken?: (token: string) => Promise<void>;
   /** Tests inject a Peak URL so the first-boot setup screen is skipped. */
   skipUrlSetup?: boolean;
+  /** Idle minutes before PIN lock. Peak `expiresAt` still locks independently. */
+  idleLockMinutes?: number;
 }
 
 const POLL_MS = 4_000;
@@ -219,6 +221,7 @@ export function DeviceSessionProvider({
         deviceCode: issued.deviceCode,
         approved: false,
         pairing: {
+          pairingRequestId: issued.pairingRequestId,
           pairingCode: issued.pairingCode,
           fingerprint: issued.fingerprint,
           expiresAt: issued.expiresAt,
@@ -230,43 +233,96 @@ export function DeviceSessionProvider({
     }
   }, [peakUrl, persist]);
 
+  const markApproved = useCallback(
+    async (status: {
+      deviceCode?: string;
+      terminalName?: string;
+      mode?: string;
+    }) => {
+      const current = identityRef.current;
+      if (!current) return;
+      await persist({
+        ...current,
+        deviceCode: status.deviceCode ?? current.deviceCode,
+        approved: true,
+        pairing: undefined,
+        terminalName: status.terminalName ?? current.terminalName,
+        mode: status.mode ?? current.mode,
+      });
+      setPhase("locked");
+    },
+    [persist],
+  );
+
   const continueAfterApproval = useCallback(async () => {
     const current = identityRef.current;
-    if (!current?.deviceCode) return;
+    const pairingRequestId = current?.pairing?.pairingRequestId;
+    if (!pairingRequestId) {
+      setError("Not approved yet. Ask a manager to enter this pairing code.");
+      return;
+    }
     setError(null);
     try {
-      const challenge = await issueChallenge(peakUrl, current.deviceCode);
-      if (!challenge) {
-        setError("Not approved yet. Ask a manager to enter this pairing code.");
+      const status = await getPairingStatus(peakUrl, pairingRequestId);
+      if (status.status === "approved") {
+        await markApproved(status);
         return;
       }
-      await persist({ ...current, approved: true, pairing: undefined });
-      setPhase("locked");
+      if (status.status === "expired") {
+        setError("This code expired. Generate a new one.");
+        return;
+      }
+      if (status.status === "denied") {
+        setError("This pairing was denied. Generate a new code.");
+        return;
+      }
+      setError("Not approved yet. Ask a manager to enter this pairing code.");
     } catch (err) {
       setError(humanDeviceError(err));
     }
-  }, [peakUrl, persist]);
+  }, [markApproved, peakUrl]);
 
   useEffect(() => {
     if (phase !== "waiting") return;
-    const deviceCode = identityRef.current?.deviceCode;
-    if (!deviceCode) return;
     let cancelled = false;
+    let renewing = false;
+
+    const renew = async () => {
+      if (renewing) return;
+      renewing = true;
+      try {
+        await startPairing();
+      } finally {
+        renewing = false;
+      }
+    };
 
     const tick = async () => {
       if (cancelled) return;
       const pairing = identityRef.current?.pairing;
-      if (pairing && Date.parse(pairing.expiresAt) <= Date.now()) {
-        setError("This code expired. Generate a new one.");
+      if (!pairing?.pairingRequestId) {
+        await renew();
+        return;
+      }
+      if (Date.parse(pairing.expiresAt) <= Date.now()) {
+        await renew();
         return;
       }
       try {
-        const challenge = await issueChallenge(peakUrl, deviceCode);
-        if (cancelled || !challenge) return;
-        const current = identityRef.current;
-        if (!current) return;
-        await persist({ ...current, approved: true, pairing: undefined });
-        setPhase("locked");
+        const status = await getPairingStatus(peakUrl, pairing.pairingRequestId);
+        if (cancelled) return;
+        if (status.status === "pending") return;
+        if (status.status === "approved") {
+          await markApproved(status);
+          return;
+        }
+        if (status.status === "expired") {
+          await renew();
+          return;
+        }
+        if (status.status === "denied") {
+          setError("This pairing was denied. Generate a new code.");
+        }
       } catch (err) {
         if (!cancelled) setError(humanDeviceError(err));
       }
@@ -278,7 +334,7 @@ export function DeviceSessionProvider({
       cancelled = true;
       clearInterval(id);
     };
-  }, [phase, peakUrl, persist]);
+  }, [markApproved, peakUrl, phase, startPairing]);
 
   const unlock = useCallback(
     async (staffNumber: string, pin: string) => {
