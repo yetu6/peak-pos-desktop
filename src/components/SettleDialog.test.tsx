@@ -17,11 +17,15 @@ vi.mock("../lib/env", () => ({
   }),
 }));
 
-const { listCandidatesSpy, settleOrderSpy, listProviderAccountsSpy } = vi.hoisted(() => ({
-  listCandidatesSpy: vi.fn(),
-  settleOrderSpy: vi.fn(async () => ({ data: { id: "order-1" }, error: null })),
-  listProviderAccountsSpy: vi.fn(async () => ({ data: [], error: null })),
-}));
+const { listCandidatesSpy, settleOrderSpy, listProviderAccountsSpy, processPendingPrintJobsSpy } =
+  vi.hoisted(() => ({
+    listCandidatesSpy: vi.fn(),
+    settleOrderSpy: vi.fn(async () => ({ data: { id: "order-1" }, error: null })),
+    listProviderAccountsSpy: vi.fn(async () => ({ data: [], error: null })),
+    processPendingPrintJobsSpy: vi.fn(async (): Promise<Array<{ ok: boolean; error?: string }>> => [
+      { ok: true },
+    ]),
+  }));
 
 vi.mock("../lib/posApi", () => ({
   createPosApi: () => ({
@@ -29,6 +33,10 @@ vi.mock("../lib/posApi", () => ({
     settleOrder: settleOrderSpy,
     listProviderAccounts: listProviderAccountsSpy,
   }),
+}));
+
+vi.mock("../lib/printJobs", () => ({
+  processPendingPrintJobs: processPendingPrintJobsSpy,
 }));
 
 const ORDER = {
@@ -95,6 +103,26 @@ describe("SettleDialog room charge", () => {
       }),
     );
     expect(JSON.stringify(settleOrderSpy.mock.calls)).not.toMatch(/folioId/);
+    expect(processPendingPrintJobsSpy).toHaveBeenCalledWith("property-1", "order-1");
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("still closes after cash settle when the receipt printer fails", async () => {
+    processPendingPrintJobsSpy.mockResolvedValue([
+      { ok: false, error: "No kitchen printer is configured" },
+    ]);
+    const onClose = renderDialog();
+    await userEvent.click(screen.getByTestId("confirm-settle"));
+    await waitFor(() =>
+      expect(settleOrderSpy).toHaveBeenCalledWith(
+        "property-1",
+        "order-1",
+        expect.objectContaining({ paymentMethod: "cash" }),
+      ),
+    );
+    await waitFor(() =>
+      expect(processPendingPrintJobsSpy).toHaveBeenCalledWith("property-1", "order-1"),
+    );
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 

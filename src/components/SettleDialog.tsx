@@ -7,6 +7,7 @@ import {
   useSettleOrder,
 } from "../hooks/usePosData";
 import type { PosOrderResponse, PosRoomChargeCandidateResponse } from "../lib/posApi";
+import { processPendingPrintJobs } from "../lib/printJobs";
 
 const METHODS = [
   { id: "cash", label: "Cash" },
@@ -68,7 +69,15 @@ export function SettleDialog({
         roomNumber: selected?.roomNumber,
       },
       {
-        onSuccess: () => onClose(),
+        onSuccess: async (data) => {
+          try {
+            if (method !== "mobile_money" && data?.id) {
+              await processPendingPrintJobs(propertyId, String(data.id));
+            }
+          } finally {
+            onClose();
+          }
+        },
       },
     );
   }

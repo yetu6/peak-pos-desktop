@@ -7,6 +7,7 @@ import {
   type KitchenTicketCopy,
   type PrintResult,
 } from "./kitchenTicketPrint";
+import { formatReceipt, receiptCopyFromPrintDocument } from "./receiptPrint";
 
 export interface PosPrintJob {
   id: string;
@@ -96,6 +97,12 @@ export function ticketCopyFromPrintDocument(document: Record<string, unknown>): 
 }
 
 export function formatPrintDocument(job: PosPrintJob): { title: string; text: string } {
+  if (job.jobType === "receipt" || job.document.kind === "receipt") {
+    return {
+      title: "peak-receipt",
+      text: formatReceipt(receiptCopyFromPrintDocument(job.document)),
+    };
+  }
   const copy = ticketCopyFromPrintDocument(job.document);
   return { title: `peak-${job.jobType.replaceAll("_", "-")}`, text: formatKitchenTicket(copy) };
 }

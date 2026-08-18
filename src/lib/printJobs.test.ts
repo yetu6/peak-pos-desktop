@@ -47,6 +47,34 @@ describe("printJobs", () => {
     expect(formatted.text).not.toMatch(/tax|TSh|price/i);
   });
 
+  it("formats a Peak receipt with the posted totals", () => {
+    const formatted = formatPrintDocument({
+      id: "job-r",
+      propertyId: "p",
+      outletId: "o",
+      jobType: "receipt",
+      sourceType: "pos_order",
+      sourceId: "order-1",
+      reprint: false,
+      status: "pending",
+      document: {
+        kind: "receipt",
+        orderNumber: "POS-1",
+        tableNumber: "12",
+        settlementMethod: "cash",
+        subtotal: "20.00",
+        taxAmount: "3.60",
+        totalAmount: "23.60",
+        lines: [{ name: "Stew", quantity: "2", unitPrice: "10.00", total: "23.60" }],
+      },
+    });
+    expect(formatted.title).toBe("peak-receipt");
+    expect(formatted.text).toContain("RECEIPT");
+    expect(formatted.text).toContain("POS-1");
+    expect(formatted.text).toContain("TOTAL  23.60");
+    expect(formatted.text).toContain("Tax  3.60");
+  });
+
   it("claims a pending job, prints, and acks printed", async () => {
     const calls: string[] = [];
     vi.stubGlobal(
