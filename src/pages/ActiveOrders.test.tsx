@@ -28,14 +28,17 @@ interface MockOrder {
   items: Array<{ id: string; name: string; quantity: number }>;
 }
 
-const { getOrderSpy, sendOrderSpy } = vi.hoisted(() => ({
+const { getOrderSpy, sendOrderSpy, processPendingPrintJobsSpy } = vi.hoisted(() => ({
   getOrderSpy: vi.fn(async (_propertyId: string, orderId: string) => {
     const order = ordersStore.get(orderId);
     return order
       ? { data: order, error: null }
       : { data: null, error: { status: 404 } };
   }),
-  sendOrderSpy: vi.fn(async () => ({ data: {}, error: null })),
+  sendOrderSpy: vi.fn(async () => ({ data: { id: "ticket-1" }, error: null })),
+  processPendingPrintJobsSpy: vi.fn(async () => [
+    { ok: false, error: "No kitchen printer is configured" },
+  ]),
 }));
 
 const ordersStore = new Map<string, MockOrder>();
@@ -45,6 +48,10 @@ vi.mock("../lib/posApi", () => ({
     getOrder: getOrderSpy,
     sendOrder: sendOrderSpy,
   }),
+}));
+
+vi.mock("../lib/printJobs", () => ({
+  processPendingPrintJobs: processPendingPrintJobsSpy,
 }));
 
 class FakeSocket {
@@ -137,6 +144,7 @@ describe("ActiveOrders", () => {
     ordersStore.clear();
     getOrderSpy.mockClear();
     sendOrderSpy.mockClear();
+    processPendingPrintJobsSpy.mockClear();
   });
 
   it("renders the empty state before any event arrives", async () => {
@@ -204,6 +212,7 @@ describe("ActiveOrders", () => {
     const sendButton = await screen.findByTestId("send-order-1");
     await userEvent.click(sendButton);
     await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledWith("property-1", "order-1"));
+    expect(processPendingPrintJobsSpy).toHaveBeenCalledWith("property-1", "ticket-1");
     expect(await screen.findByTestId("send-status-order-1")).toHaveTextContent("ORDER SENT");
     expect(await screen.findByTestId("print-fail-order-1")).toHaveTextContent("PRINT FAILURE");
   });

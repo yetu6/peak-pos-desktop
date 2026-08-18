@@ -8,11 +8,8 @@ import {
   useSendOrder,
 } from "../hooks/usePosData";
 import type { PosOrderResponse } from "../lib/posApi";
-import {
-  printKitchenTicket,
-  ticketCopyFromOrder,
-  type PrintResult,
-} from "../lib/kitchenTicketPrint";
+import { type PrintResult } from "../lib/kitchenTicketPrint";
+import { processPendingPrintJobs } from "../lib/printJobs";
 
 function statusBadge(order: PosOrderResponse): string {
   if (order.settlementStatus === "pending") return "badge-warning badge-dot";
@@ -41,10 +38,29 @@ export function ActiveOrders() {
 
   async function sendToKitchen(order: PosOrderResponse): Promise<void> {
     const id = String(order.id);
-    await sendOrder.mutateAsync({ orderId: id });
+    const ticket = await sendOrder.mutateAsync({ orderId: id });
     setPrintNotes((notes) => ({ ...notes, [id]: { sent: true } }));
-    const print = await printKitchenTicket(ticketCopyFromOrder(order));
-    setPrintNotes((notes) => ({ ...notes, [id]: { sent: true, print } }));
+    try {
+      const results = await processPendingPrintJobs(
+        propertyId,
+        ticket?.id ? String(ticket.id) : undefined,
+      );
+      setPrintNotes((notes) => ({
+        ...notes,
+        [id]: { sent: true, print: results[0] },
+      }));
+    } catch (error) {
+      setPrintNotes((notes) => ({
+        ...notes,
+        [id]: {
+          sent: true,
+          print: {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        },
+      }));
+    }
   }
 
   const open = orders.filter((o) => o.status === "open");

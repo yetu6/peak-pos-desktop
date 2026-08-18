@@ -1,33 +1,49 @@
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
+
+#[derive(serde::Deserialize)]
+pub struct PrintDocument {
+    pub title: String,
+    pub text: String,
+}
 
 #[derive(serde::Deserialize)]
 pub struct KitchenTicket {
     pub text: String,
 }
 
-/// Sends a Peak kitchen-ticket *copy* to the OS printer. This command never
-/// talks to Peak: a missing printer is a device failure, not an unsend.
+/// Sends a Peak document to the OS printer. This command never talks to Peak:
+/// a missing printer is a device failure, not an unsend or a payment change.
 #[tauri::command]
-pub fn print_kitchen_ticket(ticket: KitchenTicket) -> Result<(), String> {
-    let body = ticket.text.trim();
+pub fn print_document(document: PrintDocument) -> Result<(), String> {
+    let body = document.text.trim();
     if body.is_empty() {
-        return Err("Kitchen ticket text is empty".to_string());
+        return Err("Print document is empty".to_string());
     }
-    send_to_os_printer(body)
+    let title = document.title.trim();
+    send_to_os_printer(if title.is_empty() { "peak-document" } else { title }, body)
 }
 
-fn send_to_os_printer(body: &str) -> Result<(), String> {
-    if which("lp").is_none() {
-        return Err("No kitchen printer is configured".to_string());
-    }
-    let printer = std::env::var("PEAK_KITCHEN_PRINTER")
+/// Compatibility wrapper for kitchen tickets. New callers use print_document.
+#[tauri::command]
+pub fn print_kitchen_ticket(ticket: KitchenTicket) -> Result<(), String> {
+    print_document(PrintDocument {
+        title: "peak-kitchen-ticket".to_string(),
+        text: ticket.text,
+    })
+}
+
+fn send_to_os_printer(title: &str, body: &str) -> Result<(), String> {
+    let lp = which("lp").ok_or_else(|| "No kitchen printer is configured".to_string())?;
+    let printer = std::env::var("PEAK_PRINTER")
         .ok()
+        .or_else(|| std::env::var("PEAK_KITCHEN_PRINTER").ok())
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
-    let mut command = Command::new("lp");
-    command.arg("-t").arg("peak-kitchen-ticket");
+    let mut command = Command::new(lp);
+    command.arg("-t").arg(title);
     if let Some(name) = printer {
         command.arg("-d").arg(name);
     }
@@ -64,10 +80,77 @@ fn send_to_os_printer(body: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn which(binary: &str) -> Option<std::path::PathBuf> {
+fn which(binary: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path).find_map(|dir| {
         let candidate = dir.join(binary);
         candidate.is_file().then_some(candidate)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn fake_lp_dir(script: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("peak-lp-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let lp = dir.join("lp");
+        fs::write(&lp, script).unwrap();
+        let mut perms = fs::metadata(&lp).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&lp, perms).unwrap();
+        dir
+    }
+
+    #[test]
+    fn print_document_writes_title_and_body_to_lp_stdin() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let spool = std::env::temp_dir().join(format!("peak-spool-{}.txt", std::process::id()));
+        let _ = fs::remove_file(&spool);
+        let dir = fake_lp_dir(&format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"{spool}\"\ncat >> \"{spool}\"\n",
+            spool = spool.display()
+        ));
+        let original = std::env::var("PATH").unwrap();
+        std::env::set_var("PATH", format!("{}:{original}", dir.display()));
+        std::env::remove_var("PEAK_PRINTER");
+        std::env::remove_var("PEAK_KITCHEN_PRINTER");
+
+        print_document(PrintDocument {
+            title: "peak-kitchen-ticket".to_string(),
+            text: "KITCHEN TICKET\nKT-1".to_string(),
+        })
+        .expect("print");
+
+        let captured = fs::read_to_string(&spool).unwrap();
+        assert!(captured.contains("-t"));
+        assert!(captured.contains("peak-kitchen-ticket"));
+        assert!(captured.contains("KITCHEN TICKET"));
+        assert!(captured.contains("KT-1"));
+
+        std::env::set_var("PATH", original);
+        let _ = fs::remove_file(&spool);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn missing_lp_is_a_device_failure() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let original = std::env::var("PATH").unwrap();
+        std::env::set_var("PATH", "/tmp/peak-no-lp");
+        let error = print_document(PrintDocument {
+            title: "x".to_string(),
+            text: "body".to_string(),
+        })
+        .unwrap_err();
+        assert_eq!(error, "No kitchen printer is configured");
+        std::env::set_var("PATH", original);
+    }
 }

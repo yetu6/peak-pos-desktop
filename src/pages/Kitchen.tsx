@@ -6,11 +6,8 @@ import {
   useTransitionTicket,
 } from "../hooks/usePosData";
 import type { KitchenTicketResponse, TicketAction } from "../lib/posApi";
-import {
-  printKitchenTicket,
-  ticketCopyFromKitchenTicket,
-  type PrintResult,
-} from "../lib/kitchenTicketPrint";
+import { type PrintResult } from "../lib/kitchenTicketPrint";
+import { reprintSource } from "../lib/printJobs";
 
 const NEXT_ACTION: Record<string, TicketAction> = {
   PENDING: "prepare",
@@ -48,8 +45,18 @@ export function Kitchen() {
   const [printNotes, setPrintNotes] = useState<Record<string, PrintResult>>({});
 
   async function reprint(ticket: KitchenTicketResponse): Promise<void> {
-    const result = await printKitchenTicket(ticketCopyFromKitchenTicket(ticket));
-    setPrintNotes((notes) => ({ ...notes, [String(ticket.id)]: result }));
+    try {
+      const result = await reprintSource(propertyId, String(ticket.id));
+      setPrintNotes((notes) => ({ ...notes, [String(ticket.id)]: result }));
+    } catch (error) {
+      setPrintNotes((notes) => ({
+        ...notes,
+        [String(ticket.id)]: {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      }));
+    }
   }
 
   const active = useMemo(

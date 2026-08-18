@@ -10,6 +10,7 @@ pub fn run() {
             identity::save_device_identity,
             identity::load_peak_config,
             identity::save_peak_config,
+            printer::print_document,
             printer::print_kitchen_ticket,
         ])
         .run(tauri::generate_context!())
