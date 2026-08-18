@@ -103,8 +103,46 @@ export function formatPrintDocument(job: PosPrintJob): { title: string; text: st
       text: formatReceipt(receiptCopyFromPrintDocument(job.document)),
     };
   }
+  if (job.jobType === "void_ticket" || job.document.kind === "void_ticket") {
+    return { title: "peak-void-ticket", text: formatVoidTicket(job.document) };
+  }
+  if (job.jobType === "shift_report" || job.document.kind === "shift_report") {
+    return { title: "peak-shift-report", text: formatShiftReport(job.document) };
+  }
   const copy = ticketCopyFromPrintDocument(job.document);
   return { title: `peak-${job.jobType.replaceAll("_", "-")}`, text: formatKitchenTicket(copy) };
+}
+
+function field(document: Record<string, unknown>, key: string): string {
+  const value = document[key];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function formatVoidTicket(document: Record<string, unknown>): string {
+  return [
+    "VOID",
+    field(document, "orderNumber"),
+    [field(document, "quantity"), field(document, "itemName")].filter(Boolean).join("  "),
+    field(document, "disposition"),
+    field(document, "reason"),
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .concat("\n");
+}
+
+function formatShiftReport(document: Record<string, unknown>): string {
+  return [
+    "SHIFT REPORT",
+    field(document, "status"),
+    field(document, "openingFloat") ? `Float  ${field(document, "openingFloat")}` : "",
+    field(document, "expectedCash") ? `Expected  ${field(document, "expectedCash")}` : "",
+    field(document, "closingCash") ? `Counted  ${field(document, "closingCash")}` : "",
+    field(document, "variance") ? `Variance  ${field(document, "variance")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .concat("\n");
 }
 
 async function defaultPrint(title: string, text: string): Promise<void> {

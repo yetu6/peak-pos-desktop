@@ -4,6 +4,8 @@ import { devIdentityFromEnv } from "./env";
 export type ApiClient = ReturnType<typeof createApiClient>;
 export type PosOrderResponse =
   import("@peak/hospitality-api-client").components["schemas"]["PosOrderResponse"];
+export type PosOrderItemResponse =
+  import("@peak/hospitality-api-client").components["schemas"]["PosOrderItemResponse"];
 export type PosSessionResponse =
   import("@peak/hospitality-api-client").components["schemas"]["PosSessionResponse"];
 export type KitchenTicketResponse =

@@ -217,6 +217,19 @@ describe("ActiveOrders", () => {
     expect(await screen.findByTestId("print-fail-order-1")).toHaveTextContent("PRINT FAILURE");
   });
 
+  it("opens the void dialog from an open order line", async () => {
+    ordersStore.set("order-1", OPEN_ORDER);
+    const socket = renderActiveOrders();
+    await flush();
+    socket.open();
+    await flush();
+    socket.emit(announce(1, "pos.order.created", "order-1"));
+    await screen.findByText("ORD-1042");
+    await userEvent.click(screen.getByTestId("void-item-item-1"));
+    expect(await screen.findByTestId("void-item-dialog")).toBeInTheDocument();
+    expect(screen.getByText(/Void Lunch/)).toBeInTheDocument();
+  });
+
   it("clears the board when Peak publishes session closed on property operations", async () => {
     ordersStore.set("order-1", OPEN_ORDER);
     const socket = renderActiveOrders();

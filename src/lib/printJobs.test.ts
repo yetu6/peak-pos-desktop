@@ -75,6 +75,53 @@ describe("printJobs", () => {
     expect(formatted.text).toContain("Tax  3.60");
   });
 
+  it("formats void tickets and shift reports from Peak documents", () => {
+    const voided = formatPrintDocument({
+      id: "job-v",
+      propertyId: "p",
+      outletId: "o",
+      jobType: "void_ticket",
+      sourceType: "pos_order",
+      sourceId: "item-1",
+      reprint: false,
+      status: "pending",
+      document: {
+        kind: "void_ticket",
+        orderNumber: "POS-1",
+        itemName: "Stew",
+        quantity: "1",
+        disposition: "waste",
+        reason: "Guest changed mind",
+      },
+    });
+    expect(voided.title).toBe("peak-void-ticket");
+    expect(voided.text).toContain("VOID");
+    expect(voided.text).toContain("Stew");
+    expect(voided.text).toContain("waste");
+
+    const shift = formatPrintDocument({
+      id: "job-s",
+      propertyId: "p",
+      outletId: "o",
+      jobType: "shift_report",
+      sourceType: "pos_session",
+      sourceId: "session-1",
+      reprint: false,
+      status: "pending",
+      document: {
+        kind: "shift_report",
+        status: "closed",
+        openingFloat: "100.00",
+        expectedCash: "123.60",
+        closingCash: "123.60",
+        variance: "0.00",
+      },
+    });
+    expect(shift.title).toBe("peak-shift-report");
+    expect(shift.text).toContain("SHIFT REPORT");
+    expect(shift.text).toContain("Expected  123.60");
+  });
+
   it("claims a pending job, prints, and acks printed", async () => {
     const calls: string[] = [];
     vi.stubGlobal(

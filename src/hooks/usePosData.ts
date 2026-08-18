@@ -11,6 +11,7 @@ import { getApiBaseUrl } from "../lib/peakConfig";
 import { useRealtimeEvents } from "../realtime/RealtimeProvider";
 import { isOrderEvent } from "../realtime/subscriptions";
 import { fetchOutletMenu } from "../lib/menuCatalog";
+import { processPendingPrintJobs } from "../lib/printJobs";
 import { getOperationalSession } from "../lib/operationalSession";
 import { restRequestHeaders } from "../lib/restAuth";
 import {
@@ -253,6 +254,13 @@ export function usePosSession() {
       localStorage.removeItem(sessionStorageKey(propertyId, outletId));
       setStoredId(null);
       queryClient.invalidateQueries();
+      if (data?.id) {
+        try {
+          await processPendingPrintJobs(propertyId, String(data.id));
+        } catch {
+          // A missing printer does not reopen the till.
+        }
+      }
       return data;
     },
   });

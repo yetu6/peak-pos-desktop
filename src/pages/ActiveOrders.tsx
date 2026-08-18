@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
 import { SettleDialog } from "../components/SettleDialog";
+import { VoidItemDialog } from "../components/VoidItemDialog";
 import {
   usePropertyId,
   useRealtimeOrders,
   useOutletId,
   useSendOrder,
 } from "../hooks/usePosData";
-import type { PosOrderResponse } from "../lib/posApi";
+import type { PosOrderItemResponse, PosOrderResponse } from "../lib/posApi";
 import { type PrintResult } from "../lib/kitchenTicketPrint";
 import { processPendingPrintJobs } from "../lib/printJobs";
 
@@ -32,6 +33,10 @@ export function ActiveOrders() {
   const orders = useRealtimeOrders(outletId);
   const sendOrder = useSendOrder(propertyId);
   const [settling, setSettling] = useState<PosOrderResponse | null>(null);
+  const [voiding, setVoiding] = useState<{
+    order: PosOrderResponse;
+    item: PosOrderItemResponse;
+  } | null>(null);
   const [printNotes, setPrintNotes] = useState<
     Record<string, { sent: boolean; print?: PrintResult }>
   >({});
@@ -118,8 +123,18 @@ export function ActiveOrders() {
                       <span className="min-w-0 truncate text-[var(--color-text)]">
                         {item.name}
                       </span>
-                      <span className="font-mono text-xs tabular-nums text-[var(--color-text-muted)]">
-                        ×{item.quantity}
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono text-xs tabular-nums text-[var(--color-text-muted)]">
+                          ×{item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          data-testid={`void-item-${item.id}`}
+                          onClick={() => setVoiding({ order, item })}
+                          className="text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                        >
+                          Void
+                        </button>
                       </span>
                     </li>
                   ))}
@@ -197,6 +212,13 @@ export function ActiveOrders() {
 
       {settling && (
         <SettleDialog order={settling} onClose={() => setSettling(null)} />
+      )}
+      {voiding && (
+        <VoidItemDialog
+          order={voiding.order}
+          item={voiding.item}
+          onClose={() => setVoiding(null)}
+        />
       )}
     </div>
   );
