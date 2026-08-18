@@ -8,6 +8,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             identity::load_device_identity,
             identity::save_device_identity,
+            identity::device_key_storage_status,
             identity::load_peak_config,
             identity::save_peak_config,
             printer::print_document,

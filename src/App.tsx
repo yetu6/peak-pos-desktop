@@ -168,10 +168,25 @@ function LiveRegister() {
   );
 }
 
+function KeyStorageBanner() {
+  const { keyStorageWarning } = useDeviceSession();
+  if (!keyStorageWarning) return null;
+  return (
+    <div
+      className="fixed inset-x-0 top-0 z-50 bg-[#8B1E1E] px-4 py-2 text-center text-[12px] font-medium text-white"
+      data-testid="key-storage-warning"
+      role="alert"
+    >
+      {keyStorageWarning}
+    </div>
+  );
+}
+
 function AuthGate() {
   const { shell, phase } = useDeviceSession();
+  let screen;
   if (phase === "bootstrapping") {
-    return (
+    screen = (
       <div
         className="flex h-screen items-center justify-center bg-[var(--color-pos-sidebar)] text-white"
         data-testid="boot-screen"
@@ -182,17 +197,25 @@ function AuthGate() {
         Starting till…
       </div>
     );
-  }
-  if (phase === "needs-url") return <SetupScreen />;
-  if (shell === "PAIRED_LOCKED") return <PinUnlock />;
-  if (shell === "OPERATIONAL") {
-    return (
+  } else if (phase === "needs-url") {
+    screen = <SetupScreen />;
+  } else if (shell === "PAIRED_LOCKED") {
+    screen = <PinUnlock />;
+  } else if (shell === "OPERATIONAL") {
+    screen = (
       <VerificationGate>
         <LiveRegister />
       </VerificationGate>
     );
+  } else {
+    screen = <PairingScreen />;
   }
-  return <PairingScreen />;
+  return (
+    <>
+      <KeyStorageBanner />
+      {screen}
+    </>
+  );
 }
 
 export function App() {

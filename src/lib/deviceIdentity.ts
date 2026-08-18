@@ -20,6 +20,12 @@ export interface SecretStore {
   save(value: string): Promise<void>;
 }
 
+export interface DeviceKeyStorageStatus {
+  hardwareBacked: boolean;
+  backend: string;
+  warning: string | null;
+}
+
 const LOCAL_KEY = "peak-pos-device-identity";
 
 export function localStorageSecretStore(
@@ -88,4 +94,15 @@ export async function saveDeviceIdentity(
 ): Promise<void> {
   const resolved = store ?? (await defaultStore());
   await resolved.save(JSON.stringify(persistableIdentity(record)));
+}
+
+/**
+ * Tauri reports whether the OS keychain holds the private key. Browser/dev
+ * has no keychain command; callers must treat a missing status as unknown,
+ * not as hardware-backed.
+ */
+export async function loadDeviceKeyStorageStatus(): Promise<DeviceKeyStorageStatus | null> {
+  if (!tauriAvailable()) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<DeviceKeyStorageStatus>("device_key_storage_status");
 }

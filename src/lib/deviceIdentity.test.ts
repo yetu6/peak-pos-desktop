@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { generateDeviceKeyPair } from "./deviceCrypto";
-import { loadDeviceIdentity, saveDeviceIdentity, type SecretStore } from "./deviceIdentity";
+import { loadDeviceIdentity, loadDeviceKeyStorageStatus, saveDeviceIdentity, type SecretStore } from "./deviceIdentity";
 
 function memoryStore(initial?: string): SecretStore {
   let value = initial ?? null;
@@ -84,5 +84,9 @@ describe("deviceIdentity", () => {
     );
     expect(saved).not.toContain("ops_");
     expect(JSON.parse(saved).token).toBeUndefined();
+  });
+
+  it("does not claim hardware-backed storage in the browser", async () => {
+    await expect(loadDeviceKeyStorageStatus()).resolves.toBeNull();
   });
 });

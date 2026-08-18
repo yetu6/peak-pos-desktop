@@ -20,6 +20,7 @@ import {
 import { generateDeviceKeyPair } from "../lib/deviceCrypto";
 import {
   loadDeviceIdentity,
+  loadDeviceKeyStorageStatus,
   saveDeviceIdentity,
   type DeviceIdentityRecord,
   type SecretStore,
@@ -67,6 +68,8 @@ export interface DeviceSessionValue {
   unlock: (staffNumber: string, pin: string) => Promise<void>;
   /** End the waiter ops session. Does not unpair or close the cashier till. */
   switchStaff: (reason?: string) => void;
+  /** Present only when Tauri stored the private key as a file. */
+  keyStorageWarning: string | null;
 }
 
 const DeviceSessionContext = createContext<DeviceSessionValue | null>(null);
@@ -99,19 +102,30 @@ export function DeviceSessionProvider({
   const [session, setSession] = useState<OperationalSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState<string | null>(baseUrl ?? null);
+  const [keyStorageWarning, setKeyStorageWarning] = useState<string | null>(null);
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const identityRef = useRef(identity);
   identityRef.current = identity;
 
   const peakUrl = baseUrl ?? apiUrl ?? getApiBaseUrl();
 
+  const refreshKeyStorageStatus = useCallback(async () => {
+    if (store) {
+      setKeyStorageWarning(null);
+      return;
+    }
+    const status = await loadDeviceKeyStorageStatus();
+    setKeyStorageWarning(status && !status.hardwareBacked ? status.warning : null);
+  }, [store]);
+
   const persist = useCallback(
     async (next: DeviceIdentityRecord) => {
       await saveDeviceIdentity(next, store);
       identityRef.current = next;
       setIdentity(next);
+      await refreshKeyStorageStatus();
     },
-    [store],
+    [store, refreshKeyStorageStatus],
   );
 
   const clearExpiry = useCallback(() => {
@@ -167,6 +181,8 @@ export function DeviceSessionProvider({
         await saveDeviceIdentity(record, store);
       }
       if (cancelled) return;
+      await refreshKeyStorageStatus();
+      if (cancelled) return;
       setIdentity(record);
       if (record.approved && record.deviceCode) {
         setPhase("locked");
@@ -186,7 +202,7 @@ export function DeviceSessionProvider({
       cancelled = true;
       clearExpiry();
     };
-  }, [store, clearExpiry, skipUrlSetup, baseUrl]);
+  }, [store, clearExpiry, skipUrlSetup, baseUrl, refreshKeyStorageStatus]);
 
   const saveApiUrl = useCallback(
     async (url: string) => {
@@ -393,6 +409,7 @@ export function DeviceSessionProvider({
       continueAfterApproval,
       unlock,
       switchStaff,
+      keyStorageWarning,
     }),
     [
       phase,
@@ -404,6 +421,7 @@ export function DeviceSessionProvider({
       continueAfterApproval,
       unlock,
       switchStaff,
+      keyStorageWarning,
     ],
   );
 
