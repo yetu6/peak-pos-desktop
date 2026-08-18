@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { createApiClient } from "../lib/api";
 import {
@@ -15,6 +15,14 @@ import { isOrderEvent } from "../realtime/subscriptions";
 import { fetchOutletMenu } from "../lib/menuCatalog";
 import { getOperationalSession } from "../lib/operationalSession";
 import { restRequestHeaders } from "../lib/restAuth";
+import {
+  decideEligibility,
+  defaultEligibilityCache,
+  forgetReady,
+  rememberReady,
+  type EligibilityCache,
+  type EligibilityDecision,
+} from "../lib/eligibility";
 
 function tryDevIdentity(): DevIdentity | null {
   try {
@@ -42,17 +50,19 @@ export function useTenantId(): string {
   return devIdentityFromEnv().tenantId;
 }
 
+const eligibilityCache = defaultEligibilityCache();
+
 /**
- * verify_business only ever moves forward — TenantTrustControlService marks it
- * 'succeeded' the moment FBC approves the tenant's KYB case (or carries an
- * already-approved application's evidence onto a freshly provisioned tenant)
- * and nothing in Peak ever reverts it. A query error here means "couldn't
- * check", not "unverified" — the register stays open rather than locking
- * staff out over a transient failure this gate was never meant to enforce as
- * a real security boundary.
+ * UX gate only — Peak's POS commands already refuse an unverified tenant.
+ * UNKNOWN never opens the register. A short last-known-good READY cache
+ * covers a transient onboarding-read failure; realtime resync invalidates
+ * this query and re-checks as soon as the till is live.
  */
-export function useTenantVerification(): {
-  status: "loading" | "verified" | "unverified" | "unknown";
+export function useTenantVerification(
+  cache: EligibilityCache = eligibilityCache,
+  now: () => number = Date.now,
+): {
+  status: EligibilityDecision;
 } {
   const tenantId = useTenantId();
   const query = useQuery({
@@ -67,11 +77,45 @@ export function useTenantVerification(): {
       return data;
     },
   });
+  const succeeded =
+    query.data?.steps?.find((candidate) => candidate.key === "verify_business")?.status ===
+    "succeeded";
 
-  if (query.isLoading) return { status: "loading" };
-  if (query.isError) return { status: "unknown" };
-  const step = query.data?.steps?.find((candidate) => candidate.key === "verify_business");
-  return { status: step?.status === "succeeded" ? "verified" : "unverified" };
+  useEffect(() => {
+    if (!tenantId || query.isLoading || query.isError) return;
+    if (succeeded) {
+      rememberReady(cache, tenantId, now());
+    } else {
+      forgetReady(cache);
+    }
+  }, [tenantId, query.isLoading, query.isError, succeeded, cache, now]);
+
+  if (!tenantId) {
+    return { status: "UNKNOWN" };
+  }
+  if (query.isLoading) {
+    return { status: "LOADING" };
+  }
+  if (query.isError) {
+    return {
+      status: decideEligibility({
+        queryStatus: "error",
+        verifyBusinessSucceeded: null,
+        tenantId,
+        now: now(),
+        lastKnownGood: cache.load(tenantId),
+      }),
+    };
+  }
+  return {
+    status: decideEligibility({
+      queryStatus: "success",
+      verifyBusinessSucceeded: succeeded,
+      tenantId,
+      now: now(),
+      lastKnownGood: cache.load(tenantId),
+    }),
+  };
 }
 
 export function useOutletMenu() {

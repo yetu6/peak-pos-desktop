@@ -4,17 +4,15 @@ import { useDeviceSession } from "../auth/DeviceSessionProvider";
 import { useTenantVerification } from "../hooks/usePosData";
 
 /**
- * Sits between "paired and staff signed in" and the actual register. A tenant
- * isn't cleared to trade until FBC approves its KYB case — this is that gate,
- * not a security boundary (Peak's own authorization already enforces the
- * real one); it just keeps a not-yet-verified property from looking open for
- * business on a till that has no idea anything is pending.
+ * Sits between "paired and staff signed in" and the actual register. Peak
+ * already refuses unverified POS commands; this keeps a not-yet-verified
+ * or unconfirmed till from looking open. UNKNOWN is not READY.
  */
 export function VerificationGate({ children }: { children: ReactNode }) {
   const { switchStaff } = useDeviceSession();
   const verification = useTenantVerification();
 
-  if (verification.status === "loading") {
+  if (verification.status === "LOADING") {
     return (
       <div className="auth-shell flex h-screen items-center justify-center" data-testid="verification-loading">
         <span className="spinner" aria-hidden />
@@ -22,14 +20,16 @@ export function VerificationGate({ children }: { children: ReactNode }) {
     );
   }
 
-  if (verification.status === "verified" || verification.status === "unknown") {
+  if (verification.status === "READY") {
     return <>{children}</>;
   }
+
+  const unknown = verification.status === "UNKNOWN";
 
   return (
     <div
       className="auth-shell flex h-screen items-center justify-center p-6"
-      data-testid="verification-gate"
+      data-testid={unknown ? "verification-unknown" : "verification-gate"}
     >
       <div className="glass-panel w-full max-w-md p-8 text-center">
         <div className="mb-6 flex items-center justify-center gap-2">
@@ -37,12 +37,12 @@ export function VerificationGate({ children }: { children: ReactNode }) {
           <span className="font-display text-2xl text-[var(--color-text-primary)]">Peak POS</span>
         </div>
         <p className="text-[15px] font-medium text-[var(--color-text-primary)]">
-          This account isn&apos;t verified yet
+          {unknown ? "Peak couldn't confirm this till is cleared to trade" : "This account isn't verified yet"}
         </p>
         <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">
-          Peak is still reviewing this business. The till opens for orders once verification is
-          complete — check with whoever set up your Peak account if this is taking longer than
-          expected.
+          {unknown
+            ? "The register stays closed until Peak can confirm this business is verified. Check the connection and try again, or switch staff."
+            : "Peak is still reviewing this business. The till opens for orders once verification is complete — check with whoever set up your Peak account if this is taking longer than expected."}
         </p>
         <button
           type="button"
