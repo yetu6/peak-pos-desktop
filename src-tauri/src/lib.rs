@@ -1,3 +1,4 @@
+mod diagnostics;
 mod identity;
 mod printer;
 
@@ -13,6 +14,8 @@ pub fn run() {
             identity::save_peak_config,
             printer::print_document,
             printer::print_kitchen_ticket,
+            printer::printer_status,
+            diagnostics::host_diagnostics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Peak POS shell");

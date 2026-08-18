@@ -1,0 +1,138 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { Diagnostics } from "./Diagnostics";
+
+const {
+  probePeakServer,
+  loadPrinterStatus,
+  loadHostDiagnostics,
+  loadDeviceKeyStorageStatus,
+} = vi.hoisted(() => ({
+  probePeakServer: vi.fn(),
+  loadPrinterStatus: vi.fn(),
+  loadHostDiagnostics: vi.fn(),
+  loadDeviceKeyStorageStatus: vi.fn(),
+}));
+
+vi.mock("../lib/diagnostics", async () => {
+  const actual = await vi.importActual<typeof import("../lib/diagnostics")>("../lib/diagnostics");
+  return {
+    ...actual,
+    probePeakServer,
+    loadPrinterStatus,
+    loadHostDiagnostics,
+  };
+});
+
+vi.mock("../lib/deviceIdentity", async () => {
+  const actual = await vi.importActual<typeof import("../lib/deviceIdentity")>(
+    "../lib/deviceIdentity",
+  );
+  return {
+    ...actual,
+    loadDeviceKeyStorageStatus,
+  };
+});
+
+vi.mock("../lib/peakConfig", () => ({
+  getApiBaseUrl: () => "https://hotel.example",
+}));
+
+vi.mock("../realtime/RealtimeProvider", () => ({
+  useRealtime: () => ({
+    state: {
+      phase: "connected",
+      attempt: 0,
+      lastError: null,
+      established: true,
+      resyncGeneration: 1,
+    },
+  }),
+}));
+
+vi.mock("../auth/DeviceSessionProvider", () => ({
+  useDeviceSession: () => ({
+    identity: {
+      privateKeyPkcs8: "SECRET_PRIVATE_KEY",
+      publicKeySpki: "public-material",
+      deviceCode: "TILL-204",
+      mode: "POS",
+      terminalName: "Bar 1",
+    },
+    session: {
+      token: "ops_SUPERSECRET",
+      expiresAt: "2099-01-01T00:00:00Z",
+      deviceId: "device-uuid",
+      propertyId: "property-1",
+      staffNumber: "12",
+    },
+  }),
+}));
+
+describe("Diagnostics", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows operator connectivity without secrets", async () => {
+    probePeakServer.mockResolvedValue({
+      status: "reachable",
+      detail: "HTTP 401",
+      origin: "https://hotel.example",
+    });
+    loadPrinterStatus.mockResolvedValue({ available: true, name: "front-bar" });
+    loadHostDiagnostics.mockResolvedValue({
+      os: "linux",
+      arch: "x86_64",
+      appVersion: "0.1.0",
+    });
+    loadDeviceKeyStorageStatus.mockResolvedValue({
+      hardwareBacked: true,
+      backend: "keyring",
+      warning: null,
+    });
+
+    render(<Diagnostics />);
+
+    expect(screen.getByTestId("diagnostics")).toBeInTheDocument();
+    expect(await screen.findByTestId("diag-peak")).toHaveTextContent("Reachable");
+    expect(screen.getByTestId("diag-realtime")).toHaveTextContent("Live");
+    expect(screen.getByTestId("diag-printer")).toHaveTextContent("Ready");
+    expect(screen.queryByText("SECRET_PRIVATE_KEY")).not.toBeInTheDocument();
+    expect(screen.queryByText("ops_SUPERSECRET")).not.toBeInTheDocument();
+  });
+
+  it("shows the embedded version and device code in technician view", async () => {
+    probePeakServer.mockResolvedValue({
+      status: "reachable",
+      detail: "HTTP 200",
+      origin: "https://hotel.example",
+    });
+    loadPrinterStatus.mockResolvedValue({ available: true, name: "front-bar" });
+    loadHostDiagnostics.mockResolvedValue({
+      os: "linux",
+      arch: "x86_64",
+      appVersion: "0.1.0",
+    });
+    loadDeviceKeyStorageStatus.mockResolvedValue({
+      hardwareBacked: false,
+      backend: "file",
+      warning: "file fallback",
+    });
+
+    render(<Diagnostics />);
+    await userEvent.click(screen.getByTestId("diag-technician"));
+
+    expect(await screen.findByTestId("diag-technician-view")).toBeInTheDocument();
+    expect(screen.getByTestId("diag-app-version")).toHaveTextContent("0.1.0");
+    expect(screen.getByTestId("diag-device-code")).toHaveTextContent("TILL-204");
+    expect(screen.getByTestId("diag-device-id")).toHaveTextContent("device-uuid");
+    expect(screen.getByTestId("diag-os")).toHaveTextContent("linux");
+    expect(screen.getByTestId("diag-printer-name")).toHaveTextContent("front-bar");
+    expect(screen.getByTestId("diag-key-storage")).toHaveTextContent("file");
+    expect(screen.queryByText("SECRET_PRIVATE_KEY")).not.toBeInTheDocument();
+    expect(screen.queryByText("ops_SUPERSECRET")).not.toBeInTheDocument();
+    expect(screen.queryByText("public-material")).not.toBeInTheDocument();
+  });
+});

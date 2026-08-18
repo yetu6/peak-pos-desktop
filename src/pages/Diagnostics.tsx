@@ -1,0 +1,186 @@
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Icon } from "../components/Icon";
+import { useDeviceSession } from "../auth/DeviceSessionProvider";
+import { loadDeviceKeyStorageStatus, type DeviceKeyStorageStatus } from "../lib/deviceIdentity";
+import {
+  buildTechnicianSnapshot,
+  loadHostDiagnostics,
+  loadPrinterStatus,
+  probePeakServer,
+  type HostDiagnostics,
+  type PeakProbe,
+  type PrinterStatus,
+  type TechnicianSnapshot,
+} from "../lib/diagnostics";
+import { getApiBaseUrl } from "../lib/peakConfig";
+import { useRealtime } from "../realtime/RealtimeProvider";
+
+const REALTIME_LABEL: Record<string, string> = {
+  connecting: "Connecting",
+  connected: "Live",
+  reconnecting: "Reconnecting",
+  disconnected: "Offline",
+  error: "Realtime error",
+};
+
+function toneClass(ok: boolean): string {
+  return ok ? "badge badge-success" : "badge badge-danger";
+}
+
+function Row({
+  label,
+  testId,
+  children,
+}: {
+  label: string;
+  testId: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border-subtle)] py-3 last:border-0">
+      <div className="text-[12px] font-medium text-[var(--color-text-secondary)]">{label}</div>
+      <div className="text-right text-[13px] text-[var(--color-text-primary)]" data-testid={testId}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function Diagnostics() {
+  const { state } = useRealtime();
+  const { identity, session } = useDeviceSession();
+  const [view, setView] = useState<"operator" | "technician">("operator");
+  const [peak, setPeak] = useState<PeakProbe | null>(null);
+  const [printer, setPrinter] = useState<PrinterStatus | null>(null);
+  const [host, setHost] = useState<HostDiagnostics | null>(null);
+  const [keyStorage, setKeyStorage] = useState<DeviceKeyStorageStatus | null>(null);
+
+  const refresh = useCallback(async () => {
+    const [nextPeak, nextPrinter, nextHost, nextKeys] = await Promise.all([
+      probePeakServer(),
+      loadPrinterStatus(),
+      loadHostDiagnostics(),
+      loadDeviceKeyStorageStatus(),
+    ]);
+    setPeak(nextPeak);
+    setPrinter(nextPrinter);
+    setHost(nextHost);
+    setKeyStorage(nextKeys);
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const realtimeOk = state.phase === "connected";
+  const peakOk = peak?.status === "reachable";
+  const printerOk = printer?.available === true;
+  const snapshot: TechnicianSnapshot = buildTechnicianSnapshot({
+    identity,
+    session,
+    host,
+    printer,
+    keyStorage,
+    peakOrigin: getApiBaseUrl(),
+  });
+
+  return (
+    <div className="space-y-5" data-testid="diagnostics">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Status</h1>
+          <p className="mt-0.5 text-[12px] text-[var(--color-text-muted)]">
+            Peak, realtime, and the printer — without secrets.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="diag-operator"
+            onClick={() => setView("operator")}
+            className={`btn-sm ${view === "operator" ? "btn-primary" : "btn-tertiary"}`}
+          >
+            Operator
+          </button>
+          <button
+            type="button"
+            data-testid="diag-technician"
+            onClick={() => setView("technician")}
+            className={`btn-sm ${view === "technician" ? "btn-primary" : "btn-tertiary"}`}
+          >
+            Technician
+          </button>
+          <button
+            type="button"
+            data-testid="diag-refresh"
+            onClick={() => void refresh()}
+            className="btn-tertiary btn-sm"
+            aria-label="Refresh status"
+          >
+            <Icon name="refresh" size={14} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {view === "operator" ? (
+        <div className="glass-panel p-5" data-testid="diag-operator-view">
+          <Row label="Peak server" testId="diag-peak">
+            {peak ? (
+              <span className={toneClass(peakOk)}>{peakOk ? "Reachable" : "Unreachable"}</span>
+            ) : (
+              "Checking…"
+            )}
+          </Row>
+          <Row label="Realtime" testId="diag-realtime">
+            <span className={toneClass(realtimeOk)}>
+              {REALTIME_LABEL[state.phase] ?? state.phase}
+            </span>
+          </Row>
+          <Row label="Printer" testId="diag-printer">
+            {printer ? (
+              <span className={toneClass(printerOk)}>
+                {printerOk ? "Ready" : "Not configured"}
+              </span>
+            ) : (
+              <span className="badge badge-muted">Unknown on this host</span>
+            )}
+          </Row>
+        </div>
+      ) : (
+        <div className="glass-panel p-5" data-testid="diag-technician-view">
+          <Row label="App version" testId="diag-app-version">
+            {snapshot.appVersion}
+          </Row>
+          <Row label="OS" testId="diag-os">
+            {snapshot.os} {snapshot.arch}
+          </Row>
+          <Row label="Printer" testId="diag-printer-name">
+            {snapshot.printerAvailable
+              ? snapshot.printerName
+              : `${snapshot.printerName} (not configured)`}
+          </Row>
+          <Row label="Device code" testId="diag-device-code">
+            {snapshot.deviceCode}
+          </Row>
+          <Row label="Device id" testId="diag-device-id">
+            {snapshot.deviceId}
+          </Row>
+          <Row label="Terminal" testId="diag-terminal">
+            {snapshot.terminalName}
+          </Row>
+          <Row label="Mode" testId="diag-mode">
+            {snapshot.mode}
+          </Row>
+          <Row label="Peak" testId="diag-peak-origin">
+            {snapshot.peakOrigin}
+          </Row>
+          <Row label="Key storage" testId="diag-key-storage">
+            {snapshot.keyStorageBackend}
+            {snapshot.keyStorageHardwareBacked === false ? " (not hardware-backed)" : ""}
+          </Row>
+        </div>
+      )}
+    </div>
+  );
+}

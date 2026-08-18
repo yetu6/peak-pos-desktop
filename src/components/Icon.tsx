@@ -50,6 +50,11 @@ const PATHS: Record<string, string[]> = {
   ],
   plus: ["M12 5v14", "M5 12h14"],
   x: ["M18 6L6 18", "M6 6l12 12"],
+  info: [
+    "M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0",
+    "M12 9h.01",
+    "M11 12h1v4h1",
+  ],
 };
 
 export function Icon({

@@ -11,6 +11,7 @@ import { PairingScreen } from "./pages/PairingScreen";
 import { PinUnlock } from "./pages/PinUnlock";
 import { SetupScreen } from "./pages/SetupScreen";
 import { VerificationGate } from "./pages/VerificationGate";
+import { Diagnostics } from "./pages/Diagnostics";
 import { RealtimeClient } from "./realtime/RealtimeClient";
 import { RealtimeProvider, useRealtimeEvents } from "./realtime/RealtimeProvider";
 import { useOutletId, usePropertyId } from "./hooks/usePosData";
@@ -132,7 +133,15 @@ function PosShell() {
         </header>
 
         <main className="flex-1 overflow-auto p-6">
-          {page === "orders" ? <ActiveOrders /> : page === "new" ? <NewOrder /> : <Kitchen />}
+          {page === "orders" ? (
+            <ActiveOrders />
+          ) : page === "new" ? (
+            <NewOrder />
+          ) : page === "kitchen" ? (
+            <Kitchen />
+          ) : (
+            <Diagnostics />
+          )}
         </main>
       </div>
     </div>

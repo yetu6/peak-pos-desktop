@@ -1,9 +1,9 @@
-export type WorkspacePage = "orders" | "new" | "kitchen";
+export type WorkspacePage = "orders" | "new" | "kitchen" | "status";
 
 export interface WorkspaceItem {
   page: WorkspacePage;
   label: string;
-  icon: "orders" | "kitchen" | "plus";
+  icon: "orders" | "kitchen" | "plus" | "info";
 }
 
 const ALL: WorkspaceItem[] = [
@@ -12,19 +12,23 @@ const ALL: WorkspaceItem[] = [
   { page: "kitchen", label: "Kitchen", icon: "kitchen" },
 ];
 
+const STATUS: WorkspaceItem = { page: "status", label: "Status", icon: "info" };
+
 /**
  * Mode is a workspace layout, not a security boundary. Peak still checks
  * every command. The till never picks its own mode — the manager did at pairing.
  */
 export function workspaceNav(mode?: string | null): WorkspaceItem[] {
   const normalized = (mode ?? "POS").trim().toUpperCase().replace(/-/g, "_");
+  let items: WorkspaceItem[];
   if (normalized === "KITCHEN_DISPLAY" || normalized === "BAR_DISPLAY") {
-    return ALL.filter((item) => item.page === "kitchen");
+    items = ALL.filter((item) => item.page === "kitchen");
+  } else if (normalized === "CASHIER") {
+    items = ALL.filter((item) => item.page !== "kitchen");
+  } else {
+    items = ALL;
   }
-  if (normalized === "CASHIER") {
-    return ALL.filter((item) => item.page !== "kitchen");
-  }
-  return ALL;
+  return [...items, STATUS];
 }
 
 export function defaultWorkspacePage(mode?: string | null): WorkspacePage {

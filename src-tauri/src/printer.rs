@@ -34,13 +34,38 @@ pub fn print_kitchen_ticket(ticket: KitchenTicket) -> Result<(), String> {
     })
 }
 
-fn send_to_os_printer(title: &str, body: &str) -> Result<(), String> {
-    let lp = which("lp").ok_or_else(|| "No kitchen printer is configured".to_string())?;
-    let printer = std::env::var("PEAK_PRINTER")
+#[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PrinterStatus {
+    pub available: bool,
+    pub name: Option<String>,
+}
+
+/// Reports whether `lp` is on PATH and which printer Peak will use.
+/// This does not print a page.
+#[tauri::command]
+pub fn printer_status() -> PrinterStatus {
+    PrinterStatus {
+        available: printer_is_available(),
+        name: configured_printer_name(),
+    }
+}
+
+pub(crate) fn printer_is_available() -> bool {
+    which("lp").is_some()
+}
+
+pub(crate) fn configured_printer_name() -> Option<String> {
+    std::env::var("PEAK_PRINTER")
         .ok()
         .or_else(|| std::env::var("PEAK_KITCHEN_PRINTER").ok())
         .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
+        .filter(|value| !value.is_empty())
+}
+
+fn send_to_os_printer(title: &str, body: &str) -> Result<(), String> {
+    let lp = which("lp").ok_or_else(|| "No kitchen printer is configured".to_string())?;
+    let printer = configured_printer_name();
 
     let mut command = Command::new(lp);
     command.arg("-t").arg(title);
@@ -152,5 +177,34 @@ mod tests {
         .unwrap_err();
         assert_eq!(error, "No kitchen printer is configured");
         std::env::set_var("PATH", original);
+    }
+
+    #[test]
+    fn printer_status_reports_missing_lp_without_printing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let original = std::env::var("PATH").unwrap();
+        std::env::set_var("PATH", "/tmp/peak-no-lp");
+        std::env::remove_var("PEAK_PRINTER");
+        std::env::remove_var("PEAK_KITCHEN_PRINTER");
+        let status = printer_status();
+        assert!(!status.available);
+        assert!(status.name.is_none());
+        std::env::set_var("PATH", original);
+    }
+
+    #[test]
+    fn printer_status_reports_the_configured_name() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = fake_lp_dir("#!/bin/sh\nexit 0\n");
+        let original = std::env::var("PATH").unwrap();
+        std::env::set_var("PATH", format!("{}:{original}", dir.display()));
+        std::env::set_var("PEAK_PRINTER", "front-bar");
+        std::env::remove_var("PEAK_KITCHEN_PRINTER");
+        let status = printer_status();
+        assert!(status.available);
+        assert_eq!(status.name.as_deref(), Some("front-bar"));
+        std::env::set_var("PATH", original);
+        std::env::remove_var("PEAK_PRINTER");
+        let _ = fs::remove_dir_all(&dir);
     }
 }
