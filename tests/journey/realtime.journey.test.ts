@@ -174,6 +174,23 @@ describe.skipIf(!enabled)("realtime journey against the live backend", () => {
 
       firstClient.dispose();
       secondClient.dispose();
+
+      const openedSession = (await sessionResponse.json()) as { id?: string };
+      if (openedSession.id) {
+        const closed = await fetch(
+          `${baseUrl}/api/v1/properties/${propertyId}/pos-sessions/${openedSession.id}/close`,
+          {
+            method: "POST",
+            headers: { ...apiHeaders(), "Idempotency-Key": crypto.randomUUID() },
+            body: JSON.stringify({ actualCash: 10_000 }),
+          },
+        );
+        if (!closed.ok) {
+          throw new Error(
+            `session close failed with HTTP ${closed.status}: ${await closed.text()}`,
+          );
+        }
+      }
     },
     60_000,
   );

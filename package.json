@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:journey": "vitest run tests/journey",
+    "test:journey": "vitest run tests/journey --fileParallelism=false",
     "bridge": "node scripts/realtime-bridge.mjs"
   },
   "dependencies": {
