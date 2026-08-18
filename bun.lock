@@ -74,7 +74,7 @@
 
     "@oxc-project/types": ["@oxc-project/types@0.144.0", "", {}, "sha512-nuhZIOLuI6TFQ32I/WnUx+SCPY7SdSKwgnFHydAuoS1+Z4BRcaP+RRJmGzl9lw+0OFF7UmaESf7KQRXaNLHypg=="],
 
-    "@peak/hospitality-api-client": ["@peak/hospitality-api-client@../peak/api-client/artifacts/peak-hospitality-api-client-1.0.0.tgz", { "dependencies": { "openapi-fetch": "0.17.0" } }, "sha512-ZjbYlIkUEyKFJvsoLo27XUKaTPuld7NpG/R7dxPYv+eGe4Pgci5gUvUiBCNlzbYjt+pX4cXzCEG2CZoqMwr5Aw=="],
+    "@peak/hospitality-api-client": ["@peak/hospitality-api-client@../peak/api-client/artifacts/peak-hospitality-api-client-1.0.0.tgz", { "dependencies": { "openapi-fetch": "0.17.0" } }, "sha512-xZ0up8qWoZlwYh6/u19wCpas4kRwMrYBsga0X22x425zTPENwuurb+siko1J1sIvCwomeZNStr8YK6R+CLBzEw=="],
 
     "@rolldown/binding-android-arm64": ["@rolldown/binding-android-arm64@1.2.4", "", { "os": "android", "cpu": "arm64" }, "sha512-jHC2cnyKz5xU2fhECtFl8OZ83cYNt13GZQD+0uMJ/X3o+ijmd56okHhTUwxVSHPx1IRVIJEZ1/1pPzeLCU6XKA=="],
 
