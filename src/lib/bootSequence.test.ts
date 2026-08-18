@@ -22,6 +22,8 @@ describe("boot sequence docs", () => {
     }
     expect(doc).toMatch(/UNKNOWN is not READY/);
     expect(doc).toMatch(/no in-app auto-update/i);
+    expect(doc).toMatch(/docs\/v1-release\.md/);
+    expect(doc).toMatch(/NOT IMPLEMENTED/);
     expect(doc).toMatch(/does not/i);
   });
 });

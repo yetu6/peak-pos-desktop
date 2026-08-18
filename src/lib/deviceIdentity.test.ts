@@ -52,6 +52,30 @@ describe("deviceIdentity", () => {
     expect(loaded?.publicKeySpki).toBe(keys.publicKeySpki);
   });
 
+  it("keeps the same keypair when the store is opened again at the same path", async () => {
+    const keys = await generateDeviceKeyPair();
+    const store = memoryStore();
+    await saveDeviceIdentity(
+      {
+        ...keys,
+        deviceCode: "dev_abc",
+        approved: true,
+        terminalName: "Bar 1",
+        mode: "POS",
+      },
+      store,
+    );
+    const afterUpgrade = await loadDeviceIdentity(store);
+    expect(afterUpgrade).toMatchObject({
+      privateKeyPkcs8: keys.privateKeyPkcs8,
+      publicKeySpki: keys.publicKeySpki,
+      deviceCode: "dev_abc",
+      approved: true,
+      terminalName: "Bar 1",
+      mode: "POS",
+    });
+  });
+
   it("falls back to localStorage when no OS store is injected", async () => {
     const keys = await generateDeviceKeyPair();
     await saveDeviceIdentity({

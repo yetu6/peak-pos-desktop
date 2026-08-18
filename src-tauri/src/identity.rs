@@ -292,13 +292,13 @@ mod tests {
     use std::sync::Mutex;
 
     struct MemoryStore {
-        secret: Mutex<Option<String>>,
+        secret: std::sync::Arc<Mutex<Option<String>>>,
     }
 
     impl MemoryStore {
         fn empty() -> Self {
             Self {
-                secret: Mutex::new(None),
+                secret: std::sync::Arc::new(Mutex::new(None)),
             }
         }
     }
@@ -426,6 +426,32 @@ mod tests {
         .unwrap();
         let vault = IdentityVault::new(path.clone(), MemoryStore::empty());
         assert!(vault.load().unwrap().is_none());
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn installing_over_the_same_app_data_path_keeps_the_keypair() {
+        // Tauri stores identity under app_data_dir, not next to the binary.
+        // A v2 installer that replaces the executable must not move that path.
+        assert_eq!(IDENTITY_FILE, "device-identity.json");
+        assert!(!IDENTITY_FILE.contains('/') && !IDENTITY_FILE.contains('\\'));
+
+        let path = temp_identity("upgrade");
+        let keychain = MemoryStore::empty();
+        let v1 = IdentityVault::new(path.clone(), MemoryStore {
+            secret: std::sync::Arc::clone(&keychain.secret),
+        });
+        v1.save(&payload("V1_SECRET")).expect("v1 save");
+
+        let v2 = IdentityVault::new(path.clone(), MemoryStore {
+            secret: std::sync::Arc::clone(&keychain.secret),
+        });
+        let loaded: serde_json::Value =
+            serde_json::from_str(&v2.load().unwrap().unwrap()).unwrap();
+        assert_eq!(loaded[PRIVATE_KEY_FIELD], "V1_SECRET");
+        assert_eq!(loaded["deviceCode"], "dev_abc");
+        let on_disk = fs::read_to_string(&path).unwrap();
+        assert!(!on_disk.contains("V1_SECRET"));
         let _ = fs::remove_file(&path);
     }
 }

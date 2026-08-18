@@ -48,8 +48,8 @@ Ends the waiter ops session and returns to `locked`. It does not:
 
 The packaged window is the appliance. OS login-start is a technician
 install choice, not an in-app toggle. There is no in-app auto-update
-channel. Releases are FBC-managed; see the (separate) V1 release runbook
-when it exists.
+channel. Releases are FBC-managed; see `docs/v1-release.md`.
+Automatic self-updating is **NOT IMPLEMENTED** (`docs/adr/0001-automatic-updater-deferred.md`).
 
 ## After a crash
 
