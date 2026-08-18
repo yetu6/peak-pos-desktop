@@ -83,6 +83,7 @@ describe("NewOrder", () => {
 
   it("opens a session when none is stored and persists the opened id", async () => {
     renderNewOrder();
+    await userEvent.type(screen.getByTestId("opening-float"), "0");
     const openButton = await screen.findByTestId("open-session");
     await userEvent.click(openButton);
 

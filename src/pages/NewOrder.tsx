@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
+import { TillControls } from "../components/TillControls";
 import { useCreateOrder, useOutletMenu, usePosSession, usePropertyId } from "../hooks/usePosData";
 
 interface CartLine {
@@ -21,7 +22,6 @@ export function NewOrder() {
   const [tableNumber, setTableNumber] = useState("");
   const [specialRequest, setSpecialRequest] = useState("");
   const [created, setCreated] = useState<string | null>(null);
-  const [actualCash, setActualCash] = useState("");
 
   function addLine(item: (typeof menu)[number]): void {
     setCreated(null);
@@ -80,51 +80,8 @@ export function NewOrder() {
             New order
           </h2>
         </div>
-        <div className="flex items-center gap-2">
-          {session ? (
-            <>
-              <span className="badge badge-success badge-dot" data-testid="session-open">
-                Session open since {new Date(session.openedAt ?? "").toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
-              <input
-                data-testid="actual-cash"
-                type="number"
-                value={actualCash}
-                onChange={(event) => setActualCash(event.target.value)}
-                placeholder="Cash in drawer"
-                className="input w-32"
-              />
-              <button
-                data-testid="close-session"
-                onClick={() => close.mutate(Number(actualCash))}
-                disabled={close.isPending || !Number.isFinite(Number(actualCash)) || actualCash.trim() === ""}
-                className="btn-tertiary btn-sm"
-              >
-                Close session
-              </button>
-            </>
-          ) : (
-            <button
-              data-testid="open-session"
-              onClick={() => open.mutate(0)}
-              disabled={open.isPending}
-              className="btn-primary btn-sm"
-            >
-              <Icon name="check" size={14} />
-              {open.isPending ? "Opening…" : "Open session"}
-            </button>
-          )}
-        </div>
+        <TillControls session={session} open={open} close={close} />
       </div>
-
-      {open.isError && (
-        <div className="badge badge-danger" data-testid="open-error">
-          {open.error instanceof Error ? open.error.message : "Could not open session"}
-        </div>
-      )}
 
       {!session ? (
         <div className="card">
