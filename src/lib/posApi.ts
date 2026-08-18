@@ -10,12 +10,8 @@ export type KitchenTicketResponse =
   import("@peak/hospitality-api-client").components["schemas"]["KitchenTicketResponse"];
 export type PaymentProviderAccountResponse =
   import("@peak/hospitality-api-client").components["schemas"]["PaymentProviderAccountResponse"];
-export type RoomResponse =
-  import("@peak/hospitality-api-client").components["schemas"]["RoomResponse"];
-export type ReservationResponse =
-  import("@peak/hospitality-api-client").components["schemas"]["ReservationResponse"];
-export type FolioResponse =
-  import("@peak/hospitality-api-client").components["schemas"]["FolioResponse"];
+export type PosRoomChargeCandidateResponse =
+  import("@peak/hospitality-api-client").components["schemas"]["PosRoomChargeCandidateResponse"];
 
 export type TicketAction = "prepare" | "ready" | "deliver" | "void";
 export type SettleMethod = "cash" | "room_charge" | "mobile_money";
@@ -31,14 +27,13 @@ function idempotencyHeader(): Record<string, string> {
 }
 
 /**
- * The generated client schema lags Peak's `SettlePosOrderRequest` (it omits
- * `roomNumber`). Peak validates the room the waiter heard against the folio's
- * checked-in stay, so the client MUST send it for a room charge. The schema
- * gap is bridged here and documented until the artifact is regenerated.
+ * A PIN till posts a room charge with the stay the waiter picked from
+ * `GET .../pos/room-charge-candidates`. Peak resolves the folio. The till
+ * never sends a folio UUID and never lists rooms or reservations.
  */
 type SettlePosOrderBody = {
   paymentMethod: string;
-  folioId?: string;
+  stayId?: string;
   roomNumber?: string;
   providerAccountId?: string;
   phoneNumber?: string;
@@ -110,7 +105,7 @@ export function createPosApi() {
         headers: idempotencyHeader(),
         body: {
           paymentMethod: body.paymentMethod,
-          folioId: body.folioId,
+          stayId: body.stayId,
           roomNumber: body.roomNumber,
           providerAccountId: body.providerAccountId,
           phoneNumber: body.phoneNumber,
@@ -192,19 +187,9 @@ export function createPosApi() {
         params: { path: { propertyId } },
       });
     },
-    listRooms(propertyId: string) {
-      return client.GET("/api/v1/properties/{propertyId}/rooms", {
-        params: { path: { propertyId } },
-      });
-    },
-    listReservations(propertyId: string) {
-      return client.GET("/api/v1/properties/{propertyId}/reservations", {
-        params: { path: { propertyId } },
-      });
-    },
-    listFolios(propertyId: string) {
-      return client.GET("/api/v1/properties/{propertyId}/folios", {
-        params: { path: { propertyId } },
+    listRoomChargeCandidates(propertyId: string, query: string) {
+      return client.GET("/api/v1/properties/{propertyId}/pos/room-charge-candidates", {
+        params: { path: { propertyId }, query: { query } },
       });
     },
     identity,

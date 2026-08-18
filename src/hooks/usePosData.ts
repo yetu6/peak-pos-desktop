@@ -3,10 +3,8 @@ import { useMutation, useQuery, useQueries, useQueryClient } from "@tanstack/rea
 import { createApiClient } from "../lib/api";
 import {
   createPosApi,
-  type FolioResponse,
   type PosOrderResponse,
   type PosSessionResponse,
-  type RoomResponse,
 } from "../lib/posApi";
 import { devIdentityFromEnv, type DevIdentity } from "../lib/env";
 import { getApiBaseUrl } from "../lib/peakConfig";
@@ -321,12 +319,12 @@ export function useSettleOrder(propertyId: string) {
       orderId: string;
       method: "cash" | "room_charge" | "mobile_money";
       roomNumber?: string;
-      folioId?: string;
+      stayId?: string;
       providerAccountId?: string;
       phoneNumber?: string;
     }) => {
       if (args.method === "room_charge") {
-        if (!args.folioId) throw new Error("A folio must be resolved for a room charge");
+        if (!args.stayId) throw new Error("Choose an in-house stay for a room charge");
         if (!args.roomNumber?.trim()) throw new Error("A room number is required");
       }
       if (args.method === "mobile_money") {
@@ -335,7 +333,7 @@ export function useSettleOrder(propertyId: string) {
       }
       const { data, error } = await createPosApi().settleOrder(propertyId, args.orderId, {
         paymentMethod: args.method,
-        folioId: args.folioId,
+        stayId: args.stayId,
         roomNumber: args.roomNumber?.trim() || undefined,
         providerAccountId: args.providerAccountId,
         phoneNumber: args.phoneNumber?.trim() || undefined,
@@ -419,45 +417,23 @@ export function usePaymentProviderAccounts(propertyId: string) {
 }
 
 /**
- * Resolves the folio a room charge should land on by composing the read APIs
- * Peak does expose: rooms (roomNumber -> room) -> reservations (room ->
- * checked-in stay) -> folios (open folio for that reservation). Peak has no
- * dedicated room -> folio lookup; see KNOWN GAPS.
+ * In-house stays a waiter may charge. Search is the dedicated POS
+ * candidates path — not GET /rooms, /reservations, or /folios.
  */
-export async function resolveRoomFolio(
-  propertyId: string,
-  roomNumber: string,
-): Promise<{ folio: FolioResponse; room: RoomResponse } | null> {
-  const api = createPosApi();
-  const wanted = roomNumber.trim().toLowerCase();
-  if (!wanted) return null;
-
-  const { data: rooms, error: roomsError } = await api.listRooms(propertyId);
-  if (roomsError) throw new Error(String(roomsError));
-  const room = (rooms ?? []).find(
-    (r) => r.roomNumber?.trim().toLowerCase() === wanted,
-  );
-  if (!room) return null;
-
-  const { data: reservations, error: reservationsError } =
-    await api.listReservations(propertyId);
-  if (reservationsError) throw new Error(String(reservationsError));
-  const stays = (reservations ?? []).filter(
-    (r) =>
-      r.roomId === room.id &&
-      (r.status === "checked_in" || r.status === "confirmed"),
-  );
-  if (stays.length === 0) return null;
-
-  const { data: folios, error: foliosError } = await api.listFolios(propertyId);
-  if (foliosError) throw new Error(String(foliosError));
-  const reservationIds = new Set(stays.map((s) => s.id));
-  const openFolio = (folios ?? []).find(
-    (f) => f.status === "open" && f.reservationId && reservationIds.has(f.reservationId),
-  );
-  if (!openFolio) return null;
-
-  return { folio: openFolio, room };
+export function useRoomChargeCandidates(propertyId: string, query: string) {
+  const needle = query.trim();
+  return useQuery({
+    queryKey: ["pos", "room-charge-candidates", propertyId, needle],
+    queryFn: async () => {
+      const { data, error } = await createPosApi().listRoomChargeCandidates(
+        propertyId,
+        needle,
+      );
+      if (error) throw new Error(String(error));
+      return data ?? [];
+    },
+    enabled: needle.length > 0,
+  });
 }
 
 export function usePosApi() {
