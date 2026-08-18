@@ -15,6 +15,17 @@ export class StaffLoginRejectedError extends Error {
   }
 }
 
+/**
+ * Peak refused a challenge for a till that was already paired. HTTP is 401
+ * for unpaired and revoked alike; the till knows it used to be trusted.
+ */
+export class DeviceRevokedError extends Error {
+  constructor(message = "This register is no longer trusted. Pair it again.") {
+    super(message);
+    this.name = "DeviceRevokedError";
+  }
+}
+
 export interface PairingRequest {
   pairingRequestId: string;
   deviceCode: string;
@@ -55,6 +66,9 @@ async function readJson(response: Response): Promise<unknown> {
 export function humanDeviceError(error: unknown): string {
   if (error instanceof DeviceNotApprovedError) {
     return "Not approved yet. Ask a manager to enter this pairing code.";
+  }
+  if (error instanceof DeviceRevokedError) {
+    return "This register is no longer trusted. Pair it again.";
   }
   if (error instanceof StaffLoginRejectedError) {
     return "That staff number or PIN was not accepted.";
@@ -165,9 +179,14 @@ export async function createStaffSession(args: {
   privateKeyPkcs8: string;
   staffNumber: string;
   pin: string;
+  /** True when this till already completed pairing. A 401 challenge is then revocation. */
+  previouslyApproved?: boolean;
 }): Promise<OperationalSession> {
   const challenge = await issueChallenge(args.baseUrl, args.deviceCode);
-  if (!challenge) throw new DeviceNotApprovedError();
+  if (!challenge) {
+    if (args.previouslyApproved) throw new DeviceRevokedError();
+    throw new DeviceNotApprovedError();
+  }
 
   const signature = await signChallengeNonce(args.privateKeyPkcs8, challenge.nonce);
   const response = await fetch(`${args.baseUrl}/api/v1/staff/sessions`, {

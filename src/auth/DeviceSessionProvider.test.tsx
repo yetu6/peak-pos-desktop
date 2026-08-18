@@ -31,13 +31,15 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function Probe() {
-  const { shell, identity, session, unlock, switchStaff, phase } = useDeviceSession();
+  const { shell, identity, session, unlock, switchStaff, phase, error } = useDeviceSession();
   return (
     <div>
       <div data-testid="shell">{shell}</div>
       <div data-testid="phase">{phase}</div>
       <div data-testid="device">{identity?.deviceCode ?? ""}</div>
+      <div data-testid="approved">{identity?.approved ? "yes" : "no"}</div>
       <div data-testid="ops">{session?.token ?? ""}</div>
+      <div data-testid="error">{error ?? ""}</div>
       <button data-testid="unlock" onClick={() => void unlock("0007", "418205")}>
         Unlock
       </button>
@@ -125,5 +127,44 @@ describe("DeviceSessionProvider", () => {
     expect(screen.getByTestId("ops")).toHaveTextContent("");
     expect(getOperationalSession()).toBeNull();
     expect(localStorage.getItem("peak-pos-session-p1-o1")).toBe("till-1");
+  });
+
+  it("unpairs when Peak withholds a challenge from a till that was already trusted", async () => {
+    const keys = await generateDeviceKeyPair();
+    const store = memoryStore(
+      JSON.stringify({
+        ...keys,
+        deviceCode: "dev_abc",
+        approved: true,
+        terminalName: "Bar 1",
+      }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ title: "Unauthorized" }, 401)),
+    );
+
+    renderSession(store);
+    expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+
+    await userEvent.click(screen.getByTestId("unlock"));
+    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("unpaired"));
+    expect(screen.getByTestId("shell")).toHaveTextContent("UNPAIRED");
+    expect(screen.getByTestId("approved")).toHaveTextContent("no");
+    expect(screen.getByTestId("ops")).toHaveTextContent("");
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "This register is no longer trusted. Pair it again.",
+    );
+    expect(getOperationalSession()).toBeNull();
+    const saved = JSON.parse((await store.load()) ?? "{}") as {
+      approved?: boolean;
+      deviceCode?: string;
+      privateKeyPkcs8?: string;
+      publicKeySpki?: string;
+    };
+    expect(saved.approved).toBeFalsy();
+    expect(saved.deviceCode).toBeUndefined();
+    expect(saved.privateKeyPkcs8).toBe(keys.privateKeyPkcs8);
+    expect(saved.publicKeySpki).toBe(keys.publicKeySpki);
   });
 });

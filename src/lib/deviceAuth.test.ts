@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateDeviceKeyPair } from "./deviceCrypto";
 import {
   DeviceNotApprovedError,
+  DeviceRevokedError,
   StaffLoginRejectedError,
   createStaffSession,
   humanDeviceError,
@@ -177,6 +178,24 @@ describe("deviceAuth client", () => {
     ).rejects.toBeInstanceOf(DeviceNotApprovedError);
   });
 
+  it("denies a previously paired till when Peak withholds the challenge, even with a valid PIN", async () => {
+    const keys = await generateDeviceKeyPair();
+    const fetchMock = vi.fn(async () => jsonResponse({ title: "Unauthorized" }, 401));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      createStaffSession({
+        baseUrl: "http://peak.test",
+        deviceCode: "dev_abc",
+        privateKeyPkcs8: keys.privateKeyPkcs8,
+        staffNumber: "0007",
+        pin: "418205",
+        previouslyApproved: true,
+      }),
+    ).rejects.toBeInstanceOf(DeviceRevokedError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(fetchMock.mock.calls)).toContain("/devices/challenges");
+  });
+
   it("rejects a wrong PIN with a till-safe error", async () => {
     const keys = await generateDeviceKeyPair();
     vi.stubGlobal(
@@ -209,6 +228,9 @@ describe("deviceAuth client", () => {
     );
     expect(humanDeviceError(new StaffLoginRejectedError())).toBe(
       "That staff number or PIN was not accepted.",
+    );
+    expect(humanDeviceError(new DeviceRevokedError())).toBe(
+      "This register is no longer trusted. Pair it again.",
     );
     expect(humanDeviceError(new Error("boom at Object.<anonymous>"))).toBe(
       "Something went wrong. Try again.",

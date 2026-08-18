@@ -12,6 +12,7 @@ import { applyOpsTokenToBridge } from "../lib/applyOpsToken";
 import {
   createStaffSession,
   DeviceNotApprovedError,
+  DeviceRevokedError,
   getPairingStatus,
   humanDeviceError,
   requestPairing,
@@ -364,6 +365,7 @@ export function DeviceSessionProvider({
           privateKeyPkcs8: current.privateKeyPkcs8,
           staffNumber,
           pin,
+          previouslyApproved: current.approved === true,
         });
         try {
           await applyOpsToken(next.token);
@@ -382,6 +384,17 @@ export function DeviceSessionProvider({
         armExpiry(next);
         setPhase("ready");
       } catch (err) {
+        if (err instanceof DeviceRevokedError) {
+          await persist({
+            ...current,
+            approved: false,
+            deviceCode: undefined,
+            pairing: undefined,
+          });
+          setPhase("unpaired");
+          setError(humanDeviceError(err));
+          return;
+        }
         if (err instanceof DeviceNotApprovedError) {
           setPhase("waiting");
           setError(humanDeviceError(err));
