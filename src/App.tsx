@@ -10,6 +10,7 @@ import { NewOrder } from "./pages/NewOrder";
 import { PairingScreen } from "./pages/PairingScreen";
 import { PinUnlock } from "./pages/PinUnlock";
 import { SetupScreen } from "./pages/SetupScreen";
+import { VerificationGate } from "./pages/VerificationGate";
 import { RealtimeClient } from "./realtime/RealtimeClient";
 import { RealtimeProvider, useRealtimeEvents } from "./realtime/RealtimeProvider";
 import { useOutletId, usePropertyId } from "./hooks/usePosData";
@@ -184,7 +185,13 @@ function AuthGate() {
   }
   if (phase === "needs-url") return <SetupScreen />;
   if (shell === "PAIRED_LOCKED") return <PinUnlock />;
-  if (shell === "OPERATIONAL") return <LiveRegister />;
+  if (shell === "OPERATIONAL") {
+    return (
+      <VerificationGate>
+        <LiveRegister />
+      </VerificationGate>
+    );
+  }
   return <PairingScreen />;
 }
 

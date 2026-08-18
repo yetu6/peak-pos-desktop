@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
+import { createApiClient } from "../lib/api";
 import {
   createPosApi,
   type FolioResponse,
@@ -33,6 +34,44 @@ export function useOutletId(): string {
   const session = getOperationalSession();
   if (session?.outletId) return session.outletId;
   return devIdentityFromEnv().outletId;
+}
+
+export function useTenantId(): string {
+  const session = getOperationalSession();
+  if (session?.tenantId) return session.tenantId;
+  return devIdentityFromEnv().tenantId;
+}
+
+/**
+ * verify_business only ever moves forward — TenantTrustControlService marks it
+ * 'succeeded' the moment FBC approves the tenant's KYB case (or carries an
+ * already-approved application's evidence onto a freshly provisioned tenant)
+ * and nothing in Peak ever reverts it. A query error here means "couldn't
+ * check", not "unverified" — the register stays open rather than locking
+ * staff out over a transient failure this gate was never meant to enforce as
+ * a real security boundary.
+ */
+export function useTenantVerification(): {
+  status: "loading" | "verified" | "unverified" | "unknown";
+} {
+  const tenantId = useTenantId();
+  const query = useQuery({
+    queryKey: ["tenants", "onboarding", tenantId],
+    enabled: Boolean(tenantId),
+    retry: false,
+    queryFn: async () => {
+      const { data, error } = await createApiClient().GET("/api/v1/tenants/{tenantId}/onboarding", {
+        params: { path: { tenantId } },
+      });
+      if (error) throw new Error(String(error));
+      return data;
+    },
+  });
+
+  if (query.isLoading) return { status: "loading" };
+  if (query.isError) return { status: "unknown" };
+  const step = query.data?.steps?.find((candidate) => candidate.key === "verify_business");
+  return { status: step?.status === "succeeded" ? "verified" : "unverified" };
 }
 
 export function useOutletMenu() {
