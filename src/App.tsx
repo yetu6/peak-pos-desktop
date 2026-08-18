@@ -20,14 +20,9 @@ import {
   createRealtimeCursorStorage,
 } from "./lib/realtimeBackfill";
 import { SessionExpiredError } from "./lib/operationalSession";
+import { defaultWorkspacePage, workspaceNav, type WorkspacePage } from "./lib/workspace";
 
-type Page = "orders" | "new" | "kitchen";
-
-const NAV: Array<{ page: Page; label: string; icon: "orders" | "kitchen" | "plus" }> = [
-  { page: "orders", label: "Active Orders", icon: "orders" },
-  { page: "new", label: "New Order", icon: "plus" },
-  { page: "kitchen", label: "Kitchen", icon: "kitchen" },
-];
+type Page = WorkspacePage;
 
 function useClock(): string {
   const [now, setNow] = useState(() => new Date());
@@ -45,12 +40,17 @@ function staffLabel(staffNumber: string | undefined): { name: string; initials: 
 
 function PosShell() {
   const { session, switchStaff, shell, identity } = useDeviceSession();
-  const [page, setPage] = useState<Page>("orders");
+  const nav = workspaceNav(identity?.mode);
+  const [page, setPage] = useState<Page>(() => defaultWorkspacePage(identity?.mode));
   const outletId = useOutletId();
   const propertyId = usePropertyId();
   const clock = useClock();
   const [lastEvent, setLastEvent] = useState<string | null>(null);
   const staff = staffLabel(session?.staffNumber);
+
+  if (!nav.some((item) => item.page === page)) {
+    setPage(nav[0]?.page ?? "orders");
+  }
 
   useRealtimeEvents(
     { kind: "propertyOperations", propertyId },
@@ -65,7 +65,7 @@ function PosShell() {
           <span className="font-display text-lg text-white">Peak POS</span>
         </div>
         <nav className="flex-1 overflow-y-auto py-2">
-          {NAV.map((item) => (
+          {nav.map((item) => (
             <button
               key={item.page}
               data-testid={`nav-${item.page}`}
