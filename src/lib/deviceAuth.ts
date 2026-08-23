@@ -50,6 +50,12 @@ export interface DeviceChallenge {
   expiresAt: string;
 }
 
+export interface RosterEntry {
+  fullName: string;
+  /** The local sequence to type on this terminal ("00042"), not the full staff number. */
+  staffNumber: string;
+}
+
 function publicJsonHeaders(): HeadersInit {
   return { "Content-Type": "application/json" };
 }
@@ -171,6 +177,42 @@ export async function issueChallenge(
 
 function optionalId(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/**
+ * "Who's using this terminal?" — a tap-to-select roster so a waiter never has to remember or
+ * type a staff number. A convenience, not a hard requirement: any failure (device not yet
+ * approved, revoked, offline, malformed response) resolves to an empty list rather than
+ * throwing, so the till always falls back to manual staff-number entry instead of blocking the
+ * lock screen. Real revocation is still caught the moment PIN entry is actually attempted.
+ */
+export async function fetchStaffRoster(
+  baseUrl: string,
+  deviceCode: string,
+  privateKeyPkcs8: string,
+): Promise<RosterEntry[]> {
+  try {
+    const challenge = await issueChallenge(baseUrl, deviceCode);
+    if (!challenge) return [];
+    const signature = await signChallengeNonce(privateKeyPkcs8, challenge.nonce);
+    const response = await fetch(`${baseUrl}/api/v1/staff/sessions/roster`, {
+      method: "POST",
+      headers: publicJsonHeaders(),
+      body: JSON.stringify({ deviceCode, challengeId: challenge.challengeId, signature }),
+    });
+    if (!response.ok) return [];
+    const body = (await readJson(response)) as { staff?: unknown };
+    if (!Array.isArray(body?.staff)) return [];
+    return body.staff.filter(
+      (entry): entry is RosterEntry =>
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof (entry as RosterEntry).fullName === "string" &&
+        typeof (entry as RosterEntry).staffNumber === "string",
+    );
+  } catch {
+    return [];
+  }
 }
 
 export async function createStaffSession(args: {

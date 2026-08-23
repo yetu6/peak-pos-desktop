@@ -31,7 +31,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function Probe() {
-  const { shell, identity, session, unlock, switchStaff, phase, error } = useDeviceSession();
+  const { shell, identity, session, unlock, switchStaff, phase, error, roster } =
+    useDeviceSession();
   return (
     <div>
       <div data-testid="shell">{shell}</div>
@@ -40,6 +41,7 @@ function Probe() {
       <div data-testid="approved">{identity?.approved ? "yes" : "no"}</div>
       <div data-testid="ops">{session?.token ?? ""}</div>
       <div data-testid="error">{error ?? ""}</div>
+      <div data-testid="roster">{roster.map((entry) => entry.fullName).join(",")}</div>
       <button data-testid="unlock" onClick={() => void unlock("0007", "418205")}>
         Unlock
       </button>
@@ -127,6 +129,38 @@ describe("DeviceSessionProvider", () => {
     expect(screen.getByTestId("ops")).toHaveTextContent("");
     expect(getOperationalSession()).toBeNull();
     expect(localStorage.getItem("peak-pos-session-p1-o1")).toBe("till-1");
+  });
+
+  it("loads the staff roster on entering the locked phase, for the tap-to-select PIN screen", async () => {
+    const keys = await generateDeviceKeyPair();
+    const store = memoryStore(
+      JSON.stringify({
+        ...keys,
+        deviceCode: "dev_abc",
+        approved: true,
+        terminalName: "Bar 1",
+      }),
+    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/devices/challenges")) {
+        return jsonResponse({
+          challengeId: "11111111-1111-1111-1111-111111111111",
+          nonce: btoa("n".repeat(32)),
+          expiresAt: "2099-01-01T00:00:00Z",
+        });
+      }
+      if (String(input).endsWith("/staff/sessions/roster")) {
+        return jsonResponse({
+          staff: [{ fullName: "Amina Hassan", staffNumber: "00001" }],
+        });
+      }
+      throw new Error(`unexpected fetch: ${String(input)}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSession(store);
+    expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+    await waitFor(() => expect(screen.getByTestId("roster")).toHaveTextContent("Amina Hassan"));
   });
 
   it("unpairs when Peak withholds a challenge from a till that was already trusted", async () => {

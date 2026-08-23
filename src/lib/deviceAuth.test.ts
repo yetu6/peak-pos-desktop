@@ -5,6 +5,7 @@ import {
   DeviceRevokedError,
   StaffLoginRejectedError,
   createStaffSession,
+  fetchStaffRoster,
   humanDeviceError,
   issueChallenge,
   requestPairing,
@@ -220,6 +221,90 @@ describe("deviceAuth client", () => {
         pin: "000000",
       }),
     ).rejects.toBeInstanceOf(StaffLoginRejectedError);
+  });
+
+  it("fetches the terminal's staff roster with a signed device challenge", async () => {
+    const keys = await generateDeviceKeyPair();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/devices/challenges")) {
+        return jsonResponse({
+          challengeId: "11111111-1111-1111-1111-111111111111",
+          nonce: btoa("n".repeat(32)),
+          expiresAt: "2026-08-15T21:02:00Z",
+        });
+      }
+      return jsonResponse({
+        staff: [
+          { fullName: "Amina Hassan", staffNumber: "00001" },
+          { fullName: "Grace Mushi", staffNumber: "00002" },
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const roster = await fetchStaffRoster("http://peak.test", "dev_abc", keys.privateKeyPkcs8);
+
+    expect(roster).toEqual([
+      { fullName: "Amina Hassan", staffNumber: "00001" },
+      { fullName: "Grace Mushi", staffNumber: "00002" },
+    ]);
+    const rosterCall = fetchMock.mock.calls.find((call) =>
+      String(call[0]).endsWith("/staff/sessions/roster"),
+    ) as unknown as [string, RequestInit] | undefined;
+    expect(rosterCall).toBeTruthy();
+    const body = JSON.parse(String(rosterCall?.[1]?.body)) as {
+      deviceCode: string;
+      challengeId: string;
+      signature: string;
+    };
+    expect(body.deviceCode).toBe("dev_abc");
+    expect(body.challengeId).toBe("11111111-1111-1111-1111-111111111111");
+    expect(body.signature.length).toBeGreaterThan(40);
+  });
+
+  it("resolves the roster to an empty list rather than throwing when Peak withholds the challenge", async () => {
+    const keys = await generateDeviceKeyPair();
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ title: "Unauthorized" }, 401)));
+
+    await expect(
+      fetchStaffRoster("http://peak.test", "dev_abc", keys.privateKeyPkcs8),
+    ).resolves.toEqual([]);
+  });
+
+  it("resolves the roster to an empty list on a malformed response", async () => {
+    const keys = await generateDeviceKeyPair();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith("/devices/challenges")) {
+          return jsonResponse({
+            challengeId: "11111111-1111-1111-1111-111111111111",
+            nonce: btoa("n".repeat(32)),
+            expiresAt: "2026-08-15T21:02:00Z",
+          });
+        }
+        return jsonResponse({ staff: "not-a-list" });
+      }),
+    );
+
+    await expect(
+      fetchStaffRoster("http://peak.test", "dev_abc", keys.privateKeyPkcs8),
+    ).resolves.toEqual([]);
+  });
+
+  it("resolves the roster to an empty list on a network failure", async () => {
+    const keys = await generateDeviceKeyPair();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+
+    await expect(
+      fetchStaffRoster("http://peak.test", "dev_abc", keys.privateKeyPkcs8),
+    ).resolves.toEqual([]);
   });
 
   it("maps network failures to till-safe copy", () => {

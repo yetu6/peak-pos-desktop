@@ -13,10 +13,12 @@ import {
   createStaffSession,
   DeviceNotApprovedError,
   DeviceRevokedError,
+  fetchStaffRoster,
   getPairingStatus,
   humanDeviceError,
   requestPairing,
   StaffLoginRejectedError,
+  type RosterEntry,
 } from "../lib/deviceAuth";
 import { generateDeviceKeyPair } from "../lib/deviceCrypto";
 import {
@@ -71,6 +73,10 @@ export interface DeviceSessionValue {
   switchStaff: (reason?: string) => void;
   /** Present only when Tauri stored the private key as a file. */
   keyStorageWarning: string | null;
+  /** Tap-to-select staff for this till's own property. Empty when unavailable — never blocks
+   *  PIN entry; manual staff-number entry always remains the fallback. */
+  roster: RosterEntry[];
+  refreshRoster: () => Promise<void>;
 }
 
 const DeviceSessionContext = createContext<DeviceSessionValue | null>(null);
@@ -104,6 +110,7 @@ export function DeviceSessionProvider({
   const [error, setError] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState<string | null>(baseUrl ?? null);
   const [keyStorageWarning, setKeyStorageWarning] = useState<string | null>(null);
+  const [roster, setRoster] = useState<RosterEntry[]>([]);
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const identityRef = useRef(identity);
   identityRef.current = identity;
@@ -164,6 +171,20 @@ export function DeviceSessionProvider({
     },
     [clearExpiry, switchStaff],
   );
+
+  const refreshRoster = useCallback(async () => {
+    const current = identityRef.current;
+    if (!current?.deviceCode) {
+      setRoster([]);
+      return;
+    }
+    setRoster(await fetchStaffRoster(peakUrl, current.deviceCode, current.privateKeyPkcs8));
+  }, [peakUrl]);
+
+  useEffect(() => {
+    if (phase !== "locked") return;
+    void refreshRoster();
+  }, [phase, refreshRoster]);
 
   useEffect(() => {
     let cancelled = false;
@@ -423,6 +444,8 @@ export function DeviceSessionProvider({
       unlock,
       switchStaff,
       keyStorageWarning,
+      roster,
+      refreshRoster,
     }),
     [
       phase,
@@ -435,6 +458,8 @@ export function DeviceSessionProvider({
       unlock,
       switchStaff,
       keyStorageWarning,
+      roster,
+      refreshRoster,
     ],
   );
 
