@@ -10,17 +10,20 @@ import {
 } from "react";
 import { applyOpsTokenToBridge } from "../lib/applyOpsToken";
 import {
+  confirmPairingClaim,
   createStaffSession,
   DeviceNotApprovedError,
   DeviceRevokedError,
   fetchStaffRoster,
   getPairingStatus,
   humanDeviceError,
+  rejectPairingClaim,
   requestPairing,
   StaffLoginRejectedError,
+  type PairingStatus,
   type RosterEntry,
 } from "../lib/deviceAuth";
-import { generateDeviceKeyPair } from "../lib/deviceCrypto";
+import { canonicalClaimMessage, generateDeviceKeyPair, signClaimMessage } from "../lib/deviceCrypto";
 import {
   loadDeviceIdentity,
   loadDeviceKeyStorageStatus,
@@ -50,8 +53,27 @@ export type DevicePhase =
   | "needs-url"
   | "unpaired"
   | "waiting"
+  | "confirming"
   | "locked"
   | "ready";
+
+/**
+ * A manager's candidate claim, waiting on this terminal's own signed confirmation. Carries
+ * everything [canonicalClaimMessage] needs (ids, not just labels) plus the labels a human
+ * reads before deciding.
+ */
+export interface PendingClaim {
+  claimId: string;
+  tenantId: string;
+  propertyId: string;
+  outletId?: string;
+  propertyName?: string;
+  outletName?: string;
+  terminalName: string;
+  mode: string;
+  nonceB64: string;
+  expiresAt?: string;
+}
 
 export function shellStateOf(phase: DevicePhase): AppShellState {
   if (phase === "ready") return "OPERATIONAL";
@@ -68,6 +90,13 @@ export interface DeviceSessionValue {
   saveApiUrl: (url: string) => Promise<void>;
   startPairing: () => Promise<void>;
   continueAfterApproval: () => Promise<void>;
+  /** Present only during phase "confirming" — the candidate claim a manager submitted,
+   *  waiting on this terminal's own decision. */
+  claim: PendingClaim | null;
+  /** Signs the exact candidate binding with this terminal's own key. Only this can pair. */
+  confirmPairing: () => Promise<void>;
+  /** Declines a claim this terminal does not recognise; the code rotates. */
+  rejectPairing: () => Promise<void>;
   unlock: (staffNumber: string, pin: string) => Promise<void>;
   /** End the waiter ops session. Does not unpair or close the cashier till. */
   switchStaff: (reason?: string) => void;
@@ -111,9 +140,12 @@ export function DeviceSessionProvider({
   const [apiUrl, setApiUrl] = useState<string | null>(baseUrl ?? null);
   const [keyStorageWarning, setKeyStorageWarning] = useState<string | null>(null);
   const [roster, setRoster] = useState<RosterEntry[]>([]);
+  const [claim, setClaim] = useState<PendingClaim | null>(null);
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const identityRef = useRef(identity);
   identityRef.current = identity;
+  const claimRef = useRef(claim);
+  claimRef.current = claim;
 
   const peakUrl = baseUrl ?? apiUrl ?? getApiBaseUrl();
 
@@ -292,6 +324,33 @@ export function DeviceSessionProvider({
     [persist],
   );
 
+  /** Populates [claim] from a "claim_pending_confirmation" status response, or clears it. */
+  const applyStatus = useCallback((status: PairingStatus): PendingClaim | null => {
+    if (
+      status.status !== "claim_pending_confirmation" ||
+      !status.claimId ||
+      !status.claimTenantId ||
+      !status.claimPropertyId ||
+      !status.claimTerminalName ||
+      !status.claimMode ||
+      !status.claimNonce
+    ) {
+      return null;
+    }
+    return {
+      claimId: status.claimId,
+      tenantId: status.claimTenantId,
+      propertyId: status.claimPropertyId,
+      outletId: status.claimOutletId,
+      propertyName: status.claimPropertyName,
+      outletName: status.claimOutletName,
+      terminalName: status.claimTerminalName,
+      mode: status.claimMode,
+      nonceB64: status.claimNonce,
+      expiresAt: status.claimExpiresAt,
+    };
+  }, []);
+
   const continueAfterApproval = useCallback(async () => {
     const current = identityRef.current;
     const pairingRequestId = current?.pairing?.pairingRequestId;
@@ -302,26 +361,74 @@ export function DeviceSessionProvider({
     setError(null);
     try {
       const status = await getPairingStatus(peakUrl, pairingRequestId);
-      if (status.status === "approved") {
+      if (status.status === "paired") {
         await markApproved(status);
         return;
       }
-      if (status.status === "expired") {
-        setError("This code expired. Generate a new one.");
-        return;
-      }
-      if (status.status === "denied") {
-        setError("This pairing was denied. Generate a new code.");
+      const candidate = applyStatus(status);
+      if (candidate) {
+        setClaim(candidate);
+        setPhase("confirming");
         return;
       }
       setError("Not approved yet. Ask a manager to enter this pairing code.");
     } catch (err) {
       setError(humanDeviceError(err));
     }
+  }, [applyStatus, markApproved, peakUrl]);
+
+  const confirmPairing = useCallback(async () => {
+    const current = identityRef.current;
+    const pending = claimRef.current;
+    if (!current || !pending) return;
+    setError(null);
+    try {
+      const message = canonicalClaimMessage({
+        pairingRequestId: current.pairing?.pairingRequestId ?? "",
+        claimId: pending.claimId,
+        nonceB64: pending.nonceB64,
+        tenantId: pending.tenantId,
+        propertyId: pending.propertyId,
+        outletId: pending.outletId,
+        terminalName: pending.terminalName,
+        mode: pending.mode,
+      });
+      const signature = await signClaimMessage(current.privateKeyPkcs8, message);
+      const result = await confirmPairingClaim(
+        peakUrl,
+        current.pairing?.pairingRequestId ?? "",
+        pending.claimId,
+        signature,
+      );
+      setClaim(null);
+      await markApproved({
+        deviceCode: result.deviceCode,
+        terminalName: pending.terminalName,
+        mode: pending.mode,
+      });
+    } catch (err) {
+      setError(humanDeviceError(err));
+    }
   }, [markApproved, peakUrl]);
 
+  const rejectPairing = useCallback(async () => {
+    const current = identityRef.current;
+    const pending = claimRef.current;
+    if (!current || !pending) return;
+    setError(null);
+    try {
+      await rejectPairingClaim(peakUrl, current.pairing?.pairingRequestId ?? "", pending.claimId);
+    } catch (err) {
+      setError(humanDeviceError(err));
+    } finally {
+      setClaim(null);
+      setPhase("waiting");
+      await startPairing();
+    }
+  }, [peakUrl, startPairing]);
+
   useEffect(() => {
-    if (phase !== "waiting") return;
+    if (phase !== "waiting" && phase !== "confirming") return;
     let cancelled = false;
     let renewing = false;
 
@@ -329,6 +436,8 @@ export function DeviceSessionProvider({
       if (renewing) return;
       renewing = true;
       try {
+        setClaim(null);
+        setPhase("waiting");
         await startPairing();
       } finally {
         renewing = false;
@@ -342,25 +451,32 @@ export function DeviceSessionProvider({
         await renew();
         return;
       }
-      if (Date.parse(pairing.expiresAt) <= Date.now()) {
+      if (phase === "waiting" && Date.parse(pairing.expiresAt) <= Date.now()) {
         await renew();
         return;
       }
       try {
         const status = await getPairingStatus(peakUrl, pairing.pairingRequestId);
         if (cancelled) return;
-        if (status.status === "pending") return;
-        if (status.status === "approved") {
+        if (status.status === "paired") {
           await markApproved(status);
           return;
         }
-        if (status.status === "expired") {
-          await renew();
+        const candidate = applyStatus(status);
+        if (candidate) {
+          setClaim(candidate);
+          setPhase("confirming");
           return;
         }
-        if (status.status === "denied") {
-          setError("This pairing was denied. Generate a new code.");
+        if (status.status === "pending") {
+          // A claim we were showing was rejected or lazily expired server-side and the
+          // code rotated — the till learns the new code only by re-registering its key,
+          // which the server treats as replacing the same row, not a new identity.
+          if (phase === "confirming") await renew();
+          return;
         }
+        // rejected/expired/abandoned
+        await renew();
       } catch (err) {
         if (!cancelled) setError(humanDeviceError(err));
       }
@@ -372,7 +488,7 @@ export function DeviceSessionProvider({
       cancelled = true;
       clearInterval(id);
     };
-  }, [markApproved, peakUrl, phase, startPairing]);
+  }, [applyStatus, markApproved, peakUrl, phase, startPairing]);
 
   const unlock = useCallback(
     async (staffNumber: string, pin: string) => {
@@ -441,6 +557,9 @@ export function DeviceSessionProvider({
       saveApiUrl,
       startPairing,
       continueAfterApproval,
+      claim,
+      confirmPairing,
+      rejectPairing,
       unlock,
       switchStaff,
       keyStorageWarning,
@@ -455,6 +574,9 @@ export function DeviceSessionProvider({
       saveApiUrl,
       startPairing,
       continueAfterApproval,
+      claim,
+      confirmPairing,
+      rejectPairing,
       unlock,
       switchStaff,
       keyStorageWarning,

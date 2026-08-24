@@ -31,8 +31,20 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function Probe() {
-  const { shell, identity, session, unlock, switchStaff, phase, error, roster } =
-    useDeviceSession();
+  const {
+    shell,
+    identity,
+    session,
+    unlock,
+    switchStaff,
+    phase,
+    error,
+    roster,
+    claim,
+    confirmPairing,
+    rejectPairing,
+    startPairing,
+  } = useDeviceSession();
   return (
     <div>
       <div data-testid="shell">{shell}</div>
@@ -42,11 +54,21 @@ function Probe() {
       <div data-testid="ops">{session?.token ?? ""}</div>
       <div data-testid="error">{error ?? ""}</div>
       <div data-testid="roster">{roster.map((entry) => entry.fullName).join(",")}</div>
+      <div data-testid="claim-property">{claim?.propertyName ?? ""}</div>
       <button data-testid="unlock" onClick={() => void unlock("0007", "418205")}>
         Unlock
       </button>
       <button data-testid="switch" onClick={() => switchStaff()}>
         Switch
+      </button>
+      <button data-testid="confirm-claim" onClick={() => void confirmPairing()}>
+        Confirm
+      </button>
+      <button data-testid="reject-claim" onClick={() => void rejectPairing()}>
+        Reject
+      </button>
+      <button data-testid="start-pairing" onClick={() => void startPairing()}>
+        Start pairing
       </button>
     </div>
   );
@@ -200,5 +222,117 @@ describe("DeviceSessionProvider", () => {
     expect(saved.deviceCode).toBeUndefined();
     expect(saved.privateKeyPkcs8).toBe(keys.privateKeyPkcs8);
     expect(saved.publicKeySpki).toBe(keys.publicKeySpki);
+  });
+
+  it("only pairs after this till signs and confirms the manager's candidate claim", async () => {
+    const store = memoryStore();
+    const future = new Date(Date.now() + 120_000).toISOString();
+    let confirmBody: { claimId?: string; signature?: string } | null = null;
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/devices/pairing-requests")) {
+        return jsonResponse({
+          pairingRequestId: "req-1",
+          deviceCode: "dev_abc",
+          pairingCode: "123456",
+          fingerprint: "AA:BB:CC:DD",
+          expiresAt: future,
+        });
+      }
+      if (url.endsWith("/devices/pairing-requests/req-1")) {
+        return jsonResponse({
+          status: "claim_pending_confirmation",
+          claimId: "claim-1",
+          claimTenantId: "tenant-1",
+          claimPropertyId: "property-1",
+          claimPropertyName: "Alpha Grand Hotel",
+          claimTerminalName: "Front Desk Till",
+          claimMode: "POS",
+          claimNonce: btoa("n".repeat(32)),
+          claimExpiresAt: future,
+        });
+      }
+      if (url.endsWith("/devices/pairing-requests/req-1/confirm")) {
+        confirmBody = JSON.parse(String(init?.body)) as { claimId?: string; signature?: string };
+        return jsonResponse({ deviceId: "device-1", deviceCode: "dev_abc" });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSession(store);
+    expect(await screen.findByTestId("shell")).toHaveTextContent("UNPAIRED");
+
+    await userEvent.click(screen.getByTestId("start-pairing"));
+    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("confirming"));
+    expect(screen.getByTestId("claim-property")).toHaveTextContent("Alpha Grand Hotel");
+    // The claim alone never pairs the device — no paired state yet.
+    expect(screen.getByTestId("shell")).toHaveTextContent("UNPAIRED");
+
+    await userEvent.click(screen.getByTestId("confirm-claim"));
+    await waitFor(() => expect(screen.getByTestId("shell")).toHaveTextContent("PAIRED_LOCKED"));
+    expect(screen.getByTestId("device")).toHaveTextContent("dev_abc");
+    expect(screen.getByTestId("approved")).toHaveTextContent("yes");
+    expect(confirmBody).not.toBeNull();
+    expect(confirmBody!.claimId).toBe("claim-1");
+    expect(typeof confirmBody!.signature).toBe("string");
+    expect(confirmBody!.signature!.length).toBeGreaterThan(0);
+  });
+
+  it("rejecting a claim rotates to a fresh pairing code instead of pairing it", async () => {
+    const store = memoryStore();
+    const future = new Date(Date.now() + 120_000).toISOString();
+    let rejectCalled = false;
+    let pairingRequestCalls = 0;
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/devices/pairing-requests")) {
+        pairingRequestCalls += 1;
+        return jsonResponse({
+          pairingRequestId: "req-1",
+          deviceCode: "dev_abc",
+          pairingCode: pairingRequestCalls === 1 ? "111111" : "222222",
+          fingerprint: "AA:BB:CC:DD",
+          expiresAt: future,
+        });
+      }
+      if (url.endsWith("/devices/pairing-requests/req-1/reject")) {
+        rejectCalled = true;
+        return jsonResponse({});
+      }
+      if (url.endsWith("/devices/pairing-requests/req-1")) {
+        if (rejectCalled) {
+          return jsonResponse({ status: "pending" });
+        }
+        return jsonResponse({
+          status: "claim_pending_confirmation",
+          claimId: "claim-1",
+          claimTenantId: "tenant-attacker",
+          claimPropertyId: "property-attacker",
+          claimPropertyName: "Some Other Hotel",
+          claimTerminalName: "Bar Till",
+          claimMode: "POS",
+          claimNonce: btoa("n".repeat(32)),
+          claimExpiresAt: future,
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSession(store);
+    expect(await screen.findByTestId("shell")).toHaveTextContent("UNPAIRED");
+
+    await userEvent.click(screen.getByTestId("start-pairing"));
+    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("confirming"));
+    expect(screen.getByTestId("claim-property")).toHaveTextContent("Some Other Hotel");
+
+    await userEvent.click(screen.getByTestId("reject-claim"));
+    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("waiting"));
+    expect(screen.getByTestId("shell")).toHaveTextContent("UNPAIRED");
+    expect(screen.getByTestId("approved")).toHaveTextContent("no");
+    expect(pairingRequestCalls).toBeGreaterThanOrEqual(2);
   });
 });

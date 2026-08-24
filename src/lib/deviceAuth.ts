@@ -34,7 +34,13 @@ export interface PairingRequest {
   expiresAt: string;
 }
 
-export type PairingWaitStatus = "pending" | "approved" | "expired" | "denied";
+export type PairingWaitStatus =
+  | "pending"
+  | "claim_pending_confirmation"
+  | "paired"
+  | "rejected"
+  | "expired"
+  | "abandoned";
 
 export interface PairingStatus {
   status: PairingWaitStatus;
@@ -42,6 +48,18 @@ export interface PairingStatus {
   expiresAt?: string;
   terminalName?: string;
   mode?: string;
+  /** Present only while status is "claim_pending_confirmation" — a manager's candidate
+   *  binding, waiting on this terminal's own signed confirmation. */
+  claimId?: string;
+  claimTenantId?: string;
+  claimPropertyId?: string;
+  claimOutletId?: string;
+  claimPropertyName?: string;
+  claimOutletName?: string;
+  claimTerminalName?: string;
+  claimMode?: string;
+  claimNonce?: string;
+  claimExpiresAt?: string;
 }
 
 export interface DeviceChallenge {
@@ -120,6 +138,15 @@ export async function requestPairing(
   return body;
 }
 
+const PAIRING_WAIT_STATUSES: readonly PairingWaitStatus[] = [
+  "pending",
+  "claim_pending_confirmation",
+  "paired",
+  "rejected",
+  "expired",
+  "abandoned",
+];
+
 /** Truthful wait. Pending leaks no hotel. 404 is treated as expired. */
 export async function getPairingStatus(
   baseUrl: string,
@@ -135,24 +162,82 @@ export async function getPairingStatus(
     throw new Error(`Pairing status failed with HTTP ${response.status}`);
   }
   const body = (await readJson(response)) as Partial<PairingStatus>;
-  if (
-    body?.status !== "pending" &&
-    body?.status !== "approved" &&
-    body?.status !== "expired" &&
-    body?.status !== "denied"
-  ) {
+  if (!body?.status || !PAIRING_WAIT_STATUSES.includes(body.status)) {
     throw new Error("Pairing status returned an incomplete response");
   }
-  if (body.status !== "approved") {
-    return { status: body.status };
+  if (body.status === "paired") {
+    return {
+      status: "paired",
+      deviceCode: optionalId(body.deviceCode),
+      expiresAt: optionalId(body.expiresAt),
+      terminalName: optionalId(body.terminalName),
+      mode: optionalId(body.mode),
+    };
   }
-  return {
-    status: "approved",
-    deviceCode: optionalId(body.deviceCode),
-    expiresAt: optionalId(body.expiresAt),
-    terminalName: optionalId(body.terminalName),
-    mode: optionalId(body.mode),
-  };
+  if (body.status === "claim_pending_confirmation") {
+    return {
+      status: "claim_pending_confirmation",
+      claimId: optionalId(body.claimId),
+      claimTenantId: optionalId(body.claimTenantId),
+      claimPropertyId: optionalId(body.claimPropertyId),
+      claimOutletId: optionalId(body.claimOutletId),
+      claimPropertyName: optionalId(body.claimPropertyName),
+      claimOutletName: optionalId(body.claimOutletName),
+      claimTerminalName: optionalId(body.claimTerminalName),
+      claimMode: optionalId(body.claimMode),
+      claimNonce: optionalId(body.claimNonce),
+      claimExpiresAt: optionalId(body.claimExpiresAt),
+    };
+  }
+  return { status: body.status };
+}
+
+/**
+ * The terminal proves possession of its own key over the exact candidate binding it was
+ * shown. Only this — never the manager's original submission alone — produces a paired
+ * device on the server.
+ */
+export async function confirmPairingClaim(
+  baseUrl: string,
+  pairingRequestId: string,
+  claimId: string,
+  signature: string,
+): Promise<{ deviceId: string; deviceCode: string }> {
+  const response = await fetch(
+    `${baseUrl}/api/v1/devices/pairing-requests/${pairingRequestId}/confirm`,
+    {
+      method: "POST",
+      headers: publicJsonHeaders(),
+      body: JSON.stringify({ claimId, signature }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Pairing confirmation failed with HTTP ${response.status}`);
+  }
+  const body = (await readJson(response)) as { deviceId?: string; deviceCode?: string };
+  if (!body?.deviceId || !body.deviceCode) {
+    throw new Error("Pairing confirmation returned an incomplete response");
+  }
+  return { deviceId: body.deviceId, deviceCode: body.deviceCode };
+}
+
+/** The terminal declines a candidate claim it does not recognise; the code rotates. */
+export async function rejectPairingClaim(
+  baseUrl: string,
+  pairingRequestId: string,
+  claimId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${baseUrl}/api/v1/devices/pairing-requests/${pairingRequestId}/reject`,
+    {
+      method: "POST",
+      headers: publicJsonHeaders(),
+      body: JSON.stringify({ claimId }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Pairing rejection failed with HTTP ${response.status}`);
+  }
 }
 
 export async function issueChallenge(

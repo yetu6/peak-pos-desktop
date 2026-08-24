@@ -50,18 +50,22 @@ export function isX509SpkiEd25519(publicKeySpki: string): boolean {
   }
 }
 
-/** Sign Peak's Base64 challenge nonce; return Base64 Ed25519 signature. */
-export async function signChallengeNonce(
-  privateKeyPkcs8: string,
-  nonceB64: string,
-): Promise<string> {
-  const key = await crypto.subtle.importKey(
+async function importSigningKey(privateKeyPkcs8: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
     "pkcs8",
     b64ToBytes(privateKeyPkcs8) as BufferSource,
     { name: "Ed25519" },
     false,
     ["sign"],
   );
+}
+
+/** Sign Peak's Base64 challenge nonce; return Base64 Ed25519 signature. */
+export async function signChallengeNonce(
+  privateKeyPkcs8: string,
+  nonceB64: string,
+): Promise<string> {
+  const key = await importSigningKey(privateKeyPkcs8);
   const signature = new Uint8Array(
     await crypto.subtle.sign(
       { name: "Ed25519" },
@@ -70,4 +74,52 @@ export async function signChallengeNonce(
     ),
   );
   return bytesToB64(signature);
+}
+
+/**
+ * Sign a pairing-claim confirmation. Unlike [signChallengeNonce], the input is the
+ * canonical UTF-8 claim message itself (colon-joined ids/name/mode), not a Base64 nonce —
+ * it must byte-for-byte match `DevicePairingService.canonicalClaimMessage` on the server,
+ * built from [canonicalClaimMessage] below.
+ */
+export async function signClaimMessage(
+  privateKeyPkcs8: string,
+  message: string,
+): Promise<string> {
+  const key = await importSigningKey(privateKeyPkcs8);
+  const signature = new Uint8Array(
+    await crypto.subtle.sign(
+      { name: "Ed25519" },
+      key,
+      new TextEncoder().encode(message) as BufferSource,
+    ),
+  );
+  return bytesToB64(signature);
+}
+
+/**
+ * Must match `DevicePairingService.canonicalClaimMessage` exactly: colon-joined
+ * pairingRequestId, claimId, Base64 nonce, tenantId, propertyId, outletId (empty string
+ * when absent), terminalName, mode.
+ */
+export function canonicalClaimMessage(args: {
+  pairingRequestId: string;
+  claimId: string;
+  nonceB64: string;
+  tenantId: string;
+  propertyId: string;
+  outletId?: string | null;
+  terminalName: string;
+  mode: string;
+}): string {
+  return [
+    args.pairingRequestId,
+    args.claimId,
+    args.nonceB64,
+    args.tenantId,
+    args.propertyId,
+    args.outletId ?? "",
+    args.terminalName,
+    args.mode,
+  ].join(":");
 }
