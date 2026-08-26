@@ -16,6 +16,8 @@ import { RealtimeClient } from "./realtime/RealtimeClient";
 import { RealtimeProvider, useRealtimeEvents } from "./realtime/RealtimeProvider";
 import { useOutletId, usePropertyId } from "./hooks/usePosData";
 import { REALTIME_BRIDGE_URL } from "./lib/env";
+import { createRealtimeSocket } from "./lib/peakSocket";
+import { getApiBaseUrl } from "./lib/peakConfig";
 import {
   createRealtimeBackfill,
   createRealtimeCursorStorage,
@@ -154,7 +156,7 @@ function LiveRegister() {
   const client = useMemo(
     () =>
       new RealtimeClient({
-        createSocket: () => new WebSocket(REALTIME_BRIDGE_URL),
+        createSocket: () => createRealtimeSocket({ peakApiUrl: getApiBaseUrl(), bridgeUrl: REALTIME_BRIDGE_URL }),
         backfillEvents: async (after) => {
           try {
             return await createRealtimeBackfill().fetchEvents(after);

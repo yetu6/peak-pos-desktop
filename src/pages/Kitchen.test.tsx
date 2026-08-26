@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RealtimeClient } from "../realtime/RealtimeClient";
 import { RealtimeProvider } from "../realtime/RealtimeProvider";
 import { Kitchen } from "./Kitchen";
-import type { RealtimeEnvelope } from "../realtime/RealtimeEnvelope";
 
 vi.mock("../lib/env", () => ({
   devIdentityFromEnv: () => ({
@@ -61,34 +60,25 @@ class FakeSocket {
   open(): void {
     this.readyState = 1;
     this.onopen?.();
-    this.onmessage?.({ data: "CONNECTED\nversion:1.2\nheart-beat:0,0\n\n\0" });
   }
   emit(body: string): void {
-    const subId = this.sent
-      .find((f) => f.startsWith("SUBSCRIBE\n") && f.includes("/kitchen"))
-      ?.match(/^id:(.+)$/m)?.[1];
-    this.onmessage?.({
-      data: `MESSAGE\ndestination:/topic/outlets/outlet-1/kitchen\nsubscription:${subId ?? "sub-0"}\n\n${body}\0`,
-    });
+    this.onmessage?.({ data: body });
   }
 }
 
 function announce(sequenceId: number, type: string, ticketId: string): string {
-  const event: RealtimeEnvelope = {
-    sequenceId,
-    eventId: `evt-${sequenceId}`,
+  return JSON.stringify({
+    sequence_id: sequenceId,
+    id: `evt-${sequenceId}`,
     type,
-    schemaVersion: 1,
-    aggregateType: "KITCHEN_TICKET",
-    aggregateId: ticketId,
-    aggregateVersion: sequenceId,
-    occurredAt: "2026-08-15T08:00:00Z",
-    tenantId: "tenant-1",
-    propertyId: "property-1",
-    outletId: "outlet-1",
-    payload: { ticketId },
-  };
-  return JSON.stringify(event);
+    version: 1,
+    resource_type: "POS_ORDER",
+    resource_id: ticketId,
+    occurred_at: "2026-08-15T08:00:00Z",
+    organization_id: "tenant-1",
+    property_id: "property-1",
+    data: { outletId: "outlet-1" },
+  });
 }
 
 async function flush(): Promise<void> {
@@ -136,10 +126,10 @@ describe("Kitchen", () => {
     socket.open();
     await flush();
     expect(await screen.findByText(/Kitchen is quiet/)).toBeInTheDocument();
-    expect(socket.sent.join("")).toContain("/topic/outlets/outlet-1/kitchen");
+    expect(socket.sent.join("")).toContain("pos.outlet.outlet-1");
 
     ticketsStore.set("ticket-1", TICKET);
-    socket.emit(announce(1, "pos.kitchen_ticket.created", "ticket-1"));
+    socket.emit(announce(1, "pos.order.sent", "ticket-1"));
     expect(await screen.findByText("K-12")).toBeInTheDocument();
     await waitFor(() => expect(listKitchenTicketsSpy.mock.calls.length).toBeGreaterThan(1));
   });

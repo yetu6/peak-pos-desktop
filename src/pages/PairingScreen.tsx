@@ -1,164 +1,23 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Icon } from "../components/Icon";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
-
-function useCountdown(iso: string | undefined): { label: string; expired: boolean } {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1_000);
-    return () => clearInterval(id);
-  }, []);
-  if (!iso) return { label: "", expired: false };
-  const at = Date.parse(iso);
-  if (!Number.isFinite(at)) return { label: iso, expired: false };
-  const ms = at - now;
-  if (ms <= 0) return { label: "expired", expired: true };
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  return {
-    label: `${minutes}:${String(seconds % 60).padStart(2, "0")}`,
-    expired: false,
-  };
-}
-
-function ConfirmClaimPanel() {
-  const { claim, confirmPairing, rejectPairing } = useDeviceSession();
-  const countdown = useCountdown(claim?.expiresAt);
-  const [busy, setBusy] = useState<"confirm" | "reject" | null>(null);
-
-  if (!claim) return null;
-
-  return (
-    <>
-      <p className="text-[12px] font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-        A manager wants to pair this till
-      </p>
-      <div className="mt-4 space-y-2 text-left" data-testid="claim-summary">
-        <div className="flex items-center justify-between rounded-lg bg-black/5 px-3 py-2">
-          <span className="text-[12px] text-[var(--color-text-muted)]">Property</span>
-          <span className="text-[13px] font-medium text-[var(--color-text-primary)]">
-            {claim.propertyName ?? claim.propertyId}
-          </span>
-        </div>
-        {claim.outletName ? (
-          <div className="flex items-center justify-between rounded-lg bg-black/5 px-3 py-2">
-            <span className="text-[12px] text-[var(--color-text-muted)]">Outlet</span>
-            <span className="text-[13px] font-medium text-[var(--color-text-primary)]">
-              {claim.outletName}
-            </span>
-          </div>
-        ) : null}
-        <div className="flex items-center justify-between rounded-lg bg-black/5 px-3 py-2">
-          <span className="text-[12px] text-[var(--color-text-muted)]">Terminal name</span>
-          <span className="text-[13px] font-medium text-[var(--color-text-primary)]">
-            {claim.terminalName}
-          </span>
-        </div>
-        <div className="flex items-center justify-between rounded-lg bg-black/5 px-3 py-2">
-          <span className="text-[12px] text-[var(--color-text-muted)]">Mode</span>
-          <span className="text-[13px] font-medium text-[var(--color-text-primary)]">
-            {claim.mode}
-          </span>
-        </div>
-      </div>
-      <p className="mt-3 text-[12px] text-[var(--color-text-secondary)]" data-testid="claim-countdown">
-        {countdown.expired ? "This offer expired" : `Decide within ${countdown.label}`}
-      </p>
-      <div className="mt-6 flex gap-3">
-        <button
-          data-testid="claim-reject"
-          disabled={busy !== null}
-          onClick={() => {
-            setBusy("reject");
-            void rejectPairing().finally(() => setBusy(null));
-          }}
-          className="btn-secondary flex-1"
-        >
-          Not this till
-        </button>
-        <button
-          data-testid="claim-confirm"
-          disabled={busy !== null}
-          onClick={() => {
-            setBusy("confirm");
-            void confirmPairing().finally(() => setBusy(null));
-          }}
-          className="btn-primary flex-1"
-        >
-          Confirm
-        </button>
-      </div>
-    </>
-  );
-}
+import { rawPublicKeyB64Url } from "../lib/deviceCrypto";
 
 export function PairingScreen() {
-  const { phase, identity, error, startPairing } = useDeviceSession();
-  const pairing = identity?.pairing;
-  const countdown = useCountdown(pairing?.expiresAt);
-
-  useEffect(() => {
-    if (phase === "unpaired") {
-      void startPairing();
-    }
-  }, [phase, startPairing]);
-
-  return (
-    <div
-      className="auth-shell flex h-screen items-center justify-center p-6"
-      data-testid="pairing-screen"
-    >
-      <span className="sr-only" data-testid="shell-state">
-        UNPAIRED
-      </span>
-      <div className="glass-panel w-full max-w-md p-8 text-center">
-        <div className="mb-6 flex items-center justify-center gap-2">
-          <Icon name="peak-logo" size={28} className="text-[#D4A017]" />
-          <span className="font-display text-2xl text-[var(--color-text-primary)]">Peak POS</span>
-        </div>
-        {phase === "confirming" ? (
-          <ConfirmClaimPanel />
-        ) : phase === "unpaired" || !pairing ? (
-          <>
-            <p className="text-[13px] text-[var(--color-text-secondary)]">Getting a code…</p>
-          </>
-        ) : (
-          <>
-            <p className="text-[12px] font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-              Waiting for manager approval
-            </p>
-            <div
-              className="mt-4 font-mono text-5xl font-semibold tracking-[0.35em] text-[var(--color-text-primary)]"
-              data-testid="pairing-code"
-            >
-              {pairing.pairingCode}
-            </div>
-            <p className="mt-3 text-[12px] text-[var(--color-text-secondary)]" data-testid="pairing-countdown">
-              {countdown.expired ? "Code expired" : `${countdown.label} left`}
-            </p>
-            <p
-              className="mt-2 truncate text-[11px] text-[var(--color-text-muted)]"
-              data-testid="device-code"
-            >
-              Device {identity?.deviceCode}
-            </p>
-            {countdown.expired && (
-              <button
-                data-testid="pairing-regenerate"
-                onClick={() => void startPairing()}
-                className="btn-primary mt-6 w-full"
-              >
-                Generate a new code
-              </button>
-            )}
-          </>
-        )}
-        {error && (
-          <div className="badge badge-danger mt-4" data-testid="pairing-error">
-            {error}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  const { identity, error, commission } = useDeviceSession();
+  const [terminalId, setTerminalId] = useState("");
+  const [credential, setCredential] = useState("");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  async function connect() { if (!terminalId.trim() || !credential.trim() || busy) return; setBusy(true);setLocalError(null);try{await commission(terminalId,credential,name)}catch{setLocalError("Peak rejected this terminal registration. Ask a manager to register it again.")}finally{setBusy(false)} }
+  return <div className="auth-shell flex h-screen items-center justify-center p-6" data-testid="pairing-screen"><span className="sr-only" data-testid="shell-state">UNPAIRED</span><div className="glass-panel w-full max-w-lg p-8">
+    <div className="mb-6 flex items-center justify-center gap-2"><Icon name="peak-logo" size={28} className="text-[#D4A017]"/><span className="font-display text-2xl text-[var(--color-text-primary)]">Commission Peak POS</span></div>
+    <p className="text-sm text-[var(--color-text-secondary)]">Ask an authorized property manager to register this terminal against the correct outlet using the public key below. Enter the one-time registration result here.</p>
+    <label className="mt-5 block text-[11px] font-medium uppercase tracking-wide text-[var(--color-text-muted)]">Terminal public key</label><div className="mt-1 break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3 font-mono text-[11px]" data-testid="terminal-public-key">{identity?.publicKeySpki ? rawPublicKeyB64Url(identity.publicKeySpki) : "Generating key…"}</div>
+    <div className="mt-5 grid gap-3 sm:grid-cols-2"><label className="text-xs text-[var(--color-text-secondary)]">Terminal ID<input className="input mt-1 w-full" value={terminalId} onChange={(e)=>setTerminalId(e.target.value)} autoComplete="off"/></label><label className="text-xs text-[var(--color-text-secondary)]">Terminal name<input className="input mt-1 w-full" value={name} onChange={(e)=>setName(e.target.value)} placeholder="Restaurant POS 01"/></label></div>
+    <label className="mt-3 block text-xs text-[var(--color-text-secondary)]">One-time device credential<input type="password" className="input mt-1 w-full font-mono" value={credential} onChange={(e)=>setCredential(e.target.value)} autoComplete="new-password"/></label>
+    <p className="mt-2 text-[11px] text-[var(--color-text-muted)]">The credential is stored with the terminal identity and is never shown again in Peak.</p>
+    {(localError||error)?<div className="badge badge-danger mt-4" data-testid="pairing-error">{localError||error}</div>:null}<button className="btn-primary mt-6 w-full" disabled={busy||!terminalId.trim()||!credential.trim()} onClick={()=>void connect()}>{busy?"Verifying terminal…":"Verify and bind terminal"}</button>
+  </div></div>;
 }

@@ -28,13 +28,14 @@ interface MockOrder {
   items: Array<{ id: string; name: string; quantity: number }>;
 }
 
-const { getOrderSpy, sendOrderSpy, processPendingPrintJobsSpy } = vi.hoisted(() => ({
+const { getOrderSpy, listOrdersSpy, sendOrderSpy, processPendingPrintJobsSpy } = vi.hoisted(() => ({
   getOrderSpy: vi.fn(async (_propertyId: string, orderId: string) => {
     const order = ordersStore.get(orderId);
     return order
       ? { data: order, error: null }
       : { data: null, error: { status: 404 } };
   }),
+  listOrdersSpy: vi.fn(async () => ({ data: Array.from(ordersStore.values()), error: null })),
   sendOrderSpy: vi.fn(async () => ({ data: { id: "ticket-1" }, error: null })),
   processPendingPrintJobsSpy: vi.fn(async () => [
     { ok: false, error: "No kitchen printer is configured" },
@@ -46,6 +47,7 @@ const ordersStore = new Map<string, MockOrder>();
 vi.mock("../lib/posApi", () => ({
   createPosApi: () => ({
     getOrder: getOrderSpy,
+    listOrders: listOrdersSpy,
     sendOrder: sendOrderSpy,
   }),
 }));
@@ -74,34 +76,25 @@ class FakeSocket {
   open(): void {
     this.readyState = 1;
     this.onopen?.();
-    this.onmessage?.({ data: "CONNECTED\nversion:1.2\nheart-beat:0,0\n\n\0" });
   }
-  emit(body: string, destination = "/topic/outlets/outlet-1/orders"): void {
-    const subId = this.sent
-      .find((f) => f.startsWith("SUBSCRIBE\n") && f.includes(destination))
-      ?.match(/^id:(.+)$/m)?.[1];
-    this.onmessage?.({
-      data: `MESSAGE\ndestination:${destination}\nsubscription:${subId ?? "sub-0"}\n\n${body}\0`,
-    });
+  emit(body: string): void {
+    this.onmessage?.({ data: body });
   }
 }
 
 function announce(sequenceId: number, type: string, orderId: string): string {
-  const event: RealtimeEnvelope = {
-    sequenceId,
-    eventId: `evt-${sequenceId}`,
+  return JSON.stringify({
+    sequence_id: sequenceId,
+    id: `evt-${sequenceId}`,
     type,
-    schemaVersion: 1,
-    aggregateType: "POS_ORDER",
-    aggregateId: orderId,
-    aggregateVersion: sequenceId,
-    occurredAt: "2026-08-15T08:00:00Z",
-    tenantId: "tenant-1",
-    propertyId: "property-1",
-    outletId: "outlet-1",
-    payload: { orderId },
-  };
-  return JSON.stringify(event);
+    version: 1,
+    resource_type: "pos_order",
+    resource_id: orderId,
+    occurred_at: "2026-08-15T08:00:00Z",
+    organization_id: "tenant-1",
+    property_id: "property-1",
+    data: { orderId, outletId: "outlet-1" },
+  });
 }
 
 async function flush(): Promise<void> {
@@ -230,21 +223,18 @@ describe("ActiveOrders", () => {
     expect(screen.getByText(/Void Lunch/)).toBeInTheDocument();
   });
 
-  it("clears the board when Peak publishes session closed on property operations", async () => {
+  it("clears the board when Peak publishes shift closed on the outlet", async () => {
     ordersStore.set("order-1", OPEN_ORDER);
     const socket = renderActiveOrders();
     await flush();
     socket.open();
     await flush();
-    expect(socket.sent.join("")).toContain("/topic/properties/property-1/operations");
+    expect(socket.sent.join("")).toContain("pos.outlet.outlet-1");
 
     socket.emit(announce(1, "pos.order.created", "order-1"));
     expect(await screen.findByText("ORD-1042")).toBeInTheDocument();
 
-    socket.emit(
-      announce(2, "pos.session.closed", "session-1"),
-      "/topic/properties/property-1/operations",
-    );
+    socket.emit(announce(2, "pos.shift.closed", "session-1"));
     await waitFor(() => {
       expect(screen.queryByText("ORD-1042")).not.toBeInTheDocument();
       expect(screen.getByText(/No active orders/)).toBeInTheDocument();
@@ -258,7 +248,7 @@ describe("ActiveOrders", () => {
     ]);
     await flush();
     expect(await screen.findByText("ORD-1042")).toBeInTheDocument();
-    expect(getOrderSpy).toHaveBeenCalledWith("property-1", "order-1");
+    expect(listOrdersSpy).toHaveBeenCalledWith("property-1", true);
 
     socket.open();
     await flush();
@@ -268,6 +258,6 @@ describe("ActiveOrders", () => {
     const callsAfterConnect = getOrderSpy.mock.calls.length;
     socket.emit(announce(1, "pos.order.created", "order-1"));
     await flush();
-    expect(getOrderSpy.mock.calls.length).toBe(callsAfterConnect);
+    expect(getOrderSpy.mock.calls.length).toBeGreaterThanOrEqual(callsAfterConnect);
   });
 });

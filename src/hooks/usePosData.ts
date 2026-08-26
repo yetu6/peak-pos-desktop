@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createApiClient } from "../lib/api";
 import {
   createPosApi,
@@ -77,7 +77,7 @@ export function useTenantVerification(
     },
   });
   const succeeded =
-    query.data?.steps?.find((candidate) => candidate.key === "verify_business")?.status ===
+    query.data?.steps?.find((candidate: { key?: string; status?: string }) => candidate.key === "verify_business")?.status ===
     "succeeded";
 
   useEffect(() => {
@@ -145,42 +145,37 @@ export function useOutletMenu() {
  */
 export function useRealtimeOrders(outletId: string): PosOrderResponse[] {
   const propertyId = usePropertyId();
-  const queryClient = useQueryClient();
-  const [orderIds, setOrderIds] = useState<string[]>([]);
+  const [orders, setOrders] = useState<PosOrderResponse[]>([]);
 
   // Session events are published only on /topic/properties/{id}/operations.
   useRealtimeEvents({ kind: "propertyOperations", propertyId }, () => {});
-  useRealtimeEvents({ kind: "outletOrders", outletId }, (event) => {
-    if (event.type === "pos.session.closed") {
-      setOrderIds([]);
+  useRealtimeEvents({ kind: "outletOrders", outletId }, async (event) => {
+    if (event.type === "pos.shift.closed") {
+      setOrders([]);
       return;
     }
     if (!isOrderEvent(event.type) && event.type !== "pos.order_item.voided") {
       return;
     }
-    const orderId =
-      event.aggregateId ?? (event.payload as { orderId?: string } | null)?.orderId;
+    const orderId = event.aggregateId ?? (event.payload as { orderId?: string } | undefined)?.orderId;
     if (!orderId) return;
-    setOrderIds((prev) => (prev.includes(orderId) ? prev : [...prev, orderId]));
-    queryClient.invalidateQueries({ queryKey: ["orders", "detail", orderId] });
+    const { data } = await createPosApi().getOrder(propertyId, orderId);
+    if (!data) return;
+    setOrders((current) => [...current.filter((order) => order.id !== data.id), data]);
   });
-
-  const queries = useQueries({
-    queries: orderIds.map((orderId) => ({
-      queryKey: ["orders", "detail", orderId],
-      queryFn: async () => {
-        const { data, error } = await createPosApi().getOrder(propertyId, orderId);
-        if (error) throw new Error(String(error));
-        return data!;
-      },
-      retry: false,
-      staleTime: 10_000,
-    })),
+  const query = useQuery({
+    queryKey: ["orders", "active", outletId],
+    queryFn: async () => {
+      const api = createPosApi();
+      if (!("listOrders" in api) || typeof api.listOrders !== "function") return [];
+      const { data, error } = await api.listOrders(propertyId, true);
+      if (error) throw new Error(String(error));
+      return data ?? [];
+    },
+    retry: false,
   });
-
-  return queries
-    .map((query) => query.data)
-    .filter((order): order is PosOrderResponse => Boolean(order));
+  useEffect(() => { if (query.data) setOrders((current) => current.length > 0 ? current : query.data!); }, [query.data]);
+  return orders;
 }
 
 function sessionStorageKey(propertyId: string, outletId: string): string {

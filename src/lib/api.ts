@@ -1,4 +1,3 @@
-import { createPeakHospitalityApiClient } from "@peak/hospitality-api-client";
 import { devIdentityFromEnv, type DevIdentity } from "./env";
 import { getApiBaseUrl } from "./peakConfig";
 import { getOperationalSession } from "./operationalSession";
@@ -12,16 +11,39 @@ function tryDevIdentity(): DevIdentity | null {
   }
 }
 
-/**
- * Shared hospitality API client. After PIN, uses Bearer `ops_…` when Peak's
- * login JSON included tenantId, userId and propertyId (outletId may be null).
- * Otherwise keeps the header-identity loop. Never sends both.
- */
-export function createApiClient() {
-  return createPeakHospitalityApiClient({
-    baseUrl: getApiBaseUrl(),
-    headers: restRequestHeaders(getOperationalSession(), tryDevIdentity()),
+export type ApiResult<T> = { data?: T; error?: unknown; response: Response };
+
+async function request<T>(method: string, path: string, options: Record<string, any> = {}): Promise<ApiResult<T>> {
+  const pathValues = options.params?.path ?? {};
+  let resolvedPath = path.replace(/\{([^}]+)\}/g, (_match, key: string) => encodeURIComponent(String(pathValues[key])));
+  const query = options.params?.query;
+  if (query) {
+    const params = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
+    });
+    const encoded = params.toString();
+    if (encoded) resolvedPath += `?${encoded}`;
+  }
+  const headers = { ...restRequestHeaders(getOperationalSession(), tryDevIdentity()), ...options.headers };
+  const response = await fetch(`${getApiBaseUrl()}${resolvedPath}`, {
+    method,
+    headers,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
+  const contentType = response.headers.get("content-type") ?? "";
+  const payload = response.status === 204 ? undefined : contentType.includes("application/json") ? await response.json() : await response.text();
+  if (!response.ok) return { error: payload ?? response.statusText, response };
+  return { data: payload as T, response };
+}
+
+/** Small transport used by the Tauri adapter; business contracts live in posApi. */
+export function createApiClient() {
+  return {
+    GET: <T = any>(path: string, options?: Record<string, any>) => request<T>("GET", path, options),
+    POST: <T = any>(path: string, options?: Record<string, any>) => request<T>("POST", path, options),
+    DELETE: <T = any>(path: string, options?: Record<string, any>) => request<T>("DELETE", path, options),
+  };
 }
 
 export type ApiClient = ReturnType<typeof createApiClient>;

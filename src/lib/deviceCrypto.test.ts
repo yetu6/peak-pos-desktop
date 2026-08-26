@@ -11,7 +11,8 @@ const ED25519_SPKI_PREFIX = new Uint8Array([
 ]);
 
 function b64ToBytes(value: string): Uint8Array {
-  const binary = atob(value);
+  const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
   return Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
 }
 
@@ -26,10 +27,10 @@ describe("deviceCrypto", () => {
     expect(keys.publicKeySpki.startsWith("MCowBQYDK2VwAyEA")).toBe(true);
   });
 
-  it("signs a Base64 challenge nonce the way DeviceSessionService verifies", async () => {
+  it("signs a Base64URL challenge nonce the way the Go service verifies", async () => {
     const keys = await generateDeviceKeyPair();
     const nonce = crypto.getRandomValues(new Uint8Array(32));
-    const nonceB64 = btoa(String.fromCharCode(...nonce));
+    const nonceB64 = btoa(String.fromCharCode(...nonce)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 
     const signatureB64 = await signChallengeNonce(keys.privateKeyPkcs8, nonceB64);
     const signature = b64ToBytes(signatureB64);

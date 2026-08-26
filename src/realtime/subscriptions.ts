@@ -11,23 +11,23 @@ export type SubscriptionTarget =
   | { kind: "order"; orderId: string }
   | { kind: "payment"; paymentTransactionId: string };
 
-export function destinationOf(target: SubscriptionTarget): string {
+export function destinationOf(target: SubscriptionTarget): string | null {
   switch (target.kind) {
     case "propertyOperations":
-      return `/topic/properties/${target.propertyId}/operations`;
+      return null;
     case "outletOrders":
-      return `/topic/outlets/${target.outletId}/orders`;
+      return `pos.outlet.${target.outletId}`;
     case "outletKitchen":
-      return `/topic/outlets/${target.outletId}/kitchen`;
+      return `pos.outlet.${target.outletId}`;
     case "order":
-      return `/topic/orders/${target.orderId}`;
+      return `pos.order.${target.orderId}`;
     case "payment":
-      return `/topic/payments/${target.paymentTransactionId}`;
+      return null;
   }
 }
 
 export function isKitchenEvent(type: string): boolean {
-  return type.startsWith("pos.kitchen_ticket.");
+  return ["pos.order.sent", "pos.order.preparing", "pos.order.ready", "pos.order.served"].includes(type);
 }
 
 export function isOrderEvent(type: string): boolean {
@@ -46,11 +46,13 @@ export function queryKeyForEvent(
   event: RealtimeEnvelope,
 ): (string | unknown)[][] | null {
   if (event.aggregateType === "POS_ORDER" && isOrderEvent(event.type)) {
-    return [
+    const keys: (string | unknown)[][] = [
       ["orders"],
       event.aggregateId ? ["orders", "detail", event.aggregateId] : [],
       event.outletId ? ["outlets", event.outletId, "orders"] : [],
     ];
+    if (isKitchenEvent(event.type)) keys.push(["kitchen"]);
+    return keys;
   }
   if (event.aggregateType === "KITCHEN_TICKET" && isKitchenEvent(event.type)) {
     return [

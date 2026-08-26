@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { applyOpsTokenToBridge } from "../lib/applyOpsToken";
+import { usesRealtimeBridge } from "../lib/peakSocket";
 import {
   confirmPairingClaim,
   createStaffSession,
@@ -17,6 +18,7 @@ import {
   fetchStaffRoster,
   getPairingStatus,
   humanDeviceError,
+	issueChallenge,
   rejectPairingClaim,
   requestPairing,
   StaffLoginRejectedError,
@@ -106,6 +108,7 @@ export interface DeviceSessionValue {
    *  PIN entry; manual staff-number entry always remains the fallback. */
   roster: RosterEntry[];
   refreshRoster: () => Promise<void>;
+	commission: (terminalId: string, deviceCredential: string, terminalName?: string) => Promise<void>;
 }
 
 const DeviceSessionContext = createContext<DeviceSessionValue | null>(null);
@@ -129,7 +132,7 @@ export function DeviceSessionProvider({
   store,
   baseUrl,
   bridgeUrl = REALTIME_BRIDGE_URL,
-  applyOpsToken = (token) => applyOpsTokenToBridge(token, bridgeUrl),
+  applyOpsToken = (token) => usesRealtimeBridge() ? applyOpsTokenToBridge(token, bridgeUrl) : Promise.resolve(),
   skipUrlSetup = Boolean(baseUrl),
 }: DeviceSessionProviderProps) {
   const queryClient = useQueryClient();
@@ -210,7 +213,10 @@ export function DeviceSessionProvider({
       setRoster([]);
       return;
     }
-    setRoster(await fetchStaffRoster(peakUrl, current.deviceCode, current.privateKeyPkcs8));
+		const terminalId = current.terminalId ?? current.deviceCode;
+		const credential = current.deviceCredential ?? current.deviceCode;
+		if (!terminalId || !credential) { setRoster([]); return; }
+		setRoster(await fetchStaffRoster(peakUrl, terminalId, credential));
   }, [peakUrl]);
 
   useEffect(() => {
@@ -238,7 +244,7 @@ export function DeviceSessionProvider({
       await refreshKeyStorageStatus();
       if (cancelled) return;
       setIdentity(record);
-      if (record.approved && record.deviceCode) {
+		if (record.approved && (record.terminalId || record.deviceCode) && (record.deviceCredential || record.deviceCode)) {
         setPhase("locked");
         return;
       }
@@ -493,12 +499,14 @@ export function DeviceSessionProvider({
   const unlock = useCallback(
     async (staffNumber: string, pin: string) => {
       const current = identityRef.current;
-      if (!current?.deviceCode) return;
+		if (!current || !(current.terminalId || current.deviceCode) || !(current.deviceCredential || current.deviceCode)) return;
       setError(null);
       try {
         const next = await createStaffSession({
           baseUrl: peakUrl,
-          deviceCode: current.deviceCode,
+			deviceCode: current.deviceCode,
+			terminalId: current.terminalId ?? current.deviceCode,
+			deviceCredential: current.deviceCredential ?? current.deviceCode,
           privateKeyPkcs8: current.privateKeyPkcs8,
           staffNumber,
           pin,
@@ -547,6 +555,14 @@ export function DeviceSessionProvider({
     [applyOpsToken, armExpiry, peakUrl, persist],
   );
 
+	const commission = useCallback(async (terminalId: string, deviceCredential: string, terminalName?: string) => {
+		const current = identityRef.current; if (!current) return;
+		const challenge = await issueChallenge(peakUrl, terminalId.trim(), deviceCredential.trim());
+		if (!challenge) throw new DeviceRevokedError();
+		await persist({...current, terminalId: terminalId.trim(), deviceCredential: deviceCredential.trim(), deviceCode: terminalId.trim(), terminalName: terminalName?.trim() || current.terminalName, approved: true, pairing: undefined});
+		setPhase("locked"); setError(null);
+	}, [peakUrl, persist]);
+
   const value = useMemo<DeviceSessionValue>(
     () => ({
       phase,
@@ -565,6 +581,7 @@ export function DeviceSessionProvider({
       keyStorageWarning,
       roster,
       refreshRoster,
+		commission,
     }),
     [
       phase,
@@ -582,6 +599,7 @@ export function DeviceSessionProvider({
       keyStorageWarning,
       roster,
       refreshRoster,
+		commission,
     ],
   );
 

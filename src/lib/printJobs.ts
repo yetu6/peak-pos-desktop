@@ -73,8 +73,9 @@ function printFailure(error: unknown): PrintResult {
 }
 
 export function ticketCopyFromPrintDocument(document: Record<string, unknown>): KitchenTicketCopy {
-  const lines = Array.isArray(document.lines)
-    ? document.lines.flatMap((line) => {
+  const rawLines = Array.isArray(document.items) ? document.items : document.lines;
+  const lines = Array.isArray(rawLines)
+    ? rawLines.flatMap((line) => {
         if (!line || typeof line !== "object") return [];
         const row = line as Record<string, unknown>;
         if (typeof row.name !== "string") return [];
@@ -154,31 +155,31 @@ async function defaultPrint(title: string, text: string): Promise<void> {
 }
 
 export async function listPrintJobs(
-  propertyId: string,
-  status = "pending,claimed",
+  _propertyId: string,
+  status = "PENDING",
 ): Promise<PosPrintJob[]> {
-  const query = new URLSearchParams({ status });
-  return request(`/api/v1/properties/${propertyId}/pos-print-jobs?${query.toString()}`);
+  const query = new URLSearchParams({ status: status.toLowerCase() });
+  return request(`/api/v1/pos/print-jobs?${query.toString()}`);
 }
 
-export async function claimPrintJob(propertyId: string, jobId: string): Promise<PosPrintJob> {
-  return request(`/api/v1/properties/${propertyId}/pos-print-jobs/${jobId}/claim`, {
+export async function claimPrintJob(_propertyId: string, jobId: string): Promise<PosPrintJob> {
+  return request(`/api/v1/pos/print-jobs/${jobId}/claim`, {
     method: "POST",
   });
 }
 
-export async function ackPrinted(propertyId: string, jobId: string): Promise<PosPrintJob> {
-  return request(`/api/v1/properties/${propertyId}/pos-print-jobs/${jobId}/printed`, {
+export async function ackPrinted(_propertyId: string, jobId: string): Promise<PosPrintJob> {
+  return request(`/api/v1/pos/print-jobs/${jobId}/printed`, {
     method: "POST",
   });
 }
 
 export async function ackFailed(
-  propertyId: string,
+  _propertyId: string,
   jobId: string,
   error: string,
 ): Promise<PosPrintJob> {
-  return request(`/api/v1/properties/${propertyId}/pos-print-jobs/${jobId}/failed`, {
+  return request(`/api/v1/pos/print-jobs/${jobId}/failed`, {
     method: "POST",
     body: JSON.stringify({ error }),
   });
@@ -197,7 +198,7 @@ export async function processPrintJob(
 ): Promise<PrintResult> {
   let claimed: PosPrintJob;
   try {
-    claimed = job.status === "pending" ? await claimPrintJob(propertyId, job.id) : job;
+    claimed = job.status.toUpperCase() === "PENDING" ? await claimPrintJob(propertyId, job.id) : job;
   } catch (error) {
     // Another till won SKIP LOCKED. That till prints; this one must not.
     if (error instanceof PrintJobRequestError && error.status === 409) {
@@ -233,7 +234,7 @@ export async function processPendingPrintJobs(
 ): Promise<PrintResult[]> {
   let jobs: PosPrintJob[];
   try {
-    jobs = await listPrintJobs(propertyId, "pending");
+    jobs = await listPrintJobs(propertyId, "PENDING");
   } catch (error) {
     return [printFailure(error)];
   }

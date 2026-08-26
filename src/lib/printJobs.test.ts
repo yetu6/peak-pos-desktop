@@ -128,7 +128,7 @@ describe("printJobs", () => {
       "fetch",
       vi.fn(async (input: string) => {
         const url = String(input);
-        if (url.includes("pos-print-jobs?") && url.includes("pending")) {
+        if (url.includes("/pos/print-jobs?") && url.includes("pending")) {
           return json([
             {
               id: "job-1",

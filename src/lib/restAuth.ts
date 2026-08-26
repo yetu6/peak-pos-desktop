@@ -8,12 +8,7 @@ import type { OperationalSession } from "./operationalSession";
  * Authorization together with X-Peak-* headers.
  */
 export function hasBearerIdentity(session: OperationalSession | null): boolean {
-  return Boolean(
-    session?.token.startsWith("ops_") &&
-      session.tenantId &&
-      session.userId &&
-      session.propertyId,
-  );
+	return Boolean(session?.token && session.propertyId);
 }
 
 export function restRequestHeaders(
@@ -45,7 +40,7 @@ export function socketAlignedHeaders(
   session: OperationalSession | null,
   env: DevIdentity | null,
 ): Record<string, string> {
-  if (session?.token.startsWith("ops_")) {
+	if (session?.token) {
     return { Authorization: `Bearer ${session.token}` };
   }
   if (!env) {

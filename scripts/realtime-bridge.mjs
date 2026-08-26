@@ -21,7 +21,7 @@ import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import { WebSocket } from "ws";
 
-const BACKEND_WS = process.env.PEAK_REALTIME_URL ?? "ws://localhost:8080/ws-connect";
+const BACKEND_WS = process.env.PEAK_REALTIME_URL ?? "ws://localhost:8080/api/v1/pos/realtime/ws";
 const PORT = Number(process.env.PEAK_BRIDGE_PORT ?? 5174);
 let tenantId = process.env.VITE_PEAK_TENANT_ID;
 let userId = process.env.VITE_PEAK_USER_ID;
@@ -34,13 +34,6 @@ if (opsToken && (tenantId || userId)) {
   process.exit(1);
 }
 
-if (!opsToken && (!tenantId || !userId)) {
-  console.error(
-    "VITE_PEAK_TENANT_ID and VITE_PEAK_USER_ID are required unless PEAK_OPS_TOKEN is set",
-  );
-  process.exit(1);
-}
-
 function handshakeHeaders() {
   if (opsToken) {
     return {
@@ -48,11 +41,12 @@ function handshakeHeaders() {
       Origin: "http://localhost:5173",
     };
   }
-  return {
+  if (tenantId && userId) return {
     "X-Peak-Tenant-Id": tenantId,
     "X-Peak-Tenant-User-Id": userId,
     Origin: "http://localhost:5173",
   };
+  return { Origin: "http://localhost:5173" };
 }
 
 function corsHeaders() {
@@ -89,9 +83,9 @@ const server = createServer((req, res) => {
       try {
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
         const token = typeof body?.token === "string" ? body.token : "";
-        if (!token.startsWith("ops_")) {
+        if (token.length < 32) {
           res.writeHead(400, corsHeaders());
-          res.end("token must be an ops_ session");
+          res.end("token must be a restricted POS session");
           return;
         }
         opsToken = token;

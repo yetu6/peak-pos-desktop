@@ -14,7 +14,7 @@ export function usesRealtimeBridge(): boolean {
 export function peakWsConnectUrl(apiBaseUrl: string): string {
   const url = new URL(apiBaseUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.pathname = "/ws-connect";
+  url.pathname = "/api/v1/pos/realtime/ws";
   url.search = "";
   url.hash = "";
   const href = url.toString();
@@ -36,15 +36,15 @@ export function peakWebsocketOrigin(
 }
 
 /** Bearer + Origin only. Never X-Peak-*. Never a query-string token. */
-export function nativeStompHeaders(args: {
+export function nativeSocketHeaders(args: {
   token: string;
   origin: string;
 }): { Authorization: string; Origin: string } {
-  if (!args.token.startsWith("ops_")) {
-    throw new Error("Native STOMP requires an ops_ session");
+  if (args.token.trim().length < 32) {
+    throw new Error("Native realtime requires a restricted POS session");
   }
   if (!args.origin.trim()) {
-    throw new Error("Native STOMP requires a valid Origin");
+    throw new Error("Native realtime requires a valid Origin");
   }
   return {
     Authorization: `Bearer ${args.token}`,
@@ -62,7 +62,7 @@ export function createRealtimeSocket(options: {
     return new WebSocket(options.bridgeUrl ?? REALTIME_BRIDGE_URL);
   }
   const token = options.token ?? getOperationalSession()?.token ?? "";
-  const headers = nativeStompHeaders({
+  const headers = nativeSocketHeaders({
     token,
     origin: options.origin ?? peakWebsocketOrigin(),
   });

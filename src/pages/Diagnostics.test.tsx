@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Diagnostics } from "./Diagnostics";
 
@@ -96,7 +96,7 @@ describe("Diagnostics", () => {
     render(<Diagnostics />);
 
     expect(screen.getByTestId("diagnostics")).toBeInTheDocument();
-    expect(await screen.findByTestId("diag-peak")).toHaveTextContent("Reachable");
+    await waitFor(() => expect(screen.getByTestId("diag-peak")).toHaveTextContent("Reachable"));
     expect(screen.getByTestId("diag-realtime")).toHaveTextContent("Live");
     expect(screen.getByTestId("diag-printer")).toHaveTextContent("Ready");
     expect(screen.queryByText("SECRET_PRIVATE_KEY")).not.toBeInTheDocument();

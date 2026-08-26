@@ -13,6 +13,8 @@ export interface DeviceIdentityRecord {
   pairing?: PairingRecord;
   mode?: string;
   terminalName?: string;
+	terminalId?: string;
+	deviceCredential?: string;
 }
 
 export interface SecretStore {
@@ -70,6 +72,8 @@ export function persistableIdentity(record: DeviceIdentityRecord): DeviceIdentit
     pairing: record.approved ? undefined : record.pairing,
     mode: record.mode,
     terminalName: record.terminalName,
+	terminalId: record.terminalId,
+	deviceCredential: record.deviceCredential,
   };
 }
 

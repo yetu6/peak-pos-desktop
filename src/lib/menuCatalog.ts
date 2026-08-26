@@ -56,6 +56,10 @@ function asRows(body: unknown): unknown[] {
     const items = (body as { menuItems: unknown }).menuItems;
     return Array.isArray(items) ? items : [];
   }
+  if (body && typeof body === "object" && "products" in body) {
+    const products = (body as { products: unknown }).products;
+    return Array.isArray(products) ? products : [];
+  }
   return [];
 }
 
@@ -74,58 +78,26 @@ export function parseMenuItems(body: unknown): DevMenuItem[] {
   });
 }
 
-function parseCategories(body: unknown): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const row of asRows(body)) {
-    if (!row || typeof row !== "object") continue;
-    const record = row as Record<string, unknown>;
-    if (record.id != null && typeof record.name === "string") {
-      map.set(String(record.id), record.name);
-    }
-  }
-  return map;
-}
-
 export async function fetchOutletMenu(args: {
   baseUrl: string;
   propertyId: string;
   outletId: string;
   headers: Record<string, string>;
 }): Promise<OutletMenu> {
-  const itemsUrl =
-    `${args.baseUrl}/api/v1/properties/${args.propertyId}/pos-config/menu-items` +
-    `?outletId=${encodeURIComponent(args.outletId)}`;
-  const response = await fetch(itemsUrl, { headers: args.headers });
-  if (response.status === 404) {
-    return { items: devMenuItems(), source: "dev-catalog" };
-  }
+  const response = await fetch(`${args.baseUrl}/api/v1/pos/catalog`, { headers: args.headers });
   if (!response.ok) {
     throw new Error(`Menu GET failed with HTTP ${response.status}`);
   }
   const raw = await response.json();
-  const categoriesUrl =
-    `${args.baseUrl}/api/v1/properties/${args.propertyId}/pos-config/menu-categories` +
-    `?outletId=${encodeURIComponent(args.outletId)}`;
-  let categoryNames = new Map<string, string>();
-  try {
-    const categoriesResponse = await fetch(categoriesUrl, { headers: args.headers });
-    if (categoriesResponse.ok) {
-      categoryNames = parseCategories(await categoriesResponse.json());
-    }
-  } catch {
-    // Category names are presentation only; items still render.
-  }
   const items = asRows(raw).flatMap((row) => {
     if (!row || typeof row !== "object") return [];
     const record = row as Record<string, unknown>;
     const id = record.id ?? record.menuItemId;
     const name = record.name;
     if (id == null || typeof name !== "string" || name.length === 0) return [];
-    const categoryId = record.categoryId != null ? String(record.categoryId) : undefined;
     const category =
       (typeof record.category === "string" && record.category) ||
       (typeof record.categoryName === "string" && record.categoryName) ||
-      (categoryId ? categoryNames.get(categoryId) : undefined) ||
       "Menu";
     return [{ id: String(id), name, category }];
   });

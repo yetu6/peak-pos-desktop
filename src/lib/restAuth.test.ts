@@ -34,12 +34,11 @@ describe("restAuth", () => {
     clearOperationalSession();
   });
 
-  it("keeps header identity when Peak login omits tenant/user/outlet", () => {
-    expect(hasBearerIdentity(incomplete)).toBe(false);
+  it("uses an opaque restricted bearer without requiring legacy tenant/user fields", () => {
+    expect(hasBearerIdentity(incomplete)).toBe(true);
     const headers = restRequestHeaders(incomplete, env);
-    expect(headers.Authorization).toBeUndefined();
-    expect(headers["X-Peak-Tenant-Id"]).toBe("env-t");
-    expect(headers["X-Peak-Tenant-User-Id"]).toBe("env-u");
+    expect(headers.Authorization).toBe("Bearer ops_abc");
+    expect(headers["X-Peak-Tenant-Id"]).toBeUndefined();
   });
 
   it("sends Bearer ops token alone when login includes tenant, user, and property", () => {

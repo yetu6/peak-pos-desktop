@@ -1,6 +1,7 @@
 mod diagnostics;
 mod identity;
 mod printer;
+mod socket;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -16,6 +17,9 @@ pub fn run() {
             printer::print_kitchen_ticket,
             printer::printer_status,
             diagnostics::host_diagnostics,
+            socket::open_peak_socket,
+            socket::send_peak_socket,
+            socket::close_peak_socket,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Peak POS shell");

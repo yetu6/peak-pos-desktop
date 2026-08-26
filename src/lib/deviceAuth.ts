@@ -66,6 +66,7 @@ export interface DeviceChallenge {
   challengeId: string;
   nonce: string;
   expiresAt: string;
+	staff?: Array<{ id: string; displayName: string; staffSuffix: string }>;
 }
 
 export interface RosterEntry {
@@ -242,12 +243,13 @@ export async function rejectPairingClaim(
 
 export async function issueChallenge(
   baseUrl: string,
-  deviceCode: string,
+	terminalId: string,
+	deviceCredential = terminalId,
 ): Promise<DeviceChallenge | null> {
-  const response = await fetch(`${baseUrl}/api/v1/devices/challenges`, {
+	const response = await fetch(`${baseUrl}/api/v1/pos/device/challenges`, {
     method: "POST",
     headers: publicJsonHeaders(),
-    body: JSON.stringify({ deviceCode }),
+		body: JSON.stringify({ terminalId, deviceCredential }),
   });
   if (response.status === 401) return null;
   if (!response.ok) {
@@ -273,28 +275,13 @@ function optionalId(value: unknown): string | undefined {
  */
 export async function fetchStaffRoster(
   baseUrl: string,
-  deviceCode: string,
-  privateKeyPkcs8: string,
+	terminalId: string,
+	deviceCredential = terminalId,
 ): Promise<RosterEntry[]> {
   try {
-    const challenge = await issueChallenge(baseUrl, deviceCode);
+		const challenge = await issueChallenge(baseUrl, terminalId, deviceCredential);
     if (!challenge) return [];
-    const signature = await signChallengeNonce(privateKeyPkcs8, challenge.nonce);
-    const response = await fetch(`${baseUrl}/api/v1/staff/sessions/roster`, {
-      method: "POST",
-      headers: publicJsonHeaders(),
-      body: JSON.stringify({ deviceCode, challengeId: challenge.challengeId, signature }),
-    });
-    if (!response.ok) return [];
-    const body = (await readJson(response)) as { staff?: unknown };
-    if (!Array.isArray(body?.staff)) return [];
-    return body.staff.filter(
-      (entry): entry is RosterEntry =>
-        typeof entry === "object" &&
-        entry !== null &&
-        typeof (entry as RosterEntry).fullName === "string" &&
-        typeof (entry as RosterEntry).staffNumber === "string",
-    );
+		return (challenge.staff ?? []).map((entry) => ({ fullName: entry.displayName, staffNumber: entry.id }));
   } catch {
     return [];
   }
@@ -302,28 +289,31 @@ export async function fetchStaffRoster(
 
 export async function createStaffSession(args: {
   baseUrl: string;
-  deviceCode: string;
+  deviceCode?: string;
+	terminalId?: string;
+	deviceCredential?: string;
   privateKeyPkcs8: string;
   staffNumber: string;
   pin: string;
   /** True when this till already completed pairing. A 401 challenge is then revocation. */
   previouslyApproved?: boolean;
 }): Promise<OperationalSession> {
-  const challenge = await issueChallenge(args.baseUrl, args.deviceCode);
+	const terminalId = args.terminalId ?? "";
+	const credential = args.deviceCredential ?? args.deviceCode;
+	const challenge = await issueChallenge(args.baseUrl, terminalId, credential);
   if (!challenge) {
     if (args.previouslyApproved) throw new DeviceRevokedError();
     throw new DeviceNotApprovedError();
   }
 
   const signature = await signChallengeNonce(args.privateKeyPkcs8, challenge.nonce);
-  const response = await fetch(`${args.baseUrl}/api/v1/staff/sessions`, {
+	const response = await fetch(`${args.baseUrl}/api/v1/pos/sessions`, {
     method: "POST",
     headers: publicJsonHeaders(),
     body: JSON.stringify({
-      deviceCode: args.deviceCode,
-      challengeId: challenge.challengeId,
-      signature,
-      staffNumber: args.staffNumber,
+			challengeId: challenge.challengeId,
+			signature,
+			staffId: args.staffNumber,
       pin: args.pin,
     }),
   });
@@ -332,17 +322,16 @@ export async function createStaffSession(args: {
     throw new Error(`Staff session failed with HTTP ${response.status}`);
   }
   const body = (await readJson(response)) as Record<string, unknown>;
-  if (typeof body?.token !== "string" || !body.token.startsWith("ops_")) {
+	if (typeof body?.token !== "string" || body.token.length < 32) {
     throw new StaffLoginRejectedError();
   }
   return {
     token: body.token,
     expiresAt: String(body.expiresAt ?? ""),
-    deviceId: String(body.deviceId ?? ""),
+		deviceId: String(body.terminalId ?? terminalId),
     propertyId: String(body.propertyId ?? ""),
-    sessionClass: optionalId(body.sessionClass),
-    tenantId: optionalId(body.tenantId),
-    userId: optionalId(body.userId),
+		sessionClass: optionalId(body.assurance),
+		userId: optionalId(body.staffId),
     outletId: optionalId(body.outletId),
     mode: optionalId(body.mode),
     terminalName: optionalId(body.terminalName),

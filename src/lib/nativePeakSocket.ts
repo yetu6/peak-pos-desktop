@@ -4,8 +4,8 @@ type SocketEvent = {
 };
 
 /**
- * WebSocket-shaped adapter over the Tauri Peak handshake. STOMP talks to this
- * the same way it talks to a browser socket; headers stay on the native side.
+ * WebSocket-shaped adapter over the Tauri Peak handshake. Authorization and
+ * Origin remain native handshake headers and never enter a URL or browser log.
  */
 export class NativePeakSocket {
   readonly url: string;

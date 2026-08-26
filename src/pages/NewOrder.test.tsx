@@ -68,11 +68,10 @@ describe("NewOrder", () => {
     localStorage.clear();
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({
-        ok: false,
-        status: 404,
-        json: async () => ({}),
-      })),
+      vi.fn(async () => new Response(JSON.stringify({ products: [
+        { id: "00000000-0000-0000-0000-000000000001", name: "Nyama Choma" },
+        { id: "00000000-0000-0000-0000-000000000006", name: "Tusker Lager" },
+      ] }), { status: 200, headers: { "Content-Type": "application/json" } })),
     );
   });
   afterEach(() => {

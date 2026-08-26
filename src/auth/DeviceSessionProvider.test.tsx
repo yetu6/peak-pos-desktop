@@ -104,6 +104,8 @@ describe("DeviceSessionProvider", () => {
       JSON.stringify({
         ...keys,
         deviceCode: "dev_abc",
+        terminalId: "11111111-1111-1111-1111-111111111111",
+        deviceCredential: "device-secret",
         approved: true,
         terminalName: "Bar 1",
       }),
@@ -111,21 +113,22 @@ describe("DeviceSessionProvider", () => {
     localStorage.setItem("peak-pos-session-p1-o1", "till-1");
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input).endsWith("/devices/challenges")) {
+      if (String(input).endsWith("/pos/device/challenges")) {
         return jsonResponse({
           challengeId: "11111111-1111-1111-1111-111111111111",
           nonce: btoa("n".repeat(32)),
           expiresAt: "2099-01-01T00:00:00Z",
+          staff: [],
         });
       }
       return jsonResponse({
-        token: "ops_live",
+        token: `ops_live${"x".repeat(40)}`,
         expiresAt: "2099-01-01T00:00:00Z",
-        sessionClass: "operational",
-        deviceId: "d1",
+        assurance: "RESTRICTED",
+        terminalId: "d1",
         propertyId: "p1",
         tenantId: "t1",
-        userId: "u1",
+        staffId: "u1",
         outletId: "o1",
         mode: "cashier",
         terminalName: "Bar 1",
@@ -141,7 +144,7 @@ describe("DeviceSessionProvider", () => {
       expect(screen.getByTestId("shell")).toHaveTextContent("OPERATIONAL"),
     );
     expect(screen.getByTestId("ops")).toHaveTextContent("ops_live");
-    expect(getOperationalSession()?.token).toBe("ops_live");
+    expect(getOperationalSession()?.token).toContain("ops_live");
 
     await userEvent.click(screen.getByTestId("switch"));
     await waitFor(() =>
@@ -159,21 +162,19 @@ describe("DeviceSessionProvider", () => {
       JSON.stringify({
         ...keys,
         deviceCode: "dev_abc",
+        terminalId: "11111111-1111-1111-1111-111111111111",
+        deviceCredential: "device-secret",
         approved: true,
         terminalName: "Bar 1",
       }),
     );
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input).endsWith("/devices/challenges")) {
+      if (String(input).endsWith("/pos/device/challenges")) {
         return jsonResponse({
           challengeId: "11111111-1111-1111-1111-111111111111",
           nonce: btoa("n".repeat(32)),
           expiresAt: "2099-01-01T00:00:00Z",
-        });
-      }
-      if (String(input).endsWith("/staff/sessions/roster")) {
-        return jsonResponse({
-          staff: [{ fullName: "Amina Hassan", staffNumber: "00001" }],
+          staff: [{ id: "00001", displayName: "Amina Hassan", staffSuffix: "001" }],
         });
       }
       throw new Error(`unexpected fetch: ${String(input)}`);

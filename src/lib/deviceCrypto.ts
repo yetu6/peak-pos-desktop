@@ -14,11 +14,15 @@ export function bytesToB64(bytes: Uint8Array): string {
 }
 
 export function b64ToBytes(value: string): Uint8Array<ArrayBuffer> {
-  const binary = atob(value);
+	const normalized = value.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+	const binary = atob(normalized);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
+
+export function bytesToB64Url(bytes: Uint8Array): string { return bytesToB64(bytes).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, ""); }
+export function rawPublicKeyB64Url(publicKeySpki: string): string { const der=b64ToBytes(publicKeySpki); if(der.length!==44||!ED25519_SPKI_PREFIX.every((v,i)=>der[i]===v)) throw new Error("Invalid Ed25519 public key"); return bytesToB64Url(der.slice(12)); }
 
 /**
  * Peak's DeviceSessionService parses the public key as Base64 of Java's
@@ -73,7 +77,7 @@ export async function signChallengeNonce(
       b64ToBytes(nonceB64) as BufferSource,
     ),
   );
-  return bytesToB64(signature);
+	return bytesToB64Url(signature);
 }
 
 /**
