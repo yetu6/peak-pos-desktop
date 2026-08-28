@@ -17,7 +17,11 @@ its own, when this session picked it up).
 
 ## 2. Ending SHA
 
-`<recorded after commit; see the commit this document ships in>`
+`85a167154c8fdeb14066b74c5e9b1bffacbb8ed9` — `remediation/pos-r1c-
+contract` ("fix(pos): close R1C production post-login contract
+(POS-001)"). A commit cannot embed its own final hash, so this line is
+fixed in a one-line follow-up commit immediately after, which touches
+nothing else.
 
 ## 3. Original client contract defects
 
