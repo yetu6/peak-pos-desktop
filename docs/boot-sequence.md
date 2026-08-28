@@ -15,25 +15,24 @@ Named in `src/auth/DeviceSessionProvider.tsx`. The first paint is
 | `unpaired` | Pairing screen | A device key exists. Peak has not approved this till. |
 | `waiting` | Pairing wait | A six-digit code is live. The manager has not approved it yet. |
 | `locked` | PIN unlock | The device is paired. No staff ops session. |
-| `ready` | Live register, after eligibility | Staff PIN succeeded. |
+| `ready` | Live register | Staff PIN succeeded, server authority was retained, and current catalog plus active-order bootstrap completed. |
 
 `shellStateOf` maps those to `UNPAIRED` / `PAIRED_LOCKED` / `OPERATIONAL`.
 `ready` is the only OPERATIONAL shell.
 
-## Eligibility (after PIN)
+## Post-login bootstrap
 
-`VerificationGate` sits between OPERATIONAL and the register. Peak already
-refuses unverified POS commands; this gate stops the till looking open.
+The restricted session response is authoritative for organization, property,
+outlet, terminal, and staff context. The client validates every required field,
+then calls only the current session-bound routes:
 
-| Status | Register |
-|---|---|
-| `LOADING` | Spinner |
-| `READY` | Register |
-| `UNVERIFIED` | Closed — business not verified |
-| `UNKNOWN` | Closed — Peak did not confirm. **UNKNOWN is not READY.** |
+- `GET /api/v1/pos/catalog`
+- `GET /api/v1/pos/orders?active=true`
 
-A two-minute last-known-good READY cache covers a transient onboarding-read
-failure for the same tenant. A successful unverified answer clears it.
+The catalog outlet must match the authenticated outlet. A missing field,
+authority mismatch, rejected/expired token, malformed response, or unavailable
+backend leaves the till in `locked`; no operational session is published. There
+is no tenant onboarding request or client-selected production tenant.
 
 ## Switch Staff
 

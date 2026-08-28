@@ -106,7 +106,7 @@ export function buildTechnicianSnapshot(input: {
     printerName: input.printer?.name?.trim() || "default",
     printerAvailable: input.printer?.available ?? false,
     deviceCode: input.identity?.deviceCode?.trim() || "not assigned",
-    deviceId: input.session?.deviceId?.trim() || "not assigned",
+    deviceId: input.session?.terminalId?.trim() || "not assigned",
     terminalName: input.identity?.terminalName?.trim() || "unnamed till",
     mode: input.identity?.mode?.trim() || "POS",
     peakOrigin: input.peakOrigin.replace(/\/+$/, ""),

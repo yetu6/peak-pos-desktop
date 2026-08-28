@@ -20,7 +20,7 @@ describe("boot sequence docs", () => {
       expect(src).toContain(`"${phase}"`);
       expect(doc).toContain(`\`${phase}\``);
     }
-    expect(doc).toMatch(/UNKNOWN is not READY/);
+    expect(doc).toMatch(/no operational session is published/i);
     expect(doc).toMatch(/no in-app auto-update/i);
     expect(doc).toMatch(/docs\/v1-release\.md/);
     expect(doc).toMatch(/NOT IMPLEMENTED/);

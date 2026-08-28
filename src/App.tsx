@@ -10,7 +10,6 @@ import { NewOrder } from "./pages/NewOrder";
 import { PairingScreen } from "./pages/PairingScreen";
 import { PinUnlock } from "./pages/PinUnlock";
 import { SetupScreen } from "./pages/SetupScreen";
-import { VerificationGate } from "./pages/VerificationGate";
 import { Diagnostics } from "./pages/Diagnostics";
 import { RealtimeClient } from "./realtime/RealtimeClient";
 import { RealtimeProvider, useRealtimeEvents } from "./realtime/RealtimeProvider";
@@ -49,7 +48,7 @@ function PosShell() {
   const propertyId = usePropertyId();
   const clock = useClock();
   const [lastEvent, setLastEvent] = useState<string | null>(null);
-  const staff = staffLabel(session?.staffNumber);
+  const staff = staffLabel(session?.staffId);
 
   if (!nav.some((item) => item.page === page)) {
     setPage(nav[0]?.page ?? "orders");
@@ -213,11 +212,7 @@ function AuthGate() {
   } else if (shell === "PAIRED_LOCKED") {
     screen = <PinUnlock />;
   } else if (shell === "OPERATIONAL") {
-    screen = (
-      <VerificationGate>
-        <LiveRegister />
-      </VerificationGate>
-    );
+    screen = <LiveRegister />;
   } else {
     screen = <PairingScreen />;
   }

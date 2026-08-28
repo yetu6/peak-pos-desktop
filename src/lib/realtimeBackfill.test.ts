@@ -101,12 +101,12 @@ describe("createRealtimeBackfill", () => {
     setOperationalSession({
       token: "ops_live",
       expiresAt: "2026-08-16T05:00:00Z",
-      deviceId: "d1",
+      terminalId: "d1",
       propertyId: "p1",
-      staffNumber: "0007",
       tenantId: "t1",
-      userId: "u1",
+      staffId: "u1",
       outletId: "o1",
+      assurance: "RESTRICTED",
     });
     const fetchMock = vi.fn(async () => jsonResponse({ events: [], nextCursor: null }));
     vi.stubGlobal("fetch", fetchMock);
@@ -124,9 +124,12 @@ describe("createRealtimeBackfill", () => {
     setOperationalSession({
       token: "ops_dead",
       expiresAt: "2026-08-15T00:00:00Z",
-      deviceId: "d1",
+      terminalId: "d1",
       propertyId: "p1",
-      staffNumber: "0007",
+      tenantId: "t1",
+      staffId: "u1",
+      outletId: "o1",
+      assurance: "RESTRICTED",
     });
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({}, 401)));
     await expect(createRealtimeBackfill().fetchEvents(0)).rejects.toBeInstanceOf(

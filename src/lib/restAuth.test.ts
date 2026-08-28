@@ -14,19 +14,15 @@ const env = {
   outletId: "env-o",
 };
 
-const incomplete: OperationalSession = {
+const complete: OperationalSession = {
   token: "ops_abc",
   expiresAt: "2026-08-16T05:00:00Z",
-  deviceId: "d1",
-  propertyId: "p1",
-  staffNumber: "0007",
-};
-
-const complete: OperationalSession = {
-  ...incomplete,
   tenantId: "t1",
-  userId: "u1",
+  propertyId: "p1",
   outletId: "o1",
+  terminalId: "d1",
+  staffId: "u1",
+  assurance: "RESTRICTED",
 };
 
 describe("restAuth", () => {
@@ -34,23 +30,23 @@ describe("restAuth", () => {
     clearOperationalSession();
   });
 
-  it("uses an opaque restricted bearer without requiring legacy tenant/user fields", () => {
-    expect(hasBearerIdentity(incomplete)).toBe(true);
-    const headers = restRequestHeaders(incomplete, env);
+  it("uses the opaque restricted bearer instead of client-selected identity headers", () => {
+    expect(hasBearerIdentity(complete)).toBe(true);
+    const headers = restRequestHeaders(complete, env);
     expect(headers.Authorization).toBe("Bearer ops_abc");
     expect(headers["X-Peak-Tenant-Id"]).toBeUndefined();
   });
 
-  it("sends Bearer ops token alone when login includes tenant, user, and property", () => {
-    expect(hasBearerIdentity({ ...complete, outletId: undefined })).toBe(true);
-    const headers = restRequestHeaders({ ...complete, outletId: undefined }, env);
+  it("sends Bearer ops token alone for a complete server session", () => {
+    expect(hasBearerIdentity(complete)).toBe(true);
+    const headers = restRequestHeaders(complete, env);
     expect(headers.Authorization).toBe("Bearer ops_abc");
     expect(headers["X-Peak-Tenant-Id"]).toBeUndefined();
     expect(headers["X-Peak-Tenant-User-Id"]).toBeUndefined();
   });
 
   it("aligns backfill with the socket: token XOR headers, never both", () => {
-    const withToken = socketAlignedHeaders(incomplete, env);
+    const withToken = socketAlignedHeaders(complete, env);
     expect(withToken.Authorization).toBe("Bearer ops_abc");
     expect(withToken["X-Peak-Tenant-Id"]).toBeUndefined();
 
@@ -60,7 +56,7 @@ describe("restAuth", () => {
   });
 
   it("never mixes Authorization with X-Peak identity headers", () => {
-    for (const session of [null, incomplete, complete]) {
+    for (const session of [null, complete]) {
       const rest = restRequestHeaders(session, env);
       const socket = socketAlignedHeaders(session, env);
       expect(Boolean(rest.Authorization) && Boolean(rest["X-Peak-Tenant-Id"])).toBe(false);
@@ -69,7 +65,7 @@ describe("restAuth", () => {
   });
 
   it("holds the current ops session for the API client", () => {
-    setOperationalSession(incomplete);
+    setOperationalSession(complete);
     expect(getOperationalSession()?.token).toBe("ops_abc");
     clearOperationalSession();
     expect(getOperationalSession()).toBeNull();

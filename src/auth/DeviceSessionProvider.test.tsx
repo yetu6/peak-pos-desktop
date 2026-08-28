@@ -6,6 +6,8 @@ import { generateDeviceKeyPair } from "../lib/deviceCrypto";
 import {
   clearOperationalSession,
   getOperationalSession,
+  setOperationalSession,
+  type OperationalSession,
 } from "../lib/operationalSession";
 import type { SecretStore } from "../lib/deviceIdentity";
 import { DeviceSessionProvider, useDeviceSession } from "./DeviceSessionProvider";
@@ -52,6 +54,9 @@ function Probe() {
       <div data-testid="device">{identity?.deviceCode ?? ""}</div>
       <div data-testid="approved">{identity?.approved ? "yes" : "no"}</div>
       <div data-testid="ops">{session?.token ?? ""}</div>
+      <div data-testid="tenant">{session?.tenantId ?? ""}</div>
+      <div data-testid="property">{session?.propertyId ?? ""}</div>
+      <div data-testid="outlet">{session?.outletId ?? ""}</div>
       <div data-testid="error">{error ?? ""}</div>
       <div data-testid="roster">{roster.map((entry) => entry.fullName).join(",")}</div>
       <div data-testid="claim-property">{claim?.propertyName ?? ""}</div>
@@ -74,7 +79,7 @@ function Probe() {
   );
 }
 
-function renderSession(store: SecretStore) {
+function renderSession(store: SecretStore, applyOpsToken = async (_token: string) => undefined) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -83,7 +88,7 @@ function renderSession(store: SecretStore) {
       <DeviceSessionProvider
         store={store}
         baseUrl="http://peak.test"
-        applyOpsToken={async () => undefined}
+        applyOpsToken={applyOpsToken}
       >
         <Probe />
       </DeviceSessionProvider>
@@ -98,7 +103,7 @@ describe("DeviceSessionProvider", () => {
     localStorage.clear();
   });
 
-  it("Switch Staff ends the ops session without unpairing or closing the till", async () => {
+  it("retains server tenant context, bootstraps real routes, and clears everything on logout", async () => {
     const keys = await generateDeviceKeyPair();
     const store = memoryStore(
       JSON.stringify({
@@ -113,7 +118,8 @@ describe("DeviceSessionProvider", () => {
     localStorage.setItem("peak-pos-session-p1-o1", "till-1");
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input).endsWith("/pos/device/challenges")) {
+      const url = String(input);
+      if (url.endsWith("/pos/device/challenges")) {
         return jsonResponse({
           challengeId: "11111111-1111-1111-1111-111111111111",
           nonce: btoa("n".repeat(32)),
@@ -121,7 +127,7 @@ describe("DeviceSessionProvider", () => {
           staff: [],
         });
       }
-      return jsonResponse({
+      if (url.endsWith("/pos/sessions")) return jsonResponse({
         token: `ops_live${"x".repeat(40)}`,
         expiresAt: "2099-01-01T00:00:00Z",
         assurance: "RESTRICTED",
@@ -133,10 +139,16 @@ describe("DeviceSessionProvider", () => {
         mode: "cashier",
         terminalName: "Bar 1",
       });
+      if (url.endsWith("/pos/catalog")) {
+        return jsonResponse({ outletId: "o1", outletName: "Bar 1", products: [] });
+      }
+      if (url.endsWith("/pos/orders?active=true")) return jsonResponse([]);
+      throw new Error(`unexpected fetch: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
+    const applyOpsToken = vi.fn(async () => undefined);
 
-    renderSession(store);
+    renderSession(store, applyOpsToken);
     expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
 
     await userEvent.click(screen.getByTestId("unlock"));
@@ -144,7 +156,19 @@ describe("DeviceSessionProvider", () => {
       expect(screen.getByTestId("shell")).toHaveTextContent("OPERATIONAL"),
     );
     expect(screen.getByTestId("ops")).toHaveTextContent("ops_live");
+    expect(screen.getByTestId("tenant")).toHaveTextContent("t1");
+    expect(screen.getByTestId("property")).toHaveTextContent("p1");
+    expect(screen.getByTestId("outlet")).toHaveTextContent("o1");
     expect(getOperationalSession()?.token).toContain("ops_live");
+    expect(getOperationalSession()?.tenantId).toBe("t1");
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "http://peak.test/api/v1/pos/device/challenges",
+      "http://peak.test/api/v1/pos/device/challenges",
+      "http://peak.test/api/v1/pos/sessions",
+      "http://peak.test/api/v1/pos/catalog",
+      "http://peak.test/api/v1/pos/orders?active=true",
+    ]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("onboarding"))).toBe(false);
 
     await userEvent.click(screen.getByTestId("switch"));
     await waitFor(() =>
@@ -153,7 +177,62 @@ describe("DeviceSessionProvider", () => {
     expect(screen.getByTestId("device")).toHaveTextContent("dev_abc");
     expect(screen.getByTestId("ops")).toHaveTextContent("");
     expect(getOperationalSession()).toBeNull();
+    expect(applyOpsToken).toHaveBeenLastCalledWith("");
     expect(localStorage.getItem("peak-pos-session-p1-o1")).toBe("till-1");
+  });
+
+  it("clears a previous tenant before a rejected PIN", async () => {
+    const keys = await generateDeviceKeyPair();
+    const store = memoryStore(JSON.stringify({
+      ...keys,
+      terminalId: "terminal-1",
+      deviceCredential: "device-secret",
+      approved: true,
+    }));
+    const stale: OperationalSession = {
+      token: "stale-token",
+      expiresAt: "2099-01-01T00:00:00Z",
+      tenantId: "stale-tenant",
+      propertyId: "stale-property",
+      outletId: "stale-outlet",
+      terminalId: "stale-terminal",
+      staffId: "stale-staff",
+      assurance: "RESTRICTED",
+    };
+    setOperationalSession(stale);
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/challenges")
+      ? jsonResponse({ challengeId: "c1", nonce: btoa("n".repeat(32)), expiresAt: "2099-01-01T00:00:00Z", staff: [] }, 201)
+      : jsonResponse({}, 401)));
+
+    renderSession(store);
+    expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+    await userEvent.click(screen.getByTestId("unlock"));
+    await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent(/not accepted/i));
+    expect(getOperationalSession()).toBeNull();
+    expect(screen.getByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+  });
+
+  it("stays locked and publishes no session when post-login bootstrap is unavailable", async () => {
+    const keys = await generateDeviceKeyPair();
+    const store = memoryStore(JSON.stringify({
+      ...keys,
+      terminalId: "terminal-1",
+      deviceCredential: "device-secret",
+      approved: true,
+    }));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/challenges")) return jsonResponse({ challengeId: "c1", nonce: btoa("n".repeat(32)), expiresAt: "2099-01-01T00:00:00Z", staff: [] }, 201);
+      if (url.endsWith("/sessions")) return jsonResponse({ token: `ops_live${"x".repeat(40)}`, expiresAt: "2099-01-01T00:00:00Z", tenantId: "t1", propertyId: "p1", outletId: "o1", terminalId: "terminal-1", staffId: "u1", assurance: "RESTRICTED" }, 201);
+      throw new TypeError("Failed to fetch");
+    }));
+
+    renderSession(store);
+    expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+    await userEvent.click(screen.getByTestId("unlock"));
+    await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent(/reach Peak/i));
+    expect(getOperationalSession()).toBeNull();
+    expect(screen.getByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
   });
 
   it("loads the staff roster on entering the locked phase, for the tap-to-select PIN screen", async () => {

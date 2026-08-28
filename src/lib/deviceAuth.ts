@@ -266,6 +266,10 @@ function optionalId(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function requiredId(value: unknown): string | null {
+	return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
 /**
  * "Who's using this terminal?" — a tap-to-select roster so a waiter never has to remember or
  * type a staff number. A convenience, not a hard requirement: any failure (device not yet
@@ -322,19 +326,30 @@ export async function createStaffSession(args: {
     throw new Error(`Staff session failed with HTTP ${response.status}`);
   }
   const body = (await readJson(response)) as Record<string, unknown>;
-	if (typeof body?.token !== "string" || body.token.length < 32) {
-    throw new StaffLoginRejectedError();
+	const expiresAt = requiredId(body.expiresAt);
+	const tenantId = requiredId(body.tenantId);
+	const propertyId = requiredId(body.propertyId);
+	const outletId = requiredId(body.outletId);
+	const terminalIdFromServer = requiredId(body.terminalId);
+	const staffId = requiredId(body.staffId);
+	if (
+		typeof body?.token !== "string" || body.token.length < 32 ||
+		!expiresAt || !Number.isFinite(Date.parse(expiresAt)) ||
+		!tenantId || !propertyId || !outletId || !terminalIdFromServer || !staffId ||
+		body.assurance !== "RESTRICTED"
+	) {
+		throw new StaffLoginRejectedError("Peak returned an incomplete POS session");
   }
   return {
     token: body.token,
-    expiresAt: String(body.expiresAt ?? ""),
-		deviceId: String(body.terminalId ?? terminalId),
-    propertyId: String(body.propertyId ?? ""),
-		sessionClass: optionalId(body.assurance),
-		userId: optionalId(body.staffId),
-    outletId: optionalId(body.outletId),
+		expiresAt,
+		tenantId,
+		propertyId,
+		outletId,
+		terminalId: terminalIdFromServer,
+		staffId,
+		assurance: "RESTRICTED",
     mode: optionalId(body.mode),
     terminalName: optionalId(body.terminalName),
-    staffNumber: args.staffNumber,
   };
 }

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createApiClient } from "../lib/api";
 import {
   createPosApi,
   type PosOrderResponse,
@@ -14,14 +13,6 @@ import { fetchOutletMenu } from "../lib/menuCatalog";
 import { processPendingPrintJobs } from "../lib/printJobs";
 import { getOperationalSession } from "../lib/operationalSession";
 import { restRequestHeaders } from "../lib/restAuth";
-import {
-  decideEligibility,
-  defaultEligibilityCache,
-  forgetReady,
-  rememberReady,
-  type EligibilityCache,
-  type EligibilityDecision,
-} from "../lib/eligibility";
 
 function tryDevIdentity(): DevIdentity | null {
   try {
@@ -41,80 +32,6 @@ export function useOutletId(): string {
   const session = getOperationalSession();
   if (session?.outletId) return session.outletId;
   return devIdentityFromEnv().outletId;
-}
-
-export function useTenantId(): string {
-  const session = getOperationalSession();
-  if (session?.tenantId) return session.tenantId;
-  return devIdentityFromEnv().tenantId;
-}
-
-const eligibilityCache = defaultEligibilityCache();
-
-/**
- * UX gate only — Peak's POS commands already refuse an unverified tenant.
- * UNKNOWN never opens the register. A short last-known-good READY cache
- * covers a transient onboarding-read failure; realtime resync invalidates
- * this query and re-checks as soon as the till is live.
- */
-export function useTenantVerification(
-  cache: EligibilityCache = eligibilityCache,
-  now: () => number = Date.now,
-): {
-  status: EligibilityDecision;
-} {
-  const tenantId = useTenantId();
-  const query = useQuery({
-    queryKey: ["tenants", "onboarding", tenantId],
-    enabled: Boolean(tenantId),
-    retry: false,
-    queryFn: async () => {
-      const { data, error } = await createApiClient().GET("/api/v1/tenants/{tenantId}/onboarding", {
-        params: { path: { tenantId } },
-      });
-      if (error) throw new Error(String(error));
-      return data;
-    },
-  });
-  const succeeded =
-    query.data?.steps?.find((candidate: { key?: string; status?: string }) => candidate.key === "verify_business")?.status ===
-    "succeeded";
-
-  useEffect(() => {
-    if (!tenantId || query.isLoading || query.isError) return;
-    if (succeeded) {
-      rememberReady(cache, tenantId, now());
-    } else {
-      forgetReady(cache);
-    }
-  }, [tenantId, query.isLoading, query.isError, succeeded, cache, now]);
-
-  if (!tenantId) {
-    return { status: "UNKNOWN" };
-  }
-  if (query.isLoading) {
-    return { status: "LOADING" };
-  }
-  if (query.isError) {
-    return {
-      status: decideEligibility({
-        queryStatus: "error",
-        verifyBusinessSucceeded: null,
-        tenantId,
-        now: now(),
-        lastKnownGood: cache.load(tenantId),
-      }),
-    };
-  }
-  return {
-    status: decideEligibility({
-      queryStatus: "success",
-      verifyBusinessSucceeded: succeeded,
-      tenantId,
-      now: now(),
-      lastKnownGood: cache.load(tenantId),
-    }),
-  };
 }
 
 export function useOutletMenu() {

@@ -42,6 +42,7 @@ import {
   setOperationalSession,
   type OperationalSession,
 } from "../lib/operationalSession";
+import { bootstrapOperationalSession } from "../lib/postLoginBootstrap";
 
 /**
  * Shared-terminal shell. DEVICE pairing persists across waiters.
@@ -176,18 +177,22 @@ export function DeviceSessionProvider({
     expiryTimer.current = null;
   }, []);
 
+  const clearStaffAuthority = useCallback(() => {
+    clearExpiry();
+    clearOperationalSession();
+    setSession(null);
+    queryClient.clear();
+    void applyOpsToken("").catch(() => undefined);
+  }, [applyOpsToken, clearExpiry, queryClient]);
+
   const switchStaff = useCallback(
     (reason?: string) => {
-      clearExpiry();
-      clearOperationalSession();
-      setSession(null);
-      // Drop waiter-scoped REST cache and the unsaved cart (New Order unmounts).
+      clearStaffAuthority();
       // Do not touch the cashier till id in localStorage and do not unpair.
-      queryClient.clear();
       setPhase("locked");
       setError(reason ?? null);
     },
-    [clearExpiry, queryClient],
+    [clearStaffAuthority],
   );
 
   const armExpiry = useCallback(
@@ -500,6 +505,7 @@ export function DeviceSessionProvider({
     async (staffNumber: string, pin: string) => {
       const current = identityRef.current;
 		if (!current || !(current.terminalId || current.deviceCode) || !(current.deviceCredential || current.deviceCode)) return;
+      clearStaffAuthority();
       setError(null);
       try {
         const next = await createStaffSession({
@@ -512,6 +518,7 @@ export function DeviceSessionProvider({
           pin,
           previouslyApproved: current.approved === true,
         });
+        await bootstrapOperationalSession(peakUrl, next);
         try {
           await applyOpsToken(next.token);
         } catch {
@@ -523,17 +530,21 @@ export function DeviceSessionProvider({
           ...current,
           approved: true,
           pairing: undefined,
-          mode: next.mode,
-          terminalName: next.terminalName,
+          mode: next.mode ?? current.mode,
+          terminalName: next.terminalName ?? current.terminalName,
         });
         armExpiry(next);
         setPhase("ready");
       } catch (err) {
+        clearStaffAuthority();
         if (err instanceof DeviceRevokedError) {
           await persist({
             ...current,
             approved: false,
             deviceCode: undefined,
+            terminalId: undefined,
+            deviceCredential: undefined,
+            mode: undefined,
             pairing: undefined,
           });
           setPhase("unpaired");
@@ -546,13 +557,15 @@ export function DeviceSessionProvider({
           return;
         }
         if (err instanceof StaffLoginRejectedError || err instanceof SessionExpiredError) {
-          setError(humanDeviceError(err));
+          setError(err instanceof SessionExpiredError
+            ? "Session expired — enter your PIN again"
+            : humanDeviceError(err));
           return;
         }
         setError(humanDeviceError(err));
       }
     },
-    [applyOpsToken, armExpiry, peakUrl, persist],
+    [applyOpsToken, armExpiry, clearStaffAuthority, peakUrl, persist],
   );
 
 	const commission = useCallback(async (terminalId: string, deviceCredential: string, terminalName?: string) => {

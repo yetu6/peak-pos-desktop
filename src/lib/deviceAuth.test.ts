@@ -24,14 +24,32 @@ describe("Go POS device authentication", () => {
     const keys = await generateDeviceKeyPair();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/challenges")
       ? response({ challengeId: "c1", nonce, expiresAt: "2026-08-25T13:00:00Z", staff: [] }, 201)
-      : response({ token: "x".repeat(48), expiresAt: "2026-08-25T20:00:00Z", propertyId: "p1", outletId: "o1", terminalId: "t1", staffId: "s1", assurance: "RESTRICTED" }, 201));
+      : response({ token: "x".repeat(48), expiresAt: "2026-08-25T20:00:00Z", tenantId: "org1", propertyId: "p1", outletId: "o1", terminalId: "t1", staffId: "s1", assurance: "RESTRICTED" }, 201));
     vi.stubGlobal("fetch", fetchMock);
     const session = await createStaffSession({ baseUrl: "https://api.peak.localhost", terminalId: "t1", deviceCredential: "secret", privateKeyPkcs8: keys.privateKeyPkcs8, staffNumber: "s1", pin: "418205" });
-    expect(session).toMatchObject({ propertyId: "p1", outletId: "o1", userId: "s1", sessionClass: "RESTRICTED" });
+    expect(session).toEqual({
+      token: "x".repeat(48),
+      expiresAt: "2026-08-25T20:00:00Z",
+      tenantId: "org1",
+      propertyId: "p1",
+      outletId: "o1",
+      terminalId: "t1",
+      staffId: "s1",
+      assurance: "RESTRICTED",
+    });
     const login = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
     const body = JSON.parse(String(login[1].body));
     expect(body).toMatchObject({ challengeId: "c1", staffId: "s1", pin: "418205" });
     expect(body.signature).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it("rejects a session response that omits server authority context", async () => {
+    const keys = await generateDeviceKeyPair();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/challenges")
+      ? response({ challengeId: "c1", nonce, expiresAt: "2026-08-25T13:00:00Z", staff: [] }, 201)
+      : response({ token: "x".repeat(48), expiresAt: "2026-08-25T20:00:00Z", propertyId: "p1", outletId: "o1", terminalId: "t1", staffId: "s1", assurance: "RESTRICTED" }, 201)));
+
+    await expect(createStaffSession({ baseUrl: "https://api.peak.localhost", terminalId: "t1", deviceCredential: "secret", privateKeyPkcs8: keys.privateKeyPkcs8, staffNumber: "s1", pin: "418205" })).rejects.toThrow(/incomplete POS session/i);
   });
 
   it("maps a rejected PIN to a till-safe error", async () => {

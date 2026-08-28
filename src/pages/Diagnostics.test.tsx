@@ -63,9 +63,12 @@ vi.mock("../auth/DeviceSessionProvider", () => ({
     session: {
       token: "ops_SUPERSECRET",
       expiresAt: "2099-01-01T00:00:00Z",
-      deviceId: "device-uuid",
+      tenantId: "tenant-1",
       propertyId: "property-1",
-      staffNumber: "12",
+      outletId: "outlet-1",
+      terminalId: "device-uuid",
+      staffId: "staff-12",
+      assurance: "RESTRICTED",
     },
   }),
 }));

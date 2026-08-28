@@ -1,13 +1,12 @@
 export interface OperationalSession {
   token: string;
   expiresAt: string;
-  deviceId: string;
+  tenantId: string;
   propertyId: string;
-  staffNumber: string;
-  sessionClass?: string;
-  tenantId?: string;
-  userId?: string;
-  outletId?: string;
+  outletId: string;
+  terminalId: string;
+  staffId: string;
+  assurance: "RESTRICTED";
   mode?: string;
   terminalName?: string;
 }
