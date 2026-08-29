@@ -50,7 +50,11 @@ parameter), and `cmd/api/main.go`'s full route table (confirms `/pos/
 catalog` and `/pos/orders` exist; confirms no `/tenants/{id}/onboarding`
 route exists anywhere).
 
-### A second, more serious contract defect found during this audit — NOT fixed here
+### A second, more serious contract defect found during this audit — R1C baseline
+
+The following was the accurate R1C finding at its starting SHA. It is retained
+as historical audit evidence and is superseded by the schema-84 R1P pairing
+closure.
 
 Tracing "device startup → pairing/device identity," the step *before*
 PIN login, found that **`peak-pos-desktop`'s entire self-service pairing

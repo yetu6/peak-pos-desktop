@@ -1,6 +1,7 @@
 export interface PairingRecord {
   pairingRequestId: string;
   pairingCode: string;
+  claimToken: string;
   fingerprint: string;
   expiresAt: string;
 }
@@ -62,7 +63,7 @@ async function defaultStore(): Promise<SecretStore> {
   return localStorageSecretStore();
 }
 
-/** Keys, deviceCode, cached till labels. Never an ops_ token. */
+/** Device key, pairing proof, terminal credential and cached labels. Never an ops_ token. */
 export function persistableIdentity(record: DeviceIdentityRecord): DeviceIdentityRecord {
   return {
     privateKeyPkcs8: record.privateKeyPkcs8,

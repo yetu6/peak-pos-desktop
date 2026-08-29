@@ -38,6 +38,7 @@ describe("deviceIdentity", () => {
         pairing: {
           pairingRequestId: "6f1a9c2e-6b1d-4a51-9f0e-2c7a5d3b8e14",
           pairingCode: "418205",
+          claimToken: "claim-token-with-at-least-thirty-two-characters",
           fingerprint: "AA:BB",
           expiresAt: "2026-08-15T21:00:00Z",
         },
