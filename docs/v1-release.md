@@ -59,7 +59,8 @@ This till speaks hospitality API **V1** from
 `@peak/hospitality-api-client` (the packed tarball in
 `package.json`). A POS `0.1.x` release needs a Peak backend that:
 
-- serves `/api/v1/devices/pairing-requests`, challenges, and staff sessions
+- is at schema 84 or later and serves `/api/v1/pos/pairing-requests`,
+  `/api/v1/pos/device/challenges`, and `/api/v1/pos/sessions`
 - enforces business verification on POS commands
 - owns `pos_print_jobs` (migration **V153** and later)
 - exposes settle, room-charge-candidates, kitchen send/void, and session

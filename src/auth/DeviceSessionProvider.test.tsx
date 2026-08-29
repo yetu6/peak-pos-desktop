@@ -42,10 +42,9 @@ function Probe() {
     phase,
     error,
     roster,
-    claim,
-    confirmPairing,
-    rejectPairing,
     startPairing,
+    continueAfterApproval,
+    resetPairing,
   } = useDeviceSession();
   return (
     <div>
@@ -59,18 +58,18 @@ function Probe() {
       <div data-testid="outlet">{session?.outletId ?? ""}</div>
       <div data-testid="error">{error ?? ""}</div>
       <div data-testid="roster">{roster.map((entry) => entry.fullName).join(",")}</div>
-      <div data-testid="claim-property">{claim?.propertyName ?? ""}</div>
+      <div data-testid="pairing-code">{identity?.pairing?.pairingCode ?? ""}</div>
       <button data-testid="unlock" onClick={() => void unlock("0007", "418205")}>
         Unlock
       </button>
       <button data-testid="switch" onClick={() => switchStaff()}>
         Switch
       </button>
-      <button data-testid="confirm-claim" onClick={() => void confirmPairing()}>
-        Confirm
+      <button data-testid="check-pairing" onClick={() => void continueAfterApproval()}>
+        Check pairing
       </button>
-      <button data-testid="reject-claim" onClick={() => void rejectPairing()}>
-        Reject
+      <button data-testid="reset-pairing" onClick={() => void resetPairing()}>
+        Reset pairing
       </button>
       <button data-testid="start-pairing" onClick={() => void startPairing()}>
         Start pairing
@@ -304,99 +303,19 @@ describe("DeviceSessionProvider", () => {
     expect(saved.publicKeySpki).toBe(keys.publicKeySpki);
   });
 
-  it("only pairs after this till signs and confirms the manager's candidate claim", async () => {
+  it("persists the pending proof and accepts only the terminal id approved by Peak", async () => {
     const store = memoryStore();
     const future = new Date(Date.now() + 120_000).toISOString();
-    let confirmBody: { claimId?: string; signature?: string } | null = null;
-
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith("/devices/pairing-requests")) {
-        return jsonResponse({
-          pairingRequestId: "req-1",
-          deviceCode: "dev_abc",
-          pairingCode: "123456",
-          fingerprint: "AA:BB:CC:DD",
-          expiresAt: future,
-        });
-      }
-      if (url.endsWith("/devices/pairing-requests/req-1")) {
-        return jsonResponse({
-          status: "claim_pending_confirmation",
-          claimId: "claim-1",
-          claimTenantId: "tenant-1",
-          claimPropertyId: "property-1",
-          claimPropertyName: "Alpha Grand Hotel",
-          claimTerminalName: "Front Desk Till",
-          claimMode: "POS",
-          claimNonce: btoa("n".repeat(32)),
-          claimExpiresAt: future,
-        });
-      }
-      if (url.endsWith("/devices/pairing-requests/req-1/confirm")) {
-        confirmBody = JSON.parse(String(init?.body)) as { claimId?: string; signature?: string };
-        return jsonResponse({ deviceId: "device-1", deviceCode: "dev_abc" });
-      }
-      throw new Error(`unexpected fetch: ${url}`);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderSession(store);
-    expect(await screen.findByTestId("shell")).toHaveTextContent("UNPAIRED");
-
-    await userEvent.click(screen.getByTestId("start-pairing"));
-    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("confirming"));
-    expect(screen.getByTestId("claim-property")).toHaveTextContent("Alpha Grand Hotel");
-    // The claim alone never pairs the device — no paired state yet.
-    expect(screen.getByTestId("shell")).toHaveTextContent("UNPAIRED");
-
-    await userEvent.click(screen.getByTestId("confirm-claim"));
-    await waitFor(() => expect(screen.getByTestId("shell")).toHaveTextContent("PAIRED_LOCKED"));
-    expect(screen.getByTestId("device")).toHaveTextContent("dev_abc");
-    expect(screen.getByTestId("approved")).toHaveTextContent("yes");
-    expect(confirmBody).not.toBeNull();
-    expect(confirmBody!.claimId).toBe("claim-1");
-    expect(typeof confirmBody!.signature).toBe("string");
-    expect(confirmBody!.signature!.length).toBeGreaterThan(0);
-  });
-
-  it("rejecting a claim rotates to a fresh pairing code instead of pairing it", async () => {
-    const store = memoryStore();
-    const future = new Date(Date.now() + 120_000).toISOString();
-    let rejectCalled = false;
-    let pairingRequestCalls = 0;
-
+    let approved = false;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith("/devices/pairing-requests")) {
-        pairingRequestCalls += 1;
-        return jsonResponse({
-          pairingRequestId: "req-1",
-          deviceCode: "dev_abc",
-          pairingCode: pairingRequestCalls === 1 ? "111111" : "222222",
-          fingerprint: "AA:BB:CC:DD",
-          expiresAt: future,
-        });
+      if (url.endsWith("/pos/pairing-requests")) {
+        return jsonResponse({ pairingRequestId: "11111111-1111-4111-8111-111111111111", pairingCode: "23456-ABCDE", claimToken: "claim-token-with-at-least-thirty-two-characters", fingerprint: "sha256:device", expiresAt: future }, 201);
       }
-      if (url.endsWith("/devices/pairing-requests/req-1/reject")) {
-        rejectCalled = true;
-        return jsonResponse({});
-      }
-      if (url.endsWith("/devices/pairing-requests/req-1")) {
-        if (rejectCalled) {
-          return jsonResponse({ status: "pending" });
-        }
-        return jsonResponse({
-          status: "claim_pending_confirmation",
-          claimId: "claim-1",
-          claimTenantId: "tenant-attacker",
-          claimPropertyId: "property-attacker",
-          claimPropertyName: "Some Other Hotel",
-          claimTerminalName: "Bar Till",
-          claimMode: "POS",
-          claimNonce: btoa("n".repeat(32)),
-          claimExpiresAt: future,
-        });
+      if (url.endsWith("/pos/pairing-requests/11111111-1111-4111-8111-111111111111")) {
+        return jsonResponse(approved
+          ? { status: "CONSUMED", terminalId: "22222222-2222-4222-8222-222222222222", expiresAt: future }
+          : { status: "PENDING", expiresAt: future });
       }
       throw new Error(`unexpected fetch: ${url}`);
     });
@@ -404,15 +323,88 @@ describe("DeviceSessionProvider", () => {
 
     renderSession(store);
     expect(await screen.findByTestId("shell")).toHaveTextContent("UNPAIRED");
-
     await userEvent.click(screen.getByTestId("start-pairing"));
-    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("confirming"));
-    expect(screen.getByTestId("claim-property")).toHaveTextContent("Some Other Hotel");
-
-    await userEvent.click(screen.getByTestId("reject-claim"));
     await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("waiting"));
-    expect(screen.getByTestId("shell")).toHaveTextContent("UNPAIRED");
+    expect(screen.getByTestId("pairing-code")).toHaveTextContent("23456-ABCDE");
+    const pending = JSON.parse((await store.load()) ?? "{}") as { approved?: boolean; terminalId?: string; deviceCredential?: string; pairing?: { claimToken?: string } };
+    expect(pending.approved).toBe(false);
+    expect(pending.terminalId).toBeUndefined();
+    expect(pending.deviceCredential?.length).toBeGreaterThanOrEqual(43);
+    expect(pending.pairing?.claimToken).toBe("claim-token-with-at-least-thirty-two-characters");
+
+    approved = true;
+    await userEvent.click(screen.getByTestId("check-pairing"));
+    await waitFor(() => expect(screen.getByTestId("shell")).toHaveTextContent("PAIRED_LOCKED"));
+    const paired = JSON.parse((await store.load()) ?? "{}") as { approved?: boolean; terminalId?: string; pairing?: unknown };
+    expect(paired.approved).toBe(true);
+    expect(paired.terminalId).toBe("22222222-2222-4222-8222-222222222222");
+    expect(paired.pairing).toBeUndefined();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/devices/"))).toBe(false);
+  });
+
+  it("resumes an unexpired pending request after restart without inventing authority", async () => {
+    const keys = await generateDeviceKeyPair();
+    const future = new Date(Date.now() + 120_000).toISOString();
+    const store = memoryStore(JSON.stringify({ ...keys, approved: false, deviceCredential: "pending-device-credential", pairing: { pairingRequestId: "11111111-1111-4111-8111-111111111111", pairingCode: "23456-ABCDE", claimToken: "claim-token-with-at-least-thirty-two-characters", fingerprint: "sha256:device", expiresAt: future } }));
+    const fetchMock = vi.fn(async () => jsonResponse({ status: "PENDING", expiresAt: future }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSession(store);
+    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("waiting"));
     expect(screen.getByTestId("approved")).toHaveTextContent("no");
-    expect(pairingRequestCalls).toBeGreaterThanOrEqual(2);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.headers).toEqual({ "X-Peak-Pairing-Token": "claim-token-with-at-least-thirty-two-characters" });
+  });
+
+  it("fails closed on rejection and requires a new pairing lifecycle", async () => {
+    const store = memoryStore();
+    const future = new Date(Date.now() + 120_000).toISOString();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/pos/pairing-requests")
+      ? jsonResponse({ pairingRequestId: "11111111-1111-4111-8111-111111111111", pairingCode: "23456-ABCDE", claimToken: "claim-token-with-at-least-thirty-two-characters", fingerprint: "sha256:device", expiresAt: future }, 201)
+      : jsonResponse({ status: "REJECTED", expiresAt: future }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSession(store);
+    await screen.findByTestId("shell");
+    await userEvent.click(screen.getByTestId("start-pairing"));
+    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("unpaired"));
+    expect(screen.getByTestId("error")).toHaveTextContent(/denied/i);
+    const saved = JSON.parse((await store.load()) ?? "{}") as Record<string, unknown>;
+    expect(saved.approved).toBe(false);
+    expect(saved.pairing).toBeUndefined();
+    expect(saved.deviceCredential).toBeUndefined();
+    expect(saved.terminalId).toBeUndefined();
+  });
+
+  it("clears an expired pending credential on restart", async () => {
+    const keys = await generateDeviceKeyPair();
+    const store = memoryStore(JSON.stringify({ ...keys, approved: false, deviceCredential: "expired-credential", pairing: { pairingRequestId: "11111111-1111-4111-8111-111111111111", pairingCode: "23456-ABCDE", claimToken: "claim-token-with-at-least-thirty-two-characters", fingerprint: "sha256:device", expiresAt: "2020-01-01T00:00:00Z" } }));
+    vi.stubGlobal("fetch", vi.fn());
+
+    renderSession(store);
+    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("unpaired"));
+    const saved = JSON.parse((await store.load()) ?? "{}") as Record<string, unknown>;
+    expect(saved.pairing).toBeUndefined();
+    expect(saved.deviceCredential).toBeUndefined();
+  });
+
+  it("keeps the same pending proof through a polling network failure and clears it on reset", async () => {
+    const keys = await generateDeviceKeyPair();
+    const future = new Date(Date.now() + 120_000).toISOString();
+    const store = memoryStore(JSON.stringify({ ...keys, approved: false, deviceCredential: "pending-device-credential", pairing: { pairingRequestId: "11111111-1111-4111-8111-111111111111", pairingCode: "23456-ABCDE", claimToken: "claim-token-with-at-least-thirty-two-characters", fingerprint: "sha256:device", expiresAt: future } }));
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
+
+    renderSession(store);
+    await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent(/reach Peak/i));
+    expect(screen.getByTestId("phase")).toHaveTextContent("waiting");
+    let saved = JSON.parse((await store.load()) ?? "{}") as Record<string, unknown>;
+    expect(saved.pairing).toBeDefined();
+    expect(saved.deviceCredential).toBe("pending-device-credential");
+
+    await userEvent.click(screen.getByTestId("reset-pairing"));
+    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("unpaired"));
+    saved = JSON.parse((await store.load()) ?? "{}") as Record<string, unknown>;
+    expect(saved.pairing).toBeUndefined();
+    expect(saved.deviceCredential).toBeUndefined();
   });
 });
