@@ -1,15 +1,16 @@
-export type WorkspacePage = "orders" | "new" | "kitchen" | "status";
+export type WorkspacePage = "orders" | "new" | "kitchen" | "manager" | "status";
 
 export interface WorkspaceItem {
   page: WorkspacePage;
   label: string;
-  icon: "orders" | "kitchen" | "plus" | "info";
+  icon: "orders" | "kitchen" | "plus" | "info" | "payments";
 }
 
 const ALL: WorkspaceItem[] = [
   { page: "orders", label: "Active Orders", icon: "orders" },
   { page: "new", label: "New Order", icon: "plus" },
   { page: "kitchen", label: "Kitchen", icon: "kitchen" },
+  { page: "manager", label: "Manager", icon: "payments" },
 ];
 
 const STATUS: WorkspaceItem = { page: "status", label: "Status", icon: "info" };

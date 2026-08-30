@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { defaultWorkspacePage, workspaceNav } from "./workspace";
 
 describe("workspaceNav", () => {
-  it("gives a POS till the register, new order, kitchen, and status", () => {
+  it("gives a POS till the register, new order, kitchen, manager, and status", () => {
     expect(workspaceNav("POS").map((item) => item.page)).toEqual([
       "orders",
       "new",
       "kitchen",
+      "manager",
       "status",
     ]);
   });
@@ -27,6 +28,7 @@ describe("workspaceNav", () => {
     expect(workspaceNav("cashier").map((item) => item.page)).toEqual([
       "orders",
       "new",
+      "manager",
       "status",
     ]);
   });

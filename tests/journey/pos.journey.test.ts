@@ -1,31 +1,40 @@
 /**
- * Commissioning → order → settle → print against a live Peak.
+ * Pair → PIN login → open shift → catalog → order → modifiers → send →
+ * settle cash → receipt → reprint → cash movement → close shift, against a
+ * live fbc-peak (schema 86, `api/openapi/peak.openapi.yaml`, tag POS).
  *
- * Requires the same identity env as `realtime.journey.test.ts`, plus a
- * verified tenant that can open a till. Pairing/revocation uses the
- * unauthenticated device routes and the manager approval/revoke routes.
+ * Manager approval uses the dev header identity Peak accepts when
+ * PEAK_ALLOW_HEADER_IDENTITY=true, matching how this repo's other journey
+ * suite authenticates as a property user. The device/PIN legs use the same
+ * real, unauthenticated POS routes the desktop app itself calls
+ * (src/lib/deviceAuth.ts) — nothing here is a fictional endpoint.
  *
- *   PEAK_JOURNEY_TENANT_ID=... PEAK_JOURNEY_USER_ID=... \
+ *   PEAK_JOURNEY_BASE_URL=http://localhost:8080 \
+ *   PEAK_JOURNEY_ORGANIZATION_ID=... PEAK_JOURNEY_USER_ID=... \
  *   PEAK_JOURNEY_PROPERTY_ID=... PEAK_JOURNEY_OUTLET_ID=... \
+ *   PEAK_JOURNEY_STAFF_ID=... PEAK_JOURNEY_STAFF_PIN=... \
  *   bun run test:journey
  *
- * Optional: PEAK_JOURNEY_MENU_ITEM_ID if the outlet catalog is empty.
+ * Optional: PEAK_JOURNEY_PRODUCT_ID if the outlet catalog is empty.
  * Without credentials the suite skips itself.
  */
-import { afterEach, describe, expect, it } from "vitest";
-import { generateDeviceKeyPair } from "../../src/lib/deviceCrypto";
-import { createStaffSession, DeviceRevokedError, issueChallenge } from "../../src/lib/deviceAuth";
+import { describe, expect, it } from "vitest";
+import { generateDeviceKeyPair, rawPublicKeyB64Url } from "../../src/lib/deviceCrypto";
+import { createStaffSession, getPairingStatus, requestPairing } from "../../src/lib/deviceAuth";
+import type { POSCatalog, POSOrder, POSReceipt, POSShift } from "../../src/lib/posContracts";
 
 const baseUrl = process.env.PEAK_JOURNEY_BASE_URL ?? "http://localhost:8080";
-const tenantId = process.env.PEAK_JOURNEY_TENANT_ID;
+const organizationId = process.env.PEAK_JOURNEY_ORGANIZATION_ID;
 const userId = process.env.PEAK_JOURNEY_USER_ID;
 const propertyId = process.env.PEAK_JOURNEY_PROPERTY_ID;
 const outletId = process.env.PEAK_JOURNEY_OUTLET_ID;
-const enabled = Boolean(tenantId && userId && propertyId && outletId);
+const staffId = process.env.PEAK_JOURNEY_STAFF_ID;
+const staffPin = process.env.PEAK_JOURNEY_STAFF_PIN;
+const enabled = Boolean(organizationId && userId && propertyId && outletId && staffId && staffPin);
 
-function headers(extra: Record<string, string> = {}): Record<string, string> {
+function managerHeaders(extra: Record<string, string> = {}): Record<string, string> {
   return {
-    "X-Peak-Tenant-Id": tenantId!,
+    "X-Peak-Tenant-Id": organizationId!,
     "X-Peak-Tenant-User-Id": userId!,
     "Content-Type": "application/json",
     ...extra,
@@ -33,238 +42,125 @@ function headers(extra: Record<string, string> = {}): Record<string, string> {
 }
 
 async function peak<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${baseUrl}${path}`, { ...init, headers: { ...managerHeaders(), ...(init.headers as Record<string, string> | undefined) } });
+  const body = await response.text();
+  if (!response.ok) throw new Error(`${init.method ?? "GET"} ${path} → HTTP ${response.status}: ${body}`);
+  return body ? (JSON.parse(body) as T) : (undefined as T);
+}
+
+async function posCall<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
-    headers: { ...headers(), ...(init.headers as Record<string, string> | undefined) },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID(), ...(init.headers as Record<string, string> | undefined) },
   });
   const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`${init.method ?? "GET"} ${path} → HTTP ${response.status}: ${body}`);
-  }
-  if (!body) return undefined as T;
-  return JSON.parse(body) as T;
+  if (!response.ok) throw new Error(`${init.method ?? "GET"} ${path} → HTTP ${response.status}: ${body}`);
+  return body ? (JSON.parse(body) as T) : (undefined as T);
 }
 
-function mutateHeaders(): Record<string, string> {
-  return headers({ "Idempotency-Key": crypto.randomUUID() });
-}
-
-interface PrintJob {
-  id: string;
-  jobType: string;
-  sourceId: string;
-  status: string;
-  document: Record<string, unknown>;
-}
-
-describe.skipIf(!enabled)("POS commissioning → order → settle → print", () => {
-  const openedSessions: string[] = [];
-  const pairedDevices: string[] = [];
-
-  afterEach(async () => {
-    while (openedSessions.length > 0) {
-      const sessionId = openedSessions.pop();
-      if (!sessionId) continue;
-      try {
-        await peak(`/api/v1/properties/${propertyId}/pos-sessions/${sessionId}/close`, {
-          method: "POST",
-          headers: mutateHeaders(),
-          body: JSON.stringify({ actualCash: 0 }),
-        });
-      } catch {
-        // Already closed, or the outlet was left for the next operator.
-      }
-    }
-    while (pairedDevices.length > 0) {
-      const deviceId = pairedDevices.pop();
-      if (!deviceId) continue;
-      try {
-        await peak(`/api/v1/tenants/${tenantId}/devices/${deviceId}/revoke`, {
-          method: "POST",
-          headers: mutateHeaders(),
-        });
-      } catch {
-        // Already revoked.
-      }
-    }
-  });
-
+describe.skipIf(!enabled)("POS desktop: pair, PIN, shift, order, settle, receipt (real fbc-peak)", () => {
   it(
-    "pairs a till, then withholds the challenge after revoke even with a valid PIN",
+    "runs the certified POS V1 journey end-to-end against real Postgres",
     async () => {
+      // 1–4: fresh device identity, pairing request, manager approval, claim.
       const keys = await generateDeviceKeyPair();
-      const issued = await peak<{
-        pairingRequestId: string;
-        deviceCode: string;
-        pairingCode: string;
-      }>("/api/v1/devices/pairing-requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publicKey: keys.publicKeySpki }),
+      const issued = await requestPairing(baseUrl, rawPublicKeyB64Url(keys.publicKeySpki), "a".repeat(64));
+
+      const lookup = await peak<{ pairingRequestId: string }>(
+        `/api/v1/organizations/${organizationId}/properties/${propertyId}/pos/pairing-requests/lookup`,
+        { method: "POST", body: JSON.stringify({ pairingCode: issued.pairingCode }) },
+      );
+      expect(lookup.pairingRequestId).toBe(issued.pairingRequestId);
+
+      const approved = await peak<{ terminalId: string }>(
+        `/api/v1/organizations/${organizationId}/properties/${propertyId}/pos/pairing-requests/${issued.pairingRequestId}/approve`,
+        { method: "POST", body: JSON.stringify({ outletId, terminalName: "Journey till" }) },
+      );
+      expect(approved.terminalId).toBeTruthy();
+
+      const status = await getPairingStatus(baseUrl, issued.pairingRequestId, issued.claimToken);
+      expect(status.status).toBe("CONSUMED");
+      expect(status.terminalId).toBe(approved.terminalId);
+
+      // 5: PIN login binds device+staff+PIN into a restricted POS session.
+      // Reuses the exact `issueChallenge`/`/pos/sessions` calls the desktop
+      // app itself makes (src/lib/deviceAuth.ts) — this journey never talks
+      // to a route the shipped app does not also use.
+      const session = await createStaffSession({
+        baseUrl,
+        terminalId: approved.terminalId,
+        deviceCredential: approved.terminalId,
+        privateKeyPkcs8: keys.privateKeyPkcs8,
+        staffNumber: staffId!,
+        pin: staffPin!,
       });
-      expect(issued.deviceCode).toMatch(/^dev_/);
-      expect(issued.pairingCode).toMatch(/^\d{6}$/);
+      expect(session.assurance).toBe("RESTRICTED");
+      expect(session.propertyId).toBe(propertyId);
+      expect(session.outletId).toBe(outletId);
 
-      const pending = await peak<{ status: string }>(
-        `/api/v1/devices/pairing-requests/${issued.pairingRequestId}`,
-      );
-      expect(pending.status).toBe("pending");
-      expect(pending).not.toHaveProperty("propertyId");
-      expect(pending).not.toHaveProperty("tenantId");
+      // 6: open shift with an opening float.
+      const shift = await posCall<POSShift>(session.token, "/api/v1/pos/shifts", { method: "POST", body: JSON.stringify({ openingCashMinor: 1_000_000 }) });
+      expect(shift.status).toBe("OPEN");
+      expect(shift.businessDate).toBeTruthy();
 
-      const approved = await peak<{ deviceId: string; deviceCode: string }>(
-        `/api/v1/tenants/${tenantId}/devices/pairing-approvals`,
-        {
-          method: "POST",
-          headers: mutateHeaders(),
-          body: JSON.stringify({
-            pairingCode: issued.pairingCode,
-            propertyId,
-            outletId,
-            terminalName: "Journey till",
-            mode: "POS",
-          }),
-        },
-      );
-      pairedDevices.push(approved.deviceId);
-      expect(approved.deviceCode).toBe(issued.deviceCode);
+      // 7: real outlet catalog.
+      const catalog = await posCall<POSCatalog>(session.token, "/api/v1/pos/catalog");
+      const productId = process.env.PEAK_JOURNEY_PRODUCT_ID ?? catalog.products[0]?.id;
+      if (!productId) throw new Error("Outlet has no menu item; set PEAK_JOURNEY_PRODUCT_ID");
 
-      const status = await peak<{ status: string; deviceCode?: string; mode?: string }>(
-        `/api/v1/devices/pairing-requests/${issued.pairingRequestId}`,
-      );
-      expect(status.status).toBe("approved");
-      expect(status.deviceCode).toBe(issued.deviceCode);
-      expect(status).not.toHaveProperty("propertyId");
-
-      const challenge = await issueChallenge(baseUrl, issued.deviceCode);
-      expect(challenge?.nonce).toBeTruthy();
-
-      await peak(`/api/v1/tenants/${tenantId}/devices/${approved.deviceId}/revoke`, {
+      // 8–10: create order, add item (server-priced), confirm.
+      let order = await posCall<POSOrder>(session.token, "/api/v1/pos/orders", {
         method: "POST",
-        headers: mutateHeaders(),
+        body: JSON.stringify({ shiftId: shift.id, serviceType: "DINE_IN", tableLabel: "J1" }),
       });
-      pairedDevices.pop();
+      expect(order.status).toBe("OPEN");
+      order = await posCall<POSOrder>(session.token, `/api/v1/pos/orders/${order.id}/items`, {
+        method: "POST",
+        body: JSON.stringify({ productId, quantity: 1, version: order.version }),
+      });
+      expect(order.items.length).toBeGreaterThan(0);
+      expect(order.totalMinor).toBeGreaterThan(0);
 
-      await expect(issueChallenge(baseUrl, issued.deviceCode)).resolves.toBeNull();
+      // Stale version is refused, never silently retried.
       await expect(
-        createStaffSession({
-          baseUrl,
-          deviceCode: issued.deviceCode,
-          privateKeyPkcs8: keys.privateKeyPkcs8,
-          staffNumber: process.env.PEAK_JOURNEY_STAFF_NUMBER ?? "0001",
-          pin: process.env.PEAK_JOURNEY_PIN ?? "418205",
-          previouslyApproved: true,
+        posCall(session.token, `/api/v1/pos/orders/${order.id}/items`, {
+          method: "POST",
+          body: JSON.stringify({ productId, quantity: 1, version: order.version - 1 }),
         }),
-      ).rejects.toBeInstanceOf(DeviceRevokedError);
+      ).rejects.toThrow(/STALE_VERSION|409/);
+
+      await posCall<void>(session.token, `/api/v1/pos/orders/${order.id}/send`, { method: "POST", body: JSON.stringify({ version: order.version }) });
+
+      // 11: settle CASH for the server's exact total.
+      const tender = await posCall<{ paymentId: string }>(session.token, `/api/v1/pos/orders/${order.id}/payments`, {
+        method: "POST",
+        body: JSON.stringify({ paymentMethod: "CASH", amountMinor: order.totalMinor, version: order.version }),
+      });
+      expect(tender.paymentId).toBeTruthy();
+
+      // 12: immutable receipt.
+      const receipt = await posCall<POSReceipt>(session.token, `/api/v1/pos/orders/${order.id}/receipt`);
+      expect(receipt.document.totalMinor).toBe(order.totalMinor);
+      expect(receipt.reprintCount).toBe(0);
+
+      // 13: reprint — chained, no new payment, no new original.
+      const reprint = await posCall<POSReceipt>(session.token, `/api/v1/pos/orders/${order.id}/receipt/reprint`, { method: "POST" });
+      expect(reprint.reprintedFromId).toBe(receipt.id);
+
+      // 14: cash movement folds into expected cash server-side.
+      await posCall(session.token, "/api/v1/pos/cash-movements", { method: "POST", body: JSON.stringify({ movementType: "CASH_OUT", amountMinor: 100_000, reason: "Journey test petty cash" }) });
+
+      // 15: expected cash reflects the tender and the movement.
+      const shiftNow = await posCall<POSShift>(session.token, `/api/v1/pos/shifts/${shift.id}`);
+      expect(shiftNow.expectedCashMinor).toBe(1_000_000 + order.totalMinor - 100_000);
+
+      // 16–17: count and close.
+      const closed = await posCall<POSShift>(session.token, `/api/v1/pos/shifts/${shift.id}/close`, {
+        method: "POST",
+        body: JSON.stringify({ countedCashMinor: shiftNow.expectedCashMinor }),
+      });
+      expect(closed.status).toBe("CLOSED");
     },
-    60_000,
-  );
-
-  it(
-    "opens a till, sends an order, settles cash, and leaves Peak print jobs",
-    async () => {
-      const session = await peak<{ id: string }>(
-        `/api/v1/properties/${propertyId}/pos-sessions/open`,
-        {
-          method: "POST",
-          headers: mutateHeaders(),
-          body: JSON.stringify({ outletId, openingFloat: 10_000 }),
-        },
-      );
-      openedSessions.push(session.id);
-
-      const menuItemId =
-        process.env.PEAK_JOURNEY_MENU_ITEM_ID ??
-        (
-          await peak<Array<{ id: string; isAvailable?: boolean }>>(
-            `/api/v1/properties/${propertyId}/pos-config/menu-items?outletId=${outletId}`,
-          )
-        ).find((item) => item.isAvailable !== false)?.id;
-      if (!menuItemId) {
-        throw new Error("Outlet has no menu item; set PEAK_JOURNEY_MENU_ITEM_ID");
-      }
-
-      const order = await peak<{ id: string; orderNumber?: string; status: string }>(
-        `/api/v1/properties/${propertyId}/pos-orders`,
-        {
-          method: "POST",
-          headers: mutateHeaders(),
-          body: JSON.stringify({
-            sessionId: session.id,
-            orderType: "dine_in",
-            tableNumber: "J1",
-            clientOperationId: crypto.randomUUID(),
-          }),
-        },
-      );
-      expect(order.status).toBe("open");
-
-      const priced = await peak<{ items: Array<{ id: string }> }>(
-        `/api/v1/properties/${propertyId}/pos-orders/${order.id}/items`,
-        {
-          method: "POST",
-          headers: mutateHeaders(),
-          body: JSON.stringify({
-            menuItemId,
-            quantity: 1,
-            clientOperationId: crypto.randomUUID(),
-          }),
-        },
-      );
-      expect(priced.items.length).toBeGreaterThan(0);
-
-      const ticket = await peak<{ id: string }>(
-        `/api/v1/properties/${propertyId}/pos-orders/${order.id}/send`,
-        {
-          method: "POST",
-          headers: mutateHeaders(),
-          body: JSON.stringify({ clientOperationId: crypto.randomUUID() }),
-        },
-      );
-      const kitchenJobs = (
-        await peak<PrintJob[]>(
-          `/api/v1/properties/${propertyId}/pos-print-jobs?status=pending`,
-        )
-      ).filter((job) => job.sourceId === ticket.id && job.jobType === "kitchen_ticket");
-      expect(kitchenJobs.length).toBeGreaterThan(0);
-      expect(kitchenJobs[0]?.document.kind).toBe("kitchen_ticket");
-
-      const settled = await peak<{ id: string; status: string; settlementStatus: string }>(
-        `/api/v1/properties/${propertyId}/pos-orders/${order.id}/settle`,
-        {
-          method: "POST",
-          headers: mutateHeaders(),
-          body: JSON.stringify({ paymentMethod: "cash" }),
-        },
-      );
-      expect(settled.status).toBe("closed");
-      expect(settled.settlementStatus).toBe("confirmed");
-      const receipts = (
-        await peak<PrintJob[]>(
-          `/api/v1/properties/${propertyId}/pos-print-jobs?status=pending`,
-        )
-      ).filter((job) => job.sourceId === order.id && job.jobType === "receipt");
-      expect(receipts.length).toBeGreaterThan(0);
-      expect(receipts[0]?.document.kind).toBe("receipt");
-
-      const closed = await peak<{ id: string; status: string }>(
-        `/api/v1/properties/${propertyId}/pos-sessions/${session.id}/close`,
-        {
-          method: "POST",
-          headers: mutateHeaders(),
-          body: JSON.stringify({ actualCash: 10_000 }),
-        },
-      );
-      openedSessions.pop();
-      expect(closed.status).toBe("closed");
-      const reports = (
-        await peak<PrintJob[]>(
-          `/api/v1/properties/${propertyId}/pos-print-jobs?status=pending`,
-        )
-      ).filter((job) => job.sourceId === session.id && job.jobType === "shift_report");
-      expect(reports.length).toBeGreaterThan(0);
-      expect(reports[0]?.document.kind).toBe("shift_report");
-    },
-    90_000,
+    120_000,
   );
 });

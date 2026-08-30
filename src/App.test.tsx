@@ -28,6 +28,7 @@ vi.mock("./hooks/usePosData", () => ({
   useOutletId: () => "outlet-1",
   usePropertyId: () => "property-1",
   useRealtimeEvents: vi.fn(),
+  usePosShift: () => ({ shift: null, open: { mutate: vi.fn(), isPending: false, error: null }, close: { mutate: vi.fn(), isPending: false, error: null } }),
 }));
 
 vi.mock("./realtime/RealtimeProvider", () => ({

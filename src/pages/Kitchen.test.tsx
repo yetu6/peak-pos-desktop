@@ -1,42 +1,29 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RealtimeClient } from "../realtime/RealtimeClient";
 import { RealtimeProvider } from "../realtime/RealtimeProvider";
 import { Kitchen } from "./Kitchen";
+import type { POSOrder } from "../lib/posContracts";
 
 vi.mock("../lib/env", () => ({
-  devIdentityFromEnv: () => ({
-    tenantId: "tenant-1",
-    userId: "user-1",
-    propertyId: "property-1",
-    outletId: "outlet-1",
-  }),
+  devIdentityFromEnv: () => ({ tenantId: "tenant-1", userId: "user-1", propertyId: "property-1", outletId: "outlet-1" }),
 }));
 
-interface MockTicket {
-  id: string;
-  ticketNumber: string;
-  orderId: string;
-  status: string;
-  sentAt: string;
-  items: Array<{ id: string; itemName: string; quantity: number }>;
-}
+const ordersStore = new Map<string, POSOrder>();
 
-const ticketsStore = new Map<string, MockTicket>();
-
-const { listKitchenTicketsSpy, transitionTicketSpy } = vi.hoisted(() => ({
-  listKitchenTicketsSpy: vi.fn(async () => ({
-    data: Array.from(ticketsStore.values()),
-    error: null,
-  })),
-  transitionTicketSpy: vi.fn(async () => ({ data: {}, error: null })),
+const { listOrdersSpy, transitionStatusSpy, getOrderSpy } = vi.hoisted(() => ({
+  listOrdersSpy: vi.fn(async () => ({ data: Array.from(ordersStore.values()), error: null })),
+  transitionStatusSpy: vi.fn(async () => ({ data: undefined, error: null })),
+  getOrderSpy: vi.fn(async (orderId: string) => ({ data: ordersStore.get(orderId), error: null })),
 }));
 
 vi.mock("../lib/posApi", () => ({
   createPosApi: () => ({
-    listKitchenTickets: listKitchenTicketsSpy,
-    transitionTicket: transitionTicketSpy,
+    listOrders: listOrdersSpy,
+    transitionStatus: transitionStatusSpy,
+    getOrder: getOrderSpy,
   }),
 }));
 
@@ -44,7 +31,6 @@ class FakeSocket {
   binaryType = "blob";
   readyState = 0;
   sent: string[] = [];
-  closed = false;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
   onerror: (() => void) | null = null;
@@ -54,9 +40,7 @@ class FakeSocket {
   send(data: string | ArrayBuffer): void {
     this.sent.push(String(data));
   }
-  close(): void {
-    this.closed = true;
-  }
+  close(): void {}
   open(): void {
     this.readyState = 1;
     this.onopen?.();
@@ -66,14 +50,14 @@ class FakeSocket {
   }
 }
 
-function announce(sequenceId: number, type: string, ticketId: string): string {
+function announce(sequenceId: number, type: string, orderId: string): string {
   return JSON.stringify({
     sequence_id: sequenceId,
     id: `evt-${sequenceId}`,
     type,
     version: 1,
     resource_type: "POS_ORDER",
-    resource_id: ticketId,
+    resource_id: orderId,
     occurred_at: "2026-08-15T08:00:00Z",
     organization_id: "tenant-1",
     property_id: "property-1",
@@ -87,13 +71,8 @@ async function flush(): Promise<void> {
 
 function renderKitchen() {
   const socket = new FakeSocket();
-  const client = new RealtimeClient({
-    createSocket: () => socket as unknown as WebSocket,
-    cursorStorage: { get: () => null, set: () => {} },
-  });
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+  const client = new RealtimeClient({ createSocket: () => socket as unknown as WebSocket, cursorStorage: { get: () => null, set: () => {} } });
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
       <RealtimeProvider client={client} queryClient={queryClient}>
@@ -104,33 +83,46 @@ function renderKitchen() {
   return socket;
 }
 
-const TICKET: MockTicket = {
-  id: "ticket-1",
-  ticketNumber: "K-12",
-  orderId: "order-1",
-  status: "PENDING",
-  sentAt: "2026-08-15T08:00:00Z",
-  items: [{ id: "line-1", itemName: "Nyama Choma", quantity: 2 }],
+const SENT_ORDER: POSOrder = {
+  id: "order-1",
+  shiftId: "shift-1",
+  orderNumber: "K-12",
+  status: "SENT",
+  serviceType: "DINE_IN",
+  tableLabel: "T4",
+  subtotalMinor: 1000,
+  taxMinor: 180,
+  totalMinor: 1180,
+  version: 2,
+  items: [{ id: "line-1", productId: "p1", name: "Nyama Choma", quantity: 2, unitPriceMinor: 500, taxMinor: 90, totalMinor: 1180, status: "SENT" }],
 };
 
 describe("Kitchen", () => {
   afterEach(() => {
-    ticketsStore.clear();
-    listKitchenTicketsSpy.mockClear();
-    transitionTicketSpy.mockClear();
+    ordersStore.clear();
+    listOrdersSpy.mockClear();
+    transitionStatusSpy.mockClear();
   });
 
-  it("subscribes to the outlet kitchen topic and refetches REST when a ticket is announced", async () => {
+  it("subscribes to the outlet kitchen topic and refetches REST when an order is sent", async () => {
     const socket = renderKitchen();
-    await flush();
+    expect(await screen.findByText(/Kitchen is quiet/)).toBeInTheDocument();
+
+    ordersStore.set("order-1", SENT_ORDER);
     socket.open();
     await flush();
-    expect(await screen.findByText(/Kitchen is quiet/)).toBeInTheDocument();
-    expect(socket.sent.join("")).toContain("pos.outlet.outlet-1");
-
-    ticketsStore.set("ticket-1", TICKET);
-    socket.emit(announce(1, "pos.order.sent", "ticket-1"));
+    socket.emit(announce(1, "pos.order.sent", "order-1"));
     expect(await screen.findByText("K-12")).toBeInTheDocument();
-    await waitFor(() => expect(listKitchenTicketsSpy.mock.calls.length).toBeGreaterThan(1));
+    await waitFor(() => expect(listOrdersSpy.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it("advances a sent order to PREPARING using the current order version, never a per-ticket void", async () => {
+    ordersStore.set("order-1", SENT_ORDER);
+    renderKitchen();
+    await screen.findByText("K-12");
+    expect(screen.queryByTestId("void-order-1")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("transition-order-1"));
+    await waitFor(() => expect(transitionStatusSpy).toHaveBeenCalledWith("order-1", "PREPARING", 2, expect.any(String)));
   });
 });

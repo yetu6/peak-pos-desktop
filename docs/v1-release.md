@@ -55,19 +55,25 @@ Publish `SHA256SUMS` next to the artifacts. Never commit the binaries.
 
 ## Backend compatibility
 
-This till speaks hospitality API **V1** from
-`@peak/hospitality-api-client` (the packed tarball in
-`package.json`). A POS `0.1.x` release needs a Peak backend that:
+This till talks directly to fbc-peak's REST contract (`api/openapi/peak.openapi.yaml`,
+tag `POS`) via a small hand-rolled fetch client (`src/lib/api.ts`); there is
+no packaged API client tarball. As of R6A (see
+`docs/POS_DESKTOP_R6A_CLOSURE.md`), a POS `0.1.x` release needs a Peak
+backend that is at **schema 86 or later** (R5C, the certified/frozen POS V1
+contract) and serves, at minimum:
 
-- is at schema 84 or later and serves `/api/v1/pos/pairing-requests`,
-  `/api/v1/pos/device/challenges`, and `/api/v1/pos/sessions`
-- enforces business verification on POS commands
-- owns `pos_print_jobs` (migration **V153** and later)
-- exposes settle, room-charge-candidates, kitchen send/void, and session
-  open/close
+- `/api/v1/pos/pairing-requests`, `/api/v1/pos/device/challenges`, `/api/v1/pos/sessions`
+- `/api/v1/pos/shifts`, `/api/v1/pos/shifts/{id}`, `/api/v1/pos/shifts/{id}/close`
+- `/api/v1/pos/cash-movements`, `/api/v1/pos/shifts/{id}/cash-movements`
+- `/api/v1/pos/catalog` (with `categories`/`modifierGroups`/`modifierOptions`)
+- `/api/v1/pos/orders` and its `items`/`send`/`status/{status}`/`payments`/`room-charge`/`void` sub-routes, all version-checked
+- `/api/v1/pos/orders/{id}/receipt` and `/receipt/reprint`
+- `/api/v1/pos/business-day/close`
+- `/api/v1/pos/print-jobs` (job types `KITCHEN_TICKET` and `RECEIPT` only — there is no `void_ticket` or `shift_report` job type)
 
-Do not install this till against a backend whose OpenAPI contract is older
-than the client tarball it was built with.
+A schema older than 86 is missing order versioning, modifiers, cash
+movements, and the receipt/reprint contract this till now depends on for
+every settled order — do not install against one.
 
 ## Supported upgrade path
 

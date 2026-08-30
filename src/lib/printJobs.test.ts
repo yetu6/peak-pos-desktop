@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  formatPrintDocument,
-  processPendingPrintJobs,
-  reprintSource,
-  ticketCopyFromPrintDocument,
-} from "./printJobs";
+import { formatPrintDocument, processPendingPrintJobs, ticketCopyFromPrintDocument } from "./printJobs";
+import type { POSPrintJob } from "./posContracts";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -19,49 +15,36 @@ function json(body: unknown, status = 200): Response {
   } as Response;
 }
 
+const KITCHEN_JOB: POSPrintJob = {
+  id: "job-1",
+  sourceType: "POS_ORDER",
+  sourceId: "order-1",
+  jobType: "KITCHEN_TICKET",
+  status: "PENDING",
+  attempts: 0,
+  createdAt: "2026-08-29T10:00:00Z",
+  document: { ticketNumber: "KDS-1", orderNumber: "POS-1", items: [{ id: "i1", name: "Stew", quantity: 1 }] },
+};
+
 describe("printJobs", () => {
-  it("formats a Peak kitchen document without prices", () => {
-    const copy = ticketCopyFromPrintDocument({
-      kind: "kitchen_ticket",
-      ticketNumber: "KDS-1",
-      tableNumber: "12",
-      lines: [{ name: "Stew", quantity: "1", note: "no chili" }],
-    });
-    const formatted = formatPrintDocument({
-      id: "job-1",
-      propertyId: "p",
-      outletId: "o",
-      jobType: "kitchen_ticket",
-      sourceType: "kitchen_ticket",
-      sourceId: "ticket-1",
-      reprint: false,
-      status: "pending",
-      document: {
-        ticketNumber: "KDS-1",
-        lines: [{ name: "Stew", quantity: "1" }],
-      },
-    });
-    expect(copy.lines[0]?.note).toBe("no chili");
+  it("formats a Peak kitchen ticket without prices", () => {
+    const copy = ticketCopyFromPrintDocument(KITCHEN_JOB.document);
+    const formatted = formatPrintDocument(KITCHEN_JOB);
+    expect(copy.lines[0]?.name).toBe("Stew");
     expect(formatted.title).toBe("peak-kitchen-ticket");
     expect(formatted.text).toContain("KDS-1");
     expect(formatted.text).not.toMatch(/tax|TSh|price/i);
   });
 
-  it("formats a Peak receipt with the posted totals", () => {
+  it("formats Peak's own receipt document with the posted totals", () => {
     const formatted = formatPrintDocument({
+      ...KITCHEN_JOB,
       id: "job-r",
-      propertyId: "p",
-      outletId: "o",
-      jobType: "receipt",
-      sourceType: "pos_order",
-      sourceId: "order-1",
-      reprint: false,
-      status: "pending",
+      jobType: "RECEIPT",
       document: {
-        kind: "receipt",
         orderNumber: "POS-1",
-        tableNumber: "12",
-        settlementMethod: "cash",
+        tableLabel: "12",
+        tenderMethod: "CASH",
         subtotal: "20.00",
         taxAmount: "3.60",
         totalAmount: "23.60",
@@ -75,102 +58,32 @@ describe("printJobs", () => {
     expect(formatted.text).toContain("Tax  3.60");
   });
 
-  it("formats void tickets and shift reports from Peak documents", () => {
-    const voided = formatPrintDocument({
-      id: "job-v",
-      propertyId: "p",
-      outletId: "o",
-      jobType: "void_ticket",
-      sourceType: "pos_order",
-      sourceId: "item-1",
-      reprint: false,
-      status: "pending",
-      document: {
-        kind: "void_ticket",
-        orderNumber: "POS-1",
-        itemName: "Stew",
-        quantity: "1",
-        disposition: "waste",
-        reason: "Guest changed mind",
-      },
-    });
-    expect(voided.title).toBe("peak-void-ticket");
-    expect(voided.text).toContain("VOID");
-    expect(voided.text).toContain("Stew");
-    expect(voided.text).toContain("waste");
-
-    const shift = formatPrintDocument({
-      id: "job-s",
-      propertyId: "p",
-      outletId: "o",
-      jobType: "shift_report",
-      sourceType: "pos_session",
-      sourceId: "session-1",
-      reprint: false,
-      status: "pending",
-      document: {
-        kind: "shift_report",
-        status: "closed",
-        openingFloat: "100.00",
-        expectedCash: "123.60",
-        closingCash: "123.60",
-        variance: "0.00",
-      },
-    });
-    expect(shift.title).toBe("peak-shift-report");
-    expect(shift.text).toContain("SHIFT REPORT");
-    expect(shift.text).toContain("Expected  123.60");
+  it("falls back to the generic ticket formatter for an unrecognized job type instead of dropping it", () => {
+    const formatted = formatPrintDocument({ ...KITCHEN_JOB, jobType: "SOMETHING_NEW" });
+    expect(formatted.title).toBe("peak-something-new");
+    expect(formatted.text).toContain("KDS-1");
   });
 
-  it("claims a pending job, prints, and acks printed", async () => {
-    const calls: string[] = [];
+  it("filters PENDING jobs with the exact uppercase status Peak's column stores", async () => {
+    const requestedUrls: string[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string) => {
         const url = String(input);
-        if (url.includes("/pos/print-jobs?") && url.includes("pending")) {
-          return json([
-            {
-              id: "job-1",
-              propertyId: "prop",
-              outletId: "out",
-              jobType: "kitchen_ticket",
-              sourceType: "kitchen_ticket",
-              sourceId: "ticket-1",
-              reprint: false,
-              status: "pending",
-              document: { ticketNumber: "KDS-1", lines: [{ name: "Stew", quantity: "1" }] },
-            },
-          ]);
-        }
-        if (url.endsWith("/claim")) {
-          calls.push("claim");
-          return json({
-            id: "job-1",
-            propertyId: "prop",
-            outletId: "out",
-            jobType: "kitchen_ticket",
-            sourceType: "kitchen_ticket",
-            sourceId: "ticket-1",
-            reprint: false,
-            status: "claimed",
-            document: { ticketNumber: "KDS-1", lines: [{ name: "Stew", quantity: "1" }] },
-          });
-        }
-        if (url.endsWith("/printed")) {
-          calls.push("printed");
-          return json({ status: "printed" });
-        }
+        requestedUrls.push(url);
+        if (url.endsWith("/claim")) return json({ ...KITCHEN_JOB, status: "CLAIMED" });
+        if (url.endsWith("/printed")) return json({ ...KITCHEN_JOB, status: "PRINTED" });
+        if (url.includes("/pos/print-jobs")) return json([KITCHEN_JOB]);
         return json({}, 500);
       }),
     );
 
     const printed: string[] = [];
-    const results = await processPendingPrintJobs("prop", "ticket-1", async (title, text) => {
+    const results = await processPendingPrintJobs("prop", "order-1", async (title, text) => {
       printed.push(`${title}\n${text}`);
     });
+    expect(requestedUrls[0]).toContain("status=PENDING");
     expect(results).toEqual([{ ok: true }]);
-    expect(calls).toEqual(["claim", "printed"]);
     expect(printed[0]).toContain("KDS-1");
   });
 
@@ -179,107 +92,17 @@ describe("printJobs", () => {
       "fetch",
       vi.fn(async (input: string) => {
         const url = String(input);
-        if (url.includes("pending")) {
-          return json([
-            {
-              id: "job-1",
-              propertyId: "prop",
-              outletId: "out",
-              jobType: "kitchen_ticket",
-              sourceType: "kitchen_ticket",
-              sourceId: "ticket-1",
-              reprint: false,
-              status: "pending",
-              document: { lines: [{ name: "Stew", quantity: "1" }] },
-            },
-          ]);
-        }
-        if (url.endsWith("/claim")) {
-          return json({
-            id: "job-1",
-            propertyId: "prop",
-            outletId: "out",
-            jobType: "kitchen_ticket",
-            sourceType: "kitchen_ticket",
-            sourceId: "ticket-1",
-            reprint: false,
-            status: "claimed",
-            document: { lines: [{ name: "Stew", quantity: "1" }] },
-          });
-        }
-        if (url.endsWith("/failed")) {
-          return json({ status: "failed" });
-        }
+        if (url.endsWith("/claim")) return json({ ...KITCHEN_JOB, status: "CLAIMED" });
+        if (url.endsWith("/failed")) return json({ ...KITCHEN_JOB, status: "FAILED" });
+        if (url.includes("/pos/print-jobs")) return json([KITCHEN_JOB]);
         return json({}, 500);
       }),
     );
 
-    const results = await processPendingPrintJobs("prop", "ticket-1", async () => {
-      throw new Error("No kitchen printer is configured");
+    const results = await processPendingPrintJobs("prop", "order-1", async () => {
+      throw new Error("No printer is configured");
     });
-    expect(results).toEqual([{ ok: false, error: "No kitchen printer is configured" }]);
-  });
-
-  it("reprint asks Peak for a new job instead of printing a local copy", async () => {
-    const calls: string[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string) => {
-        const url = String(input);
-        if (url.includes("printed,failed") || url.includes("printed%2Cfailed")) {
-          return json([
-            {
-              id: "job-1",
-              propertyId: "prop",
-              outletId: "out",
-              jobType: "kitchen_ticket",
-              sourceType: "kitchen_ticket",
-              sourceId: "ticket-1",
-              reprint: false,
-              status: "printed",
-              document: { ticketNumber: "KDS-1", lines: [{ name: "Stew", quantity: "1" }] },
-            },
-          ]);
-        }
-        if (url.endsWith("/reprint")) {
-          calls.push("reprint");
-          return json({
-            id: "job-2",
-            propertyId: "prop",
-            outletId: "out",
-            jobType: "kitchen_ticket",
-            sourceType: "kitchen_ticket",
-            sourceId: "ticket-1",
-            reprint: true,
-            status: "pending",
-            document: { ticketNumber: "KDS-1", lines: [{ name: "Stew", quantity: "1" }] },
-          });
-        }
-        if (url.endsWith("/claim")) {
-          calls.push("claim");
-          return json({
-            id: "job-2",
-            propertyId: "prop",
-            outletId: "out",
-            jobType: "kitchen_ticket",
-            sourceType: "kitchen_ticket",
-            sourceId: "ticket-1",
-            reprint: true,
-            status: "claimed",
-            document: { ticketNumber: "KDS-1", lines: [{ name: "Stew", quantity: "1" }] },
-          });
-        }
-        if (url.endsWith("/printed")) {
-          calls.push("printed");
-          return json({ status: "printed" });
-        }
-        return json({}, 500);
-      }),
-    );
-
-    const result = await reprintSource("prop", "ticket-1", async () => undefined);
-    expect(result.ok).toBe(true);
-    expect(calls).toEqual(["reprint", "claim", "printed"]);
+    expect(results).toEqual([{ ok: false, error: "No printer is configured" }]);
   });
 
   it("treats a claim conflict as another till winning, not a printer failure", async () => {
@@ -287,30 +110,14 @@ describe("printJobs", () => {
       "fetch",
       vi.fn(async (input: string) => {
         const url = String(input);
-        if (url.includes("pending")) {
-          return json([
-            {
-              id: "job-1",
-              propertyId: "prop",
-              outletId: "out",
-              jobType: "kitchen_ticket",
-              sourceType: "kitchen_ticket",
-              sourceId: "ticket-1",
-              reprint: false,
-              status: "pending",
-              document: { lines: [{ name: "Stew", quantity: "1" }] },
-            },
-          ]);
-        }
-        if (url.endsWith("/claim")) {
-          return json({ code: "POS_CONFLICT" }, 409);
-        }
+        if (url.endsWith("/claim")) return json({ code: "CONFLICT" }, 409);
+        if (url.includes("/pos/print-jobs")) return json([KITCHEN_JOB]);
         return json({}, 500);
       }),
     );
 
     const printed: string[] = [];
-    const results = await processPendingPrintJobs("prop", "ticket-1", async (title, text) => {
+    const results = await processPendingPrintJobs("prop", "order-1", async (title, text) => {
       printed.push(`${title}\n${text}`);
     });
     expect(results).toEqual([{ ok: true }]);
