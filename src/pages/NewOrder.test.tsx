@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NewOrder } from "./NewOrder";
+import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
 import type { POSCatalog } from "../lib/posContracts";
 
 vi.mock("../lib/env", () => ({
@@ -57,10 +58,20 @@ function renderNewOrder() {
 describe("NewOrder", () => {
   beforeEach(() => {
     localStorage.clear();
+    // A POS_CASHIER-equivalent grant so these order-composition tests are
+    // not incidentally gated by the R6A-C permission signal; the dedicated
+    // gating behavior is covered in TillControls.test.tsx.
+    setOperationalSession({
+      token: "t", expiresAt: "2099-01-01T00:00:00Z", tenantId: "tenant-1", propertyId: "property-1",
+      outletId: "outlet-1", terminalId: "terminal-1", staffId: "staff-1", assurance: "RESTRICTED",
+      capabilities: ["CORE", "POS"],
+      permissions: ["pos.shift.open", "pos.shift.close", "pos.order.create", "pos.order.item.add", "pos.order.send", "pos.payment.record"],
+    });
   });
   afterEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    clearOperationalSession();
   });
 
   it("opens a shift with the cashier's float and persists the opened id", async () => {

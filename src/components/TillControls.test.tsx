@@ -4,12 +4,16 @@ import userEvent from "@testing-library/user-event";
 import { TillControls } from "./TillControls";
 import type { POSShift } from "../lib/posContracts";
 
-const { usePosShiftMock } = vi.hoisted(() => ({ usePosShiftMock: vi.fn() }));
+const { usePosShiftMock, useHasPermissionMock } = vi.hoisted(() => ({
+  usePosShiftMock: vi.fn(),
+  useHasPermissionMock: vi.fn(() => true),
+}));
 
 vi.mock("../hooks/usePosData", () => ({
   usePosShift: usePosShiftMock,
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
   useMutationMessage: (error: unknown) => (error ? String((error as Error).message ?? error) : null),
+  useHasPermission: useHasPermissionMock,
 }));
 
 function mutation<T>(
@@ -56,5 +60,14 @@ describe("TillControls", () => {
     await userEvent.type(screen.getByTestId("counted-cash"), "100");
     await userEvent.click(screen.getByTestId("close-shift"));
     expect(close.mutate).toHaveBeenCalledWith({ countedCashMinor: 10_000, idempotencyKey: "key-1" });
+  });
+
+  it("hides Open shift for a staff account without pos.shift.open, with an explanatory message instead of a dead button", () => {
+    useHasPermissionMock.mockReturnValue(false);
+    usePosShiftMock.mockReturnValue({ shift: null, open: mutation(), close: mutation() });
+    render(<TillControls />);
+    expect(screen.queryByTestId("open-shift")).not.toBeInTheDocument();
+    expect(screen.getByTestId("shift-open-unavailable")).toHaveTextContent("ask a cashier");
+    useHasPermissionMock.mockReturnValue(true);
   });
 });
