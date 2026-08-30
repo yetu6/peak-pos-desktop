@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RealtimeClient } from "../realtime/RealtimeClient";
 import { RealtimeProvider } from "../realtime/RealtimeProvider";
 import { ActiveOrders } from "./ActiveOrders";
+import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
 import type { POSOrder } from "../lib/posContracts";
 
 vi.mock("../lib/env", () => ({
@@ -123,11 +124,38 @@ describe("ActiveOrders", () => {
     getOrderSpy.mockClear();
     sendOrderSpy.mockClear();
     processPendingPrintJobsSpy.mockClear();
+    clearOperationalSession();
   });
 
   it("renders the empty state before any order exists", async () => {
     renderActiveOrders();
     expect(await screen.findByText(/No open orders/)).toBeInTheDocument();
+  });
+
+  it("hides Settle for a staff account without pos.payment.record, but keeps Send to kitchen and Void", async () => {
+    setOperationalSession({
+      token: "t", expiresAt: "2099-01-01T00:00:00Z", tenantId: "tenant-1", propertyId: "property-1",
+      outletId: "outlet-1", terminalId: "terminal-1", staffId: "staff-1", assurance: "RESTRICTED",
+      capabilities: ["CORE", "POS"], permissions: ["pos.order.create", "pos.order.item.add", "pos.order.send"],
+    });
+    ordersStore.set("order-1", OPEN_ORDER);
+    renderActiveOrders();
+    await screen.findByText("ORD-1042");
+    expect(screen.queryByTestId("settle-order-1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("send-order-1")).toBeInTheDocument();
+    expect(screen.getByTestId("void-order-order-1")).toBeInTheDocument();
+  });
+
+  it("shows Settle for a staff account with pos.payment.record", async () => {
+    setOperationalSession({
+      token: "t", expiresAt: "2099-01-01T00:00:00Z", tenantId: "tenant-1", propertyId: "property-1",
+      outletId: "outlet-1", terminalId: "terminal-1", staffId: "staff-1", assurance: "RESTRICTED",
+      capabilities: ["CORE", "POS"], permissions: ["pos.order.create", "pos.order.item.add", "pos.order.send", "pos.payment.record"],
+    });
+    ordersStore.set("order-1", OPEN_ORDER);
+    renderActiveOrders();
+    await screen.findByText("ORD-1042");
+    expect(screen.getByTestId("settle-order-1")).toBeInTheDocument();
   });
 
   it("shows an order from REST and refetches when the stream announces a change", async () => {

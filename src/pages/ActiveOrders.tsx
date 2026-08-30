@@ -5,7 +5,7 @@ import { RemoveItemDialog } from "../components/RemoveItemDialog";
 import { VoidOrderDialog } from "../components/VoidOrderDialog";
 import { ReceiptView } from "../components/ReceiptView";
 import { formatMinor } from "../lib/posMoney";
-import { useActiveOrders, useIdempotencyKey, useMutationMessage, usePrintAfter, usePropertyId, useSendOrder } from "../hooks/usePosData";
+import { useActiveOrders, useHasPermission, useIdempotencyKey, useMutationMessage, usePrintAfter, usePropertyId, useSendOrder } from "../hooks/usePosData";
 import type { POSOrder, POSOrderItem } from "../lib/posContracts";
 
 const STATUS_BADGE: Record<POSOrder["status"], string> = {
@@ -25,6 +25,7 @@ export function ActiveOrders() {
   const sendKey = useIdempotencyKey();
   const sendError = useMutationMessage(sendOrder.error);
   const printAfter = usePrintAfter(propertyId);
+  const canSettle = useHasPermission("pos.payment.record");
   const [settling, setSettling] = useState<POSOrder | null>(null);
   const [removing, setRemoving] = useState<{ order: POSOrder; item: POSOrderItem } | null>(null);
   const [voiding, setVoiding] = useState<POSOrder | null>(null);
@@ -87,7 +88,7 @@ export function ActiveOrders() {
             <button data-testid={`void-order-${order.id}`} onClick={() => setVoiding(order)} className="btn-tertiary btn-sm">
               Void
             </button>
-            {canSend && (
+            {canSend && canSettle && (
               <button data-testid={`settle-${order.id}`} onClick={() => setSettling(order)} className="btn-secondary btn-sm">
                 <Icon name="payments" size={14} />
                 Settle
@@ -99,7 +100,7 @@ export function ActiveOrders() {
                 Send to kitchen
               </button>
             )}
-            {!canSend && order.status !== "CLOSED" && (
+            {!canSend && order.status !== "CLOSED" && canSettle && (
               <button data-testid={`settle-${order.id}`} onClick={() => setSettling(order)} className="btn-primary btn-sm">
                 <Icon name="payments" size={14} />
                 Settle

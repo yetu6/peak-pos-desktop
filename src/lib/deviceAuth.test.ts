@@ -36,11 +36,44 @@ describe("Go POS device authentication", () => {
       terminalId: "t1",
       staffId: "s1",
       assurance: "RESTRICTED",
+      mode: undefined,
+      terminalName: undefined,
+      capabilities: [],
+      permissions: [],
     });
     const login = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
     const body = JSON.parse(String(login[1].body));
     expect(body).toMatchObject({ challengeId: "c1", staffId: "s1", pin: "418205" });
     expect(body.signature).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it("carries the session's authoritative capabilities and permissions through (R6A-C)", async () => {
+    const keys = await generateDeviceKeyPair();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/challenges")
+      ? response({ challengeId: "c1", nonce, expiresAt: "2026-08-25T13:00:00Z", staff: [] }, 201)
+      : response({
+          token: "x".repeat(48), expiresAt: "2026-08-25T20:00:00Z", tenantId: "org1", propertyId: "p1",
+          outletId: "o1", terminalId: "t1", staffId: "s1", assurance: "RESTRICTED",
+          capabilities: ["CORE", "LODGING", "POS"], permissions: ["pos.order.create", "pos.payment.record"],
+        }, 201));
+    vi.stubGlobal("fetch", fetchMock);
+    const session = await createStaffSession({ baseUrl: "https://api.peak.localhost", terminalId: "t1", deviceCredential: "secret", privateKeyPkcs8: keys.privateKeyPkcs8, staffNumber: "s1", pin: "418205" });
+    expect(session.capabilities).toEqual(["CORE", "LODGING", "POS"]);
+    expect(session.permissions).toEqual(["pos.order.create", "pos.payment.record"]);
+  });
+
+  it("degrades a malformed or missing capabilities/permissions field to an empty list instead of throwing", async () => {
+    const keys = await generateDeviceKeyPair();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/challenges")
+      ? response({ challengeId: "c1", nonce, expiresAt: "2026-08-25T13:00:00Z", staff: [] }, 201)
+      : response({
+          token: "x".repeat(48), expiresAt: "2026-08-25T20:00:00Z", tenantId: "org1", propertyId: "p1",
+          outletId: "o1", terminalId: "t1", staffId: "s1", assurance: "RESTRICTED", capabilities: "POS",
+        }, 201));
+    vi.stubGlobal("fetch", fetchMock);
+    const session = await createStaffSession({ baseUrl: "https://api.peak.localhost", terminalId: "t1", deviceCredential: "secret", privateKeyPkcs8: keys.privateKeyPkcs8, staffNumber: "s1", pin: "418205" });
+    expect(session.capabilities).toEqual([]);
+    expect(session.permissions).toEqual([]);
   });
 
   it("rejects a session response that omits server authority context", async () => {

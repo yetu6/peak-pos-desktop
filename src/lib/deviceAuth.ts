@@ -285,5 +285,14 @@ export async function createStaffSession(args: {
 		assurance: "RESTRICTED",
     mode: optionalId(body.mode),
     terminalName: optionalId(body.terminalName),
+		capabilities: stringArray(body.capabilities),
+		permissions: stringArray(body.permissions),
   };
+}
+
+/** Defensive against an older, un-patched backend that has not deployed
+ *  R6A-C yet: missing/malformed capabilities or permissions degrade to an
+ *  empty list (fail closed on visibility) rather than throwing. */
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }

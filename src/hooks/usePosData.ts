@@ -27,6 +27,32 @@ export function useOutletId(): string {
   return devIdentityFromEnv().outletId;
 }
 
+/**
+ * R6A-C: this property's authoritative effective capabilities and this
+ * staff member's own current-property POS permission grants, both received
+ * once at PIN login (`createRestrictedPOSSession`) and held only in the
+ * in-memory operational session — never derived from property_type, an
+ * outlet, a role NAME, or local configuration. UX composition only: every
+ * mutation these gate is still re-checked against this same authority by
+ * the backend on every call, and a stale/forged value here changes nothing
+ * about what the server will actually accept.
+ */
+export function usePropertyCapabilities(): string[] {
+  return getOperationalSession()?.capabilities ?? [];
+}
+
+export function usePosPermissions(): string[] {
+  return getOperationalSession()?.permissions ?? [];
+}
+
+export function useHasCapability(code: string): boolean {
+  return usePropertyCapabilities().includes(code);
+}
+
+export function useHasPermission(resourceAction: string): boolean {
+  return usePosPermissions().includes(resourceAction);
+}
+
 /** Every mutation-with-side-effects generates exactly one Idempotency-Key
  *  when the user initiates the action. A later automatic or manual retry of
  *  THAT SAME intended mutation must reuse it; a new user action mints a new
@@ -83,13 +109,29 @@ function shiftStorageKey(propertyId: string, outletId: string): string {
   return `peak-pos-shift-${propertyId}-${outletId}`;
 }
 
+/**
+ * The shift-id pointer itself lives in TanStack Query's cache (not a local
+ * useState) so every call site — the header's TillControls and a page's own
+ * `usePosShift()` are two independent hook invocations — reads and writes
+ * the SAME value. A local useState here previously desynced them: opening a
+ * shift updated the header but left the selling workspace showing "No open
+ * shift" until a full remount. Found live during R6A-C visual certification.
+ */
+function shiftIdQueryKey(propertyId: string, outletId: string) {
+  return ["pos", "shift-id", propertyId, outletId] as const;
+}
+
 export function usePosShift() {
   const propertyId = usePropertyId();
   const outletId = useOutletId();
   const queryClient = useQueryClient();
-  const [storedId, setStoredId] = useState<string | null>(() =>
-    localStorage.getItem(shiftStorageKey(propertyId, outletId)),
-  );
+  const idKey = shiftIdQueryKey(propertyId, outletId);
+
+  const { data: storedId = null } = useQuery({
+    queryKey: idKey,
+    queryFn: () => localStorage.getItem(shiftStorageKey(propertyId, outletId)),
+    staleTime: Infinity,
+  });
 
   const { data: shift } = useQuery({
     queryKey: ["pos", "shift", storedId],
@@ -98,6 +140,7 @@ export function usePosShift() {
       const { data, error } = await createPosApi().getShift(storedId);
       if (error || !data || data.status !== "OPEN") {
         localStorage.removeItem(shiftStorageKey(propertyId, outletId));
+        queryClient.setQueryData(idKey, null);
         return null;
       }
       return data;
@@ -111,7 +154,7 @@ export function usePosShift() {
       unwrap(createPosApi().openShift(args.openingCashMinor, args.idempotencyKey)),
     onSuccess: (data: POSShift) => {
       localStorage.setItem(shiftStorageKey(propertyId, outletId), data.id);
-      setStoredId(data.id);
+      queryClient.setQueryData(idKey, data.id);
       queryClient.invalidateQueries();
     },
   });
@@ -123,10 +166,11 @@ export function usePosShift() {
       supervisorPin?: string;
       idempotencyKey: string;
     }) => {
-      if (!storedId) throw new Error("No open shift");
+      const currentId = queryClient.getQueryData<string | null>(idKey) ?? storedId;
+      if (!currentId) throw new Error("No open shift");
       return unwrap(
         createPosApi().closeShift(
-          storedId,
+          currentId,
           {
             countedCashMinor: args.countedCashMinor,
             supervisorStaffId: args.supervisorStaffId,
@@ -139,7 +183,7 @@ export function usePosShift() {
     onSuccess: (data: POSShift) => {
       if (data.status === "CLOSED") {
         localStorage.removeItem(shiftStorageKey(propertyId, outletId));
-        setStoredId(null);
+        queryClient.setQueryData(idKey, null);
       }
       queryClient.invalidateQueries();
     },
@@ -392,11 +436,12 @@ export function useReprintReceipt() {
 }
 
 // ---------------------------------------------------------------------------
-// Room charge — offered only once a real, non-empty candidate lookup for
-// this property has succeeded (see docs/POS_DESKTOP_R6A_CLOSURE.md, backend
-// contract gap #1: the POS session carries no capability list at all, so
-// "LODGING active" cannot be read directly; a candidate to charge to is the
-// only truthful, non-invented signal a POS session can obtain).
+// Room charge — R6A-C: offered only when the authoritative session context
+// says both the property has LODGING active and this staff member holds
+// pos.room_charge.create at this property (see docs/
+// POS_DESKTOP_R6A_CLOSURE.md and POS_DESKTOP_R6A_CERTIFICATION.md — this
+// replaces the earlier empty-candidate-search heuristic now that fbc-peak
+// exposes the real signal at PIN login).
 // ---------------------------------------------------------------------------
 
 export function useRoomChargeCandidates(query: string) {
@@ -408,16 +453,14 @@ export function useRoomChargeCandidates(query: string) {
   });
 }
 
-/** One-shot probe (empty query) so the workspace knows whether to offer
- *  "Charge to room" at all before the cashier opens the settle dialog. */
-export function useRoomChargeAvailability() {
-  return useQuery({
-    queryKey: ["pos", "room-charge-candidates", "__probe__"],
-    queryFn: () => unwrap(createPosApi().listRoomChargeCandidates("")),
-    select: (candidates) => candidates.length > 0,
-    staleTime: 60_000,
-    retry: false,
-  });
+/** Whether to offer "Charge to room" at all — a synchronous read of the
+ *  session's own authoritative context, not a network probe. Backend
+ *  capability/permission checks on the actual posting endpoint remain the
+ *  real authority regardless of what this returns. */
+export function useRoomChargeAvailability(): { data: boolean } {
+  const hasLodging = useHasCapability("LODGING");
+  const canRoomCharge = useHasPermission("pos.room_charge.create");
+  return { data: hasLodging && canRoomCharge };
 }
 
 // ---------------------------------------------------------------------------
