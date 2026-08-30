@@ -4,6 +4,18 @@ Gate: **PEAK CLIENT REMEDIATION — R6A — PRODUCTION POS DESKTOP EXPERIENCE**
 Primary repository: `peak-pos-desktop`. Backend: `fbc-peak`, schema **86**, frozen/certified (R5C), read-only for this gate.
 Branch: `remediation/r6a-pos-desktop`.
 
+> **R6A-C addendum (superseding notice).** R6A closed with production
+> certification withheld pending two backend contract gaps and a live E2E
+> run. Both are now closed — see **`docs/POS_DESKTOP_R6A_CERTIFICATION.md`**
+> for the full record: the backend session-context fix
+> (`fbc-peak` branch `fix/r6a-pos-session-context`), the desktop's
+> consumption of it, a real (no-mock) live E2E run of both the Mama Rose
+> and Savannah Crest journeys, failure-mode evidence, print-job evidence,
+> Tauri launch evidence, and visual/responsive certification with actual
+> screenshots (`docs/r6a-c-visual-certification/`). §15, §20, §27–§29,
+> §31–§33 below are superseded by that document; they are left in place
+> unedited as the historical record of what R6A itself produced.
+
 ## 1. Starting SHA
 
 `0f609145490ee2d802fad08fbc8c46db4d2dafe9` (`main`, merge of PR #1, R1P pairing) — the audited pre-R6A baseline.
