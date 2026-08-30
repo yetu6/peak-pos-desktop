@@ -1,59 +1,62 @@
 import { useState } from "react";
 import { Icon } from "./Icon";
-import type { PosSessionResponse } from "../lib/posApi";
+import { formatMinor, toMinor } from "../lib/posMoney";
+import { useIdempotencyKey, useMutationMessage, usePosShift } from "../hooks/usePosData";
 
-function money(value: number | string | null | undefined): string {
-  if (value == null || value === "") return "—";
-  return String(value);
-}
-
-interface TillMutation<TData> {
-  mutate: (value: number) => void;
-  isPending: boolean;
-  isError: boolean;
-  error: unknown;
-  data?: TData;
-}
-
-export function TillControls({
-  session,
-  open,
-  close,
-}: {
-  session: PosSessionResponse | null;
-  open: TillMutation<PosSessionResponse>;
-  close: TillMutation<PosSessionResponse | undefined>;
-}) {
+/**
+ * Opening float and cash-counted are money entry: parsed once via `toMinor`
+ * into an integer minor-unit amount, never floating point, and never
+ * combined client-side into an authoritative total — Peak computes
+ * `expectedCashMinor` and `varianceMinor` itself on close.
+ */
+export function TillControls({ currency = "TZS" }: { currency?: string }) {
+  const { shift, open, close } = usePosShift();
   const [openingFloat, setOpeningFloat] = useState("");
-  const [actualCash, setActualCash] = useState("");
+  const [countedCash, setCountedCash] = useState("");
+  const openKey = useIdempotencyKey();
+  const closeKey = useIdempotencyKey();
+  const openError = useMutationMessage(open.error);
+  const closeError = useMutationMessage(close.error);
 
-  const closed = close.data;
-  const pendingVariance = closed?.status === "pending_variance_approval";
+  const openingMinor = toMinor(openingFloat);
+  const countedMinor = toMinor(countedCash);
+
+  function submitOpen(): void {
+    if (openingMinor == null) return;
+    const key = openKey.next();
+    open.mutate({ openingCashMinor: openingMinor, idempotencyKey: key });
+  }
+
+  function submitClose(): void {
+    if (countedMinor == null) return;
+    const key = closeKey.next();
+    close.mutate({ countedCashMinor: countedMinor, idempotencyKey: key });
+  }
+
+  const pendingVariance = close.data?.status === "PENDING_VARIANCE_APPROVAL";
 
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="till-controls">
-      {session ? (
+      {shift ? (
         <>
-          <span className="badge badge-success badge-dot" data-testid="session-open">
-            Till open · expected {money(session.expectedCash)}
+          <span className="badge badge-success badge-dot" data-testid="shift-open">
+            Shift open · expected {formatMinor(shift.expectedCashMinor, currency)}
           </span>
           <input
-            data-testid="actual-cash"
+            data-testid="counted-cash"
             type="number"
-            value={actualCash}
-            onChange={(event) => setActualCash(event.target.value)}
-            placeholder="Cash in drawer"
+            value={countedCash}
+            onChange={(event) => setCountedCash(event.target.value)}
+            placeholder="Cash counted"
             className="input w-32"
           />
           <button
-            data-testid="close-session"
-            onClick={() => close.mutate(Number(actualCash))}
-            disabled={
-              close.isPending || !Number.isFinite(Number(actualCash)) || actualCash.trim() === ""
-            }
+            data-testid="close-shift"
+            onClick={submitClose}
+            disabled={close.isPending || countedMinor == null}
             className="btn-tertiary btn-sm"
           >
-            Close till
+            Close shift
           </button>
         </>
       ) : (
@@ -67,38 +70,31 @@ export function TillControls({
             className="input w-32"
           />
           <button
-            data-testid="open-session"
-            onClick={() => open.mutate(Number(openingFloat))}
-            disabled={
-              open.isPending ||
-              !Number.isFinite(Number(openingFloat)) ||
-              openingFloat.trim() === ""
-            }
+            data-testid="open-shift"
+            onClick={submitOpen}
+            disabled={open.isPending || openingMinor == null}
             className="btn-primary btn-sm"
           >
             <Icon name="check" size={14} />
-            {open.isPending ? "Opening…" : "Open till"}
+            {open.isPending ? "Opening…" : "Open shift"}
           </button>
         </>
       )}
-      {open.isError && (
+      {openError && (
         <div className="badge badge-danger" data-testid="open-error">
-          {open.error instanceof Error ? open.error.message : "Could not open the till"}
+          {openError}
         </div>
       )}
-      {close.isError && (
+      {closeError && (
         <div className="badge badge-danger" data-testid="close-error">
-          {close.error instanceof Error ? close.error.message : "Could not close the till"}
+          {closeError}
         </div>
       )}
-      {closed && !session && (
-        <span
-          className={pendingVariance ? "badge badge-warning" : "badge badge-muted"}
-          data-testid="till-close-result"
-        >
+      {close.data && !shift && (
+        <span className={pendingVariance ? "badge badge-warning" : "badge badge-muted"} data-testid="shift-close-result">
           {pendingVariance
-            ? `Variance ${money(closed.variance)} needs a supervisor`
-            : "Till closed"}
+            ? `Variance ${formatMinor(close.data.varianceMinor, currency)} needs a supervisor`
+            : "Shift closed"}
         </span>
       )}
     </div>

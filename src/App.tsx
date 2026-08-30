@@ -6,6 +6,7 @@ import { ConnectivityIndicator } from "./components/ConnectivityIndicator";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { ActiveOrders } from "./pages/ActiveOrders";
 import { Kitchen } from "./pages/Kitchen";
+import { Manager } from "./pages/Manager";
 import { NewOrder } from "./pages/NewOrder";
 import { PairingScreen } from "./pages/PairingScreen";
 import { PinUnlock } from "./pages/PinUnlock";
@@ -23,6 +24,7 @@ import {
 } from "./lib/realtimeBackfill";
 import { SessionExpiredError } from "./lib/operationalSession";
 import { defaultWorkspacePage, workspaceNav, type WorkspacePage } from "./lib/workspace";
+import { usePosShift } from "./hooks/usePosData";
 
 type Page = WorkspacePage;
 
@@ -47,6 +49,7 @@ function PosShell() {
   const outletId = useOutletId();
   const propertyId = usePropertyId();
   const clock = useClock();
+  const { shift } = usePosShift();
   const [lastEvent, setLastEvent] = useState<string | null>(null);
   const staff = staffLabel(session?.staffId);
 
@@ -119,6 +122,15 @@ function PosShell() {
             {clock}
           </span>
           <span className="h-5 w-px bg-[var(--color-border)]" />
+          {shift ? (
+            <span className="badge badge-success badge-dot" data-testid="shell-business-date">
+              Business date {shift.businessDate}
+            </span>
+          ) : (
+            <span className="badge badge-muted" data-testid="shell-shift-state">
+              No shift open
+            </span>
+          )}
           <div className="min-w-0 flex-1">
             {lastEvent && (
               <span
@@ -140,6 +152,8 @@ function PosShell() {
             <NewOrder />
           ) : page === "kitchen" ? (
             <Kitchen />
+          ) : page === "manager" ? (
+            <Manager />
           ) : (
             <Diagnostics />
           )}

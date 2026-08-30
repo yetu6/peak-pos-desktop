@@ -1,26 +1,19 @@
-import { useEffect, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  createPosApi,
-  type PosOrderResponse,
-  type PosSessionResponse,
-} from "../lib/posApi";
-import { devIdentityFromEnv, type DevIdentity } from "../lib/env";
-import { getApiBaseUrl } from "../lib/peakConfig";
+import { createPosApi } from "../lib/posApi";
+import { describePosError } from "../lib/posErrors";
+import { devIdentityFromEnv } from "../lib/env";
 import { useRealtimeEvents } from "../realtime/RealtimeProvider";
 import { isOrderEvent } from "../realtime/subscriptions";
-import { fetchOutletMenu } from "../lib/menuCatalog";
 import { processPendingPrintJobs } from "../lib/printJobs";
 import { getOperationalSession } from "../lib/operationalSession";
-import { restRequestHeaders } from "../lib/restAuth";
-
-function tryDevIdentity(): DevIdentity | null {
-  try {
-    return devIdentityFromEnv();
-  } catch {
-    return null;
-  }
-}
+import type {
+  CashMovementType,
+  PaymentMethod,
+  POSOrder,
+  POSShift,
+  ServiceType,
+} from "../lib/posContracts";
 
 export function usePropertyId(): string {
   const session = getOperationalSession();
@@ -34,333 +27,431 @@ export function useOutletId(): string {
   return devIdentityFromEnv().outletId;
 }
 
-export function useOutletMenu() {
+/** Every mutation-with-side-effects generates exactly one Idempotency-Key
+ *  when the user initiates the action. A later automatic or manual retry of
+ *  THAT SAME intended mutation must reuse it; a new user action mints a new
+ *  one. Callers get a fresh key by calling `next()` once per new intent. */
+export function useIdempotencyKey(): { current: string; next: () => string } {
+  const [key, setKey] = useState(() => crypto.randomUUID());
+  return {
+    current: key,
+    next: () => {
+      const fresh = crypto.randomUUID();
+      setKey(fresh);
+      return fresh;
+    },
+  };
+}
+
+async function unwrap<T>(promise: Promise<{ data?: T; error?: unknown }>): Promise<T> {
+  const { data, error } = await promise;
+  if (error) throw new Error(JSON.stringify(error) === "{}" ? String(error) : JSON.stringify(error));
+  if (data === undefined) return undefined as T;
+  return data;
+}
+
+/** Surfaces the coherent operational message for any thrown mutation error. */
+export function useMutationMessage(error: unknown): string | null {
+  if (!error) return null;
+  try {
+    return describePosError(JSON.parse((error as Error).message)).message;
+  } catch {
+    return describePosError(error).message;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+export function useCatalog() {
   const propertyId = usePropertyId();
   const outletId = useOutletId();
   return useQuery({
-    queryKey: ["menu-items", propertyId, outletId],
-    enabled: Boolean(propertyId && outletId),
+    queryKey: ["pos", "catalog", propertyId, outletId],
+    queryFn: () => unwrap(createPosApi().getCatalog()),
     retry: false,
-    queryFn: () =>
-      fetchOutletMenu({
-        baseUrl: getApiBaseUrl(),
-        propertyId,
-        outletId,
-        headers: restRequestHeaders(getOperationalSession(), tryDevIdentity()),
-      }),
+    staleTime: 60_000,
   });
 }
 
-/**
- * The realtime payloads Peak publishes are COMPACT (orderId + changed bits),
- * never order snapshots — REST is the authoritative state and the event
- * stream is the change notification. This hook keeps the set of orders the
- * outlet has announced on the stream and fetches each one from REST when an
- * event announces a change. Backfill replays the same announcements, so a
- * reconnecting client rebuilds the same board. Orders vanish only when a
- * session closes.
- */
-export function useRealtimeOrders(outletId: string): PosOrderResponse[] {
-  const propertyId = usePropertyId();
-  const [orders, setOrders] = useState<PosOrderResponse[]>([]);
+// ---------------------------------------------------------------------------
+// Shift (till)
+// ---------------------------------------------------------------------------
 
-  // Session events are published only on /topic/properties/{id}/operations.
-  useRealtimeEvents({ kind: "propertyOperations", propertyId }, () => {});
-  useRealtimeEvents({ kind: "outletOrders", outletId }, async (event) => {
-    if (event.type === "pos.shift.closed") {
-      setOrders([]);
-      return;
-    }
-    if (!isOrderEvent(event.type) && event.type !== "pos.order_item.voided") {
-      return;
-    }
-    const orderId = event.aggregateId ?? (event.payload as { orderId?: string } | undefined)?.orderId;
-    if (!orderId) return;
-    const { data } = await createPosApi().getOrder(propertyId, orderId);
-    if (!data) return;
-    setOrders((current) => [...current.filter((order) => order.id !== data.id), data]);
-  });
-  const query = useQuery({
-    queryKey: ["orders", "active", outletId],
-    queryFn: async () => {
-      const api = createPosApi();
-      if (!("listOrders" in api) || typeof api.listOrders !== "function") return [];
-      const { data, error } = await api.listOrders(propertyId, true);
-      if (error) throw new Error(String(error));
-      return data ?? [];
-    },
-    retry: false,
-  });
-  useEffect(() => { if (query.data) setOrders((current) => current.length > 0 ? current : query.data!); }, [query.data]);
-  return orders;
+function shiftStorageKey(propertyId: string, outletId: string): string {
+  return `peak-pos-shift-${propertyId}-${outletId}`;
 }
 
-function sessionStorageKey(propertyId: string, outletId: string): string {
-  return `peak-pos-session-${propertyId}-${outletId}`;
-}
-
-/**
- * Owns the outlet cashier session for this register. The client persists the
- * id it opened and validates it against `GET /pos-sessions/{id}` on mount;
- * an open session is reused, anything else is reopened. Peak has no
- * "find the open session for an outlet" route, so a session opened by
- * another register cannot be discovered — the operator opens one here.
- */
-export function usePosSession() {
+export function usePosShift() {
   const propertyId = usePropertyId();
   const outletId = useOutletId();
   const queryClient = useQueryClient();
-  const [storedId, setStoredId] = useState<string | null>(() => {
-    return localStorage.getItem(sessionStorageKey(propertyId, outletId));
-  });
+  const [storedId, setStoredId] = useState<string | null>(() =>
+    localStorage.getItem(shiftStorageKey(propertyId, outletId)),
+  );
 
-  const { data: session } = useQuery({
-    queryKey: ["sessions", "detail", storedId],
+  const { data: shift } = useQuery({
+    queryKey: ["pos", "shift", storedId],
     queryFn: async () => {
       if (!storedId) return null;
-      const { data, error } = await createPosApi().getSession(propertyId, storedId);
-      if (error) {
-        localStorage.removeItem(sessionStorageKey(propertyId, outletId));
+      const { data, error } = await createPosApi().getShift(storedId);
+      if (error || !data || data.status !== "OPEN") {
+        localStorage.removeItem(shiftStorageKey(propertyId, outletId));
         return null;
       }
-      if (data?.session?.status !== "open") {
-        localStorage.removeItem(sessionStorageKey(propertyId, outletId));
-        return null;
-      }
-      return data.session ?? null;
+      return data;
     },
     enabled: Boolean(storedId),
-    staleTime: 60_000,
+    staleTime: 30_000,
   });
 
   const open = useMutation({
-    mutationFn: async (openingFloat: number) => {
-      const { data, error } = await createPosApi().openSession(
-        propertyId,
-        outletId,
-        openingFloat,
-      );
-      if (error) throw new Error(String(error));
-      if (!data?.id) throw new Error("Session opened without an id");
-      localStorage.setItem(sessionStorageKey(propertyId, outletId), data.id);
-      return data;
-    },
-    onSuccess: (data: PosSessionResponse) => {
-      setStoredId(data.id!);
+    mutationFn: async (args: { openingCashMinor: number; idempotencyKey: string }) =>
+      unwrap(createPosApi().openShift(args.openingCashMinor, args.idempotencyKey)),
+    onSuccess: (data: POSShift) => {
+      localStorage.setItem(shiftStorageKey(propertyId, outletId), data.id);
+      setStoredId(data.id);
       queryClient.invalidateQueries();
     },
   });
 
   const close = useMutation({
-    mutationFn: async (actualCash: number) => {
-      if (!storedId) return;
-      if (!Number.isFinite(actualCash)) {
-        throw new Error("Enter the cash in the drawer to close the till");
-      }
-      const { data, error } = await createPosApi().closeSession(
-        propertyId,
-        storedId,
-        actualCash,
+    mutationFn: async (args: {
+      countedCashMinor: number;
+      supervisorStaffId?: string;
+      supervisorPin?: string;
+      idempotencyKey: string;
+    }) => {
+      if (!storedId) throw new Error("No open shift");
+      return unwrap(
+        createPosApi().closeShift(
+          storedId,
+          {
+            countedCashMinor: args.countedCashMinor,
+            supervisorStaffId: args.supervisorStaffId,
+            supervisorPin: args.supervisorPin,
+          },
+          args.idempotencyKey,
+        ),
       );
-      if (error) throw new Error(String(error));
-      localStorage.removeItem(sessionStorageKey(propertyId, outletId));
-      setStoredId(null);
+    },
+    onSuccess: (data: POSShift) => {
+      if (data.status === "CLOSED") {
+        localStorage.removeItem(shiftStorageKey(propertyId, outletId));
+        setStoredId(null);
+      }
       queryClient.invalidateQueries();
-      if (data?.id) {
-        try {
-          await processPendingPrintJobs(propertyId, String(data.id));
-        } catch {
-          // A missing printer does not reopen the till.
-        }
-      }
-      return data;
     },
   });
 
-  return { session: session ?? null, open, close };
+  return { shift: shift ?? null, open, close };
 }
 
-export function useSendOrder(propertyId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (args: { orderId: string }) => {
-      const { data, error } = await createPosApi().sendOrder(propertyId, args.orderId);
-      if (error) throw new Error(String(error));
-      return data;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["kitchen"] }),
+export function useCashMovements(shiftId: string | undefined) {
+  return useQuery({
+    queryKey: ["pos", "cash-movements", shiftId],
+    queryFn: async () => (await unwrap(createPosApi().listCashMovements(shiftId!))).items,
+    enabled: Boolean(shiftId),
   });
 }
 
-/**
- * Composes one order: create, then add each line as its own command with its
- * own idempotency key (Peak replays a reused key, conflicts on a different
- * command). The last add response is the authoritative order snapshot.
- */
-export function useCreateOrder(propertyId: string) {
+export function useRecordCashMovement(shiftId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (args: {
-      sessionId: string;
-      orderType: string;
-      tableNumber?: string;
-      lines: Array<{ menuItemId: string; quantity: number; specialRequest?: string }>;
-    }) => {
-      const api = createPosApi();
-      const created = await api.createOrder(propertyId, {
-        sessionId: args.sessionId,
-        orderType: args.orderType,
-        tableNumber: args.tableNumber,
-      });
-      if (created.error) throw new Error(String(created.error));
-      if (!created.data?.id) throw new Error("Order created without an id");
-      let order = created.data;
-      for (const line of args.lines) {
-        const added = await api.addItem(propertyId, order.id!, {
-          menuItemId: line.menuItemId,
-          quantity: line.quantity,
-          specialRequest: line.specialRequest,
-        });
-        if (added.error) throw new Error(String(added.error));
-        order = added.data!;
-      }
-      return order;
-    },
+    mutationFn: (args: { movementType: CashMovementType; amountMinor: number; reason: string; idempotencyKey: string }) =>
+      unwrap(
+        createPosApi().recordCashMovement(
+          { movementType: args.movementType, amountMinor: args.amountMinor, reason: args.reason },
+          args.idempotencyKey,
+        ),
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["kitchen"] });
+      queryClient.invalidateQueries({ queryKey: ["pos", "cash-movements", shiftId] });
+      queryClient.invalidateQueries({ queryKey: ["pos", "shift"] });
     },
   });
 }
 
-export function useSettleOrder(propertyId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (args: {
-      orderId: string;
-      method: "cash" | "room_charge" | "mobile_money";
-      roomNumber?: string;
-      stayId?: string;
-      providerAccountId?: string;
-      phoneNumber?: string;
-    }) => {
-      if (args.method === "room_charge") {
-        if (!args.stayId) throw new Error("Choose an in-house stay for a room charge");
-        if (!args.roomNumber?.trim()) throw new Error("A room number is required");
-      }
-      if (args.method === "mobile_money") {
-        if (!args.providerAccountId) throw new Error("Choose a payment provider account");
-        if (!args.phoneNumber?.trim()) throw new Error("A phone number is required");
-      }
-      const { data, error } = await createPosApi().settleOrder(propertyId, args.orderId, {
-        paymentMethod: args.method,
-        stayId: args.stayId,
-        roomNumber: args.roomNumber?.trim() || undefined,
-        providerAccountId: args.providerAccountId,
-        phoneNumber: args.phoneNumber?.trim() || undefined,
-      });
-      if (error) throw new Error(String(error));
-      return data;
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["orders", "detail", variables.orderId] });
-    },
-  });
-}
+// ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
 
-export function useVoidOrderItem(propertyId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (args: {
-      orderId: string;
-      itemId: string;
-      disposition: "RETURN_TO_STOCK" | "WASTE";
-      reason: string;
-    }) => {
-      const { data, error } = await createPosApi().voidOrderItem(
-        propertyId,
-        args.orderId,
-        args.itemId,
-        { disposition: args.disposition, reason: args.reason },
-      );
-      if (error) throw new Error(String(error));
-      return data;
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["orders", "detail", variables.orderId] });
-    },
-  });
-}
-
-export function useKitchenTickets(propertyId: string) {
+/** Authoritative outlet-bound orders. REST is the source of truth on load and
+ *  reconnect; realtime events only tell this hook which order to re-fetch. */
+export function useActiveOrders() {
   const outletId = useOutletId();
-  useRealtimeEvents({ kind: "outletKitchen", outletId }, () => {});
+  const query = useQuery({
+    queryKey: ["pos", "orders", "active", outletId],
+    queryFn: () => unwrap(createPosApi().listOrders(true)),
+    retry: false,
+  });
+  const queryClient = useQueryClient();
+  useRealtimeEvents({ kind: "outletOrders", outletId }, async (event) => {
+    if (event.type === "pos.shift.closed") {
+      queryClient.setQueryData(["pos", "orders", "active", outletId], []);
+      return;
+    }
+    if (!isOrderEvent(event.type)) return;
+    queryClient.invalidateQueries({ queryKey: ["pos", "orders", "active", outletId] });
+  });
+  return query;
+}
+
+export function useOrder(orderId: string | undefined) {
   return useQuery({
-    queryKey: ["kitchen", "tickets", propertyId],
-    queryFn: async () => {
-      const { data, error } = await createPosApi().listKitchenTickets(propertyId);
-      if (error) throw new Error(String(error));
-      return data ?? [];
+    queryKey: ["pos", "order", orderId],
+    queryFn: () => unwrap(createPosApi().getOrder(orderId!)),
+    enabled: Boolean(orderId),
+  });
+}
+
+function invalidateOrders(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ["pos", "orders"] });
+  queryClient.invalidateQueries({ queryKey: ["pos", "order"] });
+}
+
+export function useCreateOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { shiftId: string; serviceType: ServiceType; tableLabel?: string; notes?: string; idempotencyKey: string }) =>
+      unwrap(
+        createPosApi().createOrder(
+          { shiftId: args.shiftId, serviceType: args.serviceType, tableLabel: args.tableLabel, notes: args.notes },
+          args.idempotencyKey,
+        ),
+      ),
+    onSuccess: () => invalidateOrders(queryClient),
+  });
+}
+
+/** STALE_VERSION never gets a blind retry: the caller must refetch and let
+ *  the operator re-apply intent against the refreshed order. */
+export function useAddOrderItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      orderId: string;
+      productId: string;
+      quantity: number;
+      modifierOptionIds?: string[];
+      version: number;
+      idempotencyKey: string;
+    }) =>
+      unwrap(
+        createPosApi().addItem(
+          args.orderId,
+          { productId: args.productId, quantity: args.quantity, modifierOptionIds: args.modifierOptionIds, version: args.version },
+          args.idempotencyKey,
+        ),
+      ),
+    onSuccess: (order: POSOrder) => {
+      queryClient.setQueryData(["pos", "order", order.id], order);
+      invalidateOrders(queryClient);
     },
   });
 }
 
-export function useTransitionTicket(propertyId: string) {
+export function useRemoveOrderItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { orderId: string; itemId: string; version: number; idempotencyKey: string }) =>
+      unwrap(createPosApi().removeItem(args.orderId, args.itemId, args.version, args.idempotencyKey)),
+    onSuccess: (order: POSOrder) => {
+      queryClient.setQueryData(["pos", "order", order.id], order);
+      invalidateOrders(queryClient);
+    },
+  });
+}
+
+export function useSendOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { orderId: string; version: number; idempotencyKey: string }) => {
+      await unwrap(createPosApi().sendOrder(args.orderId, args.version, args.idempotencyKey));
+      return unwrap(createPosApi().getOrder(args.orderId));
+    },
+    onSuccess: (order: POSOrder) => {
+      queryClient.setQueryData(["pos", "order", order.id], order);
+      invalidateOrders(queryClient);
+    },
+  });
+}
+
+export function useTransitionOrderStatus() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (args: {
-      ticketId: string;
-      action: "prepare" | "ready" | "deliver" | "void";
-      reason?: string;
+      orderId: string;
+      status: "PREPARING" | "READY" | "SERVED";
+      version: number;
+      idempotencyKey: string;
     }) => {
-      const { data, error } = await createPosApi().transitionTicket(
-        propertyId,
-        args.ticketId,
-        args.action,
-        args.reason,
+      await unwrap(createPosApi().transitionStatus(args.orderId, args.status, args.version, args.idempotencyKey));
+      return unwrap(createPosApi().getOrder(args.orderId));
+    },
+    onSuccess: (order: POSOrder) => {
+      queryClient.setQueryData(["pos", "order", order.id], order);
+      invalidateOrders(queryClient);
+    },
+  });
+}
+
+export function useRecordTender() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      orderId: string;
+      paymentMethod: PaymentMethod;
+      amountMinor: number;
+      reference?: string;
+      version: number;
+      idempotencyKey: string;
+    }) => {
+      await unwrap(
+        createPosApi().recordTender(
+          args.orderId,
+          { paymentMethod: args.paymentMethod, amountMinor: args.amountMinor, reference: args.reference, version: args.version },
+          args.idempotencyKey,
+        ),
       );
-      if (error) throw new Error(String(error));
-      return data;
+      return unwrap(createPosApi().getOrder(args.orderId));
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["kitchen"] }),
+    onSuccess: (order: POSOrder) => {
+      queryClient.setQueryData(["pos", "order", order.id], order);
+      invalidateOrders(queryClient);
+    },
   });
 }
 
-export function usePaymentProviderAccounts(propertyId: string) {
+export function useChargeToRoom() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { orderId: string; stayId: string; idempotencyKey: string }) => {
+      await unwrap(createPosApi().chargeToRoom(args.orderId, args.stayId, args.idempotencyKey));
+      return unwrap(createPosApi().getOrder(args.orderId));
+    },
+    onSuccess: (order: POSOrder) => {
+      queryClient.setQueryData(["pos", "order", order.id], order);
+      invalidateOrders(queryClient);
+    },
+  });
+}
+
+/** Whole-order correction with a different supervisor's PIN. There is no
+ *  per-line void-after-send in the certified contract — do not invent one. */
+export function useVoidOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      orderId: string;
+      reason: string;
+      supervisorStaffId: string;
+      supervisorPin: string;
+      version: number;
+      idempotencyKey: string;
+    }) =>
+      unwrap(
+        createPosApi().voidOrder(
+          args.orderId,
+          { reason: args.reason, supervisorStaffId: args.supervisorStaffId, supervisorPin: args.supervisorPin, version: args.version },
+          args.idempotencyKey,
+        ),
+      ),
+    onSuccess: () => invalidateOrders(queryClient),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Receipts
+// ---------------------------------------------------------------------------
+
+export function useReceipt(orderId: string | undefined) {
   return useQuery({
-    queryKey: ["payments", "provider-accounts", propertyId],
-    queryFn: async () => {
-      const { data, error } = await createPosApi().listProviderAccounts(propertyId);
-      if (error) throw new Error(String(error));
-      return data ?? [];
-    },
+    queryKey: ["pos", "receipt", orderId],
+    queryFn: () => unwrap(createPosApi().getReceipt(orderId!)),
+    enabled: Boolean(orderId),
+    retry: false,
   });
 }
 
-/**
- * In-house stays a waiter may charge. Search is the dedicated POS
- * candidates path — not GET /rooms, /reservations, or /folios.
- */
-export function useRoomChargeCandidates(propertyId: string, query: string) {
+export function useReprintReceipt() {
+  const queryClient = useQueryClient();
+  const propertyId = usePropertyId();
+  return useMutation({
+    mutationFn: async (args: { orderId: string; idempotencyKey: string }) => {
+      const receipt = await unwrap(createPosApi().reprintReceipt(args.orderId, args.idempotencyKey));
+      // The reprint is a chained pos_print_jobs row; the terminal claims and
+      // physically prints it exactly like the original and kitchen tickets.
+      await processPendingPrintJobs(propertyId, receipt.id);
+      return receipt;
+    },
+    onSuccess: (_data, variables) =>
+      queryClient.invalidateQueries({ queryKey: ["pos", "receipt", variables.orderId] }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Room charge — offered only once a real, non-empty candidate lookup for
+// this property has succeeded (see docs/POS_DESKTOP_R6A_CLOSURE.md, backend
+// contract gap #1: the POS session carries no capability list at all, so
+// "LODGING active" cannot be read directly; a candidate to charge to is the
+// only truthful, non-invented signal a POS session can obtain).
+// ---------------------------------------------------------------------------
+
+export function useRoomChargeCandidates(query: string) {
   const needle = query.trim();
   return useQuery({
-    queryKey: ["pos", "room-charge-candidates", propertyId, needle],
-    queryFn: async () => {
-      const { data, error } = await createPosApi().listRoomChargeCandidates(
-        propertyId,
-        needle,
-      );
-      if (error) throw new Error(String(error));
-      return data ?? [];
-    },
+    queryKey: ["pos", "room-charge-candidates", needle],
+    queryFn: () => unwrap(createPosApi().listRoomChargeCandidates(needle)),
     enabled: needle.length > 0,
   });
 }
 
-export function usePosApi() {
+/** One-shot probe (empty query) so the workspace knows whether to offer
+ *  "Charge to room" at all before the cashier opens the settle dialog. */
+export function useRoomChargeAvailability() {
+  return useQuery({
+    queryKey: ["pos", "room-charge-candidates", "__probe__"],
+    queryFn: () => unwrap(createPosApi().listRoomChargeCandidates("")),
+    select: (candidates) => candidates.length > 0,
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// POS Day Close — a distinct, deliberately out-of-the-way action; the
+// backend alone knows whether this staff member and this property qualify
+// (see error mapping: FORBIDDEN / CAPABILITY_NOT_ENABLED both surface here).
+// ---------------------------------------------------------------------------
+
+export function useCloseBusinessDay() {
   const queryClient = useQueryClient();
-  return {
-    queryClient,
-    invalidateOrders: () => queryClient.invalidateQueries({ queryKey: ["orders"] }),
-    invalidateKitchen: () => queryClient.invalidateQueries({ queryKey: ["kitchen"] }),
+  return useMutation({
+    mutationFn: (idempotencyKey: string) => unwrap(createPosApi().closeBusinessDay(idempotencyKey)),
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Print jobs (kitchen tickets, receipts) already sent for a source id.
+// ---------------------------------------------------------------------------
+
+export function usePrintAfter(propertyId: string) {
+  const printing = useRef(false);
+  return async (sourceId: string | undefined): Promise<void> => {
+    if (!sourceId || printing.current) return;
+    printing.current = true;
+    try {
+      await processPendingPrintJobs(propertyId, sourceId);
+    } finally {
+      printing.current = false;
+    }
   };
+}
+
+export function useOrdersByStatus(statuses: POSOrder["status"][]) {
+  const { data: orders = [] } = useActiveOrders();
+  return useMemo(() => orders.filter((order) => statuses.includes(order.status)), [orders, statuses]);
 }

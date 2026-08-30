@@ -1,208 +1,160 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Icon } from "../components/Icon";
 import { SettleDialog } from "../components/SettleDialog";
-import { VoidItemDialog } from "../components/VoidItemDialog";
-import {
-  usePropertyId,
-  useRealtimeOrders,
-  useOutletId,
-  useSendOrder,
-} from "../hooks/usePosData";
-import type { PosOrderItemResponse, PosOrderResponse } from "../lib/posApi";
-import { type PrintResult } from "../lib/kitchenTicketPrint";
-import { processPendingPrintJobs } from "../lib/printJobs";
+import { RemoveItemDialog } from "../components/RemoveItemDialog";
+import { VoidOrderDialog } from "../components/VoidOrderDialog";
+import { ReceiptView } from "../components/ReceiptView";
+import { formatMinor } from "../lib/posMoney";
+import { useActiveOrders, useIdempotencyKey, useMutationMessage, usePrintAfter, usePropertyId, useSendOrder } from "../hooks/usePosData";
+import type { POSOrder, POSOrderItem } from "../lib/posContracts";
 
-function statusBadge(order: PosOrderResponse): string {
-  if (order.settlementStatus === "pending") return "badge-warning badge-dot";
-  if (order.status === "open") return "badge-brand badge-dot";
-  if (order.status === "closed") return "badge-success badge-dot";
-  return "badge-muted";
-}
-
-function settlementLabel(order: PosOrderResponse): string {
-  if (order.settlementStatus === "pending") return `settling · ${order.settlementMethod ?? ""}`;
-  if (order.settlementStatus === "confirmed" || order.settlementStatus === "transferred") {
-    return order.settlementMethod ?? "settled";
-  }
-  return order.status ?? "unknown";
-}
+const STATUS_BADGE: Record<POSOrder["status"], string> = {
+  OPEN: "badge-brand badge-dot",
+  SENT: "badge-warning badge-dot",
+  PREPARING: "badge-warning badge-dot",
+  READY: "badge-info badge-dot",
+  SERVED: "badge-info badge-dot",
+  CLOSED: "badge-success badge-dot",
+  VOIDED: "badge-muted",
+};
 
 export function ActiveOrders() {
   const propertyId = usePropertyId();
-  const outletId = useOutletId();
-  const orders = useRealtimeOrders(outletId);
-  const sendOrder = useSendOrder(propertyId);
-  const [settling, setSettling] = useState<PosOrderResponse | null>(null);
-  const [voiding, setVoiding] = useState<{
-    order: PosOrderResponse;
-    item: PosOrderItemResponse;
-  } | null>(null);
-  const [printNotes, setPrintNotes] = useState<
-    Record<string, { sent: boolean; print?: PrintResult }>
-  >({});
+  const orders = useActiveOrders();
+  const sendOrder = useSendOrder();
+  const sendKey = useIdempotencyKey();
+  const sendError = useMutationMessage(sendOrder.error);
+  const printAfter = usePrintAfter(propertyId);
+  const [settling, setSettling] = useState<POSOrder | null>(null);
+  const [removing, setRemoving] = useState<{ order: POSOrder; item: POSOrderItem } | null>(null);
+  const [voiding, setVoiding] = useState<POSOrder | null>(null);
+  const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
 
-  async function sendToKitchen(order: PosOrderResponse): Promise<void> {
-    const id = String(order.id);
-    const ticket = await sendOrder.mutateAsync({ orderId: id });
-    setPrintNotes((notes) => ({ ...notes, [id]: { sent: true } }));
-    try {
-      const results = await processPendingPrintJobs(
-        propertyId,
-        ticket?.id ? String(ticket.id) : undefined,
-      );
-      setPrintNotes((notes) => ({
-        ...notes,
-        [id]: { sent: true, print: results[0] },
-      }));
-    } catch (error) {
-      setPrintNotes((notes) => ({
-        ...notes,
-        [id]: {
-          sent: true,
-          print: {
-            ok: false,
-            error: error instanceof Error ? error.message : String(error),
-          },
-        },
-      }));
-    }
+  const list = orders.data ?? [];
+  const open = list.filter((o) => o.status === "OPEN");
+  const inKitchen = list.filter((o) => ["SENT", "PREPARING", "READY", "SERVED"].includes(o.status));
+  const closed = list.filter((o) => o.status === "CLOSED");
+  const currency = "TZS";
+
+  async function sendToKitchen(order: POSOrder): Promise<void> {
+    const key = sendKey.next();
+    const updated = await sendOrder.mutateAsync({ orderId: order.id, version: order.version, idempotencyKey: key });
+    await printAfter(updated.id);
   }
 
-  const open = orders.filter((o) => o.status === "open");
-  const settled = orders.filter((o) => o.status !== "open");
+  async function afterSettled(orderId: string): Promise<void> {
+    await printAfter(orderId);
+    setSettling(null);
+    setReceiptOrderId(orderId);
+  }
+
+  function renderOrderCard(order: POSOrder, canSend: boolean): ReactNode {
+    return (
+      <div key={order.id} className="card flex flex-col gap-3 p-4" data-testid={`order-${order.id}`}>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="text-sm font-semibold text-[var(--color-text-primary)]">{order.orderNumber}</div>
+            <div className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
+              {order.serviceType.replaceAll("_", " ")} · {order.tableLabel ?? "no table"}
+            </div>
+          </div>
+          <span className={`badge ${STATUS_BADGE[order.status]}`}>{order.status}</span>
+        </div>
+        <ul className="space-y-1 border-y border-[var(--color-border-subtle)] py-2 text-[13px]">
+          {order.items.slice(0, 4).map((item) => (
+            <li key={item.id} className="flex items-baseline justify-between gap-2">
+              <span className="min-w-0 truncate text-[var(--color-text)]">{item.name}</span>
+              <span className="flex items-center gap-2">
+                <span className="font-mono text-xs tabular-nums text-[var(--color-text-muted)]">×{item.quantity}</span>
+                {item.status === "ADDED" && (
+                  <button
+                    type="button"
+                    data-testid={`remove-item-${item.id}`}
+                    onClick={() => setRemoving({ order, item })}
+                    className="text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                  >
+                    Remove
+                  </button>
+                )}
+              </span>
+            </li>
+          ))}
+          {order.items.length > 4 && <li className="text-[11px] text-[var(--color-text-muted)]">+{order.items.length - 4} more items</li>}
+        </ul>
+        <div className="flex items-center justify-between gap-2">
+          <div className="font-display text-lg tabular-nums text-[var(--color-text-primary)]">{formatMinor(order.totalMinor, currency)}</div>
+          <div className="flex gap-2">
+            <button data-testid={`void-order-${order.id}`} onClick={() => setVoiding(order)} className="btn-tertiary btn-sm">
+              Void
+            </button>
+            {canSend && (
+              <button data-testid={`settle-${order.id}`} onClick={() => setSettling(order)} className="btn-secondary btn-sm">
+                <Icon name="payments" size={14} />
+                Settle
+              </button>
+            )}
+            {canSend && (
+              <button data-testid={`send-${order.id}`} onClick={() => void sendToKitchen(order)} disabled={sendOrder.isPending} className="btn-primary btn-sm">
+                <Icon name="kitchen" size={14} />
+                Send to kitchen
+              </button>
+            )}
+            {!canSend && order.status !== "CLOSED" && (
+              <button data-testid={`settle-${order.id}`} onClick={() => setSettling(order)} className="btn-primary btn-sm">
+                <Icon name="payments" size={14} />
+                Settle
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
-            Active orders
-          </h2>
-        </div>
+        <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Active orders</h2>
         <div className="flex items-center gap-2">
-          <span className="badge badge-brand">{open.length} open</span>
-          <span className="badge badge-muted">seen {orders.length}</span>
+          <span className="badge badge-brand">{open.length + inKitchen.length} open</span>
         </div>
       </div>
 
-      {orders.length === 0 ? (
+      {sendError && (
+        <div className="badge badge-danger" data-testid="send-error">
+          {sendError}
+        </div>
+      )}
+
+      {list.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <div className="empty-state-icon">
               <Icon name="orders" size={40} />
             </div>
-            <div className="empty-state-title">No active orders</div>
-            <div className="empty-state-desc">Orders appear here as they are sent.</div>
+            <div className="empty-state-title">No open orders</div>
+            <div className="empty-state-desc">Orders appear here as they are created.</div>
           </div>
         </div>
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {open.map((order) => (
-              <div
-                key={order.id}
-                className="card flex flex-col gap-3 p-4"
-                data-testid={`order-${order.id}`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="text-sm font-semibold text-[var(--color-text-primary)]">
-                      {order.orderNumber}
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
-                      {order.orderType} · {order.tableNumber ?? "no table"}
-                    </div>
-                  </div>
-                  <span className={`badge ${statusBadge(order)}`}>
-                    {settlementLabel(order)}
-                  </span>
-                </div>
-                <ul className="space-y-1 border-y border-[var(--color-border-subtle)] py-2 text-[13px]">
-                  {(order.items ?? []).slice(0, 4).map((item) => (
-                    <li key={item.id} className="flex items-baseline justify-between gap-2">
-                      <span className="min-w-0 truncate text-[var(--color-text)]">
-                        {item.name}
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <span className="font-mono text-xs tabular-nums text-[var(--color-text-muted)]">
-                          ×{item.quantity}
-                        </span>
-                        <button
-                          type="button"
-                          data-testid={`void-item-${item.id}`}
-                          onClick={() => setVoiding({ order, item })}
-                          className="text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-                        >
-                          Void
-                        </button>
-                      </span>
-                    </li>
-                  ))}
-                  {(order.items?.length ?? 0) > 4 && (
-                    <li className="text-[11px] text-[var(--color-text-muted)]">
-                      +{order.items!.length - 4} more items
-                    </li>
-                  )}
-                </ul>
-                {printNotes[String(order.id)]?.sent && (
-                  <div className="flex flex-wrap gap-2 text-[11px]" data-testid={`send-status-${order.id}`}>
-                    <span className="badge badge-success">ORDER SENT</span>
-                    {printNotes[String(order.id)]?.print?.ok === true && (
-                      <span className="badge badge-success" data-testid={`print-ok-${order.id}`}>
-                        PRINT SUCCESS
-                      </span>
-                    )}
-                    {printNotes[String(order.id)]?.print?.ok === false && (
-                      <span className="badge badge-danger" data-testid={`print-fail-${order.id}`}>
-                        PRINT FAILURE
-                      </span>
-                    )}
-                  </div>
-                )}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-display text-lg tabular-nums text-[var(--color-text-primary)]">
-                    {order.totalAmount != null ? String(order.totalAmount) : "—"}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      data-testid={`settle-${order.id}`}
-                      onClick={() => setSettling(order)}
-                      disabled={order.settlementStatus === "pending"}
-                      className="btn-secondary btn-sm"
-                    >
-                      <Icon name="payments" size={14} />
-                      Settle
-                    </button>
-                    <button
-                      data-testid={`send-${order.id}`}
-                      onClick={() => void sendToKitchen(order)}
-                      disabled={sendOrder.isPending}
-                      className="btn-primary btn-sm"
-                    >
-                      <Icon name="kitchen" size={14} />
-                      Send to kitchen
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+            {[...open, ...inKitchen].map((order) => renderOrderCard(order, order.status === "OPEN"))}
           </div>
 
-          {settled.length > 0 && (
+          {closed.length > 0 && (
             <div className="space-y-2">
-              <div className="pt-2 text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-text-muted)]">
-                Settled this session
-              </div>
+              <div className="pt-2 text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-text-muted)]">Settled this session</div>
               <div className="flex flex-wrap gap-2">
-                {settled.map((order) => (
-                  <span
+                {closed.map((order) => (
+                  <button
                     key={order.id}
                     className="badge badge-success"
                     data-testid={`settled-${order.id}`}
+                    onClick={() => setReceiptOrderId(order.id)}
                   >
                     {order.orderNumber}
-                    {order.settlementMethod ? ` · ${order.settlementMethod}` : ""}
-                  </span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -210,16 +162,10 @@ export function ActiveOrders() {
         </>
       )}
 
-      {settling && (
-        <SettleDialog order={settling} onClose={() => setSettling(null)} />
-      )}
-      {voiding && (
-        <VoidItemDialog
-          order={voiding.order}
-          item={voiding.item}
-          onClose={() => setVoiding(null)}
-        />
-      )}
+      {settling && <SettleDialog order={settling} currency={currency} onClose={() => setSettling(null)} onSettled={(id) => void afterSettled(id)} />}
+      {removing && <RemoveItemDialog order={removing.order} item={removing.item} onClose={() => setRemoving(null)} />}
+      {voiding && <VoidOrderDialog order={voiding} onClose={() => setVoiding(null)} />}
+      {receiptOrderId && <ReceiptView orderId={receiptOrderId} onClose={() => setReceiptOrderId(null)} />}
     </div>
   );
 }
