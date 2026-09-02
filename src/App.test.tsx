@@ -51,6 +51,9 @@ describe("production post-login shell", () => {
     );
 
     expect(screen.getByTestId("pos-register")).toBeInTheDocument();
+    expect(screen.getByTestId("pos-register")).toHaveClass("terminal-shell");
+    expect(screen.getByTestId("terminal-navigation")).toHaveAttribute("aria-label", "Terminal navigation");
+    expect(screen.getByTestId("terminal-workspace")).toHaveClass("terminal-workspace");
     expect(screen.getByTestId("active-orders-screen")).toBeInTheDocument();
     expect(screen.queryByTestId("verification-unknown")).not.toBeInTheDocument();
   });

@@ -1,13 +1,8 @@
-/* ============================================================
-   Peak POS Desktop — theme
-   Faithful port of the Safari POS design system
-   (see /home/mwombeki/Downloads/POS/ui/{global,components}.css)
-   Tokens → Tailwind v4 @theme so utilities stay composable.
-   ============================================================ */
-
 @import "tailwindcss";
+@import "tw-animate-css";
 
-/* --- Local fonts (Inter variable + DM Serif Display) --- */
+@custom-variant dark (&:is(.dark *));
+
 @font-face {
   font-family: "Inter";
   font-style: normal;
@@ -15,682 +10,1089 @@
   font-display: swap;
   src: url("./assets/fonts/inter-latin.woff2") format("woff2");
 }
-@font-face {
-  font-family: "DM Serif Display";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./assets/fonts/dm-serif-display-latin.woff2") format("woff2");
+
+/* Peak Terminal — canonical dark-first semantic tokens. */
+:root {
+  --background: #0c110f;
+  --surface: #131916;
+  --surface-raised: #1a221e;
+  --surface-interactive: #222c27;
+  --foreground: #f3f5f1;
+  --foreground-muted: #a8b1ab;
+  --primary: #17704f;
+  --primary-hover: #20845f;
+  --primary-foreground: #ffffff;
+  --primary-subtle: #153426;
+  --gold-accent: #c8a45d;
+  --gold-subtle: #332a19;
+  --border: #344039;
+  --border-strong: #4b5a52;
+  --border-subtle: #28322d;
+  --focus: #e1bd70;
+  --success: #43aa98;
+  --success-subtle: #122f2a;
+  --success-border: #28685e;
+  --warning: #e0a442;
+  --warning-subtle: #342817;
+  --warning-border: #765a28;
+  --danger: #e36d70;
+  --danger-subtle: #351a1d;
+  --danger-border: #74393d;
+  --offline: #d58b54;
+  --info: #7eb5ea;
+  --info-subtle: #172a3d;
+  --info-border: #355a7c;
+
+  /* shadcn/Radix semantic bridge: primitives inherit Peak, never vice versa. */
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--foreground);
+  --secondary: var(--surface-interactive);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--surface-interactive);
+  --muted-foreground: var(--foreground-muted);
+  --accent: var(--gold-subtle);
+  --accent-foreground: var(--focus);
+  --destructive: var(--danger);
+  --input: var(--border);
+  --ring: var(--focus);
+
+  /* Compatibility aliases while existing screens move onto Peak primitives. */
+  --color-bg: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-hover: #29352f;
+  --color-surface-secondary: var(--surface-raised);
+  --color-surface-tertiary: var(--surface-interactive);
+  --color-text: var(--foreground);
+  --color-text-primary: var(--foreground);
+  --color-text-secondary: #c4cbc6;
+  --color-text-muted: var(--foreground-muted);
+  --color-text-tertiary: #88938c;
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-subtle: var(--border-subtle);
+  --color-brand: var(--primary);
+  --color-brand-hover: var(--primary-hover);
+  --color-brand-light: var(--primary-subtle);
+  --color-brand-dark: #10563d;
+  --color-gold: var(--gold-accent);
+  --color-gold-light: var(--gold-subtle);
+  --color-success: var(--success);
+  --color-success-light: var(--success-subtle);
+  --color-success-border: var(--success-border);
+  --color-warning: var(--warning);
+  --color-warning-light: var(--warning-subtle);
+  --color-warning-border: var(--warning-border);
+  --color-danger: var(--danger);
+  --color-danger-light: var(--danger-subtle);
+  --color-danger-border: var(--danger-border);
+  --color-info: var(--info);
+  --color-info-light: var(--info-subtle);
+  --color-info-border: var(--info-border);
+  --color-accent: var(--gold-accent);
+  --color-accent-light: var(--gold-subtle);
+  --color-accent-border: #6f592e;
+  --color-pos-sidebar: #090e0c;
+
+  --radius: 0.625rem;
+  --radius-control: 8px;
+  --radius-tile: 10px;
+  --radius-panel: 12px;
+  --radius-sheet: 14px;
+  --control-height: 48px;
+  --control-height-compact: 44px;
+  --control-height-prominent: 56px;
+  --product-tile-height: 84px;
+  --motion-fast: 100ms;
+  --motion-sheet: 160ms;
+  --shadow-overlay: 0 24px 64px rgb(0 0 0 / 0.48);
 }
 
-/* ============================================================
-   1. Design Tokens (Safari POS light)
-   ============================================================ */
-@theme {
-  --color-brand: #0f766e;
-  --color-brand-hover: #0d6b63;
-  --color-brand-light: #e6f5f3;
-  --color-brand-dark: #094e48;
-  --color-gold: #d4a017;
-  --color-gold-light: #fdf6e3;
-
-  --color-bg: #f4f6f8;
-  --color-surface: #ffffff;
-  --color-surface-hover: #f8fafb;
-  --color-surface-secondary: #f8fafb;
-  --color-surface-tertiary: #f1f3f5;
-
-  --color-text: #1a1d21;
-  --color-text-primary: #1a1d21;
-  --color-text-secondary: #4a5568;
-  --color-text-muted: #8896a6;
-  --color-text-tertiary: #6b7a90;
-
-  --color-border: #e2e8f0;
-  --color-border-strong: #cbd5e1;
-  --color-border-subtle: #edf2f7;
-
-  --color-success: #16a34a;
-  --color-success-light: #f0fdf4;
-  --color-success-border: #bbf7d0;
-  --color-warning: #f59e0b;
-  --color-warning-light: #fffbeb;
-  --color-warning-border: #fde68a;
-  --color-danger: #dc2626;
-  --color-danger-light: #fef2f2;
-  --color-danger-border: #fecaca;
-  --color-info: #2563eb;
-  --color-info-light: #eff6ff;
-  --color-info-border: #bfdbfe;
-  --color-accent: #7c3aed;
-  --color-accent-light: #f5f3ff;
-  --color-accent-border: #ddd6fe;
-
-  --color-pos-sidebar: #032421;
-
-  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-display: "DM Serif Display", Georgia, serif;
-  --font-mono: "SF Mono", "Fira Code", monospace;
-
-  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.04);
-  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04);
-  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.06);
-
-  /* --- Glass (light) ---
-     Tinted from the safari palette rather than neutral white, so a floating
-     layer still reads as this product and not a generic overlay. Three
-     elevations: a bar sits on the page, a panel lifts off it, a dialog owns
-     the screen. Blur rises and transparency falls as you climb. */
-  --glass-bar-bg: color-mix(in srgb, #ffffff 74%, transparent);
-  --glass-panel-bg: color-mix(in srgb, #ffffff 66%, transparent);
-  --glass-dialog-bg: color-mix(in srgb, #ffffff 88%, transparent);
-  --glass-border: color-mix(in srgb, #0f766e 16%, transparent);
-  --glass-specular: linear-gradient(
-    to right,
-    transparent,
-    rgb(255 255 255 / 0.95) 22%,
-    rgb(255 255 255 / 0.95) 78%,
-    transparent
-  );
-  --glass-wash: radial-gradient(
-    120% 100% at 12% 0%,
-    rgb(15 118 110 / 0.1),
-    transparent 62%
-  );
-  --glass-blur-bar: 14px;
-  --glass-blur-panel: 18px;
-  --glass-blur-dialog: 26px;
-  --glass-shadow: 0 8px 32px -12px rgb(9 78 72 / 0.28);
-  --glass-shadow-lg: 0 24px 56px -20px rgb(9 78 72 / 0.42);
-  --glass-scrim: rgb(10 23 18 / 0.45);
-
-  /* Standing light behind the auth glass. */
-  --auth-glow-brand: rgb(15 118 110 / 0.20);
-  --auth-glow-gold: rgb(212 160 23 / 0.14);
-  --auth-glow-deep: rgb(15 118 110 / 0.10);
+.light-theme {
+  --background: #ecefeb;
+  --surface: #f7f8f5;
+  --surface-raised: #ffffff;
+  --surface-interactive: #e4e9e4;
+  --foreground: #17201b;
+  --foreground-muted: #56635b;
+  --primary: #126443;
+  --primary-hover: #0d5438;
+  --primary-foreground: #ffffff;
+  --primary-subtle: #d8ece2;
+  --gold-accent: #8d6b24;
+  --gold-subtle: #eee5cf;
+  --border: #bdc7c0;
+  --border-strong: #9eaba3;
+  --border-subtle: #d3dad5;
+  --focus: #765516;
+  --success: #176b5c;
+  --success-subtle: #d8ede8;
+  --success-border: #8bbab0;
+  --warning: #8a5a08;
+  --warning-subtle: #f4e8ce;
+  --warning-border: #ceb273;
+  --danger: #a62f37;
+  --danger-subtle: #f5dfe1;
+  --danger-border: #d69a9f;
+  --offline: #99501f;
+  --info: #235f91;
+  --info-subtle: #dbeaf6;
+  --info-border: #91b5d2;
+  --color-surface-hover: #dce3dd;
+  --color-text-secondary: #37443c;
+  --color-text-tertiary: #647169;
+  --color-pos-sidebar: #101713;
 }
 
-/* ============================================================
-   2. Dark theme — Safari POS Dark (class toggle)
-   ============================================================ */
-.dark-theme {
-  --color-bg: #0a1712;
-  --color-surface: #122019;
-  --color-surface-hover: #1b2c22;
-  --color-surface-secondary: #0e1b15;
-  --color-surface-tertiary: #20342a;
-
-  --color-text: #e1ece3;
-  --color-text-primary: #f1f7f0;
-  --color-text-secondary: #8faa98;
-  --color-text-muted: #5c7868;
-  --color-text-tertiary: #3d5446;
-
-  --color-border: #213a2c;
-  --color-border-strong: #335041;
-  --color-border-subtle: #172a20;
-
-  --color-brand: #1fae7c;
-  --color-brand-hover: #18966a;
-  --color-brand-light: #0e3527;
-  --color-brand-dark: #0c7755;
-  --color-gold: #c9a24b;
-  --color-gold-light: #2a2009;
-
-  --color-success: #2fc592;
-  --color-success-light: #0a2b1e;
-  --color-success-border: #134232;
-  --color-warning: #e0b84a;
-  --color-warning-light: #2a2008;
-  --color-warning-border: #4a380f;
-  --color-danger: #e3716e;
-  --color-danger-light: #2e1517;
-  --color-danger-border: #4e2226;
-  --color-info: #5aaeff;
-  --color-info-light: #0e2040;
-  --color-info-border: #1a3a65;
-  --color-accent: #a78bfa;
-  --color-accent-light: #1a1040;
-  --color-accent-border: #2d2060;
-
-  /* --- Glass (dark) ---
-     A dim dining room is the common case at night, so dark glass is built up
-     from the green-black surface rather than down from white. The specular
-     edge stays warm — it is the one place gold appears on chrome, and it is
-     what makes the layer read as an edge rather than a lighter rectangle. */
-  --glass-bar-bg: color-mix(in srgb, #122019 72%, transparent);
-  --glass-panel-bg: color-mix(in srgb, #122019 64%, transparent);
-  --glass-dialog-bg: color-mix(in srgb, #16241c 88%, transparent);
-  --glass-border: color-mix(in srgb, #31c795 22%, transparent);
-  --glass-specular: linear-gradient(
-    to right,
-    transparent,
-    rgb(201 162 75 / 0.5) 22%,
-    rgb(201 162 75 / 0.5) 78%,
-    transparent
-  );
-  --glass-wash: radial-gradient(
-    120% 100% at 12% 0%,
-    rgb(31 174 124 / 0.14),
-    transparent 62%
-  );
-  --glass-shadow: 0 8px 32px -12px rgb(0 0 0 / 0.7);
-  --glass-shadow-lg: 0 24px 56px -20px rgb(0 0 0 / 0.85);
-  --glass-scrim: rgb(3 10 7 / 0.62);
-
-  /* Brighter pools in the dark: the wash is the only light in the room. */
-  --auth-glow-brand: rgb(31 174 124 / 0.26);
-  --auth-glow-gold: rgb(201 162 75 / 0.16);
-  --auth-glow-deep: rgb(12 119 85 / 0.20);
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-interactive: var(--surface-interactive);
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-gold-accent: var(--gold-accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-offline: var(--offline);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-focus: var(--focus);
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-heading: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* ============================================================
-   3. Base
-   ============================================================ */
 @layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    border-color: var(--border);
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-width: 100%;
+    height: 100%;
+    min-height: 100%;
+    margin: 0;
+  }
+
   html {
+    color-scheme: dark;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
   body {
-    font-family: var(--font-ui);
-    font-size: 0.8125rem; /* 13px — Safari POS text-base */
-    color: var(--color-text);
-    background: var(--color-bg);
+    overflow: hidden;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    line-height: 1.45;
   }
+
+  body.light-theme {
+    color-scheme: light;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  button {
+    touch-action: manipulation;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--gold-subtle);
+    color: var(--foreground);
+  }
+
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
   ::-webkit-scrollbar-thumb {
-    background: var(--color-border-strong);
-    border-radius: 9999px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-text-muted);
+    border: 2px solid var(--background);
+    border-radius: 999px;
+    background: var(--border-strong);
   }
 }
 
-/* ============================================================
-   4. Atoms — Buttons (min 44px touch targets)
-   ============================================================ */
 @layer components {
-  .btn-primary {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-height: 44px;
-    padding: 8px 16px;
-    border-radius: var(--radius-md, 8px);
-    font-size: 13px;
-    font-weight: 500;
-    border: 1px solid var(--color-brand);
-    background: var(--color-brand);
-    color: #fff;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 200ms ease;
-    user-select: none;
-  }
-  .btn-primary:hover {
-    background: var(--color-brand-hover);
-    border-color: var(--color-brand-hover);
-  }
-  .btn-primary:active {
-    transform: scale(0.98);
-  }
-  .btn-primary:disabled {
-    background: var(--color-surface-tertiary);
-    color: var(--color-text-muted);
-    border-color: var(--color-border);
-    cursor: not-allowed;
-  }
-  .btn-secondary {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-secondary);
-  }
-  .btn-secondary:hover {
-    background: var(--color-surface-hover);
-    border-color: var(--color-border-strong);
-    color: var(--color-text);
-  }
-  .btn-tertiary {
-    background: transparent;
-    border-color: transparent;
-    color: var(--color-text-secondary);
-  }
-  .btn-tertiary:hover {
-    background: var(--color-surface-hover);
-    color: var(--color-brand);
-  }
-  .btn-sm {
-    min-height: 32px;
-    padding: 5px 10px;
-    font-size: 11px;
-  }
-  .btn-md {
-    min-height: 40px;
-    padding: 8px 16px;
-    font-size: 12.5px;
+  .terminal-shell {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    width: 100vw;
+    height: 100dvh;
+    min-width: 1024px;
+    min-height: 768px;
+    overflow: hidden;
+    background: var(--background);
   }
 
-  /* --- Form inputs --- */
-  .input {
-    min-height: 36px;
-    padding: 7px 10px;
-    border-radius: var(--radius-md, 8px);
-    border: 1px solid var(--color-border);
-    background: var(--color-surface);
-    color: var(--color-text);
-    font-size: 13px;
-    outline: none;
-    transition: border-color 200ms ease;
-  }
-  .input::placeholder {
-    color: var(--color-text-muted);
-  }
-  .input:focus {
-    border-color: var(--color-gold, #D4A017);
-  }
-
-  /* --- Badges --- */
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: 9999px;
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 1.4;
-    white-space: nowrap;
-  }
-  .badge-dot::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-  }
-  .badge-brand { background: var(--color-brand-light); color: var(--color-brand); }
-  .badge-success { background: var(--color-success-light); color: var(--color-success); }
-  .badge-warning { background: var(--color-warning-light); color: var(--color-warning); }
-  .badge-danger { background: var(--color-danger-light); color: var(--color-danger); }
-  .badge-info { background: var(--color-info-light); color: var(--color-info); }
-  .badge-muted { background: var(--color-surface-tertiary); color: var(--color-text-muted); }
-
-  /* --- Cards --- */
-  .card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 12px;
-    box-shadow: var(--shadow-sm);
-    transition: box-shadow 200ms ease;
-  }
-  .card:hover {
-    box-shadow: var(--shadow);
-  }
-
-  /* ==========================================================
-     Auth shell — setup, pairing, unlock
-
-     The three screens a till shows before anyone is signed in. Unlock is the
-     most-seen surface in the product; a waiter meets it a dozen times a
-     shift. It is the one place worth spending the design budget.
-
-     Glass needs something behind it to refract. Over a flat field a
-     translucent card is just a lighter rectangle, so the shell carries a
-     standing wash of brand light — two soft pools, teal and gold, placed
-     off-centre. Static, not drifting: this runs sixteen hours a day on a
-     till, and ambient motion is a distraction plus a GPU cost for nothing.
-     ========================================================== */
-  .auth-shell {
-    position: relative;
-    isolation: isolate;
-    background: var(--color-bg);
-
-    /* Translucency costs contrast, and these screens carry the instructions a
-       waiter reads at the start of a shift. The stock muted tone measures 2.86:1
-       on light glass and 3.38:1 on dark, both under WCAG AA for 11-13px text, so
-       the auth surfaces darken it to 4.67:1 and lighten it to 5.34:1. Scoped
-       here rather than changed globally: on solid surfaces the token is fine. */
-    --color-text-muted: #657185;
-  }
-  .dark-theme .auth-shell {
-    --color-text-muted: #7e9a88;
-  }
-  .auth-shell::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background:
-      radial-gradient(52% 44% at 18% 16%, var(--auth-glow-brand), transparent 70%),
-      radial-gradient(46% 40% at 84% 82%, var(--auth-glow-gold), transparent 72%),
-      radial-gradient(70% 60% at 50% 120%, var(--auth-glow-deep), transparent 70%);
-    pointer-events: none;
-  }
-
-  /* ==========================================================
-     Glass surfaces (light + dark aware)
-
-     Applied to chrome only — bars, dialogs, overlays, pills. Order lines,
-     prices and the menu grid stay on solid surfaces: a waiter reads those
-     at speed and under pressure, and translucency behind a number is a
-     legibility cost with no upside. Glass marks what floats, not what
-     matters.
-     ========================================================== */
-
-  /* The specular edge. A translucent rectangle reads as a lighter box; a
-     bright hairline along the lit edge is what reads as glass. */
-  .glass-bar,
-  .glass-panel,
-  .glass-dialog {
-    position: relative;
-    isolation: isolate;
-  }
-  .glass-bar::before,
-  .glass-panel::before,
-  .glass-dialog::before {
-    content: "";
-    position: absolute;
-    inset-inline: 0;
-    top: 0;
-    height: 1px;
-    background: var(--glass-specular);
-    opacity: 0.85;
-    pointer-events: none;
-  }
-
-  /* Elevation 1 — sits on the page. Top bars, sticky headers. */
-  .glass-bar {
-    background: var(--glass-bar-bg);
-    backdrop-filter: blur(var(--glass-blur-bar)) saturate(1.5);
-    -webkit-backdrop-filter: blur(var(--glass-blur-bar)) saturate(1.5);
-    border-bottom: 1px solid var(--glass-border);
-  }
-
-  /* Elevation 2 — lifts off the page. Side panels, drawers, summaries. */
-  .glass-panel {
-    background: var(--glass-panel-bg);
-    background-image: var(--glass-wash);
-    backdrop-filter: blur(var(--glass-blur-panel)) saturate(1.6);
-    -webkit-backdrop-filter: blur(var(--glass-blur-panel)) saturate(1.6);
-    border: 1px solid var(--glass-border);
-    border-radius: 16px;
-    box-shadow: var(--glass-shadow);
-  }
-
-  /* Elevation 3 — owns the screen. Settle, void, shift close. */
-  .glass-dialog {
-    background: var(--glass-dialog-bg);
-    background-image: var(--glass-wash);
-    backdrop-filter: blur(var(--glass-blur-dialog)) saturate(1.7);
-    -webkit-backdrop-filter: blur(var(--glass-blur-dialog)) saturate(1.7);
-    border: 1px solid var(--glass-border);
-    border-radius: 20px;
-    box-shadow: var(--glass-shadow-lg);
-  }
-
-  /* The scrim behind a dialog. Blurred so the room behind it recedes. */
-  .glass-scrim {
-    background: var(--glass-scrim);
-    backdrop-filter: blur(3px);
-    -webkit-backdrop-filter: blur(3px);
-  }
-
-  /* A frosted chip for status and filters. */
-  .glass-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 9999px;
-    background: var(--glass-panel-bg);
-    backdrop-filter: blur(10px) saturate(1.5);
-    -webkit-backdrop-filter: blur(10px) saturate(1.5);
-    border: 1px solid var(--glass-border);
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--color-text-secondary);
-  }
-
-  /* Backwards-compatible alias for the original primitive. */
-  .glass {
-    background: var(--glass-bar-bg);
-    backdrop-filter: blur(var(--glass-blur-bar)) saturate(1.5);
-    -webkit-backdrop-filter: blur(var(--glass-blur-bar)) saturate(1.5);
-    border: 1px solid var(--glass-border);
-  }
-
-  /* A till may run on a locked-down webview without backdrop-filter, and a
-     translucent panel with nothing blurred behind it is unreadable. Fall
-     back to the opaque surface rather than shipping grey-on-grey. */
-  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .glass,
-    .glass-bar,
-    .glass-panel,
-    .glass-dialog,
-    .glass-pill {
-      background: var(--color-surface);
-      background-image: none;
-    }
-    .glass-scrim {
-      background: var(--glass-scrim);
-    }
-  }
-
-  /* Some staff turn transparency off at the OS level because it makes text
-     harder to read. Honour that: keep the shape, drop the translucency. */
-  @media (prefers-reduced-transparency: reduce) {
-    .glass,
-    .glass-bar,
-    .glass-panel,
-    .glass-dialog,
-    .glass-pill {
-      background: var(--color-surface);
-      background-image: none;
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-    }
-    .glass-bar::before,
-    .glass-panel::before,
-    .glass-dialog::before {
-      opacity: 0;
-    }
-  }
-
-  /* --- KPI card (Safari POS spc-kpi-card) --- */
-  .kpi-card {
-    background: #f4fbfa;
-    border: 1px solid rgb(15 118 110 / 0.08);
-    border-radius: 12px;
-    padding: 16px;
+  .terminal-nav {
     display: flex;
+    min-width: 0;
     flex-direction: column;
-    gap: 8px;
-    min-width: 190px;
-    transition: transform 200ms ease, box-shadow 200ms ease;
+    border-right: 1px solid var(--border-subtle);
+    background: var(--color-pos-sidebar);
   }
-  .kpi-card:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow);
-  }
-  .kpi-value {
-    font-family: var(--font-display);
-    font-size: 20px;
-    color: var(--color-text-primary);
-  }
-  .kpi-label {
-    font-size: 12px;
-    color: var(--color-text-muted);
-  }
-  .kpi-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .kpi-icon.tone-green { background: var(--color-success-light); color: var(--color-success); }
-  .kpi-icon.tone-brand { background: var(--color-brand-light); color: var(--color-brand); }
-  .kpi-icon.tone-accent { background: var(--color-accent-light); color: var(--color-accent); }
-  .kpi-icon.tone-danger { background: var(--color-danger-light); color: var(--color-danger); }
-  .kpi-icon.tone-warning { background: var(--color-warning-light); color: var(--color-warning); }
 
-  /* Quantity stepper on the order card.
-     Sized for a finger on a till, not a mouse on a desk. These were 1.5 units of
-     horizontal padding and nothing else — roughly 18px of target on the control a
-     waiter taps most often in a service, and the one where a mis-tap silently
-     changes what the kitchen cooks. 40px keeps them inside the 44px the buttons
-     use while staying comfortably hittable in a row of order lines. */
-  .qty-btn {
-    display: inline-flex;
+  .terminal-brand {
+    display: flex;
+    height: 64px;
     align-items: center;
     justify-content: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .terminal-brand__name,
+  .terminal-nav__label,
+  .terminal-staff__meta {
+    display: none;
+  }
+
+  .terminal-nav__items {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+    padding: 12px 8px;
+  }
+
+  .terminal-nav__action {
+    position: relative;
+    display: flex;
+    min-height: 52px;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    background: transparent;
+    color: var(--foreground-muted);
+    cursor: pointer;
+    transition: background-color var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
+  }
+
+  .terminal-nav__action:hover {
+    border-color: var(--border-subtle);
+    background: var(--surface);
+    color: var(--foreground);
+  }
+
+  .terminal-nav__action[aria-current="page"] {
+    border-color: #3d4b44;
+    background: var(--surface-interactive);
+    color: var(--foreground);
+  }
+
+  .terminal-nav__action[aria-current="page"]::before {
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    left: -9px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--gold-accent);
+    content: "";
+  }
+
+  .terminal-staff {
+    display: flex;
+    min-height: 76px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-top: 1px solid var(--border-subtle);
+    padding: 10px 8px;
+  }
+
+  .terminal-staff__avatar {
+    display: flex;
     width: 40px;
     height: 40px;
-    flex-shrink: 0;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #426858;
     border-radius: 10px;
-    border: 1px solid var(--color-border);
-    background: var(--color-surface);
-    color: var(--color-text-secondary);
-    font-size: 18px;
-    line-height: 1;
-    transition: background 150ms ease, border-color 150ms ease;
-  }
-  .qty-btn:hover {
-    background: var(--color-surface-hover);
-    border-color: var(--color-border-strong);
-  }
-  .qty-btn:active {
-    background: var(--color-brand-light);
-    border-color: var(--color-brand);
+    background: var(--primary);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
   }
 
-  /* --- Pill filters --- */
+  .terminal-frame {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    grid-template-rows: 64px minmax(0, 1fr);
+  }
+
+  .terminal-header,
+  .glass-bar {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 14px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface);
+  }
+
+  .terminal-workspace {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    background: var(--background);
+    padding: 20px;
+  }
+
+  .terminal-workspace--order {
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-tertiary,
+  .action-button {
+    display: inline-flex;
+    min-height: var(--control-height);
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    padding: 10px 16px;
+    color: var(--foreground);
+    font-size: 0.875rem;
+    font-weight: 650;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast), transform var(--motion-fast);
+  }
+
+  .btn-primary,
+  .action-button--primary {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  .btn-primary:hover,
+  .action-button--primary:hover {
+    border-color: var(--primary-hover);
+    background: var(--primary-hover);
+  }
+
+  .btn-secondary,
+  .action-button--secondary {
+    border-color: var(--border-strong);
+    background: var(--surface-interactive);
+  }
+
+  .btn-secondary:hover,
+  .action-button--secondary:hover {
+    border-color: var(--gold-accent);
+    background: var(--color-surface-hover);
+  }
+
+  .btn-tertiary,
+  .action-button--quiet {
+    background: transparent;
+    color: var(--foreground-muted);
+  }
+
+  .btn-tertiary:hover,
+  .action-button--quiet:hover {
+    background: var(--surface-interactive);
+    color: var(--foreground);
+  }
+
+  .action-button--danger {
+    border-color: var(--danger-border);
+    background: var(--danger-subtle);
+    color: var(--danger);
+  }
+
+  .btn-primary:active,
+  .btn-secondary:active,
+  .btn-tertiary:active,
+  .action-button:active {
+    transform: translateY(1px);
+  }
+
+  .btn-primary:disabled,
+  .btn-secondary:disabled,
+  .btn-tertiary:disabled,
+  .action-button:disabled {
+    border-color: var(--border-subtle);
+    background: var(--surface);
+    color: #717b75;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-sm,
+  .btn-md {
+    min-height: var(--control-height-compact);
+    padding: 8px 12px;
+  }
+
+  .input {
+    min-height: var(--control-height);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    outline: 0;
+    background: var(--surface-interactive);
+    color: var(--foreground);
+    padding: 10px 12px;
+  }
+
+  .input::placeholder {
+    color: #89938d;
+  }
+
+  .input:focus {
+    border-color: var(--focus);
+  }
+
+  .card,
+  .glass-panel {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .glass-dialog,
+  .terminal-dialog,
+  .terminal-sheet {
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sheet);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-overlay);
+  }
+
+  .glass-scrim,
+  .terminal-dialog-scrim {
+    background: rgb(2 5 4 / 0.76);
+  }
+
+  .badge,
+  .operational-status {
+    display: inline-flex;
+    min-height: 28px;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 9px;
+    background: var(--surface-interactive);
+    color: var(--foreground-muted);
+    font-size: 0.75rem;
+    font-weight: 650;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .badge-dot::before,
+  .operational-status__dot,
+  .shift-pill .dot {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: currentColor;
+    content: "";
+  }
+
+  .badge-brand {
+    border-color: #356c55;
+    background: var(--primary-subtle);
+    color: #70d0aa;
+  }
+
+  .badge-success,
+  .operational-status--success {
+    border-color: var(--success-border);
+    background: var(--success-subtle);
+    color: var(--success);
+  }
+
+  .badge-warning,
+  .operational-status--warning {
+    border-color: var(--warning-border);
+    background: var(--warning-subtle);
+    color: var(--warning);
+  }
+
+  .badge-danger,
+  .operational-status--danger {
+    border-color: var(--danger-border);
+    background: var(--danger-subtle);
+    color: var(--danger);
+  }
+
+  .operational-status--offline {
+    border-color: #80502f;
+    background: #321f15;
+    color: var(--offline);
+  }
+
+  .badge-info,
+  .operational-status--info {
+    border-color: var(--info-border);
+    background: var(--info-subtle);
+    color: var(--info);
+  }
+
+  .badge-muted,
+  .operational-status--neutral {
+    color: var(--foreground-muted);
+  }
+
+  .shift-pill {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    gap: 7px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-interactive);
+    color: var(--foreground-muted);
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    font-weight: 650;
+  }
+
+  .shift-pill.live { border-color: var(--success-border); color: var(--success); }
+  .shift-pill.alert { border-color: var(--warning-border); color: var(--warning); }
+  .shift-pill.down { border-color: var(--danger-border); color: var(--danger); }
+
+  .category-tab,
   .pill-filter-btn {
+    display: inline-flex;
+    min-height: var(--control-height-compact);
+    align-items: center;
+    gap: 7px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    background: var(--surface);
+    color: var(--foreground-muted);
+    padding: 8px 13px;
+    font-size: 0.8125rem;
+    font-weight: 650;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+  }
+
+  .category-tab:hover,
+  .pill-filter-btn:hover {
+    border-color: var(--border-strong);
+    background: var(--surface-interactive);
+    color: var(--foreground);
+  }
+
+  .category-tab[aria-pressed="true"],
+  .pill-filter-btn.active {
+    border-color: #7b673d;
+    background: var(--gold-subtle);
+    color: var(--focus);
+  }
+
+  .pill-count {
+    min-width: 20px;
+    border-radius: 5px;
+    background: var(--surface-interactive);
+    padding: 1px 5px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+  }
+
+  .product-tile {
+    display: flex;
+    min-height: var(--product-tile-height);
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-tile);
+    background: var(--surface-interactive);
+    color: var(--foreground);
+    padding: 13px 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--motion-fast), border-color var(--motion-fast), transform var(--motion-fast);
+  }
+
+  .product-tile:hover {
+    border-color: var(--gold-accent);
+    background: var(--color-surface-hover);
+  }
+
+  .product-tile:active { transform: translateY(1px); }
+
+  .tender-tile {
+    display: flex;
+    min-height: var(--control-height-prominent);
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    background: var(--surface-interactive);
+    color: var(--foreground-muted);
+    padding: 10px 12px;
+    text-align: center;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .tender-tile:hover {
+    border-color: var(--border-strong);
+    color: var(--foreground);
+  }
+
+  .tender-tile[aria-pressed="true"] {
+    border-color: #7b673d;
+    background: var(--gold-subtle);
+    color: var(--focus);
+  }
+
+  .settlement-due {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    padding: 14px 16px;
+    color: var(--foreground-muted);
+    font-size: 0.75rem;
+    font-weight: 650;
+  }
+
+  .settlement-due strong {
+    color: var(--foreground);
+    font-size: 1.75rem;
+    line-height: 1;
+  }
+
+  .settlement-change {
+    display: flex;
+    min-height: var(--control-height);
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--success-border);
+    border-radius: var(--radius-control);
+    background: var(--success-subtle);
+    color: var(--success);
+    padding: 10px 12px;
+    font-size: 0.8125rem;
+  }
+
+  .settlement-change strong { margin-left: auto; font-size: 1rem; }
+
+  .product-tile__name {
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .product-tile__price,
+  .money-display {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  .product-tile__price {
+    color: var(--foreground-muted);
+    font-size: 0.75rem;
+  }
+
+  .qty-btn,
+  .quantity-stepper__button {
+    display: inline-flex;
+    width: var(--control-height);
+    height: var(--control-height);
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    background: var(--surface-interactive);
+    color: var(--foreground);
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .qty-btn:hover,
+  .quantity-stepper__button:hover {
+    border-color: var(--gold-accent);
+    background: var(--color-surface-hover);
+  }
+
+  .quantity-stepper {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 12px;
-    border-radius: 9999px;
-    border: 1px solid var(--color-border);
-    background: transparent;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    transition: all 200ms ease;
-  }
-  .pill-filter-btn:hover {
-    background: var(--color-surface-hover);
-    border-color: var(--color-border-strong);
-  }
-  .pill-filter-btn.active {
-    background: var(--color-brand-light);
-    border-color: var(--color-brand);
-    color: var(--color-brand);
-  }
-  .pill-count {
-    background: var(--color-surface-tertiary);
-    padding: 1px 6px;
-    border-radius: 9999px;
-    font-size: 10px;
   }
 
-  /* --- Kitchen ticket card (KDS) --- */
-  .ticket-card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 12px;
-    padding: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    box-shadow: var(--shadow-sm);
-    transition: all 200ms ease;
-  }
-  .ticket-card:hover {
-    box-shadow: var(--shadow);
-  }
-  .ticket-card.ready {
-    border-color: var(--color-success-border);
-    background: color-mix(in srgb, var(--color-success-light) 45%, var(--color-surface));
-  }
-  .ticket-card.preparing {
-    border-color: var(--color-warning-border);
-  }
-  .ticket-age {
-    font-size: 11px;
-    font-weight: 600;
+  .quantity-stepper__value {
+    min-width: 24px;
+    text-align: center;
+    color: var(--foreground);
+    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
-    color: var(--color-text-muted);
-  }
-  .ticket-age.late {
-    color: var(--color-danger);
+    font-weight: 700;
   }
 
-  /* --- Empty state --- */
-  .empty-state {
+  .money-display--strong { font-weight: 700; }
+  .money-display--hero { font-size: 1.75rem; font-weight: 750; }
+
+  .terminal-state h2 {
+    color: var(--foreground);
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  .terminal-state p {
+    max-width: 390px;
+    color: var(--foreground-muted);
+    font-size: 0.8125rem;
+  }
+
+  .terminal-state__spinner { animation: terminal-spin 0.8s linear infinite; }
+
+  .order-line {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 12px 0;
+  }
+
+  .order-line:last-child { border-bottom: 0; }
+
+  .order-rail {
+    min-width: 0;
+    min-height: 0;
+    border-left: 1px solid var(--border-subtle);
+    background: var(--surface);
+  }
+
+  .terminal-state {
     display: flex;
+    min-height: 220px;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 48px 24px;
+    gap: 10px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    padding: 28px;
     text-align: center;
-    gap: 8px;
-  }
-  .empty-state-icon {
-    font-size: 40px;
-    color: var(--color-text-muted);
-    opacity: 0.4;
-    margin-bottom: 4px;
-  }
-  .empty-state-title {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--color-text-primary);
-  }
-  .empty-state-desc {
-    font-size: 13px;
-    color: var(--color-text-muted);
-    max-width: 340px;
   }
 
-  /* --- Shift pill (topbar) --- */
-  .shift-pill {
-    display: inline-flex;
+  .empty-state {
+    display: flex;
+    min-height: 220px;
+    flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 9999px;
-    font-size: 11px;
-    font-weight: 600;
-    background: var(--color-brand-light);
-    color: var(--color-brand);
+    justify-content: center;
+    gap: 8px;
+    padding: 32px 24px;
+    text-align: center;
   }
-  .shift-pill .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
+
+  .empty-state-icon {
+    display: flex;
+    width: 48px;
+    height: 48px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--foreground-muted);
   }
-  .shift-pill.live {
-    background: var(--color-success-light);
-    color: var(--color-success);
+
+  .empty-state-title {
+    color: var(--foreground);
+    font-size: 1rem;
+    font-weight: 700;
   }
-  .shift-pill.alert {
-    background: var(--color-warning-light);
-    color: var(--color-warning);
+
+  .empty-state-desc {
+    max-width: 380px;
+    color: var(--foreground-muted);
+    font-size: 0.8125rem;
   }
-  .shift-pill.down {
-    background: var(--color-danger-light);
-    color: var(--color-danger);
+
+  .auth-shell {
+    position: relative;
+    background: var(--background);
+  }
+
+  .auth-shell::before {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 5px;
+    background: var(--gold-accent);
+    content: "";
+  }
+
+  .kpi-card {
+    display: grid;
+    min-width: 168px;
+    grid-template-columns: 36px 1fr;
+    align-items: center;
+    gap: 2px 12px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    padding: 12px 14px;
+  }
+
+  .kpi-icon {
+    display: flex;
+    width: 36px;
+    height: 36px;
+    grid-row: span 2;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    background: var(--surface-interactive);
+    color: var(--foreground-muted);
+  }
+
+  .kpi-icon.tone-brand { color: #70d0aa; }
+  .kpi-icon.tone-green { color: var(--success); }
+  .kpi-icon.tone-warning { color: var(--warning); }
+  .kpi-icon.tone-accent { color: var(--gold-accent); }
+
+  .kpi-value {
+    color: var(--foreground);
+    font-family: var(--font-mono);
+    font-size: 1.125rem;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+
+  .kpi-label {
+    color: var(--foreground-muted);
+    font-size: 0.75rem;
+  }
+
+  .ticket-card {
+    display: flex;
+    min-height: 240px;
+    flex-direction: column;
+    gap: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    padding: 14px;
+  }
+
+  .ticket-card.ready { border-color: var(--success-border); }
+  .ticket-card.preparing { border-color: var(--warning-border); }
+
+  .skeleton {
+    background: var(--surface-interactive);
+    animation: terminal-pulse 1.2s ease-in-out infinite alternate;
+  }
+
+  .new-order-screen {
+    display: grid;
+    height: 100%;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .new-order-header {
+    display: flex;
+    min-height: 68px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 10px 18px;
+  }
+
+  .new-order-layout {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) 304px;
+  }
+
+  .catalog-workspace {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px 18px 24px;
+  }
+
+  .catalog-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .category-tabs {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(132px, 176px));
+    align-content: start;
+    gap: 10px;
+    padding-top: 12px;
+  }
+
+  .current-order-rail {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    border-left: 1px solid var(--border-subtle);
+    background: var(--surface);
+  }
+
+  .current-order-rail__header,
+  .current-order-rail__footer { padding: 16px; }
+  .current-order-rail__header { border-bottom: 1px solid var(--border-subtle); }
+  .current-order-rail__footer { border-top: 1px solid var(--border-subtle); }
+
+  .current-order-rail__body {
+    min-height: 0;
+    overflow: auto;
+    padding: 4px 16px;
+  }
+
+  .active-orders-list {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .active-order-row {
+    display: grid;
+    grid-template-columns: minmax(170px, 0.8fr) minmax(220px, 1.4fr) auto;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 14px 16px;
+  }
+
+  .active-order-row:last-child { border-bottom: 0; }
+}
+
+@keyframes terminal-pulse {
+  from { opacity: 0.52; }
+  to { opacity: 0.86; }
+}
+
+@keyframes terminal-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (min-width: 1180px) {
+  .terminal-shell { grid-template-columns: 176px minmax(0, 1fr); }
+  .terminal-brand { justify-content: flex-start; padding: 0 16px; }
+  .terminal-brand__name,
+  .terminal-nav__label,
+  .terminal-staff__meta { display: block; }
+  .terminal-brand__name { font-size: 1rem; font-weight: 750; letter-spacing: -0.02em; }
+  .terminal-nav__items { padding: 12px 10px; }
+  .terminal-nav__action { justify-content: flex-start; padding: 0 12px; }
+  .terminal-nav__action[aria-current="page"]::before { left: -11px; }
+  .terminal-staff { flex-direction: row; justify-content: flex-start; gap: 10px; padding: 10px; }
+  .terminal-staff__meta { min-width: 0; flex: 1; }
+  .new-order-layout { grid-template-columns: minmax(0, 1fr) 340px; }
+}
+
+@media (min-width: 1340px) {
+  .new-order-layout { grid-template-columns: minmax(0, 1fr) 360px; }
+}
+
+@media (min-width: 1420px) {
+  .terminal-shell { grid-template-columns: 180px minmax(0, 1fr); }
+  .new-order-layout { grid-template-columns: minmax(0, 1fr) 380px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

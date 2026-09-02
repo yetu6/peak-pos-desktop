@@ -15,6 +15,11 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
+  resolve: {
+    alias: {
+      "@": join(root, "src"),
+    },
+  },
   server: {
     port: 5173,
     strictPort: true,

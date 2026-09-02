@@ -3,6 +3,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Icon } from "../components/Icon";
 import { TillControls } from "../components/TillControls";
 import { ItemModifierDialog, type ModifierSelection } from "../components/ItemModifierDialog";
+import {
+  CategoryTab,
+  MoneyDisplay,
+  OrderLine,
+  OrderRail,
+  ProductTile,
+  QuantityStepper,
+  TerminalState,
+} from "../components/terminal/TerminalPrimitives";
 import { formatMinor } from "../lib/posMoney";
 import { createPosApi } from "../lib/posApi";
 import { useCatalog, useCreateOrder, useIdempotencyKey, useMutationMessage, usePosShift } from "../hooks/usePosData";
@@ -137,63 +146,60 @@ export function NewOrder() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">New order</h2>
+    <div className="new-order-screen">
+      <div className="new-order-header">
+        <div>
+          <h1 className="text-lg font-bold tracking-[-0.02em] text-[var(--foreground)]">New order</h1>
+          <p className="text-xs text-[var(--foreground-muted)]">Build the check, then create the order.</p>
+        </div>
         <TillControls currency={currency} />
       </div>
 
       {!shift ? (
-        <div className="card">
-          <div className="empty-state">
-            <div className="empty-state-icon">
-              <Icon name="clock" size={40} />
-            </div>
-            <div className="empty-state-title">No open shift</div>
-            <div className="empty-state-desc">Open a shift to start taking orders.</div>
-          </div>
+        <div className="p-5">
+          <TerminalState state="empty" title="No open shift" description="Open a shift to start taking orders." />
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
+        <div className="new-order-layout">
+          <section className="catalog-workspace" aria-label="Catalog">
+            <div className="catalog-toolbar">
               {SERVICE_TYPES.map((type) => (
-                <button
+                <CategoryTab
                   key={type.id}
                   data-testid={`service-type-${type.id}`}
                   onClick={() => setServiceType(type.id)}
-                  className={`pill-filter-btn ${serviceType === type.id ? "active" : ""}`}
+                  active={serviceType === type.id}
                 >
                   {type.label}
-                </button>
+                </CategoryTab>
               ))}
               <input
                 data-testid="table-label"
                 value={tableLabel}
                 onChange={(e) => setTableLabel(e.target.value)}
                 placeholder="Table"
-                className="input ml-auto w-40"
+                className="input ml-auto w-36"
               />
             </div>
 
             {categories.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                <button
+              <div className="category-tabs" aria-label="Menu categories">
+                <CategoryTab
                   data-testid="category-all"
                   onClick={() => setActiveCategory("all")}
-                  className={`pill-filter-btn ${activeCategory === "all" ? "active" : ""}`}
+                  active={activeCategory === "all"}
                 >
                   All
-                </button>
+                </CategoryTab>
                 {categories.map((category) => (
-                  <button
+                  <CategoryTab
                     key={category.id}
                     data-testid={`category-${category.id}`}
                     onClick={() => setActiveCategory(category.id)}
-                    className={`pill-filter-btn ${activeCategory === category.id ? "active" : ""}`}
+                    active={activeCategory === category.id}
                   >
                     {category.name}
-                  </button>
+                  </CategoryTab>
                 ))}
               </div>
             )}
@@ -205,85 +211,79 @@ export function NewOrder() {
               </p>
             )}
             {!catalog.isLoading && !catalog.isError && visibleProducts.length === 0 && (
-              <div className="card">
-                <div className="empty-state">
-                  <div className="empty-state-title">No menu items are available for this outlet.</div>
-                </div>
-              </div>
+              <TerminalState state="empty" title="No menu items available" description="This outlet has no available products in the current catalog." />
             )}
 
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+            <div className="product-grid">
               {visibleProducts.map((product) => (
-                <button
+                <ProductTile
                   key={product.id}
                   data-testid={`menu-${product.name}`}
                   onClick={() => tapProduct(product)}
-                  className="card flex flex-col items-start gap-1 p-4 text-left transition-colors hover:border-[var(--color-gold)]"
-                >
-                  <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{product.name}</span>
-                  <span className="text-[11px] text-[var(--color-text-muted)]">{formatMinor(product.priceMinor, product.currency)}</span>
-                </button>
+                  name={product.name}
+                  price={formatMinor(product.priceMinor, product.currency)}
+                />
               ))}
             </div>
-          </div>
+          </section>
 
-          <div className="glass-panel h-fit p-4">
-            <div className="text-sm font-semibold text-[var(--color-text-primary)]">
-              Order · {totalLines} {totalLines === 1 ? "item" : "items"}
-            </div>
-            <ul className="mt-3 space-y-2">
-              {lines.length === 0 && <li className="text-[12px] text-[var(--color-text-muted)]">Tap menu items to add them.</li>}
+          <OrderRail
+            title="Current order"
+            data-testid="current-order-rail"
+            headerMeta={<p className="mt-1 text-xs text-[var(--foreground-muted)]">{totalLines} {totalLines === 1 ? "item" : "items"}</p>}
+            footer={
+              <>
+                <div className="mb-3 flex items-end justify-between gap-3">
+                  <span className="text-xs text-[var(--foreground-muted)]">Estimated total</span>
+                  <MoneyDisplay prominence="strong" className="text-base" data-testid="cart-preview-total">
+                    {lines.length > 0 ? formatMinor(previewTotalMinor, currency) : "—"}
+                  </MoneyDisplay>
+                </div>
+                <input
+                  data-testid="order-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Order notes"
+                  className="input w-full"
+                />
+                {created && <div className="badge badge-success mt-3" data-testid="order-created">{created} sent to Active orders</div>}
+                {createError && <div className="badge badge-danger mt-3" data-testid="create-error">{createError}</div>}
+                <button
+                  data-testid="create-order"
+                  onClick={() => void submit()}
+                  disabled={lines.length === 0 || createOrder.isPending}
+                  className="btn-primary mt-4 w-full"
+                >
+                  <Icon name="orders" size={17} />
+                  {createOrder.isPending ? "Creating…" : "Create order"}
+                </button>
+              </>
+            }
+          >
+            <ul>
+              {lines.length === 0 && (
+                <li className="py-8 text-center text-xs text-[var(--foreground-muted)]">Tap a menu item to start this order.</li>
+              )}
               {lines.map((line) => (
-                <li key={line.key} className="flex items-center justify-between gap-2 text-[13px]" data-testid={`cart-${line.name}`}>
+                <OrderLine key={line.key} data-testid={`cart-${line.name}`}>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[var(--color-text)]">{line.name}</span>
-                    {line.modifierLabel && <span className="block truncate text-[11px] text-[var(--color-text-muted)]">{line.modifierLabel}</span>}
+                    <span className="block truncate font-semibold text-[var(--foreground)]">{line.name}</span>
+                    {line.modifierLabel && <span className="block truncate text-[11px] text-[var(--foreground-muted)]">{line.modifierLabel}</span>}
+                    <MoneyDisplay className="mt-1 block text-[11px] text-[var(--foreground-muted)]">
+                      {formatMinor(line.previewUnitPriceMinor * line.quantity, currency)}
+                    </MoneyDisplay>
                   </span>
-                  <span className="flex items-center gap-1">
-                    <button onClick={() => changeQuantity(line.key, -1)} className="qty-btn" aria-label={`Decrease ${line.name}`}>
-                      −
-                    </button>
-                    <span className="w-6 text-center font-mono text-sm tabular-nums">{line.quantity}</span>
-                    <button onClick={() => changeQuantity(line.key, 1)} className="qty-btn" aria-label={`Increase ${line.name}`}>
-                      +
-                    </button>
-                  </span>
-                </li>
+                  <QuantityStepper
+                    label={line.name}
+                    value={line.quantity}
+                    minimum={0}
+                    onDecrease={() => changeQuantity(line.key, -1)}
+                    onIncrease={() => changeQuantity(line.key, 1)}
+                  />
+                </OrderLine>
               ))}
             </ul>
-            {lines.length > 0 && (
-              <div className="mt-3 flex justify-between border-t border-[var(--color-border-subtle)] pt-2 text-[12px] text-[var(--color-text-muted)]">
-                <span>Estimated total</span>
-                <span data-testid="cart-preview-total">{formatMinor(previewTotalMinor, currency)}</span>
-              </div>
-            )}
-            <input
-              data-testid="order-notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Notes"
-              className="input mt-3 w-full"
-            />
-            {created && (
-              <div className="badge badge-success mt-3" data-testid="order-created">
-                {created} sent to Active orders
-              </div>
-            )}
-            {createError && (
-              <div className="badge badge-danger mt-3" data-testid="create-error">
-                {createError}
-              </div>
-            )}
-            <button
-              data-testid="create-order"
-              onClick={() => void submit()}
-              disabled={lines.length === 0 || createOrder.isPending}
-              className="btn-primary btn-md mt-4 w-full"
-            >
-              <Icon name="orders" size={16} />
-              {createOrder.isPending ? "Creating…" : "Create order"}
-            </button>
-          </div>
+          </OrderRail>
         </div>
       )}
 

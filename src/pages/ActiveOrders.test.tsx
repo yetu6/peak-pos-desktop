@@ -141,6 +141,8 @@ describe("ActiveOrders", () => {
     ordersStore.set("order-1", OPEN_ORDER);
     renderActiveOrders();
     await screen.findByText("ORD-1042");
+    expect(screen.getByTestId("active-orders-list")).toHaveClass("active-orders-list");
+    expect(screen.getByTestId("order-order-1")).toHaveClass("active-order-row");
     expect(screen.queryByTestId("settle-order-1")).not.toBeInTheDocument();
     expect(screen.getByTestId("send-order-1")).toBeInTheDocument();
     expect(screen.getByTestId("void-order-order-1")).toBeInTheDocument();

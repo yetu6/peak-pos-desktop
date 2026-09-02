@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "./Icon";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { formatMinor, toMinor } from "../lib/posMoney";
 import {
   useChargeToRoom,
@@ -99,18 +100,28 @@ export function SettleDialog({
   const showRoomChargeTab = roomChargeAvailable.data === true;
 
   return (
-    <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="settle-dialog">
-      <div className="glass-dialog w-full max-w-md p-5">
-        <div className="flex items-start justify-between gap-3">
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        className="terminal-dialog max-h-[calc(100dvh-32px)] w-[min(560px,calc(100vw-32px))] max-w-none overflow-y-auto p-5 sm:max-w-[560px]"
+        data-testid="settle-dialog"
+        showCloseButton={false}
+        aria-modal="true"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] pb-4">
           <div>
-            <div className="text-sm font-semibold text-[var(--color-text-primary)]">Settle {order.orderNumber}</div>
-            <div className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
-              {order.serviceType.replaceAll("_", " ")} · {formatMinor(order.totalMinor, currency)}
-            </div>
+            <DialogTitle className="text-base font-bold text-[var(--foreground)]">Settle {order.orderNumber}</DialogTitle>
+            <DialogDescription className="mt-1 text-xs text-[var(--foreground-muted)]">
+              {order.serviceType.replaceAll("_", " ")}
+            </DialogDescription>
           </div>
-          <button data-testid="settle-close" onClick={onClose} className="rounded-md p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-border-subtle)]" aria-label="Close">
+          <button data-testid="settle-close" onClick={onClose} className="grid size-11 place-items-center rounded-md text-[var(--foreground-muted)] hover:bg-[var(--surface-interactive)]" aria-label="Close">
             <Icon name="x" size={16} />
           </button>
+        </div>
+
+        <div className="settlement-due">
+          <span>Amount due</span>
+          <strong className="money-display" data-testid="amount-due">{formatMinor(order.totalMinor, currency)}</strong>
         </div>
 
         {showRoomChargeTab && (
@@ -134,17 +145,14 @@ export function SettleDialog({
 
         {tab === "tender" ? (
           <>
-            <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="mt-1 grid grid-cols-3 gap-2">
               {METHODS.map((m) => (
                 <button
                   key={m.id}
                   data-testid={`method-${m.id}`}
                   onClick={() => setMethod(m.id)}
-                  className={`rounded-lg border px-2 py-2 text-[12px] font-medium transition-colors ${
-                    method === m.id
-                      ? "border-[var(--color-gold)] bg-[var(--color-gold)]/10 text-[var(--color-text-primary)]"
-                      : "border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-border)]"
-                  }`}
+                  aria-pressed={method === m.id}
+                  className="tender-tile"
                 >
                   {m.label}
                 </button>
@@ -156,25 +164,29 @@ export function SettleDialog({
 
             {method === "CASH" ? (
               <div className="mt-4 space-y-2">
-                <label className="block text-[12px] font-medium text-[var(--color-text-secondary)]">Amount received</label>
+                <label htmlFor="amount-received" className="block text-xs font-semibold text-[var(--foreground-muted)]">Amount received</label>
                 <input
+                  id="amount-received"
                   data-testid="amount-received"
                   type="number"
+                  inputMode="decimal"
                   value={amountReceived}
                   onChange={(event) => setAmountReceived(event.target.value)}
                   className="input w-full"
                 />
                 {receivedMinor != null && (
-                  <p className="text-[12px] text-[var(--color-text-secondary)]" data-testid="change-due">
-                    Change due: {formatMinor(changeDueMinor ?? 0, currency)}
+                  <p className="settlement-change" data-testid="change-due">
+                    <span>Change due</span>
+                    <strong className="money-display">{formatMinor(changeDueMinor ?? 0, currency)}</strong>
                     <span className="ml-1 text-[11px] text-[var(--color-text-muted)]">(display only)</span>
                   </p>
                 )}
               </div>
             ) : (
               <div className="mt-4 space-y-2">
-                <label className="block text-[12px] font-medium text-[var(--color-text-secondary)]">Reference</label>
+                <label htmlFor="tender-reference" className="block text-xs font-semibold text-[var(--foreground-muted)]">Reference</label>
                 <input
+                  id="tender-reference"
                   data-testid="tender-reference"
                   value={reference}
                   onChange={(event) => setReference(event.target.value)}
@@ -203,8 +215,9 @@ export function SettleDialog({
         ) : (
           <>
             <div className="mt-4 space-y-2">
-              <label className="block text-[12px] font-medium text-[var(--color-text-secondary)]">Room or guest name</label>
+              <label htmlFor="room-query" className="block text-xs font-semibold text-[var(--foreground-muted)]">Room or guest name</label>
               <input
+                id="room-query"
                 data-testid="room-query"
                 value={roomQuery}
                 onChange={(event) => {
@@ -229,7 +242,7 @@ export function SettleDialog({
                         data-testid={`room-candidate-${candidate.stayId}`}
                         disabled={!eligible}
                         onClick={() => setSelected(candidate)}
-                        className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[12px] ${
+                        className={`flex min-h-12 w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs ${
                           selected?.stayId === candidate.stayId
                             ? "bg-[var(--color-gold)]/10 text-[var(--color-text-primary)]"
                             : eligible
@@ -265,7 +278,7 @@ export function SettleDialog({
             </div>
           </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

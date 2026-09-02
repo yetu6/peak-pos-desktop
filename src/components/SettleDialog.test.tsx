@@ -52,6 +52,10 @@ describe("SettleDialog", () => {
 
   it("hides the room charge tab entirely when no candidate has ever been found", () => {
     renderDialog();
+    expect(screen.getByRole("dialog", { name: /Settle POS-1/i })).toHaveAttribute("aria-modal", "true");
+    expect(screen.getByTestId("amount-due")).toHaveTextContent("TZS");
+    expect(screen.getByTestId("method-CASH")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("method-CASH")).toHaveClass("tender-tile");
     expect(screen.queryByTestId("settle-tab-room")).not.toBeInTheDocument();
   });
 

@@ -24,6 +24,11 @@ export function ConnectivityIndicator() {
     <div
       className={`shift-pill ${tone}`}
       data-testid="connectivity"
+      role="status"
+      aria-live="polite"
+      aria-label={`Connection status: ${LABELS[state.phase] ?? state.phase}${
+        state.phase === "reconnecting" && state.attempt > 0 ? `, attempt ${state.attempt}` : ""
+      }`}
       title={
         state.lastError ??
         `resync generation ${state.resyncGeneration}, attempt ${state.attempt}`

@@ -99,9 +99,13 @@ describe("NewOrder", () => {
     renderNewOrder();
     await screen.findByTestId("shift-open");
 
-    await userEvent.click(await screen.findByTestId("menu-Nyama Choma"));
+    const productTile = await screen.findByTestId("menu-Nyama Choma");
+    expect(productTile).toHaveClass("product-tile");
+    expect(screen.getByTestId("current-order-rail")).toHaveAttribute("aria-label", "Current order");
+    await userEvent.click(productTile);
     await userEvent.click(screen.getByTestId("menu-Nyama Choma"));
     await userEvent.click(screen.getByTestId("menu-Tusker Lager"));
+    expect(screen.getByTestId("cart-Nyama Choma")).toHaveClass("order-line");
     expect(screen.getByTestId("cart-Nyama Choma")).toHaveTextContent("2");
 
     await userEvent.type(screen.getByTestId("table-label"), "T12");

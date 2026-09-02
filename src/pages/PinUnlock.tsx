@@ -74,7 +74,7 @@ export function PinUnlock() {
       </span>
       <div className={`glass-panel w-full p-8 ${showingRoster ? "max-w-lg" : "max-w-sm"}`}>
         <div className="mb-5 flex items-center justify-center gap-2">
-          <Icon name="peak-logo" size={24} className="text-[#D4A017]" />
+          <Icon name="peak-logo" size={24} className="text-[var(--gold-accent)]" />
           <span className="font-display text-xl text-[var(--color-text-primary)]">Peak POS</span>
         </div>
         {till && (

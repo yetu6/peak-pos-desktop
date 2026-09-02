@@ -23,7 +23,7 @@ export function PairingScreen() {
       <span className="sr-only" data-testid="shell-state">UNPAIRED</span>
       <div className="glass-panel w-full max-w-lg p-8">
         <div className="mb-6 flex items-center justify-center gap-2">
-          <Icon name="peak-logo" size={28} className="text-[#D4A017]" />
+          <Icon name="peak-logo" size={28} className="text-[var(--gold-accent)]" />
           <span className="font-display text-2xl text-[var(--color-text-primary)]">Commission Peak POS</span>
         </div>
         {pairing ? (

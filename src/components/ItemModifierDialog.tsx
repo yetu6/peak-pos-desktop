@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Icon } from "./Icon";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "./ui/sheet";
 import { formatMinor } from "../lib/posMoney";
 import type { POSCatalogProduct, POSModifierGroup } from "../lib/posContracts";
 
@@ -63,26 +64,32 @@ export function ItemModifierDialog({
   }
 
   return (
-    <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="modifier-dialog">
-      <div className="glass-dialog w-full max-w-md p-5">
-        <div className="flex items-start justify-between gap-3">
+    <Sheet open onOpenChange={(open) => !open && onCancel()}>
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        data-testid="modifier-dialog"
+        aria-modal="true"
+        className="terminal-sheet w-[min(460px,100vw)] max-w-none gap-0 sm:max-w-[460px]"
+      >
+        <header className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-5 py-5">
           <div>
-            <div className="text-sm font-semibold text-[var(--color-text-primary)]">{product.name}</div>
-            <div className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
+            <SheetTitle className="text-base text-[var(--foreground)]">{product.name}</SheetTitle>
+            <SheetDescription className="mt-1 font-mono text-xs tabular-nums text-[var(--foreground-muted)]">
               {formatMinor(previewUnitPriceMinor, currency)} each
-            </div>
+            </SheetDescription>
           </div>
           <button
             data-testid="modifier-dialog-close"
             onClick={onCancel}
-            className="rounded-md p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-border-subtle)]"
+            className="grid size-11 place-items-center rounded-md text-[var(--foreground-muted)] hover:bg-[var(--surface-interactive)]"
             aria-label="Close"
           >
             <Icon name="x" size={16} />
           </button>
-        </div>
+        </header>
 
-        <div className="mt-4 max-h-72 space-y-4 overflow-y-auto">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
           {groups.map((group) => (
             <div key={group.id}>
               <div className="flex items-baseline justify-between">
@@ -91,7 +98,7 @@ export function ItemModifierDialog({
                   {group.minSelect > 0 ? `Choose ${group.minSelect}${group.maxSelect ? `–${group.maxSelect}` : "+"}` : "Optional"}
                 </span>
               </div>
-              <div className="mt-2 space-y-1">
+              <div className="mt-2 grid gap-2">
                 {(group.options ?? [])
                   .filter((option) => option.isAvailable)
                   .map((option) => (
@@ -100,10 +107,11 @@ export function ItemModifierDialog({
                       type="button"
                       data-testid={`modifier-option-${option.id}`}
                       onClick={() => toggle(group, option.id)}
-                      className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-[12px] ${
+                      aria-pressed={chosen.has(option.id)}
+                      className={`flex min-h-12 w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm ${
                         chosen.has(option.id)
-                          ? "border-[var(--color-gold)] bg-[var(--color-gold)]/10 text-[var(--color-text-primary)]"
-                          : "border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] hover:border-[var(--color-border)]"
+                          ? "border-[var(--gold-accent)] bg-[var(--gold-subtle)] text-[var(--foreground)]"
+                          : "border-[var(--border)] bg-[var(--surface-interactive)] text-[var(--foreground)] hover:border-[var(--border-strong)]"
                       }`}
                     >
                       <span>{option.name}</span>
@@ -117,22 +125,21 @@ export function ItemModifierDialog({
               </div>
             </div>
           ))}
+          <div className="flex items-center justify-between border-t border-[var(--border)] pt-5">
+            <span className="text-sm font-medium text-[var(--foreground-muted)]">Quantity</span>
+            <span className="flex items-center gap-2">
+              <button className="qty-btn" onClick={() => setQuantity((q) => Math.max(1, q - 1))} aria-label="Decrease quantity">
+                −
+              </button>
+              <span className="w-8 text-center font-mono text-sm tabular-nums">{quantity}</span>
+              <button className="qty-btn" onClick={() => setQuantity((q) => q + 1)} aria-label="Increase quantity">
+                +
+              </button>
+            </span>
+          </div>
         </div>
 
-        <div className="mt-4 flex items-center justify-between">
-          <span className="text-[12px] font-medium text-[var(--color-text-secondary)]">Quantity</span>
-          <span className="flex items-center gap-2">
-            <button className="qty-btn" onClick={() => setQuantity((q) => Math.max(1, q - 1))} aria-label="Decrease quantity">
-              −
-            </button>
-            <span className="w-6 text-center font-mono text-sm tabular-nums">{quantity}</span>
-            <button className="qty-btn" onClick={() => setQuantity((q) => q + 1)} aria-label="Increase quantity">
-              +
-            </button>
-          </span>
-        </div>
-
-        <div className="mt-5 flex justify-end gap-2">
+        <footer className="flex justify-end gap-2 border-t border-[var(--border)] px-5 py-4">
           <button onClick={onCancel} className="btn-tertiary btn-sm">
             Cancel
           </button>
@@ -152,8 +159,8 @@ export function ItemModifierDialog({
             <Icon name="check" size={14} />
             Add to order
           </button>
-        </div>
-      </div>
-    </div>
+        </footer>
+      </SheetContent>
+    </Sheet>
   );
 }

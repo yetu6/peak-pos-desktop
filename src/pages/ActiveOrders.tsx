@@ -18,7 +18,7 @@ const STATUS_BADGE: Record<POSOrder["status"], string> = {
   VOIDED: "badge-muted",
 };
 
-export function ActiveOrders() {
+export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
   const propertyId = usePropertyId();
   const orders = useActiveOrders();
   const sendOrder = useSendOrder();
@@ -51,28 +51,28 @@ export function ActiveOrders() {
 
   function renderOrderCard(order: POSOrder, canSend: boolean): ReactNode {
     return (
-      <div key={order.id} className="card flex flex-col gap-3 p-4" data-testid={`order-${order.id}`}>
-        <div className="flex items-start justify-between gap-2">
+      <article key={order.id} className="active-order-row" data-testid={`order-${order.id}`}>
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-[var(--color-text-primary)]">{order.orderNumber}</div>
-            <div className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
+            <div className="font-mono text-sm font-bold text-[var(--foreground)]">{order.orderNumber}</div>
+            <div className="mt-1 text-[11px] uppercase tracking-[0.05em] text-[var(--foreground-muted)]">
               {order.serviceType.replaceAll("_", " ")} · {order.tableLabel ?? "no table"}
             </div>
           </div>
           <span className={`badge ${STATUS_BADGE[order.status]}`}>{order.status}</span>
         </div>
-        <ul className="space-y-1 border-y border-[var(--color-border-subtle)] py-2 text-[13px]">
+        <ul className="min-w-0 space-y-1 text-[13px]">
           {order.items.slice(0, 4).map((item) => (
             <li key={item.id} className="flex items-baseline justify-between gap-2">
-              <span className="min-w-0 truncate text-[var(--color-text)]">{item.name}</span>
+              <span className="min-w-0 truncate text-[var(--foreground)]">{item.name}</span>
               <span className="flex items-center gap-2">
-                <span className="font-mono text-xs tabular-nums text-[var(--color-text-muted)]">×{item.quantity}</span>
+                <span className="font-mono text-xs tabular-nums text-[var(--foreground-muted)]">×{item.quantity}</span>
                 {item.status === "ADDED" && (
                   <button
                     type="button"
                     data-testid={`remove-item-${item.id}`}
                     onClick={() => setRemoving({ order, item })}
-                    className="text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                    className="min-h-11 rounded-md px-2 text-[11px] text-[var(--foreground-muted)] hover:bg-[var(--surface-interactive)] hover:text-[var(--foreground)]"
                   >
                     Remove
                   </button>
@@ -80,11 +80,11 @@ export function ActiveOrders() {
               </span>
             </li>
           ))}
-          {order.items.length > 4 && <li className="text-[11px] text-[var(--color-text-muted)]">+{order.items.length - 4} more items</li>}
+          {order.items.length > 4 && <li className="text-[11px] text-[var(--foreground-muted)]">+{order.items.length - 4} more items</li>}
         </ul>
-        <div className="flex items-center justify-between gap-2">
-          <div className="font-display text-lg tabular-nums text-[var(--color-text-primary)]">{formatMinor(order.totalMinor, currency)}</div>
-          <div className="flex gap-2">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+          <div className="money-display mr-2 text-base font-bold text-[var(--foreground)]">{formatMinor(order.totalMinor, currency)}</div>
+          <div className="flex flex-wrap justify-end gap-2">
             <button data-testid={`void-order-${order.id}`} onClick={() => setVoiding(order)} className="btn-tertiary btn-sm">
               Void
             </button>
@@ -108,14 +108,17 @@ export function ActiveOrders() {
             )}
           </div>
         </div>
-      </div>
+      </article>
     );
   }
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Active orders</h2>
+        <div>
+          <h1 className="text-lg font-bold tracking-[-0.02em] text-[var(--foreground)]">Active orders</h1>
+          <p className="mt-0.5 text-xs text-[var(--foreground-muted)]">Open, preparing, and ready checks.</p>
+        </div>
         <div className="flex items-center gap-2">
           <span className="badge badge-brand">{open.length + inKitchen.length} open</span>
         </div>
@@ -134,12 +137,18 @@ export function ActiveOrders() {
               <Icon name="orders" size={40} />
             </div>
             <div className="empty-state-title">No open orders</div>
-            <div className="empty-state-desc">Orders appear here as they are created.</div>
+            <div className="empty-state-desc">Start a sale when the next guest is ready.</div>
+            {onNewOrder && (
+              <button type="button" onClick={onNewOrder} className="btn-primary mt-3">
+                <Icon name="plus" size={17} />
+                New order
+              </button>
+            )}
           </div>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="active-orders-list" data-testid="active-orders-list">
             {[...open, ...inKitchen].map((order) => renderOrderCard(order, order.status === "OPEN"))}
           </div>
 
