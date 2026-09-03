@@ -22,7 +22,14 @@ pub fn print_document(document: PrintDocument) -> Result<(), String> {
         return Err("Print document is empty".to_string());
     }
     let title = document.title.trim();
-    send_to_os_printer(if title.is_empty() { "peak-document" } else { title }, body)
+    send_to_os_printer(
+        if title.is_empty() {
+            "peak-document"
+        } else {
+            title
+        },
+        body,
+    )
 }
 
 /// Compatibility wrapper for kitchen tickets. New callers use print_document.

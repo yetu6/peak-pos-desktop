@@ -195,9 +195,7 @@ impl<S: PrivateKeyStore> IdentityVault<S> {
                         )?;
                         Ok(Some(Self::assemble(file, private_key)?))
                     }
-                    Err(SecretError::Unavailable) => {
-                        Ok(Some(Self::assemble(file, private_key)?))
-                    }
+                    Err(SecretError::Unavailable) => Ok(Some(Self::assemble(file, private_key)?)),
                 }
             }
             Err(SecretError::Unavailable) => {
@@ -343,10 +341,8 @@ mod tests {
     }
 
     fn temp_identity(name: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "peak-identity-{}-{name}.json",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("peak-identity-{}-{name}.json", std::process::id()));
         let _ = fs::remove_file(&path);
         path
     }
@@ -438,16 +434,21 @@ mod tests {
 
         let path = temp_identity("upgrade");
         let keychain = MemoryStore::empty();
-        let v1 = IdentityVault::new(path.clone(), MemoryStore {
-            secret: std::sync::Arc::clone(&keychain.secret),
-        });
+        let v1 = IdentityVault::new(
+            path.clone(),
+            MemoryStore {
+                secret: std::sync::Arc::clone(&keychain.secret),
+            },
+        );
         v1.save(&payload("V1_SECRET")).expect("v1 save");
 
-        let v2 = IdentityVault::new(path.clone(), MemoryStore {
-            secret: std::sync::Arc::clone(&keychain.secret),
-        });
-        let loaded: serde_json::Value =
-            serde_json::from_str(&v2.load().unwrap().unwrap()).unwrap();
+        let v2 = IdentityVault::new(
+            path.clone(),
+            MemoryStore {
+                secret: std::sync::Arc::clone(&keychain.secret),
+            },
+        );
+        let loaded: serde_json::Value = serde_json::from_str(&v2.load().unwrap().unwrap()).unwrap();
         assert_eq!(loaded[PRIVATE_KEY_FIELD], "V1_SECRET");
         assert_eq!(loaded["deviceCode"], "dev_abc");
         let on_disk = fs::read_to_string(&path).unwrap();

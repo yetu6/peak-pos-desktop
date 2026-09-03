@@ -1,0 +1,122 @@
+use rusqlite::{Connection, TransactionBehavior};
+
+use super::{classify_sql_error, LocalStoreError};
+
+const CURRENT_SCHEMA_VERSION: u32 = 1;
+const INITIAL_SCHEMA: &str = include_str!("migrations/0001_initial.sql");
+
+pub(super) fn migrate(connection: &mut Connection) -> Result<u32, LocalStoreError> {
+    let version: u32 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(classify_sql_error)?;
+    if version > CURRENT_SCHEMA_VERSION {
+        return Err(LocalStoreError::MigrationFailure);
+    }
+    if version == 0 {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(classify_sql_error)?;
+        transaction
+            .execute_batch(INITIAL_SCHEMA)
+            .map_err(classify_sql_error)?;
+        transaction
+            .pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION)
+            .map_err(classify_sql_error)?;
+        transaction.commit().map_err(classify_sql_error)?;
+    }
+    Ok(CURRENT_SCHEMA_VERSION)
+}
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::Connection;
+
+    use super::*;
+
+    #[test]
+    fn initial_migration_is_atomic_and_reentrant() {
+        let mut connection = Connection::open_in_memory().expect("open memory database");
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .unwrap();
+        assert_eq!(migrate(&mut connection).unwrap(), 1);
+        assert_eq!(migrate(&mut connection).unwrap(), 1);
+        let count: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN \
+                 ('orders','cash_settlements','operations','outbox','print_jobs')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 5);
+    }
+
+    #[test]
+    fn initial_schema_enforces_financial_and_operation_identity_constraints() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .unwrap();
+        migrate(&mut connection).unwrap();
+        assert_eq!(
+            connection
+                .query_row("PRAGMA foreign_keys", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+
+        let sql = "INSERT INTO cash_settlements \
+          (local_settlement_id,local_order_id,currency,amount_due_minor,cash_received_minor,change_minor,evidence_payload,evidence_hash,committed_at_ms,sync_state) \
+          VALUES ('s','missing','TZS',100,50,-50,x'01','h',1,'QUEUED')";
+        assert!(connection.execute(sql, []).is_err());
+    }
+
+    #[test]
+    fn failing_migration_transaction_leaves_no_partial_schema() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        let transaction = connection.transaction().unwrap();
+        let result = transaction.execute_batch(
+            "CREATE TABLE should_rollback(id INTEGER PRIMARY KEY);\
+             CREATE TABLE should_rollback(id INTEGER PRIMARY KEY);",
+        );
+        assert!(result.is_err());
+        drop(transaction);
+        let count: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name='should_rollback'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn schema_has_unique_operation_identity_and_immutable_evidence_guards() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .unwrap();
+        migrate(&mut connection).unwrap();
+        let unique_indexes: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM pragma_index_list('operations') WHERE \"unique\" = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            unique_indexes >= 2,
+            "operation ID, hash, and device sequence are unique"
+        );
+        let immutable_triggers: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'immutable_%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(immutable_triggers >= 10);
+    }
+}
