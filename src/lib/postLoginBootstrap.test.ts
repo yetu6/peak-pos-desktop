@@ -112,6 +112,8 @@ describe("production POS post-login bootstrap", () => {
       state: "STAGED" as const,
       hardExpiresAt: 1_800_007_200_000,
       staffCount: 1,
+      catalogVersion: "v1",
+      catalogDigest: "a".repeat(64),
       prerequisite: "CATALOG_REQUIRED" as const,
     }));
 
@@ -121,6 +123,15 @@ describe("production POS post-login bootstrap", () => {
 
     expect(stageOfflineAuthorization).toHaveBeenCalledWith(envelope);
     expect(result.offlineAuthorization?.state).toBe("STAGED");
+  });
+
+  it("installs only the opaque signed snapshot named by the staged lease", async () => {
+    const lease={keyId:"key-1",payloadB64:"lease",signatureB64:"signature"};
+    const snapshot={keyId:"key-1",digest:"a".repeat(64),payloadB64:"catalog",signatureB64:"signature"};
+    vi.stubGlobal("fetch",vi.fn(async(input:RequestInfo|URL)=>{const url=String(input);if(url.endsWith("/catalog"))return json({outletId:"outlet-1",outletName:"Main Bar",products:[]});if(url.includes("orders?active=true"))return json([]);if(url.endsWith("offline-leases"))return json(lease,201);if(url.endsWith("catalog/snapshots/v1"))return json(snapshot);throw new Error(url);}));
+    const installCatalogSnapshot=vi.fn(async()=>({state:"ACTIVE" as const,snapshotId:"snap-1",version:"v1",digest:"a".repeat(64),productCount:4}));
+    const result=await bootstrapOperationalSession("https://peak.example",session,{stageOfflineAuthorization:vi.fn(async()=>({state:"STAGED" as const,hardExpiresAt:9999,staffCount:1,catalogVersion:"v1",catalogDigest:"a".repeat(64),prerequisite:"CATALOG_REQUIRED" as const})),installCatalogSnapshot});
+    expect(installCatalogSnapshot).toHaveBeenCalledWith(snapshot);expect(result.certifiedCatalog?.state).toBe("ACTIVE");
   });
 
   it("fails the offline authority closed without denying an otherwise valid online session", async () => {

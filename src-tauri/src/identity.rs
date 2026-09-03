@@ -212,6 +212,10 @@ impl<S: PrivateKeyStore> IdentityVault<S> {
     }
 
     fn sign(&self, message: &[u8]) -> Result<String, String> {
+        Ok(URL_SAFE_NO_PAD.encode(self.sign_bytes(message)?))
+    }
+
+    fn sign_bytes(&self, message: &[u8]) -> Result<Vec<u8>, String> {
         let secret = Zeroizing::new(
             self.secrets
                 .get()
@@ -219,7 +223,7 @@ impl<S: PrivateKeyStore> IdentityVault<S> {
                 .ok_or_else(|| "Device identity is unavailable".to_string())?,
         );
         let signing_key = decode_signing_key(&secret)?;
-        Ok(URL_SAFE_NO_PAD.encode(signing_key.sign(message).to_bytes()))
+        Ok(signing_key.sign(message).to_bytes().to_vec())
     }
 
     fn load_public(&self) -> Result<String, String> {
@@ -248,6 +252,10 @@ impl<S: PrivateKeyStore> IdentityVault<S> {
             &serde_json::to_string(&value).map_err(|_| "Device identity metadata is invalid")?,
         )
     }
+}
+
+pub(crate) fn sign_device_operation(app: &AppHandle, message: &[u8]) -> Result<Vec<u8>, String> {
+    vault(app)?.sign_bytes(message)
 }
 
 fn generate_signing_key() -> Result<SigningKey, String> {

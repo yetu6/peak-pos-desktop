@@ -3,8 +3,10 @@ use std::{fs, path::Path, sync::Mutex};
 use tauri::{AppHandle, Manager, State};
 
 use super::{
-    AuthorizationStageResult, OfflineAuthenticationResult, OfflineEligibilityStatus,
-    SignedAuthorizationBundle, SignedTerminalLifecycleEvent, TerminalBinding,
+    AddOrderItemIntent, AuthorizationStageResult, CatalogActivationResult, CreateOrderDraftIntent,
+    LocalCatalogView, LocalOrderView, OfflineAuthenticationResult, OfflineEligibilityStatus,
+    SignedAuthorizationBundle, SignedCatalogSnapshot, SignedTerminalLifecycleEvent,
+    TerminalBinding, UpdateOrderContextIntent,
 };
 use super::{DbKeyStore, DbKeyStoreError, LocalStore, LocalStoreError, LocalStoreErrorKind};
 
@@ -167,6 +169,115 @@ pub fn offline_eligibility_status(
     runtime.with_store(|store| store.offline_eligibility(staff_id.as_deref(), now_ms()))
 }
 
+#[tauri::command]
+pub fn install_catalog_snapshot(
+    runtime: State<'_, LocalStoreRuntime>,
+    envelope: SignedCatalogSnapshot,
+) -> Result<CatalogActivationResult, LocalStoreErrorKind> {
+    runtime.with_store(|store| store.install_catalog_snapshot(envelope, now_ms()))
+}
+
+#[tauri::command]
+pub fn get_local_catalog(
+    runtime: State<'_, LocalStoreRuntime>,
+    query: Option<String>,
+    category_id: Option<String>,
+) -> Result<LocalCatalogView, LocalStoreErrorKind> {
+    runtime.with_store(|store| store.get_local_catalog(query.as_deref(), category_id.as_deref()))
+}
+
+#[tauri::command]
+pub fn get_or_create_order_draft(
+    runtime: State<'_, LocalStoreRuntime>,
+    intent: CreateOrderDraftIntent,
+) -> Result<LocalOrderView, LocalStoreErrorKind> {
+    runtime.with_store(|store| store.get_or_create_order_draft(intent, now_ms()))
+}
+
+#[tauri::command]
+pub fn update_order_context(
+    runtime: State<'_, LocalStoreRuntime>,
+    intent: UpdateOrderContextIntent,
+) -> Result<LocalOrderView, LocalStoreErrorKind> {
+    runtime.with_store(|store| store.update_order_context(intent, now_ms()))
+}
+
+#[tauri::command]
+pub fn add_local_order_item(
+    runtime: State<'_, LocalStoreRuntime>,
+    intent: AddOrderItemIntent,
+) -> Result<LocalOrderView, LocalStoreErrorKind> {
+    runtime.with_store(|store| store.add_order_item(intent, now_ms()))
+}
+
+#[tauri::command]
+pub fn set_local_order_line_quantity(
+    runtime: State<'_, LocalStoreRuntime>,
+    order_id: String,
+    line_id: String,
+    quantity: i64,
+    expected_version: i64,
+) -> Result<LocalOrderView, LocalStoreErrorKind> {
+    runtime.with_store(|store| {
+        store.set_order_line_quantity(&order_id, &line_id, quantity, expected_version, now_ms())
+    })
+}
+
+#[tauri::command]
+pub fn remove_local_order_line(
+    runtime: State<'_, LocalStoreRuntime>,
+    order_id: String,
+    line_id: String,
+    expected_version: i64,
+) -> Result<LocalOrderView, LocalStoreErrorKind> {
+    runtime.with_store(|store| {
+        store.remove_order_line(&order_id, &line_id, expected_version, now_ms())
+    })
+}
+
+#[tauri::command]
+pub fn get_local_order(
+    runtime: State<'_, LocalStoreRuntime>,
+    order_id: String,
+) -> Result<LocalOrderView, LocalStoreErrorKind> {
+    runtime.with_store(|store| store.get_order_draft(&order_id))
+}
+
+#[tauri::command]
+pub fn discard_empty_local_order(
+    runtime: State<'_, LocalStoreRuntime>,
+    order_id: String,
+    expected_version: i64,
+) -> Result<(), LocalStoreErrorKind> {
+    runtime
+        .with_store(|store| store.discard_empty_order_draft(&order_id, expected_version, now_ms()))
+}
+
+#[tauri::command]
+pub fn commit_local_order(
+    app: AppHandle,
+    runtime: State<'_, LocalStoreRuntime>,
+    order_id: String,
+    expected_version: i64,
+) -> Result<LocalOrderView, LocalStoreErrorKind> {
+    runtime.with_store(|store| {
+        store.commit_order(&order_id, expected_version, now_ms(), |digest| {
+            crate::identity::sign_device_operation(&app, digest)
+                .map_err(|_| LocalStoreError::SigningFailure)
+        })
+    })
+}
+
+#[tauri::command]
+pub fn clear_active_staff_session(
+    runtime: State<'_, LocalStoreRuntime>,
+) -> Result<(), LocalStoreErrorKind> {
+    runtime.with_store(|store| {
+        store.clear_active_staff();
+        Ok(())
+    })
+}
+
 fn now_ms() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -227,7 +338,7 @@ mod tests {
         let runtime = LocalStoreRuntime::initialize(temporary.path(), &MemoryKeyStore::default());
         let status = runtime.status();
         assert_eq!(status.state, "READY");
-        assert_eq!(status.schema_version, Some(2));
+        assert_eq!(status.schema_version, Some(3));
         assert_eq!(status.cipher_version.as_deref(), Some("4.14.0 community"));
         assert_eq!(status.issue, None);
         let json = serde_json::to_string(&status).unwrap();

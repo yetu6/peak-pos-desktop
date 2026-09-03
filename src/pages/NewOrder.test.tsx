@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NewOrder } from "./NewOrder";
 import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
 import type { POSCatalog } from "../lib/posContracts";
+import type { LocalOrderView } from "../lib/localPosCore";
 
 vi.mock("../lib/env", () => ({
   API_BASE_URL: "http://peak.test",
@@ -12,6 +13,24 @@ vi.mock("../lib/env", () => ({
   REALTIME_BRIDGE_URL: "ws://localhost:5174/bridge",
   devIdentityFromEnv: () => ({ tenantId: "tenant-1", userId: "user-1", propertyId: "property-1", outletId: "outlet-1" }),
 }));
+
+const localSpies=vi.hoisted(()=>({addItem:vi.fn(),commit:vi.fn(),setQuantity:vi.fn(),removeLine:vi.fn(),updateContext:vi.fn()}));
+vi.mock("../hooks/useLocalOrder",async()=>{
+  const React=await import("react");
+  const localCatalog={snapshotId:"snap",version:"v1",currency:"TZS",taxMode:"EXCLUSIVE",serviceTypes:[{id:"DINE_IN",label:"Dine in",requiresContext:false}],categories:[],products:[{id:"p1",code:"NC",name:"Nyama Choma",priceMinor:1200000,taxRateBp:1800,currency:"TZS",modifierGroups:[]},{id:"p2",code:"TL",name:"Tusker Lager",priceMinor:500000,taxRateBp:1800,currency:"TZS",modifierGroups:[]}]};
+  return {
+    useLocalCatalog:()=>({data:localCatalog,isLoading:false,isError:false,error:null}),
+    useLocalDraft:()=>{
+      const [data,setData]=React.useState<LocalOrderView>({id:"local-1",state:"DRAFT",syncState:"LOCAL_DRAFT",version:1,staffId:"staff-1",serviceType:"DINE_IN",currency:"TZS",subtotalMinor:0,taxMinor:0,totalMinor:0,lines:[]});
+      const mutation=<T,>(spy:(arg:T)=>unknown,change:(current:LocalOrderView,args:T)=>LocalOrderView)=>({isPending:false,error:null,mutate:(args:T,options?:{onSuccess?:(value:LocalOrderView)=>void})=>{spy(args);const next=change(data,args);setData(next);options?.onSuccess?.(next)}});
+      return {
+        draft:{data,isLoading:false,isError:false,error:null,refetch:vi.fn(async()=>({data}))},
+        addItem:mutation(localSpies.addItem,(current,args:{productId:string;quantity:number})=>({...current,version:current.version+1,subtotalMinor:847457,taxMinor:152542,totalMinor:999999,lines:[...current.lines,{id:`line-${current.lines.length}`,productId:args.productId,name:args.productId==="p1"?"Nyama Choma":"Tusker Lager",quantity:args.quantity,unitPriceMinor:999999,modifierTotalMinor:0,lineTotalMinor:999999,pricing:{unitNetMinor:847457,unitTaxMinor:152542,unitTotalMinor:999999,lineSubtotalMinor:847457,lineTaxMinor:152542,lineTotalMinor:999999},modifiers:[]}]})),
+        setQuantity:mutation(localSpies.setQuantity,current=>current),removeLine:mutation(localSpies.removeLine,current=>current),updateContext:mutation(localSpies.updateContext,current=>({...current,version:current.version+1})),commit:mutation(localSpies.commit,current=>({...current,state:"COMMITTED",syncState:"SYNC_PENDING"})),
+      };
+    },
+  };
+});
 
 const CATALOG: POSCatalog = {
   outletId: "outlet-1",
@@ -94,7 +113,7 @@ describe("NewOrder", () => {
     await waitFor(() => expect(closeShiftSpy).toHaveBeenCalledWith("shift-1", { countedCashMinor: 0, supervisorStaffId: undefined, supervisorPin: undefined }, expect.any(String)));
   });
 
-  it("composes an order from the real catalog: menu taps build a cart, create issues create+add commands with version chaining", async () => {
+  it("renders Rust-authoritative totals and secures through the local transaction core", async () => {
     localStorage.setItem("peak-pos-shift-property-1-outlet-1", "shift-1");
     renderNewOrder();
     await screen.findByTestId("shift-open");
@@ -103,35 +122,20 @@ describe("NewOrder", () => {
     expect(productTile).toHaveClass("product-tile");
     expect(screen.getByTestId("current-order-rail")).toHaveAttribute("aria-label", "Current order");
     await userEvent.click(productTile);
-    await userEvent.click(screen.getByTestId("menu-Nyama Choma"));
-    await userEvent.click(screen.getByTestId("menu-Tusker Lager"));
     expect(screen.getByTestId("cart-Nyama Choma")).toHaveClass("order-line");
-    expect(screen.getByTestId("cart-Nyama Choma")).toHaveTextContent("2");
+    expect(screen.getByTestId("cart-preview-total")).toHaveTextContent("9,999.99");
 
-    await userEvent.type(screen.getByTestId("table-label"), "T12");
     await userEvent.click(screen.getByTestId("create-order"));
-
-    await waitFor(() => expect(createOrderSpy).toHaveBeenCalledWith({ shiftId: "shift-1", serviceType: "DINE_IN", tableLabel: "T12", notes: undefined }, expect.any(String)));
-    await waitFor(() => expect(addItemSpy).toHaveBeenCalledTimes(2));
-    expect(addItemSpy).toHaveBeenNthCalledWith(
-      1,
-      "order-1",
-      expect.objectContaining({ quantity: 2, productId: "00000000-0000-0000-0000-000000000001", version: 1 }),
-      expect.any(String),
-    );
-    expect(addItemSpy).toHaveBeenNthCalledWith(
-      2,
-      "order-1",
-      expect.objectContaining({ quantity: 1, productId: "00000000-0000-0000-0000-000000000006", version: 2 }),
-      expect.any(String),
-    );
-    expect(await screen.findByTestId("order-created")).toHaveTextContent("POS-1");
-    expect(screen.queryByTestId("cart-Nyama Choma")).not.toBeInTheDocument();
+    expect(localSpies.addItem).toHaveBeenCalledWith({productId:"p1",quantity:1,modifierOptionIds:[]});
+    expect(localSpies.commit).toHaveBeenCalled();
+    expect(await screen.findByTestId("order-created")).toHaveTextContent("waiting to sync");
+    expect(createOrderSpy).not.toHaveBeenCalled();
+    expect(addItemSpy).not.toHaveBeenCalled();
   });
 
-  it("blocks order entry without an open shift", async () => {
+  it("keeps local ordering available independently of the REST shift pointer", async () => {
     renderNewOrder();
     await screen.findByTestId("open-shift");
-    expect(screen.queryByTestId("create-order")).not.toBeInTheDocument();
+    expect(screen.getByTestId("create-order")).toBeInTheDocument();
   });
 });

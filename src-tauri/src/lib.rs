@@ -36,6 +36,17 @@ pub fn run() {
             local_store::runtime::apply_terminal_lifecycle_event,
             local_store::runtime::authenticate_offline_staff,
             local_store::runtime::offline_eligibility_status,
+            local_store::runtime::install_catalog_snapshot,
+            local_store::runtime::get_local_catalog,
+            local_store::runtime::get_or_create_order_draft,
+            local_store::runtime::update_order_context,
+            local_store::runtime::add_local_order_item,
+            local_store::runtime::set_local_order_line_quantity,
+            local_store::runtime::remove_local_order_line,
+            local_store::runtime::get_local_order,
+            local_store::runtime::discard_empty_local_order,
+            local_store::runtime::commit_local_order,
+            local_store::runtime::clear_active_staff_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Peak POS shell");

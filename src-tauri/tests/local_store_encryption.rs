@@ -30,7 +30,7 @@ fn first_boot_creates_encrypted_database_and_reopens_with_same_envelope() {
 
     let first = LocalStore::open(&path, &keys).expect("first encrypted open");
     assert_eq!(first.cipher_version(), "4.14.0 community");
-    assert_eq!(first.schema_version(), 2);
+    assert_eq!(first.schema_version(), 3);
     drop(first);
 
     let envelope = keys
@@ -146,7 +146,7 @@ fn key_rotation_rekeys_database_and_rejects_old_envelope() {
     let new_envelope = keys.load().unwrap().unwrap();
     assert_ne!(old_envelope, new_envelope);
     drop(store);
-    assert_eq!(LocalStore::open(&path, &keys).unwrap().schema_version(), 2);
+    assert_eq!(LocalStore::open(&path, &keys).unwrap().schema_version(), 3);
 
     let old_keys = MemoryKeyStore::default();
     old_keys.save(&old_envelope).unwrap();
@@ -197,6 +197,6 @@ fn restart_recovers_rotation_interrupted_after_rekey() {
 
     *keys.fail_on_save.lock().unwrap() = None;
     let recovered = LocalStore::open(&path, &keys).expect("recover prepared rotation");
-    assert_eq!(recovered.schema_version(), 2);
+    assert_eq!(recovered.schema_version(), 3);
     assert!(!path.with_extension("sqlite3.rekey-recovery").exists());
 }

@@ -69,7 +69,20 @@ impl LocalStore {
             _ => return Ok(result(OfflineAuthenticationState::NotEligible)),
         }
         let pin = Zeroizing::new(pin);
-        authenticate_offline_staff_impl(&mut self.connection, staff_id, &pin, now_ms)
+        let result = authenticate_offline_staff_impl(&mut self.connection, staff_id, &pin, now_ms)?;
+        if result.state == OfflineAuthenticationState::Authenticated {
+            self.active_staff = Some(super::ActiveStaffSession {
+                staff_id: staff_id.to_string(),
+                lease_id: result
+                    .lease_id
+                    .clone()
+                    .ok_or(LocalStoreError::InvalidAuthorization)?,
+                expires_at_ms: result
+                    .expires_at_ms
+                    .ok_or(LocalStoreError::InvalidAuthorization)?,
+            });
+        }
+        Ok(result)
     }
 }
 

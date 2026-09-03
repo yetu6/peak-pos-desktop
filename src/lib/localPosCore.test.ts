@@ -1,0 +1,3 @@
+import {describe,expect,it,vi} from "vitest";
+import {createLocalPosCore} from "./localPosCore";
+describe("LocalPosCore",()=>{it("maps narrow intents without exposing SQL, keys, or selectable commit staff",async()=>{const invoke=vi.fn(async()=>({}));const core=createLocalPosCore(invoke);await core.addItem({orderId:"o",expectedVersion:2,productId:"p",quantity:1,modifierOptionIds:["m"]});await core.commitOrder("o",3);expect(invoke).toHaveBeenCalledWith("add_local_order_item",{intent:{orderId:"o",expectedVersion:2,productId:"p",quantity:1,modifierOptionIds:["m"]}});expect(invoke).toHaveBeenCalledWith("commit_local_order",{orderId:"o",expectedVersion:3});expect(JSON.stringify(invoke.mock.calls)).not.toMatch(/sql|privateKey|secret|staffId/i);});});

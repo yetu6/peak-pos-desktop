@@ -12,7 +12,6 @@ import type {
   PaymentMethod,
   POSOrder,
   POSShift,
-  ServiceType,
 } from "../lib/posContracts";
 
 export function usePropertyId(): string {
@@ -253,47 +252,6 @@ export function useOrder(orderId: string | undefined) {
 function invalidateOrders(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: ["pos", "orders"] });
   queryClient.invalidateQueries({ queryKey: ["pos", "order"] });
-}
-
-export function useCreateOrder() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (args: { shiftId: string; serviceType: ServiceType; tableLabel?: string; notes?: string; idempotencyKey: string }) =>
-      unwrap(
-        createPosApi().createOrder(
-          { shiftId: args.shiftId, serviceType: args.serviceType, tableLabel: args.tableLabel, notes: args.notes },
-          args.idempotencyKey,
-        ),
-      ),
-    onSuccess: () => invalidateOrders(queryClient),
-  });
-}
-
-/** STALE_VERSION never gets a blind retry: the caller must refetch and let
- *  the operator re-apply intent against the refreshed order. */
-export function useAddOrderItem() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (args: {
-      orderId: string;
-      productId: string;
-      quantity: number;
-      modifierOptionIds?: string[];
-      version: number;
-      idempotencyKey: string;
-    }) =>
-      unwrap(
-        createPosApi().addItem(
-          args.orderId,
-          { productId: args.productId, quantity: args.quantity, modifierOptionIds: args.modifierOptionIds, version: args.version },
-          args.idempotencyKey,
-        ),
-      ),
-    onSuccess: (order: POSOrder) => {
-      queryClient.setQueryData(["pos", "order", order.id], order);
-      invalidateOrders(queryClient);
-    },
-  });
 }
 
 export function useRemoveOrderItem() {

@@ -6,6 +6,7 @@ import type {
   AuthorizationStageResult,
   SignedAuthorizationBundle,
 } from "./offlineAuthorization";
+import type { CatalogActivationResult, SignedCatalogSnapshot } from "./localPosCore";
 
 export class PostLoginBootstrapError extends Error {
   constructor(message = "Peak could not load this register") {
@@ -26,12 +27,14 @@ export interface PostLoginBootstrap {
   offlineAuthorization?: AuthorizationStageResult | {
     state: "BACKEND_GAP" | "UNAVAILABLE" | "INVALID";
   };
+  certifiedCatalog?: CatalogActivationResult | { state: "BACKEND_GAP" | "UNAVAILABLE" | "INVALID" };
 }
 
 export interface PostLoginBootstrapOptions {
   stageOfflineAuthorization?: (
     envelope: SignedAuthorizationBundle,
   ) => Promise<AuthorizationStageResult>;
+  installCatalogSnapshot?: (envelope: SignedCatalogSnapshot) => Promise<CatalogActivationResult>;
 }
 
 async function getJSON(baseUrl: string, path: string, token: string): Promise<unknown> {
@@ -97,8 +100,43 @@ export async function bootstrapOperationalSession(
       session,
       options.stageOfflineAuthorization,
     );
+    if (
+      result.offlineAuthorization?.state === "STAGED" &&
+      result.offlineAuthorization.prerequisite === "CATALOG_REQUIRED" &&
+      options.installCatalogSnapshot
+    ) {
+      result.certifiedCatalog = await bootstrapCertifiedCatalog(
+        baseUrl,
+        session,
+        result.offlineAuthorization.catalogVersion,
+        result.offlineAuthorization.catalogDigest,
+        options.installCatalogSnapshot,
+      );
+    }
   }
   return result;
+}
+
+async function bootstrapCertifiedCatalog(
+  baseUrl: string,
+  session: OperationalSession,
+  version: string,
+  expectedDigest: string,
+  install: (envelope: SignedCatalogSnapshot) => Promise<CatalogActivationResult>,
+): Promise<PostLoginBootstrap["certifiedCatalog"]> {
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/catalog/snapshots/${encodeURIComponent(version)}`, {
+      headers: { Authorization: `Bearer ${session.token}` },
+    });
+  } catch { return { state: "UNAVAILABLE" }; }
+  if (response.status === 401) throw new SessionExpiredError();
+  if (response.status === 404 || response.status === 501) return { state: "BACKEND_GAP" };
+  if (!response.ok) return { state: "UNAVAILABLE" };
+  let raw: unknown;
+  try { raw = await response.json(); } catch { return { state: "INVALID" }; }
+  if (!isSignedCatalogSnapshot(raw) || raw.digest !== expectedDigest) return { state: "INVALID" };
+  try { return await install(raw); } catch { return { state: "INVALID" }; }
 }
 
 async function bootstrapOfflineAuthorization(
@@ -154,4 +192,10 @@ function isSignedAuthorizationBundle(value: unknown): value is SignedAuthorizati
     typeof candidate.signatureB64 === "string" &&
     candidate.signatureB64.length > 0
   );
+}
+
+function isSignedCatalogSnapshot(value: unknown): value is SignedCatalogSnapshot {
+  if (!value || typeof value !== "object") return false;
+  const candidate=value as Partial<SignedCatalogSnapshot>;
+  return typeof candidate.keyId==="string"&&candidate.keyId.length>0&&typeof candidate.digest==="string"&&candidate.digest.length===64&&typeof candidate.payloadB64==="string"&&candidate.payloadB64.length>0&&typeof candidate.signatureB64==="string"&&candidate.signatureB64.length>0;
 }

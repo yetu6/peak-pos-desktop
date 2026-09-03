@@ -2,26 +2,26 @@ import { useMemo, useState } from "react";
 import { Icon } from "./Icon";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "./ui/sheet";
 import { formatMinor } from "../lib/posMoney";
-import type { POSCatalogProduct, POSModifierGroup } from "../lib/posContracts";
+
+interface ModifierOption { id:string;name:string;priceDeltaMinor:number;isAvailable?:boolean }
+interface ModifierGroup { id:string;name:string;minSelect:number;maxSelect?:number|null;isActive?:boolean;options?:ModifierOption[] }
+interface ModifierProduct { id:string;name:string;priceMinor:number;modifierGroups?:ModifierGroup[] }
 
 export interface ModifierSelection {
   productId: string;
   quantity: number;
   modifierOptionIds: string[];
-  /** Display-only preview total; the server re-prices every option from its
-   *  current row and that response — never this value — is authoritative. */
-  previewUnitPriceMinor: number;
 }
 
-function groupIsSatisfied(group: POSModifierGroup, chosen: Set<string>): boolean {
+function groupIsSatisfied(group: ModifierGroup, chosen: Set<string>): boolean {
   const count = (group.options ?? []).filter((option) => chosen.has(option.id)).length;
   return count >= group.minSelect && (group.maxSelect == null || count <= group.maxSelect);
 }
 
 /**
  * Required groups (minSelect >= 1) must be satisfied before "Add" is
- * enabled. Modifier economics are a preview only — Peak re-prices and
- * snapshots every selected option server-side on addPOSOrderItem.
+ * enabled. React returns selection IDs only; the Rust transaction core owns
+ * modifier validation and every committed money calculation.
  */
 export function ItemModifierDialog({
   product,
@@ -29,26 +29,18 @@ export function ItemModifierDialog({
   onCancel,
   onConfirm,
 }: {
-  product: POSCatalogProduct;
+  product: ModifierProduct;
   currency: string;
   onCancel: () => void;
   onConfirm: (selection: ModifierSelection) => void;
 }) {
-  const groups = product.modifierGroups?.filter((g) => g.isActive) ?? [];
+  const groups = product.modifierGroups?.filter((g) => g.isActive !== false) ?? [];
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [quantity, setQuantity] = useState(1);
 
   const unmet = useMemo(() => groups.filter((group) => !groupIsSatisfied(group, chosen)), [groups, chosen]);
 
-  const previewUnitPriceMinor = useMemo(() => {
-    const delta = groups
-      .flatMap((group) => group.options ?? [])
-      .filter((option) => chosen.has(option.id))
-      .reduce((sum, option) => sum + option.priceDeltaMinor, 0);
-    return product.priceMinor + delta;
-  }, [groups, chosen, product.priceMinor]);
-
-  function toggle(group: POSModifierGroup, optionId: string): void {
+  function toggle(group: ModifierGroup, optionId: string): void {
     setChosen((prev) => {
       const next = new Set(prev);
       const singleSelect = group.maxSelect === 1;
@@ -76,7 +68,7 @@ export function ItemModifierDialog({
           <div>
             <SheetTitle className="text-base text-[var(--foreground)]">{product.name}</SheetTitle>
             <SheetDescription className="mt-1 font-mono text-xs tabular-nums text-[var(--foreground-muted)]">
-              {formatMinor(previewUnitPriceMinor, currency)} each
+              Base {formatMinor(product.priceMinor, currency)} · final price calculated securely
             </SheetDescription>
           </div>
           <button
@@ -100,7 +92,7 @@ export function ItemModifierDialog({
               </div>
               <div className="mt-2 grid gap-2">
                 {(group.options ?? [])
-                  .filter((option) => option.isAvailable)
+                  .filter((option) => option.isAvailable !== false)
                   .map((option) => (
                     <button
                       key={option.id}
@@ -150,7 +142,6 @@ export function ItemModifierDialog({
                 productId: product.id,
                 quantity,
                 modifierOptionIds: Array.from(chosen),
-                previewUnitPriceMinor,
               })
             }
             disabled={unmet.length > 0}

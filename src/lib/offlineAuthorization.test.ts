@@ -19,10 +19,12 @@ describe("native offline authority boundary", () => {
     await expect(authority.eligibilityStatus("staff-1")).resolves.toEqual({
       state: "CATALOG_REQUIRED",
     });
+    await authority.clearStaffSession();
     expect(invoke).toHaveBeenCalledWith("apply_terminal_lifecycle_event", { envelope });
     expect(invoke).toHaveBeenCalledWith("authenticate_offline_staff", {
       staffId: "staff-1",
       pin: "2468",
     });
+    expect(invoke).toHaveBeenCalledWith("clear_active_staff_session");
   });
 });

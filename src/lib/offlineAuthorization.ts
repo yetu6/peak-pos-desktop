@@ -5,9 +5,11 @@ export interface SignedAuthorizationBundle {
 }
 
 export interface AuthorizationStageResult {
-  state: "STAGED";
+  state: "STAGED" | "ACTIVE";
   hardExpiresAt: number;
   staffCount: number;
+  catalogVersion: string;
+  catalogDigest: string;
   prerequisite: "CATALOG_REQUIRED" | null;
 }
 
@@ -71,6 +73,7 @@ export interface OfflineAuthority {
   stageAuthorization(envelope: SignedAuthorizationBundle): Promise<AuthorizationStageResult>;
   authenticateStaff(staffId: string, pin: string): Promise<OfflineAuthenticationResult>;
   eligibilityStatus(staffId?: string): Promise<OfflineEligibilityStatus>;
+  clearStaffSession(): Promise<void>;
 }
 
 type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -87,6 +90,7 @@ export function createNativeOfflineAuthority(invoke: Invoke): OfflineAuthority {
       invoke("authenticate_offline_staff", { staffId, pin }) as Promise<OfflineAuthenticationResult>,
     eligibilityStatus: (staffId) =>
       invoke("offline_eligibility_status", { staffId }) as Promise<OfflineEligibilityStatus>,
+    clearStaffSession: () => invoke("clear_active_staff_session") as Promise<void>,
   };
 }
 

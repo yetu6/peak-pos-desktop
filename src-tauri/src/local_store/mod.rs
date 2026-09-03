@@ -10,17 +10,29 @@ use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
 
 mod authority;
+mod catalog;
 mod eligibility;
 mod migrations;
 mod offline_pin;
+mod orders;
+mod pricing;
 pub mod runtime;
 
 pub use authority::{
     AuthorizationPayload, AuthorizationStageResult, SignedAuthorizationBundle,
     SignedTerminalLifecycleEvent, StaffVerifierPayload, TerminalBinding, TerminalLifecyclePayload,
 };
+pub use catalog::{
+    CatalogActivationResult, CatalogCategoryView, CatalogModifierGroupView,
+    CatalogModifierOptionView, CatalogProductView, CatalogServiceTypeView, LocalCatalogView,
+    SignedCatalogSnapshot,
+};
 pub use eligibility::{OfflineEligibilityState, OfflineEligibilityStatus};
 pub use offline_pin::{OfflineAuthenticationResult, OfflineAuthenticationState};
+pub use orders::{
+    AddOrderItemIntent, CreateOrderDraftIntent, LocalOrderLineView, LocalOrderModifierView,
+    LocalOrderView, UpdateOrderContextIntent,
+};
 
 const KEY_BYTES: usize = 32;
 const KEY_ENVELOPE_VERSION: u32 = 1;
@@ -62,6 +74,20 @@ pub enum LocalStoreError {
     InvalidAuthorization,
     #[error("terminal authorization rollback was detected")]
     AuthorizationRollback,
+    #[error("the catalog snapshot is invalid or not authorized for this terminal")]
+    InvalidCatalog,
+    #[error("an active certified catalog is required")]
+    CatalogRequired,
+    #[error("the local order intent is invalid")]
+    InvalidOrder,
+    #[error("the local order changed; reload before retrying")]
+    StaleDraft,
+    #[error("the current authorization does not allow this operation")]
+    OperationNotAllowed,
+    #[error("the offline authorization ceiling is exhausted")]
+    LimitExceeded,
+    #[error("the device could not sign the local operation")]
+    SigningFailure,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -78,6 +104,13 @@ pub enum LocalStoreErrorKind {
     AuthorizationRequired,
     InvalidAuthorization,
     AuthorizationRollback,
+    InvalidCatalog,
+    CatalogRequired,
+    InvalidOrder,
+    StaleDraft,
+    OperationNotAllowed,
+    LimitExceeded,
+    SigningFailure,
 }
 
 impl LocalStoreError {
@@ -98,6 +131,13 @@ impl LocalStoreError {
             Self::AuthorizationRequired => LocalStoreErrorKind::AuthorizationRequired,
             Self::InvalidAuthorization => LocalStoreErrorKind::InvalidAuthorization,
             Self::AuthorizationRollback => LocalStoreErrorKind::AuthorizationRollback,
+            Self::InvalidCatalog => LocalStoreErrorKind::InvalidCatalog,
+            Self::CatalogRequired => LocalStoreErrorKind::CatalogRequired,
+            Self::InvalidOrder => LocalStoreErrorKind::InvalidOrder,
+            Self::StaleDraft => LocalStoreErrorKind::StaleDraft,
+            Self::OperationNotAllowed => LocalStoreErrorKind::OperationNotAllowed,
+            Self::LimitExceeded => LocalStoreErrorKind::LimitExceeded,
+            Self::SigningFailure => LocalStoreErrorKind::SigningFailure,
         }
     }
 }
@@ -190,6 +230,13 @@ pub struct LocalStore {
     cipher_version: String,
     schema_version: u32,
     path: PathBuf,
+    active_staff: Option<ActiveStaffSession>,
+}
+
+struct ActiveStaffSession {
+    staff_id: String,
+    lease_id: String,
+    expires_at_ms: i64,
 }
 
 impl LocalStore {
@@ -266,6 +313,7 @@ impl LocalStore {
             cipher_version,
             schema_version,
             path: path.to_path_buf(),
+            active_staff: None,
         };
         store.integrity_check()?;
         let recovery = recovery_path(path);
@@ -291,6 +339,18 @@ impl LocalStore {
 
     pub fn schema_version(&self) -> u32 {
         self.schema_version
+    }
+
+    fn active_staff(&self, now_ms: i64) -> Result<(&str, &str), LocalStoreError> {
+        self.active_staff
+            .as_ref()
+            .filter(|session| now_ms <= session.expires_at_ms)
+            .map(|session| (session.staff_id.as_str(), session.lease_id.as_str()))
+            .ok_or(LocalStoreError::AuthorizationRequired)
+    }
+
+    pub fn clear_active_staff(&mut self) {
+        self.active_staff = None;
     }
 
     pub fn rotate_key(&mut self, key_store: &impl DbKeyStore) -> Result<(), LocalStoreError> {

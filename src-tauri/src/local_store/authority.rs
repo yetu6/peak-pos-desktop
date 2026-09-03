@@ -115,6 +115,8 @@ pub struct AuthorizationStageResult {
     pub state: &'static str,
     pub hard_expires_at: i64,
     pub staff_count: usize,
+    pub catalog_version: String,
+    pub catalog_digest: String,
     pub prerequisite: Option<&'static str>,
 }
 
@@ -195,7 +197,9 @@ impl LocalStore {
                 ],
             )
             .map_err(classify_sql_error)?;
-        transaction.commit().map_err(classify_sql_error)
+        transaction.commit().map_err(classify_sql_error)?;
+        self.active_staff = None;
+        Ok(())
     }
 
     pub fn stage_authorization(
@@ -289,6 +293,8 @@ impl LocalStore {
         if last_generation.is_some_and(|generation| payload.generation <= generation) {
             return Err(LocalStoreError::AuthorizationRollback);
         }
+        let catalog_matches = self.catalog_matches(&payload)?;
+        let activation_state = if catalog_matches { "ACTIVE" } else { "STAGED" };
 
         let transaction = self
             .connection
@@ -310,7 +316,7 @@ impl LocalStore {
               max_operation_count,max_gross_minor,max_cash_minor,allowed_operations_json,
               signing_key_id,signed_payload,signature,state,received_at_ms)
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,
-                     ?19,?20,?21,?22,?23,?24,'STAGED',?25)",
+                     ?19,?20,?21,?22,?23,?24,?25,?26)",
                 params![
                     payload.bundle_id,
                     payload.terminal_id,
@@ -337,6 +343,7 @@ impl LocalStore {
                     envelope.key_id,
                     payload_bytes.as_slice(),
                     signature.to_bytes().as_slice(),
+                    activation_state,
                     received_at_ms,
                 ],
             )
@@ -386,8 +393,13 @@ impl LocalStore {
                 params![payload.server_time_ms, received_at_ms, payload.generation],
             )
             .map_err(classify_sql_error)?;
+        if catalog_matches {
+            transaction.execute("INSERT INTO offline_leases(lease_id,device_id,identity_epoch,shift_id,business_date,catalog_snapshot_id,issued_at_ms,hard_expires_at_ms,signed_envelope,state) SELECT ?1,?2,?3,?4,?5,a.snapshot_id,?6,?7,?8,'ACTIVE' FROM active_catalog a WHERE a.singleton_id=1",params![payload.lease_id,payload.terminal_id,payload.credential_epoch,payload.shift_id,payload.business_date,payload.issued_at_ms,payload.hard_expires_at_ms,payload_bytes.as_slice()]).map_err(classify_sql_error)?;
+            transaction.execute("INSERT OR IGNORE INTO shifts(local_shift_id,canonical_shift_id,lease_id,staff_id,business_date,state,opened_at_ms,updated_at_ms) VALUES (?1,?1,?2,?3,?4,'ACTIVE',?5,?6)",params![payload.shift_id,payload.lease_id,payload.staff[0].staff_id,payload.business_date,payload.shift_opened_at_ms,received_at_ms]).map_err(classify_sql_error)?;
+        }
         transaction.commit().map_err(classify_sql_error)?;
-        Ok(stage_result(&payload, self.catalog_matches(&payload)?))
+        self.active_staff = None;
+        Ok(stage_result(&payload, catalog_matches))
     }
 
     pub fn apply_terminal_lifecycle_event(
@@ -527,7 +539,9 @@ impl LocalStore {
                 ],
             )
             .map_err(classify_sql_error)?;
-        transaction.commit().map_err(classify_sql_error)
+        transaction.commit().map_err(classify_sql_error)?;
+        self.active_staff = None;
+        Ok(())
     }
 
     fn catalog_matches(&self, payload: &AuthorizationPayload) -> Result<bool, LocalStoreError> {
@@ -546,9 +560,11 @@ impl LocalStore {
 
 fn stage_result(payload: &AuthorizationPayload, catalog_matches: bool) -> AuthorizationStageResult {
     AuthorizationStageResult {
-        state: "STAGED",
+        state: if catalog_matches { "ACTIVE" } else { "STAGED" },
         hard_expires_at: payload.hard_expires_at_ms,
         staff_count: payload.staff.len(),
+        catalog_version: payload.catalog_version.clone(),
+        catalog_digest: payload.catalog_digest.clone(),
         prerequisite: (!catalog_matches).then_some("CATALOG_REQUIRED"),
     }
 }

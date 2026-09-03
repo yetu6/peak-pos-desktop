@@ -324,6 +324,7 @@ describe("DeviceSessionProvider", () => {
       bindTerminal: vi.fn(),
       applyLifecycleEvent: vi.fn(),
       stageAuthorization: vi.fn(),
+      clearStaffSession: vi.fn(async () => undefined),
       authenticateStaff: vi.fn(async () => ({ state: "NOT_ELIGIBLE" as const })),
       eligibilityStatus: vi.fn(async () => ({ state: "CATALOG_REQUIRED" as const })),
     };

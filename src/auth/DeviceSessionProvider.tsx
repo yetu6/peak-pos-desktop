@@ -52,6 +52,7 @@ import {
   type OfflineEligibilityStatus,
   type TerminalBinding,
 } from "../lib/offlineAuthorization";
+import { loadLocalPosCore, type LocalPosCore } from "../lib/localPosCore";
 
 /**
  * Shared-terminal shell. DEVICE pairing persists across waiters.
@@ -110,6 +111,7 @@ export interface DeviceSessionProviderProps {
   idleLockMinutes?: number;
   deviceAuthority?: DeviceAuthority;
   offlineAuthority?: OfflineAuthority;
+  localPosCore?: LocalPosCore;
 }
 
 const POLL_MS = 4_000;
@@ -123,6 +125,7 @@ export function DeviceSessionProvider({
   skipUrlSetup = Boolean(baseUrl),
   deviceAuthority,
   offlineAuthority,
+  localPosCore,
 }: DeviceSessionProviderProps) {
   const queryClient = useQueryClient();
   const [phase, setPhase] = useState<DevicePhase>("bootstrapping");
@@ -138,6 +141,7 @@ export function DeviceSessionProvider({
   const identityRef = useRef(identity);
   const authorityRef = useRef<DeviceAuthority | null>(deviceAuthority ?? null);
   const offlineAuthorityRef = useRef<OfflineAuthority | null>(offlineAuthority ?? null);
+  const localPosCoreRef = useRef<LocalPosCore | null>(localPosCore ?? null);
   identityRef.current = identity;
 
   const peakUrl = baseUrl ?? apiUrl ?? getApiBaseUrl();
@@ -171,6 +175,7 @@ export function DeviceSessionProvider({
     clearOperationalSession();
     setSession(null);
     queryClient.clear();
+    void offlineAuthorityRef.current?.clearStaffSession().catch(() => undefined);
     void applyOpsToken("").catch(() => undefined);
   }, [applyOpsToken, clearExpiry, queryClient]);
 
@@ -476,13 +481,18 @@ export function DeviceSessionProvider({
         });
         if (!store) {
           offlineAuthorityRef.current ??= await loadNativeOfflineAuthority();
+          localPosCoreRef.current ??= await loadLocalPosCore();
         }
         await bootstrapOperationalSession(peakUrl, next, {
           stageOfflineAuthorization: offlineAuthorityRef.current
             ? (envelope) => offlineAuthorityRef.current!.stageAuthorization(envelope)
             : undefined,
+          installCatalogSnapshot: localPosCoreRef.current
+            ? (envelope) => localPosCoreRef.current!.installCatalog(envelope)
+            : undefined,
         });
         if (offlineAuthorityRef.current) {
+          await offlineAuthorityRef.current.authenticateStaff(next.staffId, pin);
           setOfflineEligibility(
             await offlineAuthorityRef.current.eligibilityStatus(next.staffId),
           );
