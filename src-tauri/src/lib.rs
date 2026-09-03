@@ -16,9 +16,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            identity::load_device_identity,
-            identity::save_device_identity,
             identity::device_key_storage_status,
+            identity::ensure_device_identity,
+            identity::sign_device_challenge,
+            identity::load_device_identity_public,
+            identity::save_device_identity_public,
             identity::load_peak_config,
             identity::save_peak_config,
             printer::print_document,
@@ -29,6 +31,11 @@ pub fn run() {
             socket::send_peak_socket,
             socket::close_peak_socket,
             local_store::runtime::local_store_status,
+            local_store::runtime::bind_terminal_authority,
+            local_store::runtime::stage_offline_authorization,
+            local_store::runtime::apply_terminal_lifecycle_event,
+            local_store::runtime::authenticate_offline_staff,
+            local_store::runtime::offline_eligibility_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Peak POS shell");

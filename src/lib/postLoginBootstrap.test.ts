@@ -78,4 +78,65 @@ describe("production POS post-login bootstrap", () => {
       PostLoginBootstrapError,
     );
   });
+
+  it("keeps online bootstrap usable when the offline-lease backend contract is absent", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/catalog")) {
+        return json({ outletId: "outlet-1", outletName: "Main Bar", products: [] });
+      }
+      if (url.includes("orders?active=true")) return json([]);
+      if (url.endsWith("/terminals/terminal-1/offline-leases")) return json({}, 501);
+      throw new Error(`unexpected URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const stageOfflineAuthorization = vi.fn();
+
+    const result = await bootstrapOperationalSession("https://peak.example", session, {
+      stageOfflineAuthorization,
+    });
+
+    expect(result.offlineAuthorization).toEqual({ state: "BACKEND_GAP" });
+    expect(stageOfflineAuthorization).not.toHaveBeenCalled();
+  });
+
+  it("passes an opaque signed authorization envelope to the native staging boundary", async () => {
+    const envelope = { keyId: "key-1", payloadB64: "cGF5bG9hZA", signatureB64: "c2ln" };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/catalog")) return json({ outletId: "outlet-1", outletName: "Main Bar", products: [] });
+      if (url.includes("orders?active=true")) return json([]);
+      return json(envelope, 201);
+    }));
+    const stageOfflineAuthorization = vi.fn(async () => ({
+      state: "STAGED" as const,
+      hardExpiresAt: 1_800_007_200_000,
+      staffCount: 1,
+      prerequisite: "CATALOG_REQUIRED" as const,
+    }));
+
+    const result = await bootstrapOperationalSession("https://peak.example", session, {
+      stageOfflineAuthorization,
+    });
+
+    expect(stageOfflineAuthorization).toHaveBeenCalledWith(envelope);
+    expect(result.offlineAuthorization?.state).toBe("STAGED");
+  });
+
+  it("fails the offline authority closed without denying an otherwise valid online session", async () => {
+    const envelope = { keyId: "key-1", payloadB64: "altered", signatureB64: "invalid" };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/catalog")) return json({ outletId: "outlet-1", outletName: "Main Bar", products: [] });
+      if (url.includes("orders?active=true")) return json([]);
+      return json(envelope, 201);
+    }));
+
+    const result = await bootstrapOperationalSession("https://peak.example", session, {
+      stageOfflineAuthorization: vi.fn(async () => { throw new Error("INVALID_AUTHORIZATION"); }),
+    });
+
+    expect(result.catalog.outletName).toBe("Main Bar");
+    expect(result.offlineAuthorization).toEqual({ state: "INVALID" });
+  });
 });

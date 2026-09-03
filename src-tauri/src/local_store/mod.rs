@@ -9,8 +9,18 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
 
+mod authority;
+mod eligibility;
 mod migrations;
+mod offline_pin;
 pub mod runtime;
+
+pub use authority::{
+    AuthorizationPayload, AuthorizationStageResult, SignedAuthorizationBundle,
+    SignedTerminalLifecycleEvent, StaffVerifierPayload, TerminalBinding, TerminalLifecyclePayload,
+};
+pub use eligibility::{OfflineEligibilityState, OfflineEligibilityStatus};
+pub use offline_pin::{OfflineAuthenticationResult, OfflineAuthenticationState};
 
 const KEY_BYTES: usize = 32;
 const KEY_ENVELOPE_VERSION: u32 = 1;
@@ -46,6 +56,12 @@ pub enum LocalStoreError {
     DiskFull,
     #[error("the local store integrity check failed")]
     IntegrityFailure,
+    #[error("terminal authorization is required")]
+    AuthorizationRequired,
+    #[error("terminal authorization is invalid")]
+    InvalidAuthorization,
+    #[error("terminal authorization rollback was detected")]
+    AuthorizationRollback,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -59,6 +75,9 @@ pub enum LocalStoreErrorKind {
     MigrationFailure,
     DiskFull,
     IntegrityFailure,
+    AuthorizationRequired,
+    InvalidAuthorization,
+    AuthorizationRollback,
 }
 
 impl LocalStoreError {
@@ -76,6 +95,9 @@ impl LocalStoreError {
             }
             Self::DiskFull => LocalStoreErrorKind::DiskFull,
             Self::IntegrityFailure => LocalStoreErrorKind::IntegrityFailure,
+            Self::AuthorizationRequired => LocalStoreErrorKind::AuthorizationRequired,
+            Self::InvalidAuthorization => LocalStoreErrorKind::InvalidAuthorization,
+            Self::AuthorizationRollback => LocalStoreErrorKind::AuthorizationRollback,
         }
     }
 }

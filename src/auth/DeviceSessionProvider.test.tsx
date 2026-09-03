@@ -10,6 +10,7 @@ import {
   type OperationalSession,
 } from "../lib/operationalSession";
 import type { SecretStore } from "../lib/deviceIdentity";
+import type { OfflineAuthority } from "../lib/offlineAuthorization";
 import { DeviceSessionProvider, useDeviceSession } from "./DeviceSessionProvider";
 
 function memoryStore(initial?: string): SecretStore {
@@ -45,6 +46,7 @@ function Probe() {
     startPairing,
     continueAfterApproval,
     resetPairing,
+    offlineEligibility,
   } = useDeviceSession();
   return (
     <div>
@@ -57,6 +59,7 @@ function Probe() {
       <div data-testid="property">{session?.propertyId ?? ""}</div>
       <div data-testid="outlet">{session?.outletId ?? ""}</div>
       <div data-testid="error">{error ?? ""}</div>
+      <div data-testid="offline-eligibility">{offlineEligibility?.state ?? ""}</div>
       <div data-testid="roster">{roster.map((entry) => entry.fullName).join(",")}</div>
       <div data-testid="pairing-code">{identity?.pairing?.pairingCode ?? ""}</div>
       <button data-testid="unlock" onClick={() => void unlock("0007", "418205")}>
@@ -78,7 +81,11 @@ function Probe() {
   );
 }
 
-function renderSession(store: SecretStore, applyOpsToken = async (_token: string) => undefined) {
+function renderSession(
+  store: SecretStore,
+  applyOpsToken = async (_token: string) => undefined,
+  offlineAuthority?: OfflineAuthority,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -88,6 +95,7 @@ function renderSession(store: SecretStore, applyOpsToken = async (_token: string
         store={store}
         baseUrl="http://peak.test"
         applyOpsToken={applyOpsToken}
+        offlineAuthority={offlineAuthority}
       >
         <Probe />
       </DeviceSessionProvider>
@@ -301,6 +309,33 @@ describe("DeviceSessionProvider", () => {
     expect(saved.deviceCode).toBeUndefined();
     expect(saved.privateKeyPkcs8).toBe(keys.privateKeyPkcs8);
     expect(saved.publicKeySpki).toBe(keys.publicKeySpki);
+  });
+
+  it("keeps the shell locked and shows the certified prerequisite when online unlock loses network", async () => {
+    const keys = await generateDeviceKeyPair();
+    const store = memoryStore(JSON.stringify({
+      ...keys,
+      terminalId: "terminal-1",
+      deviceCredential: "device-secret",
+      approved: true,
+    }));
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
+    const offlineAuthority: OfflineAuthority = {
+      bindTerminal: vi.fn(),
+      applyLifecycleEvent: vi.fn(),
+      stageAuthorization: vi.fn(),
+      authenticateStaff: vi.fn(async () => ({ state: "NOT_ELIGIBLE" as const })),
+      eligibilityStatus: vi.fn(async () => ({ state: "CATALOG_REQUIRED" as const })),
+    };
+    renderSession(store, undefined, offlineAuthority);
+    expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+
+    await userEvent.click(screen.getByTestId("unlock"));
+
+    await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent(/certify.*catalog/i));
+    expect(screen.getByTestId("phase")).toHaveTextContent("locked");
+    expect(screen.getByTestId("offline-eligibility")).toHaveTextContent("CATALOG_REQUIRED");
+    expect(getOperationalSession()).toBeNull();
   });
 
   it("persists the pending proof and accepts only the terminal id approved by Peak", async () => {

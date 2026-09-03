@@ -19,11 +19,16 @@ import {
   generateDeviceCredential,
   getPairingStatus,
   humanDeviceError,
+  isDeviceNetworkFailure,
   requestPairing,
   StaffLoginRejectedError,
   type RosterEntry,
 } from "../lib/deviceAuth";
 import { generateDeviceKeyPair, rawPublicKeyB64Url } from "../lib/deviceCrypto";
+import {
+  loadNativeDeviceAuthority,
+  type DeviceAuthority,
+} from "../lib/nativeDeviceAuthority";
 import {
   loadDeviceIdentity,
   loadDeviceKeyStorageStatus,
@@ -41,6 +46,12 @@ import {
   type OperationalSession,
 } from "../lib/operationalSession";
 import { bootstrapOperationalSession } from "../lib/postLoginBootstrap";
+import {
+  loadNativeOfflineAuthority,
+  type OfflineAuthority,
+  type OfflineEligibilityStatus,
+  type TerminalBinding,
+} from "../lib/offlineAuthorization";
 
 /**
  * Shared-terminal shell. DEVICE pairing persists across waiters.
@@ -76,12 +87,13 @@ export interface DeviceSessionValue {
   unlock: (staffNumber: string, pin: string) => Promise<void>;
   /** End the waiter ops session. Does not unpair or close the cashier till. */
   switchStaff: (reason?: string) => void;
-  /** Present only when Tauri stored the private key as a file. */
+  /** Present when the OS secure-store boundary cannot provide hardware-backed storage. */
   keyStorageWarning: string | null;
   /** Tap-to-select staff for this till's own property. Empty when unavailable — never blocks
    *  PIN entry; manual staff-number entry always remains the fallback. */
   roster: RosterEntry[];
   refreshRoster: () => Promise<void>;
+  offlineEligibility: OfflineEligibilityStatus | null;
 }
 
 const DeviceSessionContext = createContext<DeviceSessionValue | null>(null);
@@ -96,6 +108,8 @@ export interface DeviceSessionProviderProps {
   skipUrlSetup?: boolean;
   /** Idle minutes before PIN lock. Peak `expiresAt` still locks independently. */
   idleLockMinutes?: number;
+  deviceAuthority?: DeviceAuthority;
+  offlineAuthority?: OfflineAuthority;
 }
 
 const POLL_MS = 4_000;
@@ -107,6 +121,8 @@ export function DeviceSessionProvider({
   bridgeUrl = REALTIME_BRIDGE_URL,
   applyOpsToken = (token) => usesRealtimeBridge() ? applyOpsTokenToBridge(token, bridgeUrl) : Promise.resolve(),
   skipUrlSetup = Boolean(baseUrl),
+  deviceAuthority,
+  offlineAuthority,
 }: DeviceSessionProviderProps) {
   const queryClient = useQueryClient();
   const [phase, setPhase] = useState<DevicePhase>("bootstrapping");
@@ -116,8 +132,12 @@ export function DeviceSessionProvider({
   const [apiUrl, setApiUrl] = useState<string | null>(baseUrl ?? null);
   const [keyStorageWarning, setKeyStorageWarning] = useState<string | null>(null);
   const [roster, setRoster] = useState<RosterEntry[]>([]);
+  const [offlineEligibility, setOfflineEligibility] =
+    useState<OfflineEligibilityStatus | null>(null);
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const identityRef = useRef(identity);
+  const authorityRef = useRef<DeviceAuthority | null>(deviceAuthority ?? null);
+  const offlineAuthorityRef = useRef<OfflineAuthority | null>(offlineAuthority ?? null);
   identityRef.current = identity;
 
   const peakUrl = baseUrl ?? apiUrl ?? getApiBaseUrl();
@@ -210,8 +230,12 @@ export function DeviceSessionProvider({
 
       let record = await loadDeviceIdentity(store);
       if (!record) {
-        const keys = await generateDeviceKeyPair();
-        record = keys;
+        if (store) {
+          record = await generateDeviceKeyPair();
+        } else {
+          authorityRef.current ??= await loadNativeDeviceAuthority();
+          record = await authorityRef.current.ensureIdentity();
+        }
         await saveDeviceIdentity(record, store);
       }
       if (cancelled) return;
@@ -219,6 +243,16 @@ export function DeviceSessionProvider({
       if (cancelled) return;
       setIdentity(record);
       if (record.approved && (record.terminalId || record.deviceCode) && (record.deviceCredential || record.deviceCode)) {
+        if (!store) {
+          try {
+            offlineAuthorityRef.current ??= await loadNativeOfflineAuthority();
+            setOfflineEligibility(
+              await offlineAuthorityRef.current.eligibilityStatus(),
+            );
+          } catch {
+            setOfflineEligibility({ state: "STORAGE_UNHEALTHY" });
+          }
+        }
         setPhase("locked");
         return;
       }
@@ -235,6 +269,7 @@ export function DeviceSessionProvider({
         record = {
           privateKeyPkcs8: record.privateKeyPkcs8,
           publicKeySpki: record.publicKeySpki,
+          publicKey: record.publicKey,
           approved: false,
         };
         await saveDeviceIdentity(record, store);
@@ -257,7 +292,12 @@ export function DeviceSessionProvider({
         setApiUrl(saved);
         let record = identityRef.current ?? (await loadDeviceIdentity(store));
         if (!record) {
-          record = await generateDeviceKeyPair();
+          if (store) {
+            record = await generateDeviceKeyPair();
+          } else {
+            authorityRef.current ??= await loadNativeDeviceAuthority();
+            record = await authorityRef.current.ensureIdentity();
+          }
           await persist(record);
         } else {
           setIdentity(record);
@@ -280,7 +320,7 @@ export function DeviceSessionProvider({
       const credentialHash = await deviceCredentialDigest(deviceCredential);
       const issued = await requestPairing(
         peakUrl,
-        rawPublicKeyB64Url(current.publicKeySpki),
+        current.publicKey ?? rawPublicKeyB64Url(current.publicKeySpki ?? ""),
         credentialHash,
       );
       await persist({
@@ -304,9 +344,16 @@ export function DeviceSessionProvider({
   }, [peakUrl, persist]);
 
   const markApproved = useCallback(
-    async (terminalId: string) => {
+    async (terminalId: string, binding?: TerminalBinding) => {
       const current = identityRef.current;
       if (!current?.deviceCredential) return;
+      if (binding) {
+        offlineAuthorityRef.current ??= await loadNativeOfflineAuthority();
+        await offlineAuthorityRef.current.bindTerminal(binding);
+        setOfflineEligibility(
+          await offlineAuthorityRef.current.eligibilityStatus(),
+        );
+      }
       await persist({
         ...current,
         deviceCode: terminalId,
@@ -334,7 +381,7 @@ export function DeviceSessionProvider({
         pairing.claimToken,
       );
       if (status.status === "CONSUMED" && status.terminalId) {
-        await markApproved(status.terminalId);
+        await markApproved(status.terminalId, status.offlineAuthority);
         return;
       }
       if (status.status === "PENDING") {
@@ -365,6 +412,7 @@ export function DeviceSessionProvider({
     await persist({
       privateKeyPkcs8: current.privateKeyPkcs8,
       publicKeySpki: current.publicKeySpki,
+      publicKey: current.publicKey,
       approved: false,
     });
     setRoster([]);
@@ -410,17 +458,35 @@ export function DeviceSessionProvider({
       clearStaffAuthority();
       setError(null);
       try {
+        if (!current.privateKeyPkcs8) {
+          authorityRef.current ??= await loadNativeDeviceAuthority();
+        }
         const next = await createStaffSession({
           baseUrl: peakUrl,
 			deviceCode: current.deviceCode,
 			terminalId: current.terminalId ?? current.deviceCode,
 			deviceCredential: current.deviceCredential ?? current.deviceCode,
           privateKeyPkcs8: current.privateKeyPkcs8,
+          signChallenge: current.privateKeyPkcs8
+            ? undefined
+            : authorityRef.current?.signChallenge,
           staffNumber,
           pin,
           previouslyApproved: current.approved === true,
         });
-        await bootstrapOperationalSession(peakUrl, next);
+        if (!store) {
+          offlineAuthorityRef.current ??= await loadNativeOfflineAuthority();
+        }
+        await bootstrapOperationalSession(peakUrl, next, {
+          stageOfflineAuthorization: offlineAuthorityRef.current
+            ? (envelope) => offlineAuthorityRef.current!.stageAuthorization(envelope)
+            : undefined,
+        });
+        if (offlineAuthorityRef.current) {
+          setOfflineEligibility(
+            await offlineAuthorityRef.current.eligibilityStatus(next.staffId),
+          );
+        }
         try {
           await applyOpsToken(next.token);
         } catch {
@@ -464,6 +530,28 @@ export function DeviceSessionProvider({
             : humanDeviceError(err));
           return;
         }
+        if (isDeviceNetworkFailure(err) && offlineAuthorityRef.current) {
+          try {
+            const local = await offlineAuthorityRef.current.authenticateStaff(
+              staffNumber.trim(),
+              pin,
+            );
+            const eligibility = await offlineAuthorityRef.current.eligibilityStatus(
+              staffNumber.trim(),
+            );
+            setOfflineEligibility(eligibility);
+            if (local.state === "LOCKED") {
+              setError("Offline PIN locked. Reconnect to Peak or wait before retrying.");
+            } else if (local.state === "DENIED") {
+              setError("That staff number or offline PIN was not accepted.");
+            } else {
+              setError(offlineEligibilityMessage(eligibility.state));
+            }
+            return;
+          } catch {
+            setOfflineEligibility({ state: "STORAGE_UNHEALTHY" });
+          }
+        }
         setError(humanDeviceError(err));
       }
     },
@@ -486,6 +574,7 @@ export function DeviceSessionProvider({
       keyStorageWarning,
       roster,
       refreshRoster,
+      offlineEligibility,
     }),
     [
       phase,
@@ -501,12 +590,34 @@ export function DeviceSessionProvider({
       keyStorageWarning,
       roster,
       refreshRoster,
+      offlineEligibility,
     ],
   );
 
   return (
     <DeviceSessionContext.Provider value={value}>{children}</DeviceSessionContext.Provider>
   );
+}
+
+function offlineEligibilityMessage(state: OfflineEligibilityStatus["state"]): string {
+  if (state === "CATALOG_REQUIRED") {
+    return "Offline selling is not ready: reconnect to certify this terminal's catalog.";
+  }
+  if (state === "LEASE_EXPIRED" || state === "LEASE_NOT_YET_VALID") {
+    return "Offline authorization is not valid. Reconnect to Peak.";
+  }
+  if (state === "DEVICE_REVOKED") return "This register is no longer trusted. Pair it again.";
+  if (state === "CLOCK_ROLLBACK") {
+    return "Offline access is locked because this terminal's clock changed.";
+  }
+  if (state === "SHIFT_REQUIRED" || state === "SHIFT_MISMATCH") {
+    return "Offline access requires the authorized open shift.";
+  }
+  if (state === "LIMIT_EXHAUSTED") return "This terminal's offline limit has been reached.";
+  if (state === "ELIGIBLE") {
+    return "Offline authority verified. Local selling will resume when its transaction workspace is available.";
+  }
+  return "Offline selling is not authorized on this terminal. Reconnect to Peak.";
 }
 
 export function useDeviceSession(): DeviceSessionValue {

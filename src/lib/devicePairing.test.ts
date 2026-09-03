@@ -4,6 +4,7 @@ import {
   generateDeviceCredential,
   getPairingStatus,
   requestPairing,
+  createStaffSession,
 } from "./deviceAuth";
 
 const response = (body: unknown, status = 200) =>
@@ -65,11 +66,72 @@ describe("schema-84 POS pairing contract", () => {
     );
   });
 
+  it("accepts a complete signed-authority binding after manager approval", async () => {
+    const offlineAuthority = {
+      terminalId: "terminal-1",
+      credentialEpoch: 2,
+      propertyId: "property-1",
+      outletId: "outlet-1",
+      registerId: "register-1",
+      trustKeyId: "key-1",
+      trustPublicKeyB64: "public-key",
+      configurationPayloadB64: "configuration",
+      revocationGeneration: 1,
+      pairedAtMs: 1_800_000_000_000,
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => response({
+      status: "CONSUMED",
+      terminalId: "terminal-1",
+      offlineAuthority,
+    })));
+
+    await expect(getPairingStatus("https://peak.example", "request-1", "claim-1"))
+      .resolves.toMatchObject({ offlineAuthority });
+  });
+
   it("generates a new high-entropy local credential for each pairing lifecycle", () => {
     const first = generateDeviceCredential();
     const second = generateDeviceCredential();
     expect(first).not.toBe(second);
     expect(first.length).toBeGreaterThanOrEqual(43);
     expect(second.length).toBeGreaterThanOrEqual(43);
+  });
+
+  it("signs the server challenge through native authority without a private-key argument", async () => {
+    const signChallenge = vi.fn(async () => "native-signature");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/device/challenges")) {
+        return response({
+          challengeId: "challenge-1",
+          nonce: "bm9uY2U",
+          expiresAt: "2099-01-01T00:00:00Z",
+        });
+      }
+      return response({
+        token: `ops_${"x".repeat(40)}`,
+        expiresAt: "2099-01-01T00:00:00Z",
+        tenantId: "tenant-1",
+        propertyId: "property-1",
+        outletId: "outlet-1",
+        terminalId: "terminal-1",
+        staffId: "staff-1",
+        assurance: "RESTRICTED",
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createStaffSession({
+      baseUrl: "https://api.peak.test",
+      terminalId: "terminal-1",
+      deviceCredential: "credential",
+      staffNumber: "staff-1",
+      pin: "1234",
+      signChallenge,
+      previouslyApproved: true,
+    });
+
+    expect(signChallenge).toHaveBeenCalledWith("bm9uY2U");
+    const [, init] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).signature).toBe("native-signature");
   });
 });

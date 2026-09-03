@@ -2,8 +2,9 @@ use rusqlite::{Connection, TransactionBehavior};
 
 use super::{classify_sql_error, LocalStoreError};
 
-const CURRENT_SCHEMA_VERSION: u32 = 1;
+const CURRENT_SCHEMA_VERSION: u32 = 2;
 const INITIAL_SCHEMA: &str = include_str!("migrations/0001_initial.sql");
+const TERMINAL_AUTHORITY_SCHEMA: &str = include_str!("migrations/0002_terminal_authority.sql");
 
 pub(super) fn migrate(connection: &mut Connection) -> Result<u32, LocalStoreError> {
     let version: u32 = connection
@@ -12,12 +13,17 @@ pub(super) fn migrate(connection: &mut Connection) -> Result<u32, LocalStoreErro
     if version > CURRENT_SCHEMA_VERSION {
         return Err(LocalStoreError::MigrationFailure);
     }
-    if version == 0 {
+    if version < CURRENT_SCHEMA_VERSION {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(classify_sql_error)?;
+        if version == 0 {
+            transaction
+                .execute_batch(INITIAL_SCHEMA)
+                .map_err(classify_sql_error)?;
+        }
         transaction
-            .execute_batch(INITIAL_SCHEMA)
+            .execute_batch(TERMINAL_AUTHORITY_SCHEMA)
             .map_err(classify_sql_error)?;
         transaction
             .pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION)
@@ -39,8 +45,8 @@ mod tests {
         connection
             .pragma_update(None, "foreign_keys", true)
             .unwrap();
-        assert_eq!(migrate(&mut connection).unwrap(), 1);
-        assert_eq!(migrate(&mut connection).unwrap(), 1);
+        assert_eq!(migrate(&mut connection).unwrap(), 2);
+        assert_eq!(migrate(&mut connection).unwrap(), 2);
         let count: i64 = connection
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN \
@@ -118,5 +124,24 @@ mod tests {
             )
             .unwrap();
         assert!(immutable_triggers >= 10);
+    }
+
+    #[test]
+    fn terminal_authority_migration_reaches_version_two_with_staging_constraints() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .unwrap();
+        assert_eq!(migrate(&mut connection).unwrap(), 2);
+        let tables: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN \
+                 ('terminal_authority','authorization_bundles','offline_staff_verifiers',\
+                  'shift_authority','authorization_clock_anchor')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(tables, 5);
     }
 }

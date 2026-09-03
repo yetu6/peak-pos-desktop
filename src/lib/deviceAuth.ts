@@ -1,5 +1,6 @@
 import { bytesToB64Url, signChallengeNonce } from "./deviceCrypto";
 import type { OperationalSession } from "./operationalSession";
+import type { TerminalBinding } from "./offlineAuthorization";
 
 export class DeviceNotApprovedError extends Error {
   constructor(message = "This register has not been approved yet") {
@@ -44,6 +45,7 @@ export interface PairingStatus {
   status: PairingWaitStatus;
   terminalId?: string;
   expiresAt?: string;
+  offlineAuthority?: TerminalBinding;
 }
 
 export interface DeviceChallenge {
@@ -104,6 +106,11 @@ export function humanDeviceError(error: unknown): string {
   return "Something went wrong. Try again.";
 }
 
+export function isDeviceNetworkFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /fetch|network|Failed to fetch|ECONNREFUSED|NetworkError|HTTP 5\d\d/i.test(message);
+}
+
 export async function requestPairing(
   baseUrl: string,
   publicKey: string,
@@ -159,7 +166,32 @@ export async function getPairingStatus(
   if (body.status === "CONSUMED" && !terminalId) {
     throw new Error("Pairing status returned an incomplete response");
   }
-  return { status: body.status, terminalId, expiresAt: optionalId(body.expiresAt) };
+  const offlineAuthority = isTerminalBinding(body.offlineAuthority)
+    ? body.offlineAuthority
+    : undefined;
+  return {
+    status: body.status,
+    terminalId,
+    expiresAt: optionalId(body.expiresAt),
+    offlineAuthority,
+  };
+}
+
+function isTerminalBinding(value: unknown): value is TerminalBinding {
+  if (!value || typeof value !== "object") return false;
+  const binding = value as Partial<TerminalBinding>;
+  return (
+    typeof binding.terminalId === "string" &&
+    Number.isSafeInteger(binding.credentialEpoch) &&
+    typeof binding.propertyId === "string" &&
+    typeof binding.outletId === "string" &&
+    typeof binding.registerId === "string" &&
+    typeof binding.trustKeyId === "string" &&
+    typeof binding.trustPublicKeyB64 === "string" &&
+    typeof binding.configurationPayloadB64 === "string" &&
+    Number.isSafeInteger(binding.revocationGeneration) &&
+    Number.isSafeInteger(binding.pairedAtMs)
+  );
 }
 
 export function generateDeviceCredential(): string {
@@ -230,7 +262,8 @@ export async function createStaffSession(args: {
   deviceCode?: string;
 	terminalId?: string;
 	deviceCredential?: string;
-  privateKeyPkcs8: string;
+  privateKeyPkcs8?: string;
+  signChallenge?: (nonce: string) => Promise<string>;
   staffNumber: string;
   pin: string;
   /** True when this till already completed pairing. A 401 challenge is then revocation. */
@@ -244,7 +277,14 @@ export async function createStaffSession(args: {
     throw new DeviceNotApprovedError();
   }
 
-  const signature = await signChallengeNonce(args.privateKeyPkcs8, challenge.nonce);
+  let signature: string;
+  if (args.signChallenge) {
+    signature = await args.signChallenge(challenge.nonce);
+  } else if (args.privateKeyPkcs8) {
+    signature = await signChallengeNonce(args.privateKeyPkcs8, challenge.nonce);
+  } else {
+    throw new Error("Device signing authority is unavailable");
+  }
 	const response = await fetch(`${args.baseUrl}/api/v1/pos/sessions`, {
     method: "POST",
     headers: publicJsonHeaders(),

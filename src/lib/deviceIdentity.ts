@@ -7,8 +7,11 @@ export interface PairingRecord {
 }
 
 export interface DeviceIdentityRecord {
-  privateKeyPkcs8: string;
-  publicKeySpki: string;
+  /** Test/browser compatibility only. Production Tauri never returns this field. */
+  privateKeyPkcs8?: string;
+  publicKeySpki?: string;
+  /** Raw Ed25519 public key returned by the Rust device authority. */
+  publicKey?: string;
   deviceCode?: string;
   approved?: boolean;
   pairing?: PairingRecord;
@@ -53,10 +56,10 @@ async function defaultStore(): Promise<SecretStore> {
     const { invoke } = await import("@tauri-apps/api/core");
     return {
       async load() {
-        return invoke<string | null>("load_device_identity");
+        return invoke<string>("load_device_identity_public");
       },
       async save(value: string) {
-        await invoke("save_device_identity", { payload: value });
+        await invoke("save_device_identity_public", { payload: value });
       },
     };
   }
@@ -68,6 +71,7 @@ export function persistableIdentity(record: DeviceIdentityRecord): DeviceIdentit
   return {
     privateKeyPkcs8: record.privateKeyPkcs8,
     publicKeySpki: record.publicKeySpki,
+    publicKey: record.publicKey,
     deviceCode: record.deviceCode,
     approved: record.approved,
     pairing: record.approved ? undefined : record.pairing,
@@ -86,7 +90,7 @@ export async function loadDeviceIdentity(
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as DeviceIdentityRecord & { token?: string };
-    if (!parsed.privateKeyPkcs8 || !parsed.publicKeySpki) return null;
+    if ((!parsed.privateKeyPkcs8 || !parsed.publicKeySpki) && !parsed.publicKey) return null;
     return persistableIdentity(parsed);
   } catch {
     return null;

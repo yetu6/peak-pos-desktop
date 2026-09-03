@@ -1,15 +1,22 @@
+use base64::{
+    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+    Engine as _,
+};
+use ed25519_dalek::{pkcs8::DecodePrivateKey, Signer, SigningKey};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
+use zeroize::Zeroizing;
 
 const IDENTITY_FILE: &str = "device-identity.json";
 const CONFIG_FILE: &str = "peak-config.json";
 const KEYRING_SERVICE: &str = "com.peak.pos";
 const KEYRING_USER: &str = "device-ed25519";
 const PRIVATE_KEY_FIELD: &str = "privateKeyPkcs8";
-const FILE_FALLBACK_WARNING: &str =
-    "This till could not use the OS keychain. The device private key is stored as a file on disk. Ask a technician to enable the system keyring before this terminal goes live.";
+const SECURE_STORE_WARNING: &str =
+    "This terminal cannot access its OS secure store. Device signing and certified offline operation are disabled.";
+const NATIVE_KEY_VERSION: u32 = 2;
 
 fn identity_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
@@ -98,6 +105,19 @@ pub struct DeviceKeyStorageStatus {
     pub warning: Option<String>,
 }
 
+#[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeDeviceIdentity {
+    pub public_key: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct NativeKeyEnvelope {
+    version: u32,
+    secret_key: String,
+}
+
 impl<S: PrivateKeyStore> IdentityVault<S> {
     fn new(path: PathBuf, secrets: S) -> Self {
         Self { path, secrets }
@@ -129,84 +149,6 @@ impl<S: PrivateKeyStore> IdentityVault<S> {
             .is_some_and(|key| !key.is_empty())
     }
 
-    fn assemble(mut public: serde_json::Value, private_key: String) -> Result<String, String> {
-        let object = public
-            .as_object_mut()
-            .ok_or_else(|| "Device identity is not an object".to_string())?;
-        object.insert(
-            PRIVATE_KEY_FIELD.to_string(),
-            serde_json::Value::String(private_key),
-        );
-        serde_json::to_string(&public).map_err(|err| err.to_string())
-    }
-
-    fn save(&self, payload: &str) -> Result<DeviceKeyStorageStatus, String> {
-        let mut value: serde_json::Value =
-            serde_json::from_str(payload).map_err(|err| err.to_string())?;
-        let Some(private_key) = Self::take_private_key(&mut value) else {
-            return Err("Device identity is missing a private key".to_string());
-        };
-        match self.secrets.set(&private_key) {
-            Ok(()) => {
-                write_private_file(
-                    &self.path,
-                    &serde_json::to_string(&value).map_err(|err| err.to_string())?,
-                )?;
-                Ok(self.status_from(false))
-            }
-            Err(SecretError::Unavailable) => {
-                if let Some(object) = value.as_object_mut() {
-                    object.insert(
-                        PRIVATE_KEY_FIELD.to_string(),
-                        serde_json::Value::String(private_key),
-                    );
-                }
-                write_private_file(
-                    &self.path,
-                    &serde_json::to_string(&value).map_err(|err| err.to_string())?,
-                )?;
-                Ok(self.status_from(true))
-            }
-        }
-    }
-
-    fn load(&self) -> Result<Option<String>, String> {
-        let mut file = self.read_file()?.unwrap_or_else(|| serde_json::json!({}));
-        let file_private = Self::take_private_key(&mut file);
-        match self.secrets.get() {
-            Ok(Some(private_key)) => {
-                if file_private.is_some() {
-                    write_private_file(
-                        &self.path,
-                        &serde_json::to_string(&file).map_err(|err| err.to_string())?,
-                    )?;
-                }
-                Ok(Some(Self::assemble(file, private_key)?))
-            }
-            Ok(None) => {
-                let Some(private_key) = file_private else {
-                    return Ok(None);
-                };
-                match self.secrets.set(&private_key) {
-                    Ok(()) => {
-                        write_private_file(
-                            &self.path,
-                            &serde_json::to_string(&file).map_err(|err| err.to_string())?,
-                        )?;
-                        Ok(Some(Self::assemble(file, private_key)?))
-                    }
-                    Err(SecretError::Unavailable) => Ok(Some(Self::assemble(file, private_key)?)),
-                }
-            }
-            Err(SecretError::Unavailable) => {
-                let Some(private_key) = file_private else {
-                    return Ok(None);
-                };
-                Ok(Some(Self::assemble(file, private_key)?))
-            }
-        }
-    }
-
     fn status(&self) -> DeviceKeyStorageStatus {
         let file_has_key = self
             .read_file()
@@ -227,11 +169,122 @@ impl<S: PrivateKeyStore> IdentityVault<S> {
         } else {
             DeviceKeyStorageStatus {
                 hardware_backed: false,
-                backend: "file".to_string(),
-                warning: Some(FILE_FALLBACK_WARNING.to_string()),
+                backend: "unavailable".to_string(),
+                warning: Some(SECURE_STORE_WARNING.to_string()),
             }
         }
     }
+
+    fn ensure(&self) -> Result<NativeDeviceIdentity, String> {
+        let mut public = self.read_file()?.unwrap_or_else(|| serde_json::json!({}));
+        let legacy_file_key = Self::take_private_key(&mut public);
+        let signing_key = match self.secrets.get() {
+            Ok(Some(secret)) => decode_signing_key(&secret)?,
+            Ok(None) => {
+                let key = if let Some(secret) = legacy_file_key {
+                    decode_signing_key(&secret)?
+                } else {
+                    generate_signing_key()?
+                };
+                self.secrets
+                    .set(&encode_signing_key(&key)?)
+                    .map_err(|_| "Device secure storage is unavailable".to_string())?;
+                key
+            }
+            Err(SecretError::Unavailable) => {
+                return Err("Device secure storage is unavailable".to_string())
+            }
+        };
+        let public_key = URL_SAFE_NO_PAD.encode(signing_key.verifying_key().to_bytes());
+        let object = public
+            .as_object_mut()
+            .ok_or_else(|| "Device identity metadata is invalid".to_string())?;
+        object.remove(PRIVATE_KEY_FIELD);
+        object.insert(
+            "publicKey".to_string(),
+            serde_json::Value::String(public_key.clone()),
+        );
+        write_private_file(
+            &self.path,
+            &serde_json::to_string(&public).map_err(|_| "Device identity metadata is invalid")?,
+        )?;
+        Ok(NativeDeviceIdentity { public_key })
+    }
+
+    fn sign(&self, message: &[u8]) -> Result<String, String> {
+        let secret = Zeroizing::new(
+            self.secrets
+                .get()
+                .map_err(|_| "Device secure storage is unavailable".to_string())?
+                .ok_or_else(|| "Device identity is unavailable".to_string())?,
+        );
+        let signing_key = decode_signing_key(&secret)?;
+        Ok(URL_SAFE_NO_PAD.encode(signing_key.sign(message).to_bytes()))
+    }
+
+    fn load_public(&self) -> Result<String, String> {
+        self.ensure()?;
+        let mut value = self
+            .read_file()?
+            .ok_or_else(|| "Device identity metadata is unavailable".to_string())?;
+        Self::take_private_key(&mut value);
+        serde_json::to_string(&value).map_err(|_| "Device identity metadata is invalid".to_string())
+    }
+
+    fn save_public(&self, payload: &str) -> Result<(), String> {
+        let identity = self.ensure()?;
+        let mut value: serde_json::Value =
+            serde_json::from_str(payload).map_err(|_| "Device identity metadata is invalid")?;
+        Self::take_private_key(&mut value);
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| "Device identity metadata is invalid".to_string())?;
+        object.insert(
+            "publicKey".to_string(),
+            serde_json::Value::String(identity.public_key),
+        );
+        write_private_file(
+            &self.path,
+            &serde_json::to_string(&value).map_err(|_| "Device identity metadata is invalid")?,
+        )
+    }
+}
+
+fn generate_signing_key() -> Result<SigningKey, String> {
+    let mut bytes = [0_u8; 32];
+    getrandom::fill(&mut bytes).map_err(|_| "Device key generation failed".to_string())?;
+    let key = SigningKey::from_bytes(&bytes);
+    use zeroize::Zeroize;
+    bytes.zeroize();
+    Ok(key)
+}
+
+fn encode_signing_key(key: &SigningKey) -> Result<String, String> {
+    serde_json::to_string(&NativeKeyEnvelope {
+        version: NATIVE_KEY_VERSION,
+        secret_key: URL_SAFE_NO_PAD.encode(key.to_bytes()),
+    })
+    .map_err(|_| "Device key encoding failed".to_string())
+}
+
+fn decode_signing_key(secret: &str) -> Result<SigningKey, String> {
+    if let Ok(envelope) = serde_json::from_str::<NativeKeyEnvelope>(secret) {
+        if envelope.version != NATIVE_KEY_VERSION {
+            return Err("Device key version is unsupported".to_string());
+        }
+        let bytes: [u8; 32] = URL_SAFE_NO_PAD
+            .decode(envelope.secret_key)
+            .map_err(|_| "Device key is invalid".to_string())?
+            .try_into()
+            .map_err(|_| "Device key is invalid".to_string())?;
+        return Ok(SigningKey::from_bytes(&bytes));
+    }
+
+    let der = STANDARD
+        .decode(secret)
+        .or_else(|_| URL_SAFE_NO_PAD.decode(secret))
+        .map_err(|_| "Device key is invalid".to_string())?;
+    SigningKey::from_pkcs8_der(&der).map_err(|_| "Device key is invalid".to_string())
 }
 
 fn vault(app: &AppHandle) -> Result<IdentityVault<KeyringStore>, String> {
@@ -239,15 +292,30 @@ fn vault(app: &AppHandle) -> Result<IdentityVault<KeyringStore>, String> {
 }
 
 #[tauri::command]
-pub fn load_device_identity(app: AppHandle) -> Result<Option<String>, String> {
-    vault(&app)?.load()
+pub fn ensure_device_identity(app: AppHandle) -> Result<NativeDeviceIdentity, String> {
+    vault(&app)?.ensure()
 }
 
-/// OS keychain for the Ed25519 private key. Copied installer without the
-/// keychain entry is a new unpaired device. File fallback is never silent.
 #[tauri::command]
-pub fn save_device_identity(app: AppHandle, payload: String) -> Result<(), String> {
-    vault(&app)?.save(&payload).map(|_| ())
+pub fn sign_device_challenge(app: AppHandle, nonce: String) -> Result<String, String> {
+    let message = URL_SAFE_NO_PAD
+        .decode(&nonce)
+        .or_else(|_| STANDARD.decode(&nonce))
+        .map_err(|_| "Device challenge is invalid".to_string())?;
+    if message.len() != 32 {
+        return Err("Device challenge is invalid".to_string());
+    }
+    vault(&app)?.sign(&message)
+}
+
+#[tauri::command]
+pub fn load_device_identity_public(app: AppHandle) -> Result<String, String> {
+    vault(&app)?.load_public()
+}
+
+#[tauri::command]
+pub fn save_device_identity_public(app: AppHandle, payload: String) -> Result<(), String> {
+    vault(&app)?.save_public(&payload)
 }
 
 #[tauri::command]
@@ -287,6 +355,8 @@ pub fn save_peak_config(app: AppHandle, payload: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use ed25519_dalek::{pkcs8::EncodePrivateKey, Signature, Verifier, VerifyingKey};
     use std::sync::Mutex;
 
     struct MemoryStore {
@@ -347,84 +417,6 @@ mod tests {
         path
     }
 
-    fn payload(private_key: &str) -> String {
-        serde_json::json!({
-            "privateKeyPkcs8": private_key,
-            "publicKeySpki": "pub-1",
-            "deviceCode": "dev_abc",
-        })
-        .to_string()
-    }
-
-    #[test]
-    fn keychain_save_strips_the_private_key_from_the_file() {
-        let path = temp_identity("keychain");
-        let vault = IdentityVault::new(path.clone(), MemoryStore::empty());
-        let status = vault.save(&payload("SECRET_KEY")).expect("save");
-        assert!(status.hardware_backed);
-        assert_eq!(status.backend, "keychain");
-        assert!(status.warning.is_none());
-
-        let on_disk = fs::read_to_string(&path).unwrap();
-        assert!(!on_disk.contains("SECRET_KEY"));
-        assert!(!on_disk.contains(PRIVATE_KEY_FIELD));
-        assert!(on_disk.contains("dev_abc"));
-
-        let loaded: serde_json::Value =
-            serde_json::from_str(&vault.load().unwrap().unwrap()).unwrap();
-        assert_eq!(loaded[PRIVATE_KEY_FIELD], "SECRET_KEY");
-        assert_eq!(loaded["deviceCode"], "dev_abc");
-        let _ = fs::remove_file(&path);
-    }
-
-    #[test]
-    fn missing_keychain_keeps_the_file_and_is_loud() {
-        let path = temp_identity("file");
-        let vault = IdentityVault::new(path.clone(), UnavailableStore);
-        let status = vault.save(&payload("SECRET_KEY")).expect("save");
-        assert!(!status.hardware_backed);
-        assert_eq!(status.backend, "file");
-        assert_eq!(status.warning.as_deref(), Some(FILE_FALLBACK_WARNING));
-
-        let on_disk = fs::read_to_string(&path).unwrap();
-        assert!(on_disk.contains("SECRET_KEY"));
-        let loaded: serde_json::Value =
-            serde_json::from_str(&vault.load().unwrap().unwrap()).unwrap();
-        assert_eq!(loaded[PRIVATE_KEY_FIELD], "SECRET_KEY");
-        let _ = fs::remove_file(&path);
-    }
-
-    #[test]
-    fn migrates_a_plaintext_file_into_the_keychain() {
-        let path = temp_identity("migrate");
-        fs::write(&path, payload("OLD_SECRET")).unwrap();
-        let vault = IdentityVault::new(path.clone(), MemoryStore::empty());
-        let loaded = vault.load().unwrap().unwrap();
-        assert!(loaded.contains("OLD_SECRET"));
-        let on_disk = fs::read_to_string(&path).unwrap();
-        assert!(!on_disk.contains("OLD_SECRET"));
-        assert!(!on_disk.contains(PRIVATE_KEY_FIELD));
-        assert!(vault.status().hardware_backed);
-        let _ = fs::remove_file(&path);
-    }
-
-    #[test]
-    fn copied_file_without_the_keychain_entry_is_a_new_device() {
-        let path = temp_identity("copied");
-        fs::write(
-            &path,
-            serde_json::json!({
-                "publicKeySpki": "pub-1",
-                "deviceCode": "dev_abc",
-            })
-            .to_string(),
-        )
-        .unwrap();
-        let vault = IdentityVault::new(path.clone(), MemoryStore::empty());
-        assert!(vault.load().unwrap().is_none());
-        let _ = fs::remove_file(&path);
-    }
-
     #[test]
     fn installing_over_the_same_app_data_path_keeps_the_keypair() {
         // Tauri stores identity under app_data_dir, not next to the binary.
@@ -440,7 +432,7 @@ mod tests {
                 secret: std::sync::Arc::clone(&keychain.secret),
             },
         );
-        v1.save(&payload("V1_SECRET")).expect("v1 save");
+        let first = v1.ensure().expect("create identity");
 
         let v2 = IdentityVault::new(
             path.clone(),
@@ -448,11 +440,97 @@ mod tests {
                 secret: std::sync::Arc::clone(&keychain.secret),
             },
         );
-        let loaded: serde_json::Value = serde_json::from_str(&v2.load().unwrap().unwrap()).unwrap();
-        assert_eq!(loaded[PRIVATE_KEY_FIELD], "V1_SECRET");
-        assert_eq!(loaded["deviceCode"], "dev_abc");
+        let loaded = v2.ensure().expect("reload identity");
+        assert_eq!(loaded, first);
         let on_disk = fs::read_to_string(&path).unwrap();
-        assert!(!on_disk.contains("V1_SECRET"));
+        assert!(!on_disk.contains(PRIVATE_KEY_FIELD));
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn legacy_plaintext_key_is_migrated_once_into_secure_storage() {
+        let path = temp_identity("legacy-migration");
+        let legacy_key = SigningKey::from_bytes(&[11_u8; 32]);
+        let legacy_secret = STANDARD.encode(legacy_key.to_pkcs8_der().unwrap().as_bytes());
+        fs::write(
+            &path,
+            serde_json::json!({
+                (PRIVATE_KEY_FIELD): legacy_secret,
+                "deviceCode": "terminal-legacy"
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let secrets = MemoryStore::empty();
+        let vault = IdentityVault::new(
+            path.clone(),
+            MemoryStore {
+                secret: std::sync::Arc::clone(&secrets.secret),
+            },
+        );
+
+        let identity = vault.ensure().expect("migrate legacy key");
+        assert_eq!(
+            identity.public_key,
+            URL_SAFE_NO_PAD.encode(legacy_key.verifying_key().to_bytes())
+        );
+        assert!(secrets.secret.lock().unwrap().is_some());
+        assert!(!fs::read_to_string(&path)
+            .unwrap()
+            .contains(PRIVATE_KEY_FIELD));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn native_authority_creates_key_in_secure_store_and_returns_only_public_identity() {
+        let path = temp_identity("native-create");
+        let secrets = MemoryStore::empty();
+        let vault = IdentityVault::new(
+            path.clone(),
+            MemoryStore {
+                secret: std::sync::Arc::clone(&secrets.secret),
+            },
+        );
+
+        let identity = vault.ensure().expect("ensure native identity");
+        assert_eq!(
+            URL_SAFE_NO_PAD.decode(&identity.public_key).unwrap().len(),
+            32
+        );
+        assert!(!serde_json::to_string(&identity)
+            .unwrap()
+            .contains("private"));
+        assert!(secrets.secret.lock().unwrap().as_ref().is_some());
+        assert!(!fs::read_to_string(&path)
+            .unwrap()
+            .contains(PRIVATE_KEY_FIELD));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn native_authority_signs_without_returning_private_key() {
+        let path = temp_identity("native-sign");
+        let vault = IdentityVault::new(path.clone(), MemoryStore::empty());
+        let identity = vault.ensure().unwrap();
+        let signature = vault.sign(b"server-challenge").unwrap();
+        let public_bytes: [u8; 32] = URL_SAFE_NO_PAD
+            .decode(identity.public_key)
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let verifying_key = VerifyingKey::from_bytes(&public_bytes).unwrap();
+        let signature = Signature::from_slice(&URL_SAFE_NO_PAD.decode(signature).unwrap()).unwrap();
+        verifying_key
+            .verify(b"server-challenge", &signature)
+            .unwrap();
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn native_authority_fails_closed_when_secure_store_is_unavailable() {
+        let path = temp_identity("native-unavailable");
+        let vault = IdentityVault::new(path.clone(), UnavailableStore);
+        assert!(vault.ensure().is_err());
+        assert!(!path.exists());
     }
 }

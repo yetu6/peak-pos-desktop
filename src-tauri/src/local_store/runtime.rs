@@ -2,6 +2,10 @@ use std::{fs, path::Path, sync::Mutex};
 
 use tauri::{AppHandle, Manager, State};
 
+use super::{
+    AuthorizationStageResult, OfflineAuthenticationResult, OfflineEligibilityStatus,
+    SignedAuthorizationBundle, SignedTerminalLifecycleEvent, TerminalBinding,
+};
 use super::{DbKeyStore, DbKeyStoreError, LocalStore, LocalStoreError, LocalStoreErrorKind};
 
 const KEYRING_SERVICE: &str = "com.peak.pos";
@@ -100,11 +104,75 @@ impl LocalStoreRuntime {
             },
         }
     }
+
+    fn with_store<T>(
+        &self,
+        operation: impl FnOnce(&mut LocalStore) -> Result<T, LocalStoreError>,
+    ) -> Result<T, LocalStoreErrorKind> {
+        match &self.state {
+            RuntimeState::Ready(store) => {
+                let mut store = store
+                    .lock()
+                    .map_err(|_| LocalStoreErrorKind::IntegrityFailure)?;
+                operation(&mut store).map_err(|error| error.kind())
+            }
+            RuntimeState::Failed(issue) => Err(*issue),
+        }
+    }
 }
 
 #[tauri::command]
 pub fn local_store_status(runtime: State<'_, LocalStoreRuntime>) -> LocalStoreStatus {
     runtime.status()
+}
+
+#[tauri::command]
+pub fn bind_terminal_authority(
+    runtime: State<'_, LocalStoreRuntime>,
+    binding: TerminalBinding,
+) -> Result<(), LocalStoreErrorKind> {
+    runtime.with_store(|store| store.bind_terminal(binding))
+}
+
+#[tauri::command]
+pub fn stage_offline_authorization(
+    runtime: State<'_, LocalStoreRuntime>,
+    envelope: SignedAuthorizationBundle,
+) -> Result<AuthorizationStageResult, LocalStoreErrorKind> {
+    runtime.with_store(|store| store.stage_authorization(envelope, now_ms()))
+}
+
+#[tauri::command]
+pub fn apply_terminal_lifecycle_event(
+    runtime: State<'_, LocalStoreRuntime>,
+    envelope: SignedTerminalLifecycleEvent,
+) -> Result<(), LocalStoreErrorKind> {
+    runtime.with_store(|store| store.apply_terminal_lifecycle_event(envelope))
+}
+
+#[tauri::command]
+pub fn authenticate_offline_staff(
+    runtime: State<'_, LocalStoreRuntime>,
+    staff_id: String,
+    pin: String,
+) -> Result<OfflineAuthenticationResult, LocalStoreErrorKind> {
+    runtime.with_store(|store| store.authenticate_offline_staff(&staff_id, pin, now_ms()))
+}
+
+#[tauri::command]
+pub fn offline_eligibility_status(
+    runtime: State<'_, LocalStoreRuntime>,
+    staff_id: Option<String>,
+) -> Result<OfflineEligibilityStatus, LocalStoreErrorKind> {
+    runtime.with_store(|store| store.offline_eligibility(staff_id.as_deref(), now_ms()))
+}
+
+fn now_ms() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| i64::try_from(duration.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
 }
 
 fn prepare_private_directory(path: &Path) -> Result<(), std::io::Error> {
@@ -159,7 +227,7 @@ mod tests {
         let runtime = LocalStoreRuntime::initialize(temporary.path(), &MemoryKeyStore::default());
         let status = runtime.status();
         assert_eq!(status.state, "READY");
-        assert_eq!(status.schema_version, Some(1));
+        assert_eq!(status.schema_version, Some(2));
         assert_eq!(status.cipher_version.as_deref(), Some("4.14.0 community"));
         assert_eq!(status.issue, None);
         let json = serde_json::to_string(&status).unwrap();

@@ -12,7 +12,7 @@ function initialsOf(fullName: string): string {
 }
 
 export function PinUnlock() {
-  const { unlock, error, identity, roster } = useDeviceSession();
+  const { unlock, error, identity, roster, offlineEligibility } = useDeviceSession();
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [staffNumber, setStaffNumber] = useState("");
   const [manualEntry, setManualEntry] = useState(false);
@@ -83,6 +83,18 @@ export function PinUnlock() {
             data-testid="till-name"
           >
             {till}
+          </p>
+        )}
+        {offlineEligibility && (
+          <p
+            className="mt-2 text-center text-[11px] font-medium text-[var(--color-text-muted)]"
+            data-testid="offline-authority-state"
+          >
+            {offlineEligibility.state === "ELIGIBLE"
+              ? "Offline authority ready"
+              : offlineEligibility.state === "CATALOG_REQUIRED"
+                ? "Online · offline catalog certification pending"
+                : "Online · offline authority unavailable"}
           </p>
         )}
 
