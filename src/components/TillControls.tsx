@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Icon } from "./Icon";
-import { formatMinor, toMinor } from "../lib/posMoney";
+import { moneyFormatter, toMinor } from "../lib/posMoney";
 import { useHasPermission, useIdempotencyKey, useMutationMessage, usePosShift } from "../hooks/usePosData";
 
 /**
@@ -12,8 +12,9 @@ import { useHasPermission, useIdempotencyKey, useMutationMessage, usePosShift } 
  * pos.shift.open/close grant (e.g. a WAITER cannot open a shift) — the
  * backend still refuses the mutation outright regardless of this check.
  */
-export function TillControls({ currency = "TZS" }: { currency?: string }) {
+export function TillControls({ currency }: { currency?: string }) {
   const { shift, open, close } = usePosShift();
+  const money = moneyFormatter(currency);
   const [openingFloat, setOpeningFloat] = useState("");
   const [countedCash, setCountedCash] = useState("");
   const openKey = useIdempotencyKey();
@@ -46,7 +47,7 @@ export function TillControls({ currency = "TZS" }: { currency?: string }) {
         canCloseShift ? (
           <>
             <span className="badge badge-success badge-dot" data-testid="shift-open">
-              Shift open · expected {formatMinor(shift.expectedCashMinor, currency)}
+              Shift open · expected {money(shift.expectedCashMinor)}
             </span>
             <input
               data-testid="counted-cash"
@@ -67,7 +68,7 @@ export function TillControls({ currency = "TZS" }: { currency?: string }) {
           </>
         ) : (
           <span className="badge badge-success badge-dot" data-testid="shift-open">
-            Shift open · expected {formatMinor(shift.expectedCashMinor, currency)}
+            Shift open · expected {money(shift.expectedCashMinor)}
           </span>
         )
       ) : canOpenShift ? (
@@ -108,7 +109,7 @@ export function TillControls({ currency = "TZS" }: { currency?: string }) {
       {close.data && !shift && (
         <span className={pendingVariance ? "badge badge-warning" : "badge badge-muted"} data-testid="shift-close-result">
           {pendingVariance
-            ? `Variance ${formatMinor(close.data.varianceMinor, currency)} needs a supervisor`
+            ? `Variance ${money(close.data.varianceMinor)} needs a supervisor`
             : "Shift closed"}
         </span>
       )}

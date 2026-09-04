@@ -100,6 +100,19 @@ export function useCatalog() {
   });
 }
 
+/**
+ * The outlet's one authoritative currency — mirrors how the local-first
+ * path reads `LocalCatalogView.currency` from the signed offline snapshot.
+ * `POSCatalog` itself carries no top-level currency field (Peak catalogs are
+ * single-currency per outlet), so any fetched product's currency is the
+ * outlet's currency. Undefined only until the catalog has loaded or if it
+ * is genuinely empty; callers must not assume a default in that window.
+ */
+export function useCatalogCurrency(): string | undefined {
+  const catalog = useCatalog();
+  return catalog.data?.products[0]?.currency;
+}
+
 // ---------------------------------------------------------------------------
 // Shift (till)
 // ---------------------------------------------------------------------------

@@ -32,12 +32,16 @@ const SEARCH_DEBOUNCE_MS = 250;
 
 export function SettleDialog({
   order,
-  currency = "TZS",
+  currency,
   onClose,
   onSettled,
 }: {
   order: POSOrder;
-  currency?: string;
+  /** Required, no default — the caller (which already knows whether its
+   *  own catalog has resolved a real currency) decides when it is safe to
+   *  offer settlement at all, rather than this dialog silently assuming
+   *  one. */
+  currency: string;
   onClose: () => void;
   onSettled: (orderId: string) => void;
 }) {

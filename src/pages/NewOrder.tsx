@@ -5,7 +5,7 @@ import {ItemModifierDialog,type ModifierSelection} from "../components/ItemModif
 import {CategoryTab,MoneyDisplay,OrderLine,OrderRail,ProductTile,QuantityStepper,TerminalState} from "../components/terminal/TerminalPrimitives";
 import {useLocalCatalog,useLocalDraft} from "../hooks/useLocalOrder";
 import type {LocalCatalogProduct} from "../lib/localPosCore";
-import {formatMinor} from "../lib/posMoney";
+import {formatMinor,moneyFormatter} from "../lib/posMoney";
 import {LocalCashSaved,LocalCashSettlementDialog} from "../components/LocalCashSettlementDialog";
 import type {OfflineCashCommitResult} from "../lib/localPosCore";
 
@@ -24,7 +24,12 @@ export function NewOrder(){
   const order=draft.data;
   useEffect(()=>{if(order){setServiceType(order.serviceType);setTableLabel(order.tableLabel??"");setNotes(order.notes??"")}},[order?.id]);
   const effectiveServiceType=serviceType||order?.serviceType||catalog.data?.serviceTypes[0]?.id||"";
-  const currency=catalog.data?.currency??order?.currency??"TZS";
+  // Peak catalogs are single-currency per outlet — the signed local snapshot
+  // is the authoritative source; a draft order already carries the real
+  // currency it was created under. Never a hardcoded default: `money()`
+  // shows "—" in the narrow window before either exists.
+  const currency=catalog.data?.currency??order?.currency;
+  const money=moneyFormatter(currency);
 
   function tapProduct(product:LocalCatalogProduct){setSecured(null);if(product.modifierGroups.length>0)setConfiguring(product);else addItem.mutate({productId:product.id,quantity:1,modifierOptionIds:[]})}
   function confirmModifiers(product:LocalCatalogProduct,selection:ModifierSelection){addItem.mutate({productId:product.id,quantity:selection.quantity,modifierOptionIds:selection.modifierOptionIds},{onSuccess:()=>setConfiguring(null)})}
@@ -50,17 +55,17 @@ export function NewOrder(){
         <div className="product-grid">{catalog.data?.products.map(product=><ProductTile key={product.id} data-testid={`menu-${product.name}`} disabled={!order||busy} onClick={()=>tapProduct(product)} name={product.name} price={formatMinor(product.priceMinor,product.currency)}/>)}</div>
       </section>
       <OrderRail title="Current order" data-testid="current-order-rail" headerMeta={<p className="mt-1 text-xs text-[var(--foreground-muted)]">{totalItems} {totalItems===1?"item":"items"} · {order?.syncState==="LOCAL_DRAFT"?"Saved locally":"Secured"}</p>} footer={<>
-        <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-[var(--foreground-muted)]"><span>Subtotal</span><MoneyDisplay className="text-right">{order?formatMinor(order.subtotalMinor,currency):"—"}</MoneyDisplay><span>Tax</span><MoneyDisplay className="text-right">{order?formatMinor(order.taxMinor,currency):"—"}</MoneyDisplay><span className="font-semibold text-[var(--foreground)]">Total</span><MoneyDisplay prominence="strong" className="text-right text-base" data-testid="cart-preview-total">{order&&order.lines.length>0?formatMinor(order.totalMinor,currency):"—"}</MoneyDisplay></div>
+        <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-[var(--foreground-muted)]"><span>Subtotal</span><MoneyDisplay className="text-right">{order?money(order.subtotalMinor):"—"}</MoneyDisplay><span>Tax</span><MoneyDisplay className="text-right">{order?money(order.taxMinor):"—"}</MoneyDisplay><span className="font-semibold text-[var(--foreground)]">Total</span><MoneyDisplay prominence="strong" className="text-right text-base" data-testid="cart-preview-total">{order&&order.lines.length>0?money(order.totalMinor):"—"}</MoneyDisplay></div>
         <input data-testid="order-notes" value={notes} onChange={event=>setNotes(event.target.value)} onBlur={()=>persistContext()} placeholder="Order notes" className="input w-full"/>
         {secured&&<div className="badge badge-success mt-3" data-testid="order-created">Order secured locally · waiting to sync</div>}
-        {cashSaved&&<LocalCashSaved result={cashSaved} currency={currency}/>}
+        {cashSaved&&currency&&<LocalCashSaved result={cashSaved} currency={currency}/>}
         {error&&<div className="badge badge-danger mt-3" data-testid="create-error">Intent not saved. Review terminal authorization and try again.</div>}
         <div className="mt-4 grid grid-cols-2 gap-2"><button data-testid="create-order" onClick={secureOrder} disabled={!order||order.lines.length===0||busy} className="btn-secondary w-full"><Icon name="orders" size={17}/>{commit.isPending?"Securing…":"Secure order"}</button><button data-testid="settle-local-cash" onClick={()=>setCashOpen(true)} disabled={!order||order.lines.length===0||busy} className="btn-primary w-full">Settle cash</button></div>
       </>}>
-        <ul>{(!order||order.lines.length===0)&&<li className="py-8 text-center text-xs text-[var(--foreground-muted)]">Tap a menu item to start this order.</li>}{order?.lines.map(line=><OrderLine key={line.id} data-testid={`cart-${line.name}`}><span className="min-w-0 flex-1"><span className="block truncate font-semibold text-[var(--foreground)]">{line.name}</span>{line.modifiers.length>0&&<span className="block truncate text-[11px] text-[var(--foreground-muted)]">{line.modifiers.map(item=>item.name).join(", ")}</span>}<MoneyDisplay className="mt-1 block text-[11px] text-[var(--foreground-muted)]">{formatMinor(line.lineTotalMinor,currency)}</MoneyDisplay></span><QuantityStepper label={line.name} value={line.quantity} minimum={0} onDecrease={()=>line.quantity===1?removeLine.mutate(line.id):setQuantity.mutate({lineId:line.id,quantity:line.quantity-1})} onIncrease={()=>setQuantity.mutate({lineId:line.id,quantity:line.quantity+1})}/></OrderLine>)}</ul>
+        <ul>{(!order||order.lines.length===0)&&<li className="py-8 text-center text-xs text-[var(--foreground-muted)]">Tap a menu item to start this order.</li>}{order?.lines.map(line=><OrderLine key={line.id} data-testid={`cart-${line.name}`}><span className="min-w-0 flex-1"><span className="block truncate font-semibold text-[var(--foreground)]">{line.name}</span>{line.modifiers.length>0&&<span className="block truncate text-[11px] text-[var(--foreground-muted)]">{line.modifiers.map(item=>item.name).join(", ")}</span>}<MoneyDisplay className="mt-1 block text-[11px] text-[var(--foreground-muted)]">{money(line.lineTotalMinor)}</MoneyDisplay></span><QuantityStepper label={line.name} value={line.quantity} minimum={0} onDecrease={()=>line.quantity===1?removeLine.mutate(line.id):setQuantity.mutate({lineId:line.id,quantity:line.quantity-1})} onIncrease={()=>setQuantity.mutate({lineId:line.id,quantity:line.quantity+1})}/></OrderLine>)}</ul>
       </OrderRail>
     </div>
     {configuring&&<ItemModifierDialog product={configuring} currency={configuring.currency} onCancel={()=>setConfiguring(null)} onConfirm={selection=>confirmModifiers(configuring,selection)}/>}
-    {cashOpen&&order&&settleCash&&<LocalCashSettlementDialog amountDueMinor={order.totalMinor} currency={currency} busy={settleCash.isPending} error={settleCash.isError} onCancel={()=>setCashOpen(false)} onConfirm={amount=>settleCash.mutate(amount,{onSuccess:result=>{setCashSaved(result);setCashOpen(false);setTableLabel("");setNotes("");void draft.refetch()}})}/>}
+    {cashOpen&&order&&settleCash&&currency&&<LocalCashSettlementDialog amountDueMinor={order.totalMinor} currency={currency} busy={settleCash.isPending} error={settleCash.isError} onCancel={()=>setCashOpen(false)} onConfirm={amount=>settleCash.mutate(amount,{onSuccess:result=>{setCashSaved(result);setCashOpen(false);setTableLabel("");setNotes("");void draft.refetch()}})}/>}
   </div>
 }

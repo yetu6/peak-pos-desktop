@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
 import { CashMovementDialog } from "../components/CashMovementDialog";
-import { formatMinor } from "../lib/posMoney";
+import { moneyFormatter } from "../lib/posMoney";
 import {
   useCashMovements,
+  useCatalogCurrency,
   useCloseBusinessDay,
   useHasCapability,
   useHasPermission,
@@ -28,7 +29,8 @@ export function Manager() {
   const closeBusinessDay = useCloseBusinessDay();
   const dayCloseKey = useIdempotencyKey();
   const dayCloseError = useMutationMessage(closeBusinessDay.error);
-  const currency = "TZS";
+  const currency = useCatalogCurrency();
+  const money = moneyFormatter(currency);
 
   const canRecordCash = useHasPermission("pos.cash_movement.record");
   const canRunDayClose = useHasPermission("pos.report.manager") && !useHasCapability("LODGING");
@@ -62,7 +64,7 @@ export function Manager() {
                     <span>
                       {movement.movementType === "CASH_IN" ? "Cash in" : "Cash out"} · {movement.reason}
                     </span>
-                    <span className="font-mono text-xs tabular-nums">{formatMinor(movement.amountMinor, currency)}</span>
+                    <span className="font-mono text-xs tabular-nums">{money(movement.amountMinor)}</span>
                   </li>
                 ))
               )}

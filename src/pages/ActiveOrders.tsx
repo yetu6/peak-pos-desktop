@@ -4,8 +4,8 @@ import { SettleDialog } from "../components/SettleDialog";
 import { RemoveItemDialog } from "../components/RemoveItemDialog";
 import { VoidOrderDialog } from "../components/VoidOrderDialog";
 import { ReceiptView } from "../components/ReceiptView";
-import { formatMinor } from "../lib/posMoney";
-import { useActiveOrders, useHasPermission, useIdempotencyKey, useMutationMessage, usePrintAfter, usePropertyId, useSendOrder } from "../hooks/usePosData";
+import { moneyFormatter } from "../lib/posMoney";
+import { useActiveOrders, useCatalogCurrency, useHasPermission, useIdempotencyKey, useMutationMessage, usePrintAfter, usePropertyId, useSendOrder } from "../hooks/usePosData";
 import type { POSOrder, POSOrderItem } from "../lib/posContracts";
 
 const STATUS_BADGE: Record<POSOrder["status"], string> = {
@@ -35,7 +35,8 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
   const open = list.filter((o) => o.status === "OPEN");
   const inKitchen = list.filter((o) => ["SENT", "PREPARING", "READY", "SERVED"].includes(o.status));
   const closed = list.filter((o) => o.status === "CLOSED");
-  const currency = "TZS";
+  const currency = useCatalogCurrency();
+  const money = moneyFormatter(currency);
 
   async function sendToKitchen(order: POSOrder): Promise<void> {
     const key = sendKey.next();
@@ -83,13 +84,13 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
           {order.items.length > 4 && <li className="text-[11px] text-[var(--foreground-muted)]">+{order.items.length - 4} more items</li>}
         </ul>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-          <div className="money-display mr-2 text-base font-bold text-[var(--foreground)]">{formatMinor(order.totalMinor, currency)}</div>
+          <div className="money-display mr-2 text-base font-bold text-[var(--foreground)]">{money(order.totalMinor)}</div>
           <div className="flex flex-wrap justify-end gap-2">
             <button data-testid={`void-order-${order.id}`} onClick={() => setVoiding(order)} className="btn-tertiary btn-sm">
               Void
             </button>
             {canSend && canSettle && (
-              <button data-testid={`settle-${order.id}`} onClick={() => setSettling(order)} className="btn-secondary btn-sm">
+              <button data-testid={`settle-${order.id}`} onClick={() => setSettling(order)} disabled={!currency} className="btn-secondary btn-sm">
                 <Icon name="payments" size={14} />
                 Settle
               </button>
@@ -101,7 +102,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
               </button>
             )}
             {!canSend && order.status !== "CLOSED" && canSettle && (
-              <button data-testid={`settle-${order.id}`} onClick={() => setSettling(order)} className="btn-primary btn-sm">
+              <button data-testid={`settle-${order.id}`} onClick={() => setSettling(order)} disabled={!currency} className="btn-primary btn-sm">
                 <Icon name="payments" size={14} />
                 Settle
               </button>
@@ -172,7 +173,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
         </>
       )}
 
-      {settling && <SettleDialog order={settling} currency={currency} onClose={() => setSettling(null)} onSettled={(id) => void afterSettled(id)} />}
+      {settling && currency && <SettleDialog order={settling} currency={currency} onClose={() => setSettling(null)} onSettled={(id) => void afterSettled(id)} />}
       {removing && <RemoveItemDialog order={removing.order} item={removing.item} onClose={() => setRemoving(null)} />}
       {voiding && <VoidOrderDialog order={voiding} onClose={() => setVoiding(null)} />}
       {receiptOrderId && <ReceiptView orderId={receiptOrderId} onClose={() => setReceiptOrderId(null)} />}

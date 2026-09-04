@@ -39,7 +39,7 @@ const ORDER: POSOrder = {
 };
 
 function renderDialog(onSettled = vi.fn()) {
-  render(<SettleDialog order={ORDER} onClose={vi.fn()} onSettled={onSettled} />);
+  render(<SettleDialog order={ORDER} currency="TZS" onClose={vi.fn()} onSettled={onSettled} />);
   return onSettled;
 }
 

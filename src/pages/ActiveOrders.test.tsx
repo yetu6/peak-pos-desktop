@@ -6,7 +6,7 @@ import { RealtimeClient } from "../realtime/RealtimeClient";
 import { RealtimeProvider } from "../realtime/RealtimeProvider";
 import { ActiveOrders } from "./ActiveOrders";
 import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
-import type { POSOrder } from "../lib/posContracts";
+import type { POSCatalog, POSOrder } from "../lib/posContracts";
 
 vi.mock("../lib/env", () => ({
   devIdentityFromEnv: () => ({
@@ -17,23 +17,38 @@ vi.mock("../lib/env", () => ({
   }),
 }));
 
-const { listOrdersSpy, sendOrderSpy, getOrderSpy, processPendingPrintJobsSpy } = vi.hoisted(() => ({
+const { listOrdersSpy, sendOrderSpy, getOrderSpy, getCatalogSpy, processPendingPrintJobsSpy } = vi.hoisted(() => ({
   listOrdersSpy: vi.fn(async () => ({ data: Array.from(ordersStore.values()), error: null })),
   getOrderSpy: vi.fn(async (orderId: string) => {
     const order = ordersStore.get(orderId);
     return order ? { data: order, error: null } : { data: undefined, error: { code: "NOT_FOUND" } };
   }),
   sendOrderSpy: vi.fn(async () => ({ data: undefined, error: null })),
+  // No outlet is TZS by hardcoded assumption — every test exercises whatever
+  // currency the fixture catalog actually carries (see catalogFixture()).
+  getCatalogSpy: vi.fn(async () => ({ data: catalogStore, error: null })),
   processPendingPrintJobsSpy: vi.fn(async () => [{ ok: false, error: "No printer is configured" }]),
 }));
 
 const ordersStore = new Map<string, POSOrder>();
+
+function catalogFixture(currency: string): POSCatalog {
+  return {
+    outletId: "outlet-1",
+    outletName: "Main restaurant",
+    categories: [],
+    products: [{ id: "p1", code: "LUNCH", name: "Lunch", priceMinor: 1000, currency, taxRateBp: 1800 }],
+  };
+}
+
+let catalogStore: POSCatalog = catalogFixture("TZS");
 
 vi.mock("../lib/posApi", () => ({
   createPosApi: () => ({
     listOrders: listOrdersSpy,
     getOrder: getOrderSpy,
     sendOrder: sendOrderSpy,
+    getCatalog: getCatalogSpy,
   }),
 }));
 
@@ -120,11 +135,24 @@ const OPEN_ORDER: POSOrder = {
 describe("ActiveOrders", () => {
   afterEach(() => {
     ordersStore.clear();
+    catalogStore = catalogFixture("TZS");
     listOrdersSpy.mockClear();
     getOrderSpy.mockClear();
     sendOrderSpy.mockClear();
+    getCatalogSpy.mockClear();
     processPendingPrintJobsSpy.mockClear();
     clearOperationalSession();
+  });
+
+  it("renders a non-TZS outlet's amounts in its own currency, never a hardcoded TZS", async () => {
+    catalogStore = catalogFixture("KES");
+    ordersStore.set("order-1", OPEN_ORDER);
+    renderActiveOrders();
+    await screen.findByText("ORD-1042");
+
+    const total = await screen.findByText(/KES/);
+    expect(total).toHaveTextContent("KES");
+    expect(total).not.toHaveTextContent("TZS");
   });
 
   it("renders the empty state before any order exists", async () => {
