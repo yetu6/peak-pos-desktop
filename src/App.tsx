@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DeviceSessionProvider, useDeviceSession } from "./auth/DeviceSessionProvider";
 import { Icon } from "./components/Icon";
@@ -8,13 +8,15 @@ import { ActiveOrders } from "./pages/ActiveOrders";
 import { Kitchen } from "./pages/Kitchen";
 import { Manager } from "./pages/Manager";
 import { NewOrder } from "./pages/NewOrder";
+import { OpenShiftScreen } from "./pages/OpenShiftScreen";
 import { PairingScreen } from "./pages/PairingScreen";
 import { PinUnlock } from "./pages/PinUnlock";
 import { SetupScreen } from "./pages/SetupScreen";
+import { Splash } from "./pages/Splash";
 import { Diagnostics } from "./pages/Diagnostics";
 import { RealtimeClient } from "./realtime/RealtimeClient";
-import { RealtimeProvider, useRealtimeEvents } from "./realtime/RealtimeProvider";
-import { useOutletId, usePropertyId } from "./hooks/usePosData";
+import { RealtimeProvider } from "./realtime/RealtimeProvider";
+import { useOutletId, usePosShift } from "./hooks/usePosData";
 import { REALTIME_BRIDGE_URL } from "./lib/env";
 import { createRealtimeSocket } from "./lib/peakSocket";
 import { getApiBaseUrl } from "./lib/peakConfig";
@@ -23,8 +25,9 @@ import {
   createRealtimeCursorStorage,
 } from "./lib/realtimeBackfill";
 import { SessionExpiredError } from "./lib/operationalSession";
+import { staffLabel } from "./lib/staffLabel";
+import { terminalRoute } from "./lib/terminalRoute";
 import { defaultWorkspacePage, workspaceNav, type WorkspacePage } from "./lib/workspace";
-import { usePosShift } from "./hooks/usePosData";
 
 type Page = WorkspacePage;
 
@@ -37,30 +40,18 @@ function useClock(): string {
   return now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function staffLabel(staffNumber: string | undefined): { name: string; initials: string } {
-  const name = staffNumber?.trim() || "Staff";
-  return { name, initials: name.slice(0, 2).toUpperCase() };
-}
-
 function PosShell() {
-  const { session, switchStaff, shell, identity } = useDeviceSession();
+  const { session, switchStaff, identity } = useDeviceSession();
   const nav = workspaceNav(identity?.mode);
   const [page, setPage] = useState<Page>(() => defaultWorkspacePage(identity?.mode));
   const outletId = useOutletId();
-  const propertyId = usePropertyId();
   const clock = useClock();
   const { shift } = usePosShift();
-  const [lastEvent, setLastEvent] = useState<string | null>(null);
   const staff = staffLabel(session?.staffId);
 
   if (!nav.some((item) => item.page === page)) {
     setPage(nav[0]?.page ?? "orders");
   }
-
-  useRealtimeEvents(
-    { kind: "propertyOperations", propertyId },
-    (event) => setLastEvent(`${event.type} #${event.aggregateVersion ?? "?"}`),
-  );
 
   return (
     <div className="terminal-shell" data-testid="pos-register">
@@ -71,7 +62,7 @@ function PosShell() {
       >
         <div className="terminal-brand">
           <Icon name="peak-logo" size={24} className="text-[var(--gold-accent)]" />
-          <span className="terminal-brand__name">Peak POS</span>
+          <span className="terminal-brand__name">Peak Terminal</span>
         </div>
         <nav className="terminal-nav__items">
           {nav.map((item) => (
@@ -111,9 +102,6 @@ function PosShell() {
           >
             <Icon name="logout" size={18} />
           </button>
-          <div className="sr-only" data-testid="shell-state">
-            {shell}
-          </div>
         </div>
       </aside>
 
@@ -123,25 +111,10 @@ function PosShell() {
             {clock}
           </span>
           <span className="h-5 w-px bg-[var(--border)]" />
-          {shift ? (
-            <span className="badge badge-success badge-dot" data-testid="shell-business-date">
-              Business date {shift.businessDate}
-            </span>
-          ) : (
-            <span className="badge badge-muted" data-testid="shell-shift-state">
-              No shift open
-            </span>
-          )}
-          <div className="min-w-0 flex-1">
-            {lastEvent && (
-              <span
-                className="truncate text-[11px] text-[var(--foreground-muted)]"
-                data-testid="last-event"
-              >
-                last event: {lastEvent}
-              </span>
-            )}
-          </div>
+          <span className="badge badge-success badge-dot" data-testid="shell-business-date">
+            Business date {shift?.businessDate ?? "—"}
+          </span>
+          <div className="min-w-0 flex-1" />
           <ThemeToggle />
           <ConnectivityIndicator />
         </header>
@@ -210,33 +183,47 @@ function KeyStorageBanner() {
   );
 }
 
+/**
+ * The single source of truth for what appears on screen. Every other gate this
+ * app used to have — a phase check here, a shell-state check there — is
+ * folded into one explicit mapping from PEAK_TERMINAL_MASTER_OPERATIONS.md's
+ * terminal state vocabulary to a screen, so there is exactly one place that
+ * can send an operator to the wrong place.
+ */
 function AuthGate() {
-  const { shell, phase } = useDeviceSession();
-  let screen;
-  if (phase === "bootstrapping") {
-    screen = (
-      <div
-        className="flex h-screen items-center justify-center bg-[var(--color-pos-sidebar)] text-white"
-        data-testid="boot-screen"
-      >
-        <span className="sr-only" data-testid="shell-state">
-          {shell}
-        </span>
-        Starting till…
-      </div>
-    );
-  } else if (phase === "needs-url") {
-    screen = <SetupScreen />;
-  } else if (shell === "PAIRED_LOCKED") {
-    screen = <PinUnlock />;
-  } else if (shell === "OPERATIONAL") {
-    screen = <LiveRegister />;
-  } else {
-    screen = <PairingScreen />;
+  const { phase } = useDeviceSession();
+  const { shift, isLoading: shiftLoading } = usePosShift();
+  const route = terminalRoute(phase, !shiftLoading, Boolean(shift));
+
+  let screen: ReactNode;
+  switch (route) {
+    case "STARTING":
+      screen = <Splash />;
+      break;
+    case "UNCONFIGURED":
+      screen = <SetupScreen />;
+      break;
+    case "UNPROVISIONED":
+    case "PAIRING":
+      screen = <PairingScreen />;
+      break;
+    case "LOCKED":
+      screen = <PinUnlock />;
+      break;
+    case "NO_SHIFT":
+      screen = <OpenShiftScreen />;
+      break;
+    case "OPERATIONAL":
+      screen = <LiveRegister />;
+      break;
   }
+
   return (
     <>
       <KeyStorageBanner />
+      <span className="sr-only" data-testid="shell-state">
+        {route}
+      </span>
       {screen}
     </>
   );

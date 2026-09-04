@@ -126,13 +126,13 @@ export function usePosShift() {
   const queryClient = useQueryClient();
   const idKey = shiftIdQueryKey(propertyId, outletId);
 
-  const { data: storedId = null } = useQuery({
+  const { data: storedId = null, isLoading: idLoading } = useQuery({
     queryKey: idKey,
     queryFn: () => localStorage.getItem(shiftStorageKey(propertyId, outletId)),
     staleTime: Infinity,
   });
 
-  const { data: shift } = useQuery({
+  const { data: shift, isLoading: shiftLoading } = useQuery({
     queryKey: ["pos", "shift", storedId],
     queryFn: async () => {
       if (!storedId) return null;
@@ -188,7 +188,7 @@ export function usePosShift() {
     },
   });
 
-  return { shift: shift ?? null, open, close };
+  return { shift: shift ?? null, open, close, isLoading: idLoading || shiftLoading };
 }
 
 export function useCashMovements(shiftId: string | undefined) {

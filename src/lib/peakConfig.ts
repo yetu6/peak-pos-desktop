@@ -55,6 +55,22 @@ export function setConfiguredApiUrl(url: string | null): void {
   configured = url;
 }
 
+/**
+ * A real property never types this address: a packaged build carries its
+ * environment's Peak endpoint baked in at build time (installer/service
+ * configuration, PEAK_TERMINAL_MASTER_OPERATIONS.md §7.1). This is the one
+ * place that "packaged configuration" resolves to — a terminal with no
+ * persisted address but a valid baked-in one is configured, not unprovisioned,
+ * and never sees the server-address screen. It stays reachable only for a
+ * development build (no env var set) or a genuinely mis-provisioned install.
+ */
+function packagedApiUrl(): string | null {
+  const raw = import.meta.env.VITE_PEAK_API_URL as string | undefined;
+  if (!raw) return null;
+  const check = validatePeakApiUrl(raw);
+  return check.ok ? check.url : null;
+}
+
 export async function loadPeakApiUrl(): Promise<string | null> {
   if (tauriAvailable()) {
     const { invoke } = await import("@tauri-apps/api/core");
@@ -76,6 +92,11 @@ export async function loadPeakApiUrl(): Promise<string | null> {
         return check.url;
       }
     }
+  }
+  const packaged = packagedApiUrl();
+  if (packaged) {
+    configured = packaged;
+    return packaged;
   }
   return configured;
 }

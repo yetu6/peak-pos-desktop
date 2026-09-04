@@ -38,7 +38,7 @@ export function PeakTerminalFixture() {
       <aside className="terminal-nav" aria-label="Terminal navigation">
         <div className="terminal-brand">
           <Icon name="peak-logo" size={24} className="text-[var(--gold-accent)]" />
-          <span className="terminal-brand__name">Peak POS</span>
+          <span className="terminal-brand__name">Peak Terminal</span>
         </div>
         <nav className="terminal-nav__items">
           {NAV.map(([icon, label], index) => (

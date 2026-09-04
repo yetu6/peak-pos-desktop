@@ -897,6 +897,37 @@
     content: "";
   }
 
+  .splash-progress {
+    display: inline-flex;
+    gap: 5px;
+  }
+
+  .splash-progress span {
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: var(--foreground-muted);
+    animation: splash-pulse 1.2s ease-in-out infinite;
+  }
+
+  .splash-progress span:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .splash-progress span:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  @keyframes splash-pulse {
+    0%,
+    100% {
+      opacity: 0.25;
+    }
+    50% {
+      opacity: 0.9;
+    }
+  }
+
   .kpi-card {
     display: grid;
     min-width: 168px;

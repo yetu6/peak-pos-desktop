@@ -26,9 +26,12 @@ vi.mock("./auth/DeviceSessionProvider", () => ({
 
 vi.mock("./hooks/usePosData", () => ({
   useOutletId: () => "outlet-1",
-  usePropertyId: () => "property-1",
-  useRealtimeEvents: vi.fn(),
-  usePosShift: () => ({ shift: null, open: { mutate: vi.fn(), isPending: false, error: null }, close: { mutate: vi.fn(), isPending: false, error: null } }),
+  usePosShift: () => ({
+    shift: { id: "shift-1", businessDate: "2026-09-04", status: "OPEN" },
+    open: { mutate: vi.fn(), isPending: false, error: null },
+    close: { mutate: vi.fn(), isPending: false, error: null },
+    isLoading: false,
+  }),
 }));
 
 vi.mock("./realtime/RealtimeProvider", () => ({
@@ -55,6 +58,7 @@ describe("production post-login shell", () => {
     expect(screen.getByTestId("terminal-navigation")).toHaveAttribute("aria-label", "Terminal navigation");
     expect(screen.getByTestId("terminal-workspace")).toHaveClass("terminal-workspace");
     expect(screen.getByTestId("active-orders-screen")).toBeInTheDocument();
+    expect(screen.getByTestId("shell-state")).toHaveTextContent("OPERATIONAL");
     expect(screen.queryByTestId("verification-unknown")).not.toBeInTheDocument();
   });
 });
