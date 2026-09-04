@@ -25,7 +25,10 @@ const MAX_TEXT: usize = 256;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SignedCatalogSnapshot {
+    #[serde(rename = "kid", alias = "keyId")]
     pub key_id: String,
+    pub algorithm: String,
+    pub signature_version: u32,
     pub digest: String,
     pub payload_b64: String,
     pub signature_b64: String,
@@ -182,6 +185,9 @@ impl LocalStore {
         envelope: SignedCatalogSnapshot,
         received_at_ms: i64,
     ) -> Result<CatalogActivationResult, LocalStoreError> {
+        if envelope.algorithm != "Ed25519" || envelope.signature_version != 1 {
+            return Err(LocalStoreError::InvalidCatalog);
+        }
         let payload_bytes = Zeroizing::new(decode_b64(&envelope.payload_b64)?);
         let actual_digest = hex_digest(&payload_bytes);
         if envelope.digest.len() != 64 || envelope.digest != actual_digest {
@@ -202,7 +208,6 @@ impl LocalStore {
             [], |row| Ok((row.get::<_,String>(0)?,row.get::<_,Vec<u8>>(1)?,row.get::<_,String>(2)?,row.get::<_,String>(3)?,row.get::<_,String>(4)?,row.get::<_,String>(5)?,row.get::<_,String>(6)?,row.get::<_,String>(7)?,row.get::<_,String>(8)?,row.get::<_,String>(9)?,row.get::<_,String>(10)?,row.get::<_,String>(11)?,row.get::<_,i64>(12)?,row.get::<_,i64>(13)?))
         ).optional().map_err(classify_sql_error)?.ok_or(LocalStoreError::AuthorizationRequired)?;
         if authority.4 != "PAIRED"
-            || envelope.key_id != authority.0
             || payload.property_id != authority.2
             || payload.outlet_id != authority.3
             || payload.version != authority.9
@@ -211,8 +216,30 @@ impl LocalStore {
         {
             return Err(LocalStoreError::InvalidCatalog);
         }
-        let public_key: [u8; 32] = authority
-            .1
+        let trusted=self.connection.query_row("SELECT public_key,state,not_before_ms,not_after_ms FROM trusted_signing_keys WHERE kid=?1",[&envelope.key_id],|r|Ok((r.get::<_,Vec<u8>>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?,r.get::<_,i64>(3)?))).optional().map_err(classify_sql_error)?;
+        let has_keyset: bool = self
+            .connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM trusted_signing_keys)",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(classify_sql_error)?;
+        let key_bytes = match trusted {
+            Some((key, state, not_before, not_after))
+                if state != "REVOKED"
+                    && payload.published_at_ms >= not_before
+                    && payload.published_at_ms < not_after
+                    && received_at_ms >= not_before
+                    && received_at_ms < not_after =>
+            {
+                key
+            }
+            Some(_) => return Err(LocalStoreError::InvalidCatalog),
+            None if !has_keyset && envelope.key_id == authority.0 => authority.1,
+            None => return Err(LocalStoreError::InvalidCatalog),
+        };
+        let public_key: [u8; 32] = key_bytes
             .try_into()
             .map_err(|_| LocalStoreError::InvalidCatalog)?;
         let verifying_key =
@@ -671,6 +698,8 @@ mod tests {
         message.extend_from_slice(&bytes);
         SignedCatalogSnapshot {
             key_id: "trust-1".into(),
+            algorithm: "Ed25519".into(),
+            signature_version: 1,
             digest,
             payload_b64: STANDARD_NO_PAD.encode(bytes),
             signature_b64: STANDARD_NO_PAD.encode(key.sign(&message).to_bytes()),
@@ -761,7 +790,9 @@ mod tests {
             max_gross_minor: 1_000_000,
             max_cash_minor: 1_000_000,
             allowed_operations: vec!["ORDER_DRAFT".into(), "ORDER_COMMIT".into()],
+            tender_methods: vec!["CASH".into()],
             shift_opened_at_ms: 900,
+            property_timezone: "Africa/Dar_es_Salaam".into(),
             staff: vec![StaffVerifierPayload {
                 staff_id: "staff-1".into(),
                 display_name: "Cashier".into(),
@@ -779,6 +810,8 @@ mod tests {
             .stage_authorization(
                 SignedAuthorizationBundle {
                     key_id: "trust-1".into(),
+                    algorithm: "Ed25519".into(),
+                    signature_version: 1,
                     payload_b64: STANDARD_NO_PAD.encode(bytes),
                     signature_b64: STANDARD_NO_PAD.encode(key.sign(&message).to_bytes()),
                 },

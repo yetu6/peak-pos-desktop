@@ -80,7 +80,9 @@ fn signed_bundle(signing_key: &SigningKey) -> SignedAuthorizationBundle {
         max_gross_minor: 500_000,
         max_cash_minor: 500_000,
         allowed_operations: vec!["ORDER_COMMIT".into(), "CASH_SETTLE".into()],
+        tender_methods: vec!["CASH".into()],
         shift_opened_at_ms: 1_799_996_400_000,
+        property_timezone: "Africa/Dar_es_Salaam".into(),
         staff: vec![StaffVerifierPayload {
             staff_id: "staff-1".into(),
             display_name: "Amina Hassan".into(),
@@ -96,6 +98,8 @@ fn signed_bundle(signing_key: &SigningKey) -> SignedAuthorizationBundle {
     message.extend_from_slice(&payload);
     SignedAuthorizationBundle {
         key_id: "server-key-1".into(),
+        algorithm: "Ed25519".into(),
+        signature_version: 1,
         payload_b64: STANDARD_NO_PAD.encode(payload),
         signature_b64: STANDARD_NO_PAD.encode(signing_key.sign(&message).to_bytes()),
     }
@@ -110,6 +114,8 @@ fn resign_payload(
     message.extend_from_slice(&payload);
     SignedAuthorizationBundle {
         key_id: "server-key-1".into(),
+        algorithm: "Ed25519".into(),
+        signature_version: 1,
         payload_b64: STANDARD_NO_PAD.encode(payload),
         signature_b64: STANDARD_NO_PAD.encode(signing_key.sign(&message).to_bytes()),
     }

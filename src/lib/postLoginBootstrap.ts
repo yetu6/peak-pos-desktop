@@ -31,6 +31,7 @@ export interface PostLoginBootstrap {
 }
 
 export interface PostLoginBootstrapOptions {
+  installOfflineBootstrap?: (expectedTerminalId:string,expectedPropertyId:string,expectedOutletId:string,bootstrap:unknown)=>Promise<{authorization:AuthorizationStageResult;catalog:CatalogActivationResult}>;
   stageOfflineAuthorization?: (
     envelope: SignedAuthorizationBundle,
   ) => Promise<AuthorizationStageResult>;
@@ -93,6 +94,22 @@ export async function bootstrapOperationalSession(
     catalog: catalog as BootstrapCatalog,
     activeOrders: rawOrders,
   };
+
+  if (options.installOfflineBootstrap) {
+    let response:Response;
+    try { response=await fetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/offline/bootstrap`,{method:"POST",headers:{Authorization:`Bearer ${session.token}`,"Content-Type":"application/json"},body:"{}"}); }
+    catch { result.offlineAuthorization={state:"UNAVAILABLE"}; return result; }
+    if(response.status===401)throw new SessionExpiredError();
+    if(response.status===404||response.status===501){result.offlineAuthorization={state:"BACKEND_GAP"};return result}
+    if(!response.ok){result.offlineAuthorization={state:"UNAVAILABLE"};return result}
+    try{
+      const bootstrap:unknown=await response.json();
+      const installed=await options.installOfflineBootstrap(session.terminalId,session.propertyId,session.outletId,bootstrap);
+      result.offlineAuthorization=installed.authorization;result.certifiedCatalog=installed.catalog;
+      await fetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/offline/catalog-acknowledge`,{method:"POST",headers:{Authorization:`Bearer ${session.token}`,"Content-Type":"application/json"},body:JSON.stringify({catalogSnapshotId:installed.catalog.snapshotId,activatedAtMs:Date.now()})});
+    }catch{result.offlineAuthorization={state:"INVALID"}}
+    return result;
+  }
 
   if (options.stageOfflineAuthorization) {
     result.offlineAuthorization = await bootstrapOfflineAuthorization(
@@ -185,8 +202,7 @@ function isSignedAuthorizationBundle(value: unknown): value is SignedAuthorizati
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<SignedAuthorizationBundle>;
   return (
-    typeof candidate.keyId === "string" &&
-    candidate.keyId.length > 0 &&
+    typeof (candidate.kid??(candidate as unknown as {keyId?:string}).keyId) === "string" &&
     typeof candidate.payloadB64 === "string" &&
     candidate.payloadB64.length > 0 &&
     typeof candidate.signatureB64 === "string" &&
@@ -197,5 +213,5 @@ function isSignedAuthorizationBundle(value: unknown): value is SignedAuthorizati
 function isSignedCatalogSnapshot(value: unknown): value is SignedCatalogSnapshot {
   if (!value || typeof value !== "object") return false;
   const candidate=value as Partial<SignedCatalogSnapshot>;
-  return typeof candidate.keyId==="string"&&candidate.keyId.length>0&&typeof candidate.digest==="string"&&candidate.digest.length===64&&typeof candidate.payloadB64==="string"&&candidate.payloadB64.length>0&&typeof candidate.signatureB64==="string"&&candidate.signatureB64.length>0;
+  return typeof (candidate.kid??(candidate as unknown as {keyId?:string}).keyId)==="string"&&typeof candidate.digest==="string"&&candidate.digest.length===64&&typeof candidate.payloadB64==="string"&&candidate.payloadB64.length>0&&typeof candidate.signatureB64==="string"&&candidate.signatureB64.length>0;
 }

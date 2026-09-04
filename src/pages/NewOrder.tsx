@@ -6,17 +6,21 @@ import {CategoryTab,MoneyDisplay,OrderLine,OrderRail,ProductTile,QuantityStepper
 import {useLocalCatalog,useLocalDraft} from "../hooks/useLocalOrder";
 import type {LocalCatalogProduct} from "../lib/localPosCore";
 import {formatMinor} from "../lib/posMoney";
+import {LocalCashSaved,LocalCashSettlementDialog} from "../components/LocalCashSettlementDialog";
+import type {OfflineCashCommitResult} from "../lib/localPosCore";
 
 export function NewOrder(){
   const [activeCategory,setActiveCategory]=useState<string|undefined>();
   const [search,setSearch]=useState("");
   const catalog=useLocalCatalog(search,activeCategory);
-  const {draft,addItem,setQuantity,removeLine,updateContext,commit}=useLocalDraft(catalog.data?.serviceTypes[0]?.id);
+  const {draft,addItem,setQuantity,removeLine,updateContext,commit,settleCash}=useLocalDraft(catalog.data?.serviceTypes[0]?.id);
   const [serviceType,setServiceType]=useState("");
   const [tableLabel,setTableLabel]=useState("");
   const [notes,setNotes]=useState("");
   const [configuring,setConfiguring]=useState<LocalCatalogProduct|null>(null);
   const [secured,setSecured]=useState<string|null>(null);
+  const [cashOpen,setCashOpen]=useState(false);
+  const [cashSaved,setCashSaved]=useState<OfflineCashCommitResult|null>(null);
   const order=draft.data;
   useEffect(()=>{if(order){setServiceType(order.serviceType);setTableLabel(order.tableLabel??"");setNotes(order.notes??"")}},[order?.id]);
   const effectiveServiceType=serviceType||order?.serviceType||catalog.data?.serviceTypes[0]?.id||"";
@@ -26,7 +30,7 @@ export function NewOrder(){
   function confirmModifiers(product:LocalCatalogProduct,selection:ModifierSelection){addItem.mutate({productId:product.id,quantity:selection.quantity,modifierOptionIds:selection.modifierOptionIds},{onSuccess:()=>setConfiguring(null)})}
   function persistContext(nextService=effectiveServiceType){if(!order||!nextService)return;updateContext.mutate({serviceType:nextService,tableLabel:tableLabel.trim()||undefined,notes:notes.trim()||undefined})}
   function secureOrder(){commit.mutate(undefined,{onSuccess:(result)=>{setSecured(result.id);setTableLabel("");setNotes("");void draft.refetch()}})}
-  const busy=addItem.isPending||setQuantity.isPending||removeLine.isPending||updateContext.isPending||commit.isPending;
+  const busy=addItem.isPending||setQuantity.isPending||removeLine.isPending||updateContext.isPending||commit.isPending||Boolean(settleCash?.isPending);
   const totalItems=order?.lines.reduce((sum,line)=>sum+line.quantity,0)??0;
   const error=catalog.error??draft.error??addItem.error??setQuantity.error??removeLine.error??updateContext.error??commit.error;
 
@@ -49,12 +53,14 @@ export function NewOrder(){
         <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-[var(--foreground-muted)]"><span>Subtotal</span><MoneyDisplay className="text-right">{order?formatMinor(order.subtotalMinor,currency):"—"}</MoneyDisplay><span>Tax</span><MoneyDisplay className="text-right">{order?formatMinor(order.taxMinor,currency):"—"}</MoneyDisplay><span className="font-semibold text-[var(--foreground)]">Total</span><MoneyDisplay prominence="strong" className="text-right text-base" data-testid="cart-preview-total">{order&&order.lines.length>0?formatMinor(order.totalMinor,currency):"—"}</MoneyDisplay></div>
         <input data-testid="order-notes" value={notes} onChange={event=>setNotes(event.target.value)} onBlur={()=>persistContext()} placeholder="Order notes" className="input w-full"/>
         {secured&&<div className="badge badge-success mt-3" data-testid="order-created">Order secured locally · waiting to sync</div>}
+        {cashSaved&&<LocalCashSaved result={cashSaved} currency={currency}/>}
         {error&&<div className="badge badge-danger mt-3" data-testid="create-error">Intent not saved. Review terminal authorization and try again.</div>}
-        <button data-testid="create-order" onClick={secureOrder} disabled={!order||order.lines.length===0||busy} className="btn-primary mt-4 w-full"><Icon name="orders" size={17}/>{commit.isPending?"Securing…":"Secure order"}</button>
+        <div className="mt-4 grid grid-cols-2 gap-2"><button data-testid="create-order" onClick={secureOrder} disabled={!order||order.lines.length===0||busy} className="btn-secondary w-full"><Icon name="orders" size={17}/>{commit.isPending?"Securing…":"Secure order"}</button><button data-testid="settle-local-cash" onClick={()=>setCashOpen(true)} disabled={!order||order.lines.length===0||busy} className="btn-primary w-full">Settle cash</button></div>
       </>}>
         <ul>{(!order||order.lines.length===0)&&<li className="py-8 text-center text-xs text-[var(--foreground-muted)]">Tap a menu item to start this order.</li>}{order?.lines.map(line=><OrderLine key={line.id} data-testid={`cart-${line.name}`}><span className="min-w-0 flex-1"><span className="block truncate font-semibold text-[var(--foreground)]">{line.name}</span>{line.modifiers.length>0&&<span className="block truncate text-[11px] text-[var(--foreground-muted)]">{line.modifiers.map(item=>item.name).join(", ")}</span>}<MoneyDisplay className="mt-1 block text-[11px] text-[var(--foreground-muted)]">{formatMinor(line.lineTotalMinor,currency)}</MoneyDisplay></span><QuantityStepper label={line.name} value={line.quantity} minimum={0} onDecrease={()=>line.quantity===1?removeLine.mutate(line.id):setQuantity.mutate({lineId:line.id,quantity:line.quantity-1})} onIncrease={()=>setQuantity.mutate({lineId:line.id,quantity:line.quantity+1})}/></OrderLine>)}</ul>
       </OrderRail>
     </div>
     {configuring&&<ItemModifierDialog product={configuring} currency={configuring.currency} onCancel={()=>setConfiguring(null)} onConfirm={selection=>confirmModifiers(configuring,selection)}/>}
+    {cashOpen&&order&&settleCash&&<LocalCashSettlementDialog amountDueMinor={order.totalMinor} currency={currency} busy={settleCash.isPending} error={settleCash.isError} onCancel={()=>setCashOpen(false)} onConfirm={amount=>settleCash.mutate(amount,{onSuccess:result=>{setCashSaved(result);setCashOpen(false);setTableLabel("");setNotes("");void draft.refetch()}})}/>}
   </div>
 }

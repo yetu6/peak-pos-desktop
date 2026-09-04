@@ -1,5 +1,7 @@
 export interface SignedAuthorizationBundle {
-  keyId: string;
+  kid: string;
+  algorithm: "Ed25519";
+  signatureVersion: 1;
   payloadB64: string;
   signatureB64: string;
 }
@@ -26,7 +28,11 @@ export interface TerminalBinding {
   pairedAtMs: number;
 }
 
-export interface SignedTerminalLifecycleEvent extends SignedAuthorizationBundle {}
+export interface SignedTerminalLifecycleEvent {
+  keyId: string;
+  payloadB64: string;
+  signatureB64: string;
+}
 
 export interface OfflineAuthenticationResult {
   state:
@@ -42,6 +48,11 @@ export interface OfflineAuthenticationResult {
   leaseId?: string;
   expiresAtMs?: number;
   retryAfterMs?: number;
+  terminalId?: string;
+  propertyId?: string;
+  outletId?: string;
+  registerId?: string;
+  permissions?: string[];
 }
 
 export interface OfflineEligibilityStatus {
@@ -72,6 +83,7 @@ export interface OfflineAuthority {
   applyLifecycleEvent(envelope: SignedTerminalLifecycleEvent): Promise<void>;
   stageAuthorization(envelope: SignedAuthorizationBundle): Promise<AuthorizationStageResult>;
   authenticateStaff(staffId: string, pin: string): Promise<OfflineAuthenticationResult>;
+  staffRoster?(): Promise<Array<{staffId:string;displayName:string}>>;
   eligibilityStatus(staffId?: string): Promise<OfflineEligibilityStatus>;
   clearStaffSession(): Promise<void>;
 }
@@ -88,6 +100,7 @@ export function createNativeOfflineAuthority(invoke: Invoke): OfflineAuthority {
       invoke("stage_offline_authorization", { envelope }) as Promise<AuthorizationStageResult>,
     authenticateStaff: (staffId, pin) =>
       invoke("authenticate_offline_staff", { staffId, pin }) as Promise<OfflineAuthenticationResult>,
+    staffRoster: () => invoke("get_offline_staff_roster") as Promise<Array<{staffId:string;displayName:string}>>,
     eligibilityStatus: (staffId) =>
       invoke("offline_eligibility_status", { staffId }) as Promise<OfflineEligibilityStatus>,
     clearStaffSession: () => invoke("clear_active_staff_session") as Promise<void>,
