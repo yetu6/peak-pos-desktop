@@ -1,5 +1,7 @@
 # Peak POS Desktop — Master Operations Specification
 
+> **Superseded by [PEAK_TERMINAL_MASTER_OPERATIONS.md](./PEAK_TERMINAL_MASTER_OPERATIONS.md)** for product, operator-flow, UX, lifecycle, and acceptance decisions. Retained for historical engineering detail and phase context.
+
 Status: **Proposed canonical V1 specification — review required**
 
 Design language: **Peak Terminal**
@@ -197,7 +199,9 @@ Primary terminal destinations:
 - Status: Sync Center, device, catalog, printers, safe diagnostics;
 - Lock/Switch Staff.
 
-Management of catalogs, devices, users/access, reporting, and reconciliation exceptions belongs in Hospitality Web. A generic Manager dashboard and uncertified Kitchen/KDS destination MUST NOT be retained merely because they exist today.
+Management of catalogs, devices, users/access, reporting, and reconciliation exceptions belongs in Hospitality Web.
+
+> **Superseded:** `PEAK_TERMINAL_MASTER_OPERATIONS.md` §5.2–5.3, §30, and §41 resolve this in the other direction — Manager and Kitchen/Service Display are locked-in, first-class Terminal modes (role/workflow-gated, per `PEAK_POS_DESKTOP_ACTION_MATRIX.md` ORD-14), not destinations to be removed. The Terminal manager workspace and kitchen/service surface are retained and finished, not deleted.
 
 | Viewport | Navigation | Order rail | Catalog |
 |---|---:|---:|---|
