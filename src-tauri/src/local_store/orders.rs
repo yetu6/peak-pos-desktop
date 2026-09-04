@@ -44,6 +44,7 @@ pub struct AddOrderItemIntent {
 pub struct LocalOrderModifierView {
     pub id: String,
     pub option_id: String,
+    pub group_name: String,
     pub name: String,
     pub price_delta_minor: i64,
 }
@@ -77,6 +78,18 @@ pub struct LocalOrderView {
     pub total_minor: i64,
     pub order_number: Option<String>,
     pub lines: Vec<LocalOrderLineView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OfflineCashCommitResult {
+    pub order: LocalOrderView,
+    pub local_settlement_id: String,
+    pub amount_due_minor: i64,
+    pub cash_received_minor: i64,
+    pub change_minor: i64,
+    pub operation_id: String,
+    pub sync_state: String,
 }
 
 #[derive(Debug)]
@@ -182,13 +195,16 @@ impl LocalStore {
         }
         let (name,price,tax_rate):(String,i64,i64)=tx.query_row("SELECT name,price_minor,tax_rate_bp FROM catalog_products WHERE snapshot_id=?1 AND product_id=?2 AND is_available=1",params![snapshot,intent.product_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(classify_sql_error)?.ok_or(LocalStoreError::InvalidOrder)?;
         let groups = read_group_constraints(&tx, &snapshot, &intent.product_id)?;
-        let mut selected_by_group: HashMap<String, Vec<(String, String, i64)>> = HashMap::new();
+        let mut selected_by_group: HashMap<String, Vec<(String, String, i64, String)>> =
+            HashMap::new();
         for option_id in &intent.modifier_option_ids {
-            let row=tx.query_row("SELECT o.group_id,o.name,o.price_delta_minor FROM catalog_modifier_options o JOIN catalog_modifier_groups g ON g.snapshot_id=o.snapshot_id AND g.group_id=o.group_id WHERE o.snapshot_id=?1 AND o.option_id=?2 AND o.is_available=1 AND g.is_active=1 AND g.product_id=?3",params![snapshot,option_id,intent.product_id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?))).optional().map_err(classify_sql_error)?.ok_or(LocalStoreError::InvalidOrder)?;
-            selected_by_group
-                .entry(row.0)
-                .or_default()
-                .push((option_id.clone(), row.1, row.2));
+            let row=tx.query_row("SELECT o.group_id,o.name,o.price_delta_minor,g.name FROM catalog_modifier_options o JOIN catalog_modifier_groups g ON g.snapshot_id=o.snapshot_id AND g.group_id=o.group_id WHERE o.snapshot_id=?1 AND o.option_id=?2 AND o.is_available=1 AND g.is_active=1 AND g.product_id=?3",params![snapshot,option_id,intent.product_id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?,r.get::<_,String>(3)?))).optional().map_err(classify_sql_error)?.ok_or(LocalStoreError::InvalidOrder)?;
+            selected_by_group.entry(row.0.clone()).or_default().push((
+                option_id.clone(),
+                row.1,
+                row.2,
+                row.3,
+            ));
         }
         for (group, min, max) in groups {
             let count = selected_by_group.get(&group).map_or(0, Vec::len) as i64;
@@ -210,8 +226,8 @@ impl LocalStore {
         let evidence = serde_json::to_vec(&priced).map_err(|_| LocalStoreError::InvalidOrder)?;
         let modifier_total = checked_modifier_total(&deltas)?;
         tx.execute("INSERT INTO order_lines(local_line_id,local_order_id,product_id,product_name_snapshot,quantity,unit_price_minor,modifier_total_minor,line_total_minor,pricing_evidence,position) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",params![line_id,intent.order_id,intent.product_id,name,intent.quantity,priced.unit_total_minor,modifier_total,priced.line_total_minor,evidence,position]).map_err(classify_sql_error)?;
-        for (position, (option_id, name, delta)) in selected.iter().enumerate() {
-            tx.execute("INSERT INTO order_modifiers(local_modifier_id,local_line_id,modifier_id,modifier_name_snapshot,price_delta_minor,position) VALUES (?1,?2,?3,?4,?5,?6)",params![random_id("mod")?,line_id,option_id,name,delta,position as i64]).map_err(classify_sql_error)?;
+        for (position, (option_id, name, delta, group_name)) in selected.iter().enumerate() {
+            tx.execute("INSERT INTO order_modifiers(local_modifier_id,local_line_id,modifier_id,modifier_name_snapshot,price_delta_minor,position,modifier_group_name_snapshot) VALUES (?1,?2,?3,?4,?5,?6,?7)",params![random_id("mod")?,line_id,option_id,name,delta,position as i64,group_name]).map_err(classify_sql_error)?;
         }
         update_totals_and_version(&tx, &intent.order_id, intent.expected_version, now_ms)?;
         tx.commit().map_err(classify_sql_error)?;
@@ -486,6 +502,231 @@ impl LocalStore {
         tx.commit().map_err(classify_sql_error)?;
         self.get_order_draft(order_id)
     }
+
+    pub fn commit_offline_cash_sale<F>(
+        &mut self,
+        order_id: &str,
+        expected_version: i64,
+        cash_received_minor: i64,
+        now_ms: i64,
+        signer: F,
+    ) -> Result<OfflineCashCommitResult, LocalStoreError>
+    where
+        F: FnOnce(&[u8]) -> Result<Vec<u8>, LocalStoreError>,
+    {
+        let (staff_id, session_lease) = self.active_staff(now_ms)?;
+        let staff_id = staff_id.to_string();
+        let session_lease = session_lease.to_string();
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(classify_sql_error)?;
+        let (order_staff, snapshot) = draft_identity(&tx, order_id, expected_version)?;
+        if order_staff != staff_id {
+            return Err(LocalStoreError::OperationNotAllowed);
+        }
+        let auth = authority_context(&tx, &staff_id, "CASH_SETTLE", now_ms)?;
+        require_session_lease(&auth, &session_lease)?;
+        if auth.snapshot_id != snapshot {
+            return Err(LocalStoreError::CatalogRequired);
+        }
+        let view = read_order(&tx, order_id)?;
+        if view.lines.is_empty() || view.total_minor <= 0 || cash_received_minor < view.total_minor
+        {
+            return Err(LocalStoreError::InvalidOrder);
+        }
+        let change_minor = cash_received_minor
+            .checked_sub(view.total_minor)
+            .ok_or(LocalStoreError::InvalidOrder)?;
+        let limits:(i64,i64,i64,i64,i64,i64)=tx.query_row(
+            "SELECT used_operation_count,max_operation_count,used_gross_minor,max_gross_minor,used_cash_minor,max_cash_minor FROM authorization_bundles WHERE bundle_id=?1",
+            [&auth.bundle_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?))
+        ).map_err(classify_sql_error)?;
+        if limits.0 >= limits.1
+            || limits
+                .2
+                .checked_add(view.total_minor)
+                .is_none_or(|v| v > limits.3)
+            || limits
+                .4
+                .checked_add(view.total_minor)
+                .is_none_or(|v| v > limits.5)
+        {
+            return Err(LocalStoreError::LimitExceeded);
+        }
+        let (last_sequence,previous):(i64,Option<String>)=tx.query_row("SELECT last_sequence,last_operation_hash FROM sequence_state WHERE device_id=?1 AND identity_epoch=?2",params![auth.terminal_id,auth.credential_epoch],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(classify_sql_error)?.unwrap_or((0,None));
+        let sequence = last_sequence
+            .checked_add(1)
+            .ok_or(LocalStoreError::LimitExceeded)?;
+        let operation_id = random_id("op")?;
+        let settlement_id = random_id("set")?;
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct ModifierEvidence<'a> {
+            id: &'a str,
+            option_id: &'a str,
+            group_name: &'a str,
+            name: &'a str,
+            price_delta_minor: i64,
+        }
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct LineEvidence<'a> {
+            id: &'a str,
+            product_id: &'a str,
+            name: &'a str,
+            quantity: i64,
+            unit_price_minor: i64,
+            tax_minor: i64,
+            line_total_minor: i64,
+            modifiers: Vec<ModifierEvidence<'a>>,
+        }
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct OrderEvidence<'a> {
+            id: &'a str,
+            service_type: &'a str,
+            table_label: &'a Option<String>,
+            notes: &'a Option<String>,
+            currency: &'a str,
+            subtotal_minor: i64,
+            tax_minor: i64,
+            total_minor: i64,
+            lines: Vec<LineEvidence<'a>>,
+        }
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct SettlementEvidence<'a> {
+            id: &'a str,
+            currency: &'a str,
+            amount_due_minor: i64,
+            cash_received_minor: i64,
+            change_minor: i64,
+        }
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct CashCommit<'a> {
+            operation_type: &'static str,
+            operation_id: &'a str,
+            device_id: &'a str,
+            identity_epoch: i64,
+            sequence: i64,
+            lease_id: &'a str,
+            staff_id: &'a str,
+            shift_id: &'a str,
+            business_date: &'a str,
+            property_id: &'a str,
+            outlet_id: &'a str,
+            register_id: &'a str,
+            catalog_snapshot_id: &'a str,
+            catalog_version: &'a str,
+            catalog_digest: &'a str,
+            committed_at_ms: i64,
+            order: OrderEvidence<'a>,
+            settlement: SettlementEvidence<'a>,
+        }
+        let lines = view
+            .lines
+            .iter()
+            .map(|line| LineEvidence {
+                id: &line.id,
+                product_id: &line.product_id,
+                name: &line.name,
+                quantity: line.quantity,
+                unit_price_minor: line.unit_price_minor,
+                tax_minor: line.pricing.line_tax_minor,
+                line_total_minor: line.line_total_minor,
+                modifiers: line
+                    .modifiers
+                    .iter()
+                    .map(|m| ModifierEvidence {
+                        id: &m.id,
+                        option_id: &m.option_id,
+                        group_name: &m.group_name,
+                        name: &m.name,
+                        price_delta_minor: m.price_delta_minor,
+                    })
+                    .collect(),
+            })
+            .collect();
+        let payload = serde_json::to_vec(&CashCommit {
+            operation_type: "OFFLINE_CASH_SALE_COMMIT",
+            operation_id: &operation_id,
+            device_id: &auth.terminal_id,
+            identity_epoch: auth.credential_epoch,
+            sequence,
+            lease_id: &auth.lease_id,
+            staff_id: &staff_id,
+            shift_id: &auth.shift_id,
+            business_date: &auth.business_date,
+            property_id: &auth.property_id,
+            outlet_id: &auth.outlet_id,
+            register_id: &auth.register_id,
+            catalog_snapshot_id: &snapshot,
+            catalog_version: &auth.catalog_version,
+            catalog_digest: &auth.catalog_digest,
+            committed_at_ms: now_ms,
+            order: OrderEvidence {
+                id: &view.id,
+                service_type: &view.service_type,
+                table_label: &view.table_label,
+                notes: &view.notes,
+                currency: &view.currency,
+                subtotal_minor: view.subtotal_minor,
+                tax_minor: view.tax_minor,
+                total_minor: view.total_minor,
+                lines,
+            },
+            settlement: SettlementEvidence {
+                id: &settlement_id,
+                currency: &view.currency,
+                amount_due_minor: view.total_minor,
+                cash_received_minor,
+                change_minor,
+            },
+        })
+        .map_err(|_| LocalStoreError::InvalidOrder)?;
+        let payload_hash = hex_digest(&payload);
+        let mut hash_input = Vec::new();
+        hash_input.extend_from_slice(OPERATION_DOMAIN);
+        hash_input.extend_from_slice(auth.terminal_id.as_bytes());
+        hash_input.push(0);
+        hash_input.extend_from_slice(auth.credential_epoch.to_string().as_bytes());
+        hash_input.push(0);
+        hash_input.extend_from_slice(sequence.to_string().as_bytes());
+        hash_input.push(0);
+        if let Some(v) = &previous {
+            hash_input.extend_from_slice(v.as_bytes())
+        };
+        hash_input.push(0);
+        hash_input.extend_from_slice(payload_hash.as_bytes());
+        let operation_hash = hex_digest(&hash_input);
+        let hash_bytes = decode_hex(&operation_hash)?;
+        let mut signature_message = Vec::with_capacity(OPERATION_DOMAIN.len() + hash_bytes.len());
+        signature_message.extend_from_slice(OPERATION_DOMAIN);
+        signature_message.extend_from_slice(&hash_bytes);
+        let signature = signer(&signature_message)?;
+        if signature.len() != 64 {
+            return Err(LocalStoreError::SigningFailure);
+        }
+        tx.execute("UPDATE orders SET state='SETTLED',immutable_committed=1,committed_at_ms=?1,updated_at_ms=?1,sync_state='SYNC_PENDING' WHERE local_order_id=?2 AND state='DRAFT' AND version=?3",params![now_ms,order_id,expected_version]).map_err(classify_sql_error)?;
+        let evidence_hash = hex_digest(&payload);
+        tx.execute("INSERT INTO cash_settlements(local_settlement_id,local_order_id,currency,amount_due_minor,cash_received_minor,change_minor,evidence_payload,evidence_hash,committed_at_ms,sync_state) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,'QUEUED')",params![settlement_id,order_id,view.currency,view.total_minor,cash_received_minor,change_minor,payload,evidence_hash,now_ms]).map_err(classify_sql_error)?;
+        tx.execute("INSERT INTO operations(operation_id,device_id,identity_epoch,sequence,operation_type,schema_version,lease_id,catalog_snapshot_id,payload,payload_hash,previous_operation_hash,operation_hash,device_signature,committed_at_ms) VALUES(?1,?2,?3,?4,'OFFLINE_CASH_SALE_COMMIT',1,?5,?6,?7,?8,?9,?10,?11,?12)",params![operation_id,auth.terminal_id,auth.credential_epoch,sequence,auth.lease_id,snapshot,payload,payload_hash,previous,operation_hash,signature,now_ms]).map_err(classify_sql_error)?;
+        tx.execute("INSERT INTO outbox(outbox_id,operation_id,state,created_at_ms,updated_at_ms) VALUES(?1,?2,'QUEUED',?3,?3)",params![random_id("out")?,operation_id,now_ms]).map_err(classify_sql_error)?;
+        tx.execute("INSERT INTO sequence_state(device_id,identity_epoch,last_sequence,last_operation_hash,updated_at_ms) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(device_id,identity_epoch) DO UPDATE SET last_sequence=excluded.last_sequence,last_operation_hash=excluded.last_operation_hash,updated_at_ms=excluded.updated_at_ms",params![auth.terminal_id,auth.credential_epoch,sequence,operation_hash,now_ms]).map_err(classify_sql_error)?;
+        tx.execute("UPDATE authorization_bundles SET used_operation_count=used_operation_count+1,used_gross_minor=used_gross_minor+?1,used_cash_minor=used_cash_minor+?1 WHERE bundle_id=?2",params![view.total_minor,auth.bundle_id]).map_err(classify_sql_error)?;
+        tx.commit().map_err(classify_sql_error)?;
+        Ok(OfflineCashCommitResult {
+            order: self.get_order_draft(order_id)?,
+            local_settlement_id: settlement_id,
+            amount_due_minor: view.total_minor,
+            cash_received_minor,
+            change_minor,
+            operation_id,
+            sync_state: "QUEUED".into(),
+        })
+    }
 }
 
 fn authority_context(
@@ -622,14 +863,15 @@ fn read_order(
         .map_err(classify_sql_error)?;
     drop(stmt);
     for row in rows {
-        let mut mods=connection.prepare("SELECT local_modifier_id,modifier_id,modifier_name_snapshot,price_delta_minor FROM order_modifiers WHERE local_line_id=?1 ORDER BY position").map_err(classify_sql_error)?;
+        let mut mods=connection.prepare("SELECT local_modifier_id,modifier_id,modifier_group_name_snapshot,modifier_name_snapshot,price_delta_minor FROM order_modifiers WHERE local_line_id=?1 ORDER BY position").map_err(classify_sql_error)?;
         let modifiers = mods
             .query_map([&row.0], |r| {
                 Ok(LocalOrderModifierView {
                     id: r.get(0)?,
                     option_id: r.get(1)?,
-                    name: r.get(2)?,
-                    price_delta_minor: r.get(3)?,
+                    group_name: r.get(2)?,
+                    name: r.get(3)?,
+                    price_delta_minor: r.get(4)?,
                 })
             })
             .map_err(classify_sql_error)?
@@ -710,7 +952,7 @@ mod tests {
         let mut store =
             LocalStore::open(&temp.path().join("orders.db"), &MemoryKeys::default()).unwrap();
         store.connection.execute_batch("INSERT INTO terminal_authority VALUES ('term',1,'prop','out','reg','key',zeroblob(32),x'01','PAIRED',1,0,1,1);
-        INSERT INTO authorization_bundles(bundle_id,terminal_id,credential_epoch,generation,lease_id,property_id,outlet_id,register_id,shift_id,business_date,catalog_version,catalog_digest,issued_at_ms,not_before_ms,refresh_after_ms,hard_expires_at_ms,revocation_generation,max_operation_count,max_gross_minor,max_cash_minor,allowed_operations_json,signing_key_id,signed_payload,signature,state,received_at_ms) VALUES ('bundle','term',1,1,'lease','prop','out','reg','shift','2026-09-03','v1','digest',1,1,9000,10000,0,10,1000000,1000000,'[\"ORDER_DRAFT\",\"ORDER_COMMIT\"]','key',x'01',zeroblob(64),'ACTIVE',1);
+        INSERT INTO authorization_bundles(bundle_id,terminal_id,credential_epoch,generation,lease_id,property_id,outlet_id,register_id,shift_id,business_date,catalog_version,catalog_digest,issued_at_ms,not_before_ms,refresh_after_ms,hard_expires_at_ms,revocation_generation,max_operation_count,max_gross_minor,max_cash_minor,allowed_operations_json,signing_key_id,signed_payload,signature,state,received_at_ms) VALUES ('bundle','term',1,1,'lease','prop','out','reg','shift','2026-09-03','v1','digest',1,1,9000,10000,0,10,1000000,1000000,'[\"ORDER_DRAFT\",\"ORDER_COMMIT\",\"CASH_SETTLE\"]','key',x'01',zeroblob(64),'ACTIVE',1);
         INSERT INTO offline_staff_verifiers(bundle_id,staff_id,display_name,verifier_phc,permissions_json,expires_at_ms,max_attempts,base_lockout_ms) VALUES ('bundle','staff','Cashier','x','[\"pos.order.create\"]',10000,5,1000);
         INSERT INTO shift_authority VALUES ('bundle','shift','[\"staff\"]','ACTIVE',1,NULL);
         INSERT INTO authorization_clock_anchor VALUES (1,1,1,1,1);
@@ -831,6 +1073,53 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM operations", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn offline_cash_commit_is_one_financial_fact_and_one_outbox_operation() {
+        let (_temp, mut store) = seeded();
+        let draft = store
+            .get_or_create_order_draft(
+                CreateOrderDraftIntent {
+                    service_type: "DINE_IN".into(),
+                    table_label: None,
+                    notes: None,
+                },
+                100,
+            )
+            .unwrap();
+        let priced = store
+            .add_order_item(
+                AddOrderItemIntent {
+                    order_id: draft.id.clone(),
+                    expected_version: draft.version,
+                    product_id: "tea".into(),
+                    quantity: 1,
+                    modifier_option_ids: vec!["oat".into()],
+                },
+                200,
+            )
+            .unwrap();
+        let result = store
+            .commit_offline_cash_sale(&priced.id, priced.version, 20_000, 300, |_| Ok(vec![9; 64]))
+            .unwrap();
+        assert_eq!(
+            (result.amount_due_minor, result.change_minor),
+            (14_160, 5_840)
+        );
+        assert_eq!(result.order.state, "SETTLED");
+        let facts: (i64, i64, i64, String) = store.connection.query_row(
+            "SELECT (SELECT count(*) FROM cash_settlements),(SELECT count(*) FROM operations),(SELECT count(*) FROM outbox),(SELECT operation_type FROM operations)", [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        ).unwrap();
+        assert_eq!(facts, (1, 1, 1, "OFFLINE_CASH_SALE_COMMIT".into()));
+        let payload: Vec<u8> = store
+            .connection
+            .query_row("SELECT payload FROM operations", [], |r| r.get(0))
+            .unwrap();
+        let evidence: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(evidence["settlement"]["cashReceivedMinor"], 20_000);
+        assert_eq!(evidence["order"]["totalMinor"], 14_160);
     }
 
     #[test]

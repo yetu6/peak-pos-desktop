@@ -29,6 +29,18 @@ pub struct OfflineAuthenticationResult {
     pub lease_id: Option<String>,
     pub expires_at_ms: Option<i64>,
     pub retry_after_ms: Option<i64>,
+    pub terminal_id: Option<String>,
+    pub property_id: Option<String>,
+    pub outlet_id: Option<String>,
+    pub register_id: Option<String>,
+    pub permissions: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OfflineStaffRosterEntry {
+    pub staff_id: String,
+    pub display_name: String,
 }
 
 struct OfflineVerifierRow {
@@ -48,9 +60,32 @@ struct OfflineVerifierRow {
     attempts: i64,
     locked_until_ms: Option<i64>,
     revoked_at_ms: Option<i64>,
+    terminal_id: String,
+    property_id: String,
+    outlet_id: String,
+    register_id: String,
+    permissions_json: String,
 }
 
 impl LocalStore {
+    pub fn offline_staff_roster(
+        &self,
+        now_ms: i64,
+    ) -> Result<Vec<OfflineStaffRosterEntry>, LocalStoreError> {
+        let mut statement=self.connection.prepare("SELECT v.staff_id,v.display_name FROM offline_staff_verifiers v JOIN authorization_bundles b ON b.bundle_id=v.bundle_id JOIN terminal_authority t ON t.terminal_id=b.terminal_id AND t.credential_epoch=b.credential_epoch AND t.is_current=1 JOIN shift_authority s ON s.bundle_id=b.bundle_id WHERE b.state='ACTIVE' AND t.lifecycle_state='PAIRED' AND s.state='ACTIVE' AND v.revoked_at_ms IS NULL AND b.not_before_ms<=?1 AND b.hard_expires_at_ms>=?1 AND v.expires_at_ms>=?1 ORDER BY v.display_name").map_err(classify_sql_error)?;
+        let rows = statement
+            .query_map([now_ms], |row| {
+                Ok(OfflineStaffRosterEntry {
+                    staff_id: row.get(0)?,
+                    display_name: row.get(1)?,
+                })
+            })
+            .map_err(classify_sql_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(classify_sql_error)?;
+        Ok(rows)
+    }
+
     pub fn authenticate_offline_staff(
         &mut self,
         staff_id: &str,
@@ -107,7 +142,8 @@ pub(super) fn authenticate_offline_staff_impl(
                            WHERE c.version=b.catalog_version AND c.digest=b.catalog_digest
                              AND c.verification_state='VERIFIED'),
                     v.display_name,v.verifier_phc,v.expires_at_ms,v.max_attempts,
-                    v.base_lockout_ms,v.attempts,v.locked_until_ms,v.revoked_at_ms
+                    v.base_lockout_ms,v.attempts,v.locked_until_ms,v.revoked_at_ms,
+                    b.terminal_id,b.property_id,b.outlet_id,b.register_id,v.permissions_json
              FROM offline_staff_verifiers v
              JOIN authorization_bundles b ON b.bundle_id=v.bundle_id
              JOIN terminal_authority t ON t.terminal_id=b.terminal_id
@@ -134,6 +170,11 @@ pub(super) fn authenticate_offline_staff_impl(
                     attempts: row.get(13)?,
                     locked_until_ms: row.get(14)?,
                     revoked_at_ms: row.get(15)?,
+                    terminal_id: row.get(16)?,
+                    property_id: row.get(17)?,
+                    outlet_id: row.get(18)?,
+                    register_id: row.get(19)?,
+                    permissions_json: row.get(20)?,
                 })
             },
         )
@@ -204,6 +245,8 @@ pub(super) fn authenticate_offline_staff_impl(
         )
         .map_err(classify_sql_error)?;
     transaction.commit().map_err(classify_sql_error)?;
+    let permissions = serde_json::from_str(&row.permissions_json)
+        .map_err(|_| LocalStoreError::InvalidAuthorization)?;
     Ok(OfflineAuthenticationResult {
         state: OfflineAuthenticationState::Authenticated,
         staff_id: Some(staff_id.to_string()),
@@ -212,6 +255,11 @@ pub(super) fn authenticate_offline_staff_impl(
         lease_id: Some(row.lease_id),
         expires_at_ms: Some(row.hard_expires_at_ms.min(row.verifier_expires_at_ms)),
         retry_after_ms: None,
+        terminal_id: Some(row.terminal_id),
+        property_id: Some(row.property_id),
+        outlet_id: Some(row.outlet_id),
+        register_id: Some(row.register_id),
+        permissions,
     })
 }
 
@@ -224,6 +272,11 @@ fn result(state: OfflineAuthenticationState) -> OfflineAuthenticationResult {
         lease_id: None,
         expires_at_ms: None,
         retry_after_ms: None,
+        terminal_id: None,
+        property_id: None,
+        outlet_id: None,
+        register_id: None,
+        permissions: Vec::new(),
     }
 }
 

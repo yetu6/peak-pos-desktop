@@ -215,7 +215,10 @@ export function DeviceSessionProvider({
 		const terminalId = current.terminalId ?? current.deviceCode;
 		const credential = current.deviceCredential ?? current.deviceCode;
 		if (!terminalId || !credential) { setRoster([]); return; }
-		setRoster(await fetchStaffRoster(peakUrl, terminalId, credential));
+    const online=await fetchStaffRoster(peakUrl,terminalId,credential);
+    if(online.length>0){setRoster(online);return}
+    const local=await offlineAuthorityRef.current?.staffRoster?.().catch(()=>[]);
+    setRoster((local??[]).map(entry=>({fullName:entry.displayName,staffNumber:entry.staffId})));
   }, [peakUrl]);
 
   useEffect(() => {
@@ -484,6 +487,9 @@ export function DeviceSessionProvider({
           localPosCoreRef.current ??= await loadLocalPosCore();
         }
         await bootstrapOperationalSession(peakUrl, next, {
+          installOfflineBootstrap: localPosCoreRef.current
+            ? (terminalId, propertyId, outletId, bootstrap) => localPosCoreRef.current!.installBootstrap(terminalId, propertyId, outletId, bootstrap)
+            : undefined,
           stageOfflineAuthorization: offlineAuthorityRef.current
             ? (envelope) => offlineAuthorityRef.current!.stageAuthorization(envelope)
             : undefined,
@@ -550,7 +556,27 @@ export function DeviceSessionProvider({
               staffNumber.trim(),
             );
             setOfflineEligibility(eligibility);
-            if (local.state === "LOCKED") {
+            if (local.state === "AUTHENTICATED"&&local.staffId&&local.terminalId&&local.propertyId&&local.outletId&&local.expiresAtMs) {
+              const offlineSession:OperationalSession={
+                token:"",
+                expiresAt:new Date(local.expiresAtMs).toISOString(),
+                tenantId:"offline-local",
+                propertyId:local.propertyId,
+                outletId:local.outletId,
+                terminalId:local.terminalId,
+                staffId:local.staffId,
+                assurance:"RESTRICTED",
+                mode:"offline-cash",
+                terminalName:current.terminalName,
+                capabilities:["CORE","POS"],
+                permissions:local.permissions??[],
+              };
+              setOperationalSession(offlineSession);
+              setSession(offlineSession);
+              armExpiry(offlineSession);
+              setPhase("ready");
+              return;
+            } else if (local.state === "LOCKED") {
               setError("Offline PIN locked. Reconnect to Peak or wait before retrying.");
             } else if (local.state === "DENIED") {
               setError("That staff number or offline PIN was not accepted.");

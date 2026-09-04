@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
 
 mod authority;
+mod bootstrap;
 mod catalog;
 mod eligibility;
 mod migrations;
@@ -17,10 +18,14 @@ mod offline_pin;
 mod orders;
 mod pricing;
 pub mod runtime;
+mod sync;
 
 pub use authority::{
     AuthorizationPayload, AuthorizationStageResult, SignedAuthorizationBundle,
     SignedTerminalLifecycleEvent, StaffVerifierPayload, TerminalBinding, TerminalLifecyclePayload,
+};
+pub use bootstrap::{
+    OfflineBootstrapResult, OfflinePublicKey, OfflinePublicKeyset, ServerOfflineBootstrap,
 };
 pub use catalog::{
     CatalogActivationResult, CatalogCategoryView, CatalogModifierGroupView,
@@ -28,11 +33,14 @@ pub use catalog::{
     SignedCatalogSnapshot,
 };
 pub use eligibility::{OfflineEligibilityState, OfflineEligibilityStatus};
-pub use offline_pin::{OfflineAuthenticationResult, OfflineAuthenticationState};
+pub use offline_pin::{
+    OfflineAuthenticationResult, OfflineAuthenticationState, OfflineStaffRosterEntry,
+};
 pub use orders::{
     AddOrderItemIntent, CreateOrderDraftIntent, LocalOrderLineView, LocalOrderModifierView,
-    LocalOrderView, UpdateOrderContextIntent,
+    LocalOrderView, OfflineCashCommitResult, UpdateOrderContextIntent,
 };
+pub use sync::{ReconcileResponse, SyncState};
 
 const KEY_BYTES: usize = 32;
 const KEY_ENVELOPE_VERSION: u32 = 1;

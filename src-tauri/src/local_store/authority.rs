@@ -40,7 +40,10 @@ pub struct TerminalBinding {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SignedAuthorizationBundle {
+    #[serde(rename = "kid", alias = "keyId")]
     pub key_id: String,
+    pub algorithm: String,
+    pub signature_version: u32,
     pub payload_b64: String,
     pub signature_b64: String,
 }
@@ -93,7 +96,9 @@ pub struct AuthorizationPayload {
     pub max_gross_minor: i64,
     pub max_cash_minor: i64,
     pub allowed_operations: Vec<String>,
+    pub tender_methods: Vec<String>,
     pub shift_opened_at_ms: i64,
+    pub property_timezone: String,
     pub staff: Vec<StaffVerifierPayload>,
 }
 
@@ -207,6 +212,9 @@ impl LocalStore {
         envelope: SignedAuthorizationBundle,
         received_at_ms: i64,
     ) -> Result<AuthorizationStageResult, LocalStoreError> {
+        if envelope.algorithm != "Ed25519" || envelope.signature_version != 1 {
+            return Err(LocalStoreError::InvalidAuthorization);
+        }
         let payload_bytes = Zeroizing::new(decode_b64(&envelope.payload_b64)?);
         let signature = Signature::from_slice(&decode_fixed::<64>(&envelope.signature_b64)?)
             .map_err(|_| LocalStoreError::InvalidAuthorization)?;
@@ -239,7 +247,6 @@ impl LocalStore {
             .map_err(classify_sql_error)?
             .ok_or(LocalStoreError::AuthorizationRequired)?;
         if authority.8 != "PAIRED"
-            || envelope.key_id != authority.5
             || payload.terminal_id != authority.0
             || payload.credential_epoch != authority.1
             || payload.property_id != authority.2
@@ -249,8 +256,33 @@ impl LocalStore {
         {
             return Err(LocalStoreError::InvalidAuthorization);
         }
-        let public_key: [u8; 32] = authority
-            .6
+        let trusted = self.connection.query_row(
+            "SELECT public_key,state,not_before_ms,not_after_ms FROM trusted_signing_keys WHERE kid=?1",
+            [&envelope.key_id], |row| Ok((row.get::<_,Vec<u8>>(0)?,row.get::<_,String>(1)?,row.get::<_,i64>(2)?,row.get::<_,i64>(3)?)),
+        ).optional().map_err(classify_sql_error)?;
+        let has_keyset: bool = self
+            .connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM trusted_signing_keys)",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(classify_sql_error)?;
+        let key_bytes = match trusted {
+            Some((key, state, not_before, not_after))
+                if state != "REVOKED"
+                    && payload.issued_at_ms >= not_before
+                    && payload.issued_at_ms < not_after
+                    && received_at_ms >= not_before
+                    && received_at_ms < not_after =>
+            {
+                key
+            }
+            Some(_) => return Err(LocalStoreError::InvalidAuthorization),
+            None if !has_keyset && envelope.key_id == authority.5 => authority.6,
+            None => return Err(LocalStoreError::InvalidAuthorization),
+        };
+        let public_key: [u8; 32] = key_bytes
             .try_into()
             .map_err(|_| LocalStoreError::InvalidAuthorization)?;
         let verifying_key = VerifyingKey::from_bytes(&public_key)
@@ -305,6 +337,14 @@ impl LocalStore {
                 "UPDATE authorization_bundles SET state='SUPERSEDED'
                  WHERE terminal_id=?1 AND state IN ('STAGED','ACTIVE')",
                 [&payload.terminal_id],
+            )
+            .map_err(classify_sql_error)?;
+        transaction
+            .execute(
+                "DELETE FROM offline_staff_verifiers
+                 WHERE expires_at_ms<?1 OR bundle_id IN
+                   (SELECT bundle_id FROM authorization_bundles WHERE state='SUPERSEDED')",
+                [received_at_ms],
             )
             .map_err(classify_sql_error)?;
         transaction
@@ -604,15 +644,17 @@ fn validate_payload(payload: &AuthorizationPayload) -> Result<(), LocalStoreErro
         || payload.generation <= 0
         || payload.credential_epoch <= 0
         || payload.revocation_generation < 0
-        || payload.max_operation_count < 0
-        || payload.max_gross_minor < 0
-        || payload.max_cash_minor < 0
+        || payload.max_operation_count <= 0
+        || payload.max_gross_minor <= 0
+        || payload.max_cash_minor <= 0
         || payload.not_before_ms < payload.issued_at_ms
         || payload.refresh_after_ms < payload.not_before_ms
         || payload.hard_expires_at_ms <= payload.refresh_after_ms
         || payload.server_time_ms < payload.issued_at_ms
         || payload.staff.is_empty()
         || payload.allowed_operations.is_empty()
+        || payload.tender_methods != ["CASH"]
+        || payload.property_timezone.trim().is_empty()
         || unique_operations.len() != payload.allowed_operations.len()
         || payload
             .allowed_operations

@@ -339,6 +339,25 @@ describe("DeviceSessionProvider", () => {
     expect(getOperationalSession()).toBeNull();
   });
 
+  it("enters an operational local session when the certified offline verifier authenticates", async () => {
+    const keys=await generateDeviceKeyPair();
+    const store=memoryStore(JSON.stringify({...keys,terminalId:"terminal-1",deviceCredential:"device-secret",approved:true,terminalName:"Bar 1"}));
+    vi.stubGlobal("fetch",vi.fn(async()=>{throw new TypeError("Failed to fetch")}));
+    const offlineAuthority:OfflineAuthority={
+      bindTerminal:vi.fn(),applyLifecycleEvent:vi.fn(),stageAuthorization:vi.fn(),clearStaffSession:vi.fn(async()=>undefined),
+      authenticateStaff:vi.fn(async()=>({state:"AUTHENTICATED" as const,staffId:"staff-1",displayName:"Cashier",shiftId:"shift-1",leaseId:"lease-1",expiresAtMs:Date.now()+60_000,terminalId:"terminal-1",propertyId:"property-1",outletId:"outlet-1",registerId:"register-1",permissions:["pos.order.create","pos.payment.record"]})),
+      eligibilityStatus:vi.fn(async()=>({state:"ELIGIBLE" as const})),
+    };
+    renderSession(store,undefined,offlineAuthority);
+    expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+    await userEvent.click(screen.getByTestId("unlock"));
+    await waitFor(()=>expect(screen.getByTestId("shell")).toHaveTextContent("OPERATIONAL"));
+    expect(screen.getByTestId("property")).toHaveTextContent("property-1");
+    expect(screen.getByTestId("outlet")).toHaveTextContent("outlet-1");
+    expect(getOperationalSession()?.mode).toBe("offline-cash");
+    expect(getOperationalSession()?.token).toBe("");
+  });
+
   it("persists the pending proof and accepts only the terminal id approved by Peak", async () => {
     const store = memoryStore();
     const future = new Date(Date.now() + 120_000).toISOString();
