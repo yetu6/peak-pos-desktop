@@ -35,12 +35,12 @@ export function Manager() {
 
   return (
     <div className="space-y-5">
-      <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Manager</h2>
+      <h2 className="text-lg font-semibold text-[var(--foreground)]">Manager</h2>
 
       {canRecordCash ? (
         <div className="glass-panel p-4">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-[var(--color-text-primary)]">Cash movements</div>
+            <div className="text-sm font-semibold text-[var(--foreground)]">Cash movements</div>
             <button
               data-testid="open-cash-movement"
               onClick={() => setRecordingMovement(true)}
@@ -51,11 +51,11 @@ export function Manager() {
               Cash in / out
             </button>
           </div>
-          {!shift && <p className="mt-2 text-[12px] text-[var(--color-text-muted)]">Open a shift to record cash movements.</p>}
+          {!shift && <p className="mt-2 text-[12px] text-[var(--foreground-muted)]">Open a shift to record cash movements.</p>}
           {shift && (
             <ul className="mt-3 space-y-1 text-[13px]" data-testid="cash-movement-list">
               {(movements.data ?? []).length === 0 ? (
-                <li className="text-[12px] text-[var(--color-text-muted)]">No cash movements this shift.</li>
+                <li className="text-[12px] text-[var(--foreground-muted)]">No cash movements this shift.</li>
               ) : (
                 (movements.data ?? []).map((movement) => (
                   <li key={movement.id} className="flex items-baseline justify-between gap-2">
@@ -71,7 +71,7 @@ export function Manager() {
         </div>
       ) : (
         <div className="glass-panel p-4">
-          <p className="text-[12px] text-[var(--color-text-muted)]" data-testid="cash-movement-unavailable">
+          <p className="text-[12px] text-[var(--foreground-muted)]" data-testid="cash-movement-unavailable">
             Cash movements aren't available to this staff account. Ask a manager.
           </p>
         </div>
@@ -81,8 +81,8 @@ export function Manager() {
         <div className="glass-panel p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-sm font-semibold text-[var(--color-text-primary)]">POS day close</div>
-              <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
+              <div className="text-sm font-semibold text-[var(--foreground)]">POS day close</div>
+              <p className="mt-0.5 text-[11px] text-[var(--foreground-muted)]">
                 Advances the property's business date once every shift is closed.
               </p>
             </div>

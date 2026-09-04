@@ -19,27 +19,27 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
     <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="receipt-view">
       <div className="glass-dialog w-full max-w-sm p-5">
         <div className="flex items-start justify-between gap-3">
-          <div className="text-sm font-semibold text-[var(--color-text-primary)]">Receipt</div>
-          <button onClick={onClose} className="rounded-md p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-border-subtle)]" aria-label="Close">
+          <div className="text-sm font-semibold text-[var(--foreground)]">Receipt</div>
+          <button onClick={onClose} className="rounded-md p-1 text-[var(--foreground-muted)] hover:bg-[var(--border-subtle)]" aria-label="Close">
             <Icon name="x" size={16} />
           </button>
         </div>
 
-        {receipt.isLoading && <p className="mt-4 text-[12px] text-[var(--color-text-muted)]">Loading receipt…</p>}
+        {receipt.isLoading && <p className="mt-4 text-[12px] text-[var(--foreground-muted)]">Loading receipt…</p>}
         {receipt.isError && (
-          <p className="mt-4 text-[12px] text-[var(--color-text-muted)]" data-testid="receipt-error">
+          <p className="mt-4 text-[12px] text-[var(--foreground-muted)]" data-testid="receipt-error">
             Receipt unavailable.
           </p>
         )}
         {receipt.data && (
           <div className="mt-4 space-y-3" data-testid="receipt-document">
-            <div className="text-[12px] text-[var(--color-text-secondary)]">
+            <div className="text-[12px] text-[var(--foreground-muted)]">
               <div>{receipt.data.document.orderNumber}</div>
               <div>{receipt.data.document.outletName}</div>
               <div>{new Date(receipt.data.document.settledAt).toLocaleString()}</div>
               <div>{receipt.data.document.tenderMethod.replaceAll("_", " ")}</div>
             </div>
-            <ul className="space-y-1 border-y border-[var(--color-border-subtle)] py-2 text-[13px]">
+            <ul className="space-y-1 border-y border-[var(--border-subtle)] py-2 text-[13px]">
               {receipt.data.document.items.map((line, index) => (
                 <li key={index} className="flex items-baseline justify-between gap-2">
                   <span className="min-w-0 truncate">
@@ -60,13 +60,13 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
                 <span>Tax</span>
                 <span>{formatMinor(receipt.data.document.taxMinor, receipt.data.document.currency)}</span>
               </div>
-              <div className="flex justify-between font-semibold text-[var(--color-text-primary)]">
+              <div className="flex justify-between font-semibold text-[var(--foreground)]">
                 <span>Total</span>
                 <span>{formatMinor(receipt.data.document.totalMinor, receipt.data.document.currency)}</span>
               </div>
             </div>
             {receipt.data.reprintCount > 0 && (
-              <p className="text-[11px] text-[var(--color-text-muted)]">Reprinted {receipt.data.reprintCount}×</p>
+              <p className="text-[11px] text-[var(--foreground-muted)]">Reprinted {receipt.data.reprintCount}×</p>
             )}
           </div>
         )}

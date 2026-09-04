@@ -85,8 +85,8 @@ export function ItemModifierDialog({
           {groups.map((group) => (
             <div key={group.id}>
               <div className="flex items-baseline justify-between">
-                <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">{group.name}</span>
-                <span className="text-[11px] text-[var(--color-text-muted)]">
+                <span className="text-[12px] font-semibold text-[var(--foreground)]">{group.name}</span>
+                <span className="text-[11px] text-[var(--foreground-muted)]">
                   {group.minSelect > 0 ? `Choose ${group.minSelect}${group.maxSelect ? `–${group.maxSelect}` : "+"}` : "Optional"}
                 </span>
               </div>

@@ -154,7 +154,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
 
           {closed.length > 0 && (
             <div className="space-y-2">
-              <div className="pt-2 text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--color-text-muted)]">Settled this session</div>
+              <div className="pt-2 text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--foreground-muted)]">Settled this session</div>
               <div className="flex flex-wrap gap-2">
                 {closed.map((order) => (
                   <button

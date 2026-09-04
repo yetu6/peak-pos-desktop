@@ -100,7 +100,7 @@ export function Kitchen() {
       </div>
 
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Kitchen</h2>
+        <h2 className="text-lg font-semibold text-[var(--foreground)]">Kitchen</h2>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -144,17 +144,17 @@ export function Kitchen() {
             return (
               <div key={order.id} className={`ticket-card ${order.status.toLowerCase()}`} data-testid={`ticket-${order.id}`}>
                 <div className="flex items-start justify-between gap-2">
-                  <div className="text-sm font-semibold text-[var(--color-text-primary)]">{order.orderNumber}</div>
+                  <div className="text-sm font-semibold text-[var(--foreground)]">{order.orderNumber}</div>
                   <span className={`badge ${STATUS_BADGE[order.status] ?? "badge-muted"}`}>{order.status}</span>
                 </div>
-                <div className="text-[11px] text-[var(--color-text-muted)]">
+                <div className="text-[11px] text-[var(--foreground-muted)]">
                   {order.serviceType.replaceAll("_", " ")} · {order.tableLabel ?? "no table"}
                 </div>
-                <ul className="space-y-1 border-y border-[var(--color-border-subtle)] py-2 text-[13px]">
+                <ul className="space-y-1 border-y border-[var(--border-subtle)] py-2 text-[13px]">
                   {order.items.map((item) => (
                     <li key={item.id} className="flex items-baseline justify-between gap-2">
-                      <span className="min-w-0 truncate text-[var(--color-text)]">{item.name}</span>
-                      <span className="font-mono text-xs tabular-nums text-[var(--color-text-muted)]">×{item.quantity}</span>
+                      <span className="min-w-0 truncate text-[var(--foreground)]">{item.name}</span>
+                      <span className="font-mono text-xs tabular-nums text-[var(--foreground-muted)]">×{item.quantity}</span>
                     </li>
                   ))}
                 </ul>

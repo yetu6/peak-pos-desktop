@@ -36,15 +36,15 @@ export function RemoveItemDialog({
       <div className="glass-dialog w-full max-w-sm p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-[var(--color-text-primary)]">Remove {item.name}</div>
-            <div className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
+            <div className="text-sm font-semibold text-[var(--foreground)]">Remove {item.name}</div>
+            <div className="mt-0.5 text-[11px] text-[var(--foreground-muted)]">
               {order.orderNumber} · ×{item.quantity} · not yet sent
             </div>
           </div>
           <button
             data-testid="remove-item-close"
             onClick={onClose}
-            className="rounded-md p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-border-subtle)]"
+            className="rounded-md p-1 text-[var(--foreground-muted)] hover:bg-[var(--border-subtle)]"
             aria-label="Close"
           >
             <Icon name="x" size={16} />

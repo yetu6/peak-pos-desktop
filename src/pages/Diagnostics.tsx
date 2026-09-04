@@ -37,9 +37,9 @@ function Row({
   children: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border-subtle)] py-3 last:border-0">
-      <div className="text-[12px] font-medium text-[var(--color-text-secondary)]">{label}</div>
-      <div className="text-right text-[13px] text-[var(--color-text-primary)]" data-testid={testId}>
+    <div className="flex items-start justify-between gap-4 border-b border-[var(--border-subtle)] py-3 last:border-0">
+      <div className="text-[12px] font-medium text-[var(--foreground-muted)]">{label}</div>
+      <div className="text-right text-[13px] text-[var(--foreground)]" data-testid={testId}>
         {children}
       </div>
     </div>
@@ -88,8 +88,8 @@ export function Diagnostics() {
     <div className="space-y-5" data-testid="diagnostics">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Status</h1>
-          <p className="mt-0.5 text-[12px] text-[var(--color-text-muted)]">
+          <h1 className="text-lg font-semibold text-[var(--foreground)]">Status</h1>
+          <p className="mt-0.5 text-[12px] text-[var(--foreground-muted)]">
             Peak, realtime, and the printer — without secrets.
           </p>
         </div>

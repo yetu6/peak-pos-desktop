@@ -45,17 +45,17 @@ export function VoidOrderDialog({ order, onClose }: { order: POSOrder; onClose: 
       <div className="glass-dialog w-full max-w-sm p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-[var(--color-text-primary)]">Void {order.orderNumber}</div>
-            <div className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
+            <div className="text-sm font-semibold text-[var(--foreground)]">Void {order.orderNumber}</div>
+            <div className="mt-0.5 text-[11px] text-[var(--foreground-muted)]">
               Requires a different supervisor's PIN. This is a void, not a refund.
             </div>
           </div>
-          <button onClick={onClose} className="rounded-md p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-border-subtle)]" aria-label="Close">
+          <button onClick={onClose} className="rounded-md p-1 text-[var(--foreground-muted)] hover:bg-[var(--border-subtle)]" aria-label="Close">
             <Icon name="x" size={16} />
           </button>
         </div>
 
-        <label className="mt-4 block text-[12px] font-medium text-[var(--color-text-secondary)]">Supervisor</label>
+        <label className="mt-4 block text-[12px] font-medium text-[var(--foreground-muted)]">Supervisor</label>
         {roster.length > 0 ? (
           <select
             data-testid="void-supervisor-select"
@@ -80,7 +80,7 @@ export function VoidOrderDialog({ order, onClose }: { order: POSOrder; onClose: 
           />
         )}
 
-        <label className="mt-3 block text-[12px] font-medium text-[var(--color-text-secondary)]">Supervisor PIN</label>
+        <label className="mt-3 block text-[12px] font-medium text-[var(--foreground-muted)]">Supervisor PIN</label>
         <input
           data-testid="void-supervisor-pin"
           type="password"
@@ -91,7 +91,7 @@ export function VoidOrderDialog({ order, onClose }: { order: POSOrder; onClose: 
           className="input mt-1 w-full"
         />
 
-        <label className="mt-3 block text-[12px] font-medium text-[var(--color-text-secondary)]">Reason</label>
+        <label className="mt-3 block text-[12px] font-medium text-[var(--foreground-muted)]">Reason</label>
         <input
           data-testid="void-reason"
           value={reason}

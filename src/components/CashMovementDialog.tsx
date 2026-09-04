@@ -29,8 +29,8 @@ export function CashMovementDialog({ shiftId, onClose }: { shiftId: string; onCl
     <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="cash-movement-dialog">
       <div className="glass-dialog w-full max-w-sm p-5">
         <div className="flex items-start justify-between gap-3">
-          <div className="text-sm font-semibold text-[var(--color-text-primary)]">Cash movement</div>
-          <button onClick={onClose} className="rounded-md p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-border-subtle)]" aria-label="Close">
+          <div className="text-sm font-semibold text-[var(--foreground)]">Cash movement</div>
+          <button onClick={onClose} className="rounded-md p-1 text-[var(--foreground-muted)] hover:bg-[var(--border-subtle)]" aria-label="Close">
             <Icon name="x" size={16} />
           </button>
         </div>
@@ -43,8 +43,8 @@ export function CashMovementDialog({ shiftId, onClose }: { shiftId: string; onCl
               onClick={() => setMovementType(type)}
               className={`rounded-lg border px-2 py-2 text-[12px] font-medium ${
                 movementType === type
-                  ? "border-[var(--color-gold)] bg-[var(--color-gold)]/10 text-[var(--color-text-primary)]"
-                  : "border-[var(--color-border-subtle)] text-[var(--color-text-muted)]"
+                  ? "border-[var(--gold-accent)] bg-[var(--gold-accent)]/10 text-[var(--foreground)]"
+                  : "border-[var(--border-subtle)] text-[var(--foreground-muted)]"
               }`}
             >
               {type === "CASH_IN" ? "Cash in" : "Cash out"}
@@ -52,7 +52,7 @@ export function CashMovementDialog({ shiftId, onClose }: { shiftId: string; onCl
           ))}
         </div>
 
-        <label className="mt-4 block text-[12px] font-medium text-[var(--color-text-secondary)]">Amount</label>
+        <label className="mt-4 block text-[12px] font-medium text-[var(--foreground-muted)]">Amount</label>
         <input
           data-testid="movement-amount"
           type="number"
@@ -61,7 +61,7 @@ export function CashMovementDialog({ shiftId, onClose }: { shiftId: string; onCl
           className="input mt-1 w-full"
         />
 
-        <label className="mt-3 block text-[12px] font-medium text-[var(--color-text-secondary)]">Reason</label>
+        <label className="mt-3 block text-[12px] font-medium text-[var(--foreground-muted)]">Reason</label>
         <input
           data-testid="movement-reason"
           value={reason}

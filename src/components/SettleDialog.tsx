@@ -159,7 +159,7 @@ export function SettleDialog({
               ))}
             </div>
             {METHODS.find((m) => m.id === method)?.helper && (
-              <p className="mt-2 text-[11px] text-[var(--color-text-muted)]">{METHODS.find((m) => m.id === method)!.helper}</p>
+              <p className="mt-2 text-[11px] text-[var(--foreground-muted)]">{METHODS.find((m) => m.id === method)!.helper}</p>
             )}
 
             {method === "CASH" ? (
@@ -178,7 +178,7 @@ export function SettleDialog({
                   <p className="settlement-change" data-testid="change-due">
                     <span>Change due</span>
                     <strong className="money-display">{formatMinor(changeDueMinor ?? 0, currency)}</strong>
-                    <span className="ml-1 text-[11px] text-[var(--color-text-muted)]">(display only)</span>
+                    <span className="ml-1 text-[11px] text-[var(--foreground-muted)]">(display only)</span>
                   </p>
                 )}
               </div>
@@ -227,9 +227,9 @@ export function SettleDialog({
                 placeholder="204 or Amina"
                 className="input w-full"
               />
-              <div className="max-h-40 overflow-y-auto rounded-lg border border-[var(--color-border-subtle)]">
+              <div className="max-h-40 overflow-y-auto rounded-lg border border-[var(--border-subtle)]">
                 {(candidates.data ?? []).length === 0 ? (
-                  <div className="px-3 py-2 text-[12px] text-[var(--color-text-muted)]" data-testid="room-candidates-empty">
+                  <div className="px-3 py-2 text-[12px] text-[var(--foreground-muted)]" data-testid="room-candidates-empty">
                     {debouncedQuery ? (candidates.isFetching ? "Searching…" : "No in-house stay matches") : "Type a room number to search in-house stays"}
                   </div>
                 ) : (
@@ -244,10 +244,10 @@ export function SettleDialog({
                         onClick={() => setSelected(candidate)}
                         className={`flex min-h-12 w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs ${
                           selected?.stayId === candidate.stayId
-                            ? "bg-[var(--color-gold)]/10 text-[var(--color-text-primary)]"
+                            ? "bg-[var(--gold-accent)]/10 text-[var(--foreground)]"
                             : eligible
-                              ? "text-[var(--color-text-primary)] hover:bg-[var(--color-border-subtle)]"
-                              : "cursor-not-allowed text-[var(--color-text-muted)]"
+                              ? "text-[var(--foreground)] hover:bg-[var(--border-subtle)]"
+                              : "cursor-not-allowed text-[var(--foreground-muted)]"
                         }`}
                       >
                         <span>
