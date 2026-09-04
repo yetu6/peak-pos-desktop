@@ -23,7 +23,11 @@ export interface LocalOrderModifierView { id:string;optionId:string;groupName:st
 export interface LocalOrderLineView { id:string;productId:string;name:string;quantity:number;unitPriceMinor:number;modifierTotalMinor:number;lineTotalMinor:number;pricing:{unitNetMinor:number;unitTaxMinor:number;unitTotalMinor:number;lineSubtotalMinor:number;lineTaxMinor:number;lineTotalMinor:number};modifiers:LocalOrderModifierView[] }
 export interface LocalOrderView { id:string;state:"DRAFT"|"COMMITTED"|"SETTLED";syncState:"LOCAL_DRAFT"|"SYNC_PENDING"|"ACKNOWLEDGED"|"MANUAL_REVIEW";version:number;staffId:string;serviceType:string;tableLabel?:string;notes?:string;currency:string;subtotalMinor:number;taxMinor:number;totalMinor:number;orderNumber?:string;lines:LocalOrderLineView[] }
 export interface OfflineCashCommitResult {order:LocalOrderView;localSettlementId:string;amountDueMinor:number;cashReceivedMinor:number;changeMinor:number;operationId:string;syncState:string}
-export interface SyncState {status:"Live"|"Reconnecting"|"Offline"|"Sync issue";queuedOperations:number;reconciledOperations:number;exceptionOperations:number;lastSuccessAtMs?:number;lastAttemptAtMs?:number;leaseStatus:string;catalogStatus:string;shiftOfflineEligible:boolean}
+// status is a fully-formed cashier-facing label decided by Rust (the sync
+// truth owner), e.g. "Live", "Reconnecting", "Sync issue", "Offline · 3
+// waiting", "Offline · Sales available" — React renders it verbatim and must
+// not reconstruct it from queuedOperations.
+export interface SyncState {status:string;queuedOperations:number;reconciledOperations:number;exceptionOperations:number;lastSuccessAtMs?:number;lastAttemptAtMs?:number;leaseStatus:string;catalogStatus:string;shiftOfflineEligible:boolean}
 
 type Invoke=(command:string,args?:Record<string,unknown>)=>Promise<unknown>;
 export interface LocalPosCore {

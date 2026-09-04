@@ -78,19 +78,24 @@ impl LocalStore {
                 |r| r.get(0),
             )
             .map_err(classify_sql_error)?;
+        // Rust owns sync truth end to end: the cashier-facing label is decided
+        // here, not reconstructed by the frontend from a bare "Offline" plus
+        // queued_operations (PEAK_TERMINAL_MASTER_OPERATIONS.md §16.2/§18.3).
+        // A property with genuinely nothing queued reads as calm and safe
+        // ("Sales available"), not as a confusing "Offline · 0 waiting".
         let status = if exceptions > 0 || connectivity == "SYNC_ISSUE" {
-            "Sync issue"
+            "Sync issue".to_string()
         } else if connectivity == "LIVE" {
-            "Live"
+            "Live".to_string()
         } else if connectivity == "RECONNECTING" {
-            "Reconnecting"
+            "Reconnecting".to_string()
         } else if queued > 0 {
-            "Offline"
+            format!("Offline · {queued} waiting")
         } else {
-            "Offline"
+            "Offline · Sales available".to_string()
         };
         Ok(SyncState {
-            status: status.into(),
+            status,
             queued_operations: queued,
             reconciled_operations: reconciled,
             exception_operations: exceptions,
@@ -336,6 +341,21 @@ mod tests {
         }
     }
 
+    fn empty_store() -> LocalStore {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .unwrap();
+        let schema_version = super::super::migrations::migrate(&mut connection).unwrap();
+        LocalStore {
+            connection,
+            cipher_version: "test".into(),
+            schema_version,
+            path: PathBuf::from(":memory:"),
+            active_staff: None,
+        }
+    }
+
     fn result(outcome: &str, server_sequence: i64) -> ReconcileResult {
         ReconcileResult {
             operation_id: "op-1".into(),
@@ -370,6 +390,26 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
         assert_eq!(store.sync_state().unwrap().status, "Live");
+    }
+
+    // Regression test for the dead `if queued > 0 {"Offline"} else {"Offline"}`
+    // branch (PEAK_TERMINAL_MASTER_OPERATIONS.md §16.2/§18.3): the cashier must
+    // see the actual backlog, and a terminal with nothing queued must read as
+    // calm rather than a confusing "Offline · 0 waiting".
+    #[test]
+    fn offline_status_reports_the_real_backlog_not_a_dead_branch() {
+        let store = store_with_operation("ORDER_COMMIT");
+        let state = store.sync_state().unwrap();
+        assert_eq!(state.queued_operations, 1);
+        assert_eq!(state.status, "Offline · 1 waiting");
+    }
+
+    #[test]
+    fn offline_with_nothing_queued_reads_as_calm_not_zero_waiting() {
+        let store = empty_store();
+        let state = store.sync_state().unwrap();
+        assert_eq!(state.queued_operations, 0);
+        assert_eq!(state.status, "Offline · Sales available");
     }
 
     #[test]

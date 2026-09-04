@@ -4,10 +4,10 @@ use tauri::{AppHandle, Manager, State};
 
 use super::{
     AddOrderItemIntent, AuthorizationStageResult, CatalogActivationResult, CreateOrderDraftIntent,
-    LocalCatalogView, LocalOrderView, OfflineAuthenticationResult, OfflineBootstrapResult,
-    OfflineCashCommitResult, OfflineEligibilityStatus, ServerOfflineBootstrap,
-    SignedAuthorizationBundle, SignedCatalogSnapshot, SignedTerminalLifecycleEvent,
-    TerminalBinding, UpdateOrderContextIntent,
+    ExpectedTerminalIdentity, LocalCatalogView, LocalOrderView, OfflineAuthenticationResult,
+    OfflineBootstrapResult, OfflineCashCommitResult, OfflineEligibilityStatus,
+    ServerOfflineBootstrap, SignedAuthorizationBundle, SignedCatalogSnapshot,
+    SignedTerminalLifecycleEvent, TerminalBinding, UpdateOrderContextIntent,
 };
 use super::{DbKeyStore, DbKeyStoreError, LocalStore, LocalStoreError, LocalStoreErrorKind};
 
@@ -295,9 +295,11 @@ pub fn install_offline_bootstrap(
 ) -> Result<OfflineBootstrapResult, LocalStoreErrorKind> {
     runtime.with_store(|store| {
         store.install_online_bootstrap(
-            &expected_terminal_id,
-            &expected_property_id,
-            &expected_outlet_id,
+            ExpectedTerminalIdentity {
+                terminal_id: &expected_terminal_id,
+                property_id: &expected_property_id,
+                outlet_id: &expected_outlet_id,
+            },
             bootstrap,
             now_ms(),
             monotonic_ms(),

@@ -25,7 +25,8 @@ pub use authority::{
     SignedTerminalLifecycleEvent, StaffVerifierPayload, TerminalBinding, TerminalLifecyclePayload,
 };
 pub use bootstrap::{
-    OfflineBootstrapResult, OfflinePublicKey, OfflinePublicKeyset, ServerOfflineBootstrap,
+    ExpectedTerminalIdentity, OfflineBootstrapResult, OfflinePublicKey, OfflinePublicKeyset,
+    ServerOfflineBootstrap,
 };
 pub use catalog::{
     CatalogActivationResult, CatalogCategoryView, CatalogModifierGroupView,

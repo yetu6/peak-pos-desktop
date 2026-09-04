@@ -46,6 +46,15 @@ pub struct OfflineBootstrapResult {
     pub catalog: CatalogActivationResult,
 }
 
+/// The device/property/outlet identity the caller already established, which
+/// a server-signed bootstrap must match exactly before any of it is trusted.
+#[derive(Debug, Clone, Copy)]
+pub struct ExpectedTerminalIdentity<'a> {
+    pub terminal_id: &'a str,
+    pub property_id: &'a str,
+    pub outlet_id: &'a str,
+}
+
 impl LocalStore {
     pub fn install_authenticated_keyset(
         &mut self,
@@ -103,11 +112,12 @@ impl LocalStore {
         Ok(trusted)
     }
 
+    /// The identity the caller already established (from the session/device
+    /// binding) that the server-signed bootstrap must exactly match before
+    /// any of it is trusted.
     pub fn install_online_bootstrap(
         &mut self,
-        expected_terminal_id: &str,
-        expected_property_id: &str,
-        expected_outlet_id: &str,
+        expected: ExpectedTerminalIdentity<'_>,
         bootstrap: ServerOfflineBootstrap,
         local_wall_ms: i64,
         monotonic_ms: i64,
@@ -117,9 +127,9 @@ impl LocalStore {
         let auth_bytes = decode_b64(&bootstrap.authorization.payload_b64)?;
         let auth: AuthorizationPayload = serde_json::from_slice(&auth_bytes)
             .map_err(|_| LocalStoreError::InvalidAuthorization)?;
-        if auth.terminal_id != expected_terminal_id
-            || auth.property_id != expected_property_id
-            || auth.outlet_id != expected_outlet_id
+        if auth.terminal_id != expected.terminal_id
+            || auth.property_id != expected.property_id
+            || auth.outlet_id != expected.outlet_id
             || auth.server_time_ms != bootstrap.server_time_ms
         {
             return Err(LocalStoreError::InvalidAuthorization);

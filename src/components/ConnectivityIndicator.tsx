@@ -29,7 +29,9 @@ function NativeConnectivityIndicator({state}:{state:RealtimeState}){
   const queryClient=useQueryClient();
   const sync=useQuery({queryKey:["local-pos","sync"],queryFn:async()=>(await loadLocalPosCore()).syncState(),refetchInterval:5000,retry:false});
   const local=sync.data;
-  const label=local?(local.status==="Offline"?`Offline · ${local.queuedOperations} waiting`:local.status):(LABELS[state.phase]??state.phase);
+  // Rust already decided the full cashier-facing label (including any
+  // backlog count) — render it verbatim rather than reconstructing it here.
+  const label=local?local.status:(LABELS[state.phase]??state.phase);
   const tone=local?.status==="Live"?"live":local?.status==="Sync issue"?"down":"alert";
   async function retry(){const session=getOperationalSession();if(!session)return;const core=await loadLocalPosCore();const next=await core.retrySync(getApiBaseUrl(),session.token);queryClient.setQueryData(["local-pos","sync"],next)}
   return <>
