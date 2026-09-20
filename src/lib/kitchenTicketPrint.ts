@@ -9,6 +9,9 @@ export interface KitchenTicketCopy {
   ticketNumber?: string;
   orderNumber?: string;
   tableNumber?: string;
+  serviceType?: string;
+  notes?: string;
+  waiterName?: string;
   sentAt?: string;
   status?: string;
   lines: KitchenTicketLine[];
@@ -22,14 +25,17 @@ export interface PrintResult {
 export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
   const header = [
     "KITCHEN TICKET",
-    ticket.ticketNumber ?? "ticket",
+    ticket.ticketNumber ? ticket.ticketNumber : null,
+    ticket.orderNumber ? `Order ${ticket.orderNumber}` : null,
     [
-      ticket.orderNumber ? `Order ${ticket.orderNumber}` : null,
       ticket.tableNumber ? `Table ${ticket.tableNumber}` : null,
+      ticket.serviceType ? ticket.serviceType.replaceAll("_", " ") : null,
     ]
       .filter(Boolean)
       .join("  "),
+    ticket.waiterName ? `Waiter ${ticket.waiterName}` : null,
     ticket.sentAt ? `Sent ${ticket.sentAt}` : null,
+    ticket.notes?.trim() ? `Notes ${ticket.notes.trim()}` : null,
     ticket.status ? `Status ${ticket.status}` : null,
   ]
     .filter((line) => line && line.length > 0)
@@ -49,22 +55,33 @@ export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
 export function ticketCopyFromOrder(order: {
   orderNumber?: string | null;
   tableNumber?: string | null;
+  tableLabel?: string | null;
+  serviceType?: string | null;
+  notes?: string | null;
+  initiatedByName?: string | null;
   items?: Array<{
     name?: string | null;
     quantity?: number | string | null;
     specialRequest?: string | null;
+    modifiers?: Array<{ optionName?: string | null; name?: string | null }> | null;
   }> | null;
 }): KitchenTicketCopy {
   return {
     orderNumber: order.orderNumber ?? undefined,
-    tableNumber: order.tableNumber ?? undefined,
+    tableNumber: order.tableNumber ?? order.tableLabel ?? undefined,
+    serviceType: order.serviceType ?? undefined,
+    notes: order.notes ?? undefined,
+    waiterName: order.initiatedByName ?? undefined,
     lines: (order.items ?? []).flatMap((item) => {
       if (!item.name) return [];
+      const mods = (item.modifiers ?? [])
+        .map((mod) => mod.optionName ?? mod.name)
+        .filter((name): name is string => Boolean(name?.trim()));
       return [
         {
           name: item.name,
           quantity: String(item.quantity ?? 1),
-          note: item.specialRequest ?? undefined,
+          note: item.specialRequest?.trim() || (mods.length ? mods.join(", ") : undefined),
         },
       ];
     }),

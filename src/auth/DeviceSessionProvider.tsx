@@ -108,8 +108,8 @@ export interface DeviceSessionProviderProps {
   applyOpsToken?: (token: string) => Promise<void>;
   /** Tests inject a Peak URL so the first-boot setup screen is skipped. */
   skipUrlSetup?: boolean;
-  /** Idle minutes before PIN lock. Peak `expiresAt` still locks independently. */
-  idleLockMinutes?: number;
+  /** Idle seconds before PIN lock. Peak `expiresAt` still locks independently. */
+  idleLockSeconds?: number;
   deviceAuthority?: DeviceAuthority;
   offlineAuthority?: OfflineAuthority;
   localPosCore?: LocalPosCore;

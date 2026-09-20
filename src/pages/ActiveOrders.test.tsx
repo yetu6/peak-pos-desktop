@@ -124,6 +124,8 @@ const OPEN_ORDER: POSOrder = {
   orderNumber: "ORD-1042",
   status: "OPEN",
   serviceType: "DINE_IN",
+  initiatedById: "staff-1",
+  initiatedByName: "Amina Hassan",
   tableLabel: "T12",
   subtotalMinor: 1000,
   taxMinor: 180,

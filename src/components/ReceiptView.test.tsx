@@ -26,10 +26,14 @@ const RECEIPT: POSReceipt = {
     orderId: "order-1",
     orderNumber: "POS-1",
     businessDate: "2026-09-04",
+    propertyName: "Mama Rose Hotel",
     outletId: "outlet-1",
     outletName: "Main restaurant",
     terminalId: "terminal-1",
+    initiatedById: "staff-1",
+    initiatedByName: "Amina Hassan",
     operatorId: "staff-1",
+    operatorName: "Amina Hassan",
     serviceType: "DINE_IN",
     items: [{ name: "Cappuccino", quantity: 2, unitPriceMinor: 6_500, taxMinor: 1_170, totalMinor: 14_170 }],
     subtotalMinor: 13_000,
@@ -49,9 +53,12 @@ describe("ReceiptView", () => {
     render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
 
     const doc = screen.getByTestId("receipt-document");
+    expect(screen.getByTestId("invoice-property")).toHaveTextContent("Mama Rose Hotel");
     expect(doc).toHaveTextContent("POS-1");
     expect(doc).toHaveTextContent("CASH");
     expect(doc).toHaveTextContent("Cappuccino");
+    expect(screen.getByTestId("invoice-taken-by")).toHaveTextContent("Amina Hassan");
+    expect(screen.getByTestId("invoice-yetu-footer")).toHaveTextContent("Yetu");
     expect(screen.queryByTestId("receipt-error")).not.toBeInTheDocument();
   });
 

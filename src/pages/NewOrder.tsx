@@ -19,9 +19,12 @@ import {
   useIdempotencyKey,
   useMutationMessage,
   usePosShift,
+  usePrintAfter,
+  usePropertyId,
   useRemoveOrderItem,
   useSendOrder,
 } from "../hooks/usePosData";
+import { ReceiptView } from "../components/ReceiptView";
 import type { POSCatalogProduct, POSOrder, ServiceType } from "../lib/posContracts";
 import { formatMinor, moneyFormatter } from "../lib/posMoney";
 
@@ -56,8 +59,11 @@ export function NewOrder() {
   const [order, setOrder] = useState<POSOrder | null>(null);
   const [configuring, setConfiguring] = useState<POSCatalogProduct | null>(null);
   const [settleOpen, setSettleOpen] = useState(false);
+  const [invoiceOrderId, setInvoiceOrderId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const propertyId = usePropertyId();
+  const printAfter = usePrintAfter(propertyId);
   const createOrder = useCreateOrder();
   const addItem = useAddOrderItem();
   const removeItem = useRemoveOrderItem();
@@ -193,6 +199,7 @@ export function NewOrder() {
       idempotencyKey: sendKey.next(),
     });
     setOrder(next);
+    await printAfter(next.id);
   }
 
   function clearTicket() {
@@ -201,6 +208,13 @@ export function NewOrder() {
     setNotes("");
     setSettleOpen(false);
     createKey.next();
+  }
+
+  async function afterSettled(orderId: string): Promise<void> {
+    await printAfter(orderId);
+    setSettleOpen(false);
+    setInvoiceOrderId(orderId);
+    clearTicket();
   }
 
   return (
@@ -299,6 +313,7 @@ export function NewOrder() {
               {totalItems} {totalItems === 1 ? "item" : "items"}
               {order ? ` · ${order.orderNumber}` : " · new"}
               {order ? ` · ${order.status.replaceAll("_", " ").toLowerCase()}` : ""}
+              {order?.initiatedByName ? ` · ${order.initiatedByName}` : ""}
             </p>
           }
           footer={
@@ -426,10 +441,12 @@ export function NewOrder() {
           currency={currency}
           onClose={() => setSettleOpen(false)}
           onSettled={() => {
-            setSettleOpen(false);
-            clearTicket();
+            void afterSettled(order.id);
           }}
         />
+      )}
+      {invoiceOrderId && (
+        <ReceiptView orderId={invoiceOrderId} onClose={() => setInvoiceOrderId(null)} />
       )}
     </div>
   );

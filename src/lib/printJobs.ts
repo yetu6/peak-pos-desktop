@@ -72,11 +72,25 @@ export function ticketCopyFromPrintDocument(document: Record<string, unknown>): 
         if (!line || typeof line !== "object") return [];
         const row = line as Record<string, unknown>;
         if (typeof row.name !== "string") return [];
+        const mods = Array.isArray(row.modifiers)
+          ? row.modifiers
+              .map((mod) => {
+                if (!mod || typeof mod !== "object") return null;
+                const entry = mod as Record<string, unknown>;
+                return typeof entry.name === "string" ? entry.name : null;
+              })
+              .filter((name): name is string => Boolean(name))
+          : [];
         return [
           {
             name: row.name,
             quantity: String(row.quantity ?? "1"),
-            note: typeof row.note === "string" ? row.note : undefined,
+            note:
+              typeof row.note === "string"
+                ? row.note
+                : mods.length
+                  ? mods.join(", ")
+                  : undefined,
           },
         ];
       })
@@ -84,7 +98,15 @@ export function ticketCopyFromPrintDocument(document: Record<string, unknown>): 
   return {
     ticketNumber: typeof document.ticketNumber === "string" ? document.ticketNumber : undefined,
     orderNumber: typeof document.orderNumber === "string" ? document.orderNumber : undefined,
-    tableNumber: typeof document.tableNumber === "string" ? document.tableNumber : undefined,
+    tableNumber:
+      typeof document.tableLabel === "string"
+        ? document.tableLabel
+        : typeof document.tableNumber === "string"
+          ? document.tableNumber
+          : undefined,
+    serviceType: typeof document.serviceType === "string" ? document.serviceType : undefined,
+    notes: typeof document.notes === "string" ? document.notes : undefined,
+    waiterName: typeof document.waiterName === "string" ? document.waiterName : undefined,
     sentAt: typeof document.sentAt === "string" ? document.sentAt : undefined,
     lines,
   };
@@ -92,14 +114,14 @@ export function ticketCopyFromPrintDocument(document: Record<string, unknown>): 
 
 export function formatPrintDocument(job: POSPrintJob): { title: string; text: string } {
   if (job.jobType === RECEIPT) {
-    return { title: "peak-receipt", text: formatReceipt(receiptCopyFromPrintDocument(job.document)) };
+    return { title: "yetu-invoice", text: formatReceipt(receiptCopyFromPrintDocument(job.document)) };
   }
   if (job.jobType === KITCHEN_TICKET) {
-    return { title: "peak-kitchen-ticket", text: formatKitchenTicket(ticketCopyFromPrintDocument(job.document)) };
+    return { title: "yetu-kitchen-ticket", text: formatKitchenTicket(ticketCopyFromPrintDocument(job.document)) };
   }
   // An unrecognized job type must still be printable rather than dropped —
   // fall back to the generic ticket formatter instead of failing the job.
-  return { title: `peak-${job.jobType.toLowerCase().replaceAll("_", "-")}`, text: formatKitchenTicket(ticketCopyFromPrintDocument(job.document)) };
+  return { title: `yetu-${job.jobType.toLowerCase().replaceAll("_", "-")}`, text: formatKitchenTicket(ticketCopyFromPrintDocument(job.document)) };
 }
 
 async function defaultPrint(title: string, text: string): Promise<void> {

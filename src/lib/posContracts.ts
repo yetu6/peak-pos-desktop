@@ -42,6 +42,9 @@ export interface POSOrder {
   serviceType: ServiceType;
   tableLabel?: string;
   notes?: string;
+  /** Staff whose PIN session created the order. */
+  initiatedById: string;
+  initiatedByName: string;
   subtotalMinor: number;
   taxMinor: number;
   totalMinor: number;
@@ -140,9 +143,12 @@ export interface POSReceiptDocument {
   orderId: string;
   orderNumber: string;
   businessDate: string;
+  propertyName: string;
   outletId: string;
   outletName: string;
   terminalId: string;
+  initiatedById: string;
+  initiatedByName: string;
   operatorId: string;
   operatorName?: string;
   serviceType: ServiceType;

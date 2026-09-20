@@ -71,8 +71,8 @@ export function PinUnlock() {
     >
       <div className={`glass-panel w-full p-8 ${showingRoster ? "max-w-xl" : "max-w-sm"}`}>
         <div className="mb-5 flex items-center justify-center gap-2">
-          <Icon name="peak-logo" size={24} className="text-[var(--gold-accent)]" />
-          <span className="font-display text-xl text-[var(--foreground)]">Peak Terminal</span>
+          <Icon name="peak-logo" size={24} className="text-[var(--brass)]" />
+          <span className="font-display text-xl text-[var(--foreground)]">Yetu POS</span>
         </div>
         {till && (
           <p
@@ -88,7 +88,7 @@ export function PinUnlock() {
             data-testid="offline-authority-state"
           >
             {offlineEligibility.state === "ELIGIBLE"
-              ? "Offline authority ready"
+              ? "Ready for offline PIN if the network drops"
               : offlineEligibility.state === "CATALOG_REQUIRED"
                 ? "Online · offline catalog certification pending"
                 : "Online · offline authority unavailable"}
@@ -98,7 +98,10 @@ export function PinUnlock() {
         {showingRoster ? (
           <>
             <p className="mt-5 text-center text-sm font-medium text-[var(--foreground)]">
-              Who's using this terminal?
+              Who&apos;s using this terminal?
+            </p>
+            <p className="mt-1 text-center text-[12px] text-[var(--foreground-muted)]">
+              Select your name, then enter your PIN
             </p>
             <div
               className="mt-4 grid grid-cols-3 gap-3"
@@ -109,7 +112,7 @@ export function PinUnlock() {
                   key={entry.staffNumber}
                   data-testid={`roster-entry-${entry.staffNumber}`}
                   onClick={() => chooseFromRoster(entry)}
-                  className="flex min-h-[104px] flex-col items-center justify-center gap-2 rounded-[var(--radius-tile)] border border-[var(--border)] p-3 transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-interactive)]"
+                  className="flex min-h-[112px] flex-col items-center justify-center gap-2 rounded-[var(--radius-tile)] border border-[var(--border)] bg-[var(--surface-raised)] p-3 transition-colors hover:border-[var(--brass)] hover:bg-[var(--surface-interactive)]"
                 >
                   <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--surface-interactive)] text-base font-semibold text-[var(--foreground)]">
                     {initialsOf(entry.fullName)}

@@ -58,6 +58,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
             <div className="font-mono text-sm font-bold text-[var(--foreground)]">{order.orderNumber}</div>
             <div className="mt-1 text-[11px] uppercase tracking-[0.05em] text-[var(--foreground-muted)]">
               {order.serviceType.replaceAll("_", " ")} · {order.tableLabel ?? "no table"}
+              {order.initiatedByName ? ` · ${order.initiatedByName}` : ""}
             </div>
           </div>
           <span className={`badge ${STATUS_BADGE[order.status]}`}>{order.status}</span>

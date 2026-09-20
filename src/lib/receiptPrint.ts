@@ -6,8 +6,12 @@ export interface ReceiptLine {
 }
 
 export interface ReceiptCopy {
+  propertyName?: string;
+  outletName?: string;
   orderNumber?: string;
   tableNumber?: string;
+  takenBy?: string;
+  settledBy?: string;
   settledAt?: string;
   settlementMethod?: string;
   subtotal?: string;
@@ -31,24 +35,89 @@ export function receiptCopyFromPrintDocument(document: Record<string, unknown>):
           },
         ];
       })
-    : [];
+    : Array.isArray(document.items)
+      ? document.items.flatMap((line) => {
+          if (!line || typeof line !== "object") return [];
+          const row = line as Record<string, unknown>;
+          if (typeof row.name !== "string") return [];
+          return [
+            {
+              name: row.name,
+              quantity: String(row.quantity ?? "1"),
+              total:
+                typeof row.total === "string"
+                  ? row.total
+                  : typeof row.totalMinor === "number"
+                    ? String(row.totalMinor)
+                    : undefined,
+            },
+          ];
+        })
+      : [];
+
+  const takenBy =
+    typeof document.initiatedByName === "string"
+      ? document.initiatedByName
+      : typeof document.takenBy === "string"
+        ? document.takenBy
+        : undefined;
+  const settledBy =
+    typeof document.operatorName === "string"
+      ? document.operatorName
+      : typeof document.settledBy === "string"
+        ? document.settledBy
+        : undefined;
+
   return {
+    propertyName: typeof document.propertyName === "string" ? document.propertyName : undefined,
+    outletName: typeof document.outletName === "string" ? document.outletName : undefined,
     orderNumber: typeof document.orderNumber === "string" ? document.orderNumber : undefined,
-    tableNumber: typeof document.tableNumber === "string" ? document.tableNumber : undefined,
+    tableNumber:
+      typeof document.tableLabel === "string"
+        ? document.tableLabel
+        : typeof document.tableNumber === "string"
+          ? document.tableNumber
+          : undefined,
+    takenBy,
+    settledBy,
     settledAt: typeof document.settledAt === "string" ? document.settledAt : undefined,
     settlementMethod:
-      typeof document.settlementMethod === "string" ? document.settlementMethod : undefined,
-    subtotal: typeof document.subtotal === "string" ? document.subtotal : undefined,
-    taxAmount: typeof document.taxAmount === "string" ? document.taxAmount : undefined,
-    totalAmount: typeof document.totalAmount === "string" ? document.totalAmount : undefined,
+      typeof document.tenderMethod === "string"
+        ? document.tenderMethod
+        : typeof document.settlementMethod === "string"
+          ? document.settlementMethod
+          : undefined,
+    subtotal:
+      typeof document.subtotal === "string"
+        ? document.subtotal
+        : typeof document.subtotalMinor === "number"
+          ? String(document.subtotalMinor)
+          : undefined,
+    taxAmount:
+      typeof document.taxAmount === "string"
+        ? document.taxAmount
+        : typeof document.taxMinor === "number"
+          ? String(document.taxMinor)
+          : undefined,
+    totalAmount:
+      typeof document.totalAmount === "string"
+        ? document.totalAmount
+        : typeof document.totalMinor === "number"
+          ? String(document.totalMinor)
+          : undefined,
     lines,
   };
 }
 
-/** Guest bill. Unlike a kitchen ticket, this copy includes prices Peak already posted. */
+/**
+ * Guest invoice (operational settlement snapshot). Property brand at the top,
+ * Yetu at the bottom. Not a TRA EFD fiscal receipt.
+ */
 export function formatReceipt(receipt: ReceiptCopy): string {
   const header = [
-    "RECEIPT",
+    (receipt.propertyName ?? "PROPERTY").toUpperCase(),
+    receipt.outletName ? receipt.outletName : null,
+    "INVOICE",
     receipt.orderNumber ?? "order",
     [
       receipt.tableNumber ? `Table ${receipt.tableNumber}` : null,
@@ -56,6 +125,10 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     ]
       .filter(Boolean)
       .join("  "),
+    receipt.takenBy ? `Taken by ${receipt.takenBy}` : null,
+    receipt.settledBy && receipt.settledBy !== receipt.takenBy
+      ? `Settled by ${receipt.settledBy}`
+      : null,
     receipt.settledAt ? `Settled ${receipt.settledAt}` : null,
   ]
     .filter((line) => line && line.length > 0)
@@ -77,5 +150,11 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     .filter(Boolean)
     .join("\n");
 
-  return `${header}\n\n${lines || "(no items)"}\n\n${totals}\n`;
+  const footer = [
+    "----------------",
+    "Powered by Yetu",
+    "Not a TRA fiscal receipt — use EFD for tax invoices.",
+  ].join("\n");
+
+  return `${header}\n\n${lines || "(no items)"}\n\n${totals}\n\n${footer}\n`;
 }

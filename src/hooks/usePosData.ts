@@ -385,7 +385,26 @@ export function useTransitionOrderStatus() {
       version: number;
       idempotencyKey: string;
     }) => {
-      await unwrap(createPosApi().transitionStatus(args.orderId, args.status, args.version, args.idempotencyKey));
+      try {
+        await unwrap(
+          createPosApi().transitionStatus(args.orderId, args.status, args.version, args.idempotencyKey),
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (/STALE_VERSION|stale version/i.test(message)) {
+          const fresh = await unwrap(createPosApi().getOrder(args.orderId));
+          await unwrap(
+            createPosApi().transitionStatus(
+              args.orderId,
+              args.status,
+              fresh.version,
+              args.idempotencyKey,
+            ),
+          );
+          return unwrap(createPosApi().getOrder(args.orderId));
+        }
+        throw err;
+      }
       return unwrap(createPosApi().getOrder(args.orderId));
     },
     onSuccess: (order: POSOrder) => {

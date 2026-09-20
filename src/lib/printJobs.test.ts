@@ -31,8 +31,9 @@ describe("printJobs", () => {
     const copy = ticketCopyFromPrintDocument(KITCHEN_JOB.document);
     const formatted = formatPrintDocument(KITCHEN_JOB);
     expect(copy.lines[0]?.name).toBe("Stew");
-    expect(formatted.title).toBe("peak-kitchen-ticket");
+    expect(formatted.title).toBe("yetu-kitchen-ticket");
     expect(formatted.text).toContain("KDS-1");
+    expect(formatted.text).toContain("POS-1");
     expect(formatted.text).not.toMatch(/tax|TSh|price/i);
   });
 
@@ -51,8 +52,8 @@ describe("printJobs", () => {
         lines: [{ name: "Stew", quantity: "2", unitPrice: "10.00", total: "23.60" }],
       },
     });
-    expect(formatted.title).toBe("peak-receipt");
-    expect(formatted.text).toContain("RECEIPT");
+    expect(formatted.title).toBe("yetu-invoice");
+    expect(formatted.text).toContain("INVOICE");
     expect(formatted.text).toContain("POS-1");
     expect(formatted.text).toContain("TOTAL  23.60");
     expect(formatted.text).toContain("Tax  3.60");
@@ -60,7 +61,7 @@ describe("printJobs", () => {
 
   it("falls back to the generic ticket formatter for an unrecognized job type instead of dropping it", () => {
     const formatted = formatPrintDocument({ ...KITCHEN_JOB, jobType: "SOMETHING_NEW" });
-    expect(formatted.title).toBe("peak-something-new");
+    expect(formatted.title).toBe("yetu-something-new");
     expect(formatted.text).toContain("KDS-1");
   });
 
@@ -84,7 +85,7 @@ describe("printJobs", () => {
     });
     expect(requestedUrls[0]).toContain("status=PENDING");
     expect(results).toEqual([{ ok: true }]);
-    expect(printed[0]).toContain("KDS-1");
+    expect(printed[0]).toContain("POS-1");
   });
 
   it("acks failed when the local printer throws and does not pretend the send failed at Peak", async () => {

@@ -20,6 +20,8 @@ const ORDER: POSOrder = {
   orderNumber: "POS-1",
   status: "OPEN",
   serviceType: "DINE_IN",
+  initiatedById: "staff-1",
+  initiatedByName: "Amina Hassan",
   subtotalMinor: 20_000,
   taxMinor: 4_000,
   totalMinor: 24_000,

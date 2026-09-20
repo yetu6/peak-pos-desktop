@@ -27,6 +27,14 @@ vi.mock("../lib/posApi", () => ({
   }),
 }));
 
+vi.mock("../auth/DeviceSessionProvider", () => ({
+  useDeviceSession: () => ({
+    identity: { mode: "POS", terminalName: "Kitchen peek" },
+    phase: "ready",
+    switchStaff: vi.fn(),
+  }),
+}));
+
 class FakeSocket {
   binaryType = "blob";
   readyState = 0;
@@ -90,6 +98,8 @@ const SENT_ORDER: POSOrder = {
   status: "SENT",
   serviceType: "DINE_IN",
   tableLabel: "T4",
+  initiatedById: "staff-1",
+  initiatedByName: "Amina Hassan",
   subtotalMinor: 1000,
   taxMinor: 180,
   totalMinor: 1180,
@@ -106,13 +116,14 @@ describe("Kitchen", () => {
 
   it("subscribes to the outlet kitchen topic and refetches REST when an order is sent", async () => {
     const socket = renderKitchen();
-    expect(await screen.findByText(/Kitchen is quiet/)).toBeInTheDocument();
+    expect(await screen.findByText(/No kitchen tickets right now/)).toBeInTheDocument();
 
     ordersStore.set("order-1", SENT_ORDER);
     socket.open();
     await flush();
     socket.emit(announce(1, "pos.order.sent", "order-1"));
     expect(await screen.findByText("K-12")).toBeInTheDocument();
+    expect(screen.getByTestId("waiter-order-1")).toHaveTextContent("Amina Hassan");
     await waitFor(() => expect(listOrdersSpy.mock.calls.length).toBeGreaterThan(1));
   });
 
@@ -122,7 +133,7 @@ describe("Kitchen", () => {
     await screen.findByText("K-12");
     expect(screen.queryByTestId("void-order-1")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByTestId("transition-order-1"));
+    await userEvent.click(screen.getByTestId("bump-order-1"));
     await waitFor(() => expect(transitionStatusSpy).toHaveBeenCalledWith("order-1", "PREPARING", 2, expect.any(String)));
   });
 });

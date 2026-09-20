@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DeviceSessionProvider, useDeviceSession } from "./auth/DeviceSessionProvider";
+import { IdleLockOverlay } from "./components/IdleLockOverlay";
 import { Icon } from "./components/Icon";
 import { ConnectivityIndicator } from "./components/ConnectivityIndicator";
 import { ThemeToggle } from "./components/ThemeToggle";
@@ -48,21 +49,28 @@ function PosShell() {
   const clock = useClock();
   const { shift } = usePosShift();
   const staff = staffLabel(session?.staffId);
+  const kitchenOnly =
+    (identity?.mode ?? "").trim().toUpperCase().replace(/-/g, "_") === "KITCHEN_DISPLAY" ||
+    (identity?.mode ?? "").trim().toUpperCase().replace(/-/g, "_") === "BAR_DISPLAY";
 
   if (!nav.some((item) => item.page === page)) {
     setPage(nav[0]?.page ?? "orders");
   }
 
   return (
-    <div className="terminal-shell" data-testid="pos-register">
+    <div
+      className={`terminal-shell ${kitchenOnly ? "terminal-shell--kds" : ""}`}
+      data-testid="pos-register"
+    >
+      {!kitchenOnly && (
       <aside
         className="terminal-nav"
         data-testid="terminal-navigation"
         aria-label="Terminal navigation"
       >
         <div className="terminal-brand">
-          <Icon name="peak-logo" size={24} className="text-[var(--gold-accent)]" />
-          <span className="terminal-brand__name">Peak Terminal</span>
+          <Icon name="peak-logo" size={24} className="text-[var(--brass)]" />
+          <span className="terminal-brand__name">Yetu POS</span>
         </div>
         <nav className="terminal-nav__items">
           {nav.map((item) => (
@@ -97,13 +105,14 @@ function PosShell() {
             data-testid="switch-staff"
             onClick={() => switchStaff()}
             className="btn-tertiary ml-auto !h-11 !w-11 !p-0"
-            aria-label="Switch staff"
-            title="Switch staff"
+            aria-label="Log out"
+            title="Log out"
           >
             <Icon name="logout" size={18} />
           </button>
         </div>
       </aside>
+      )}
 
       <div className="terminal-frame">
         <header className="terminal-header px-4">
@@ -111,12 +120,30 @@ function PosShell() {
             {clock}
           </span>
           <span className="h-5 w-px bg-[var(--border)]" />
-          <span className="badge badge-success badge-dot" data-testid="shell-business-date">
-            Business date {shift?.businessDate ?? "—"}
-          </span>
+          {!kitchenOnly && (
+            <span className="badge badge-success badge-dot" data-testid="shell-business-date">
+              Business date {shift?.businessDate ?? "—"}
+            </span>
+          )}
+          {kitchenOnly && (
+            <span className="badge badge-info badge-dot" data-testid="kds-mode-badge">
+              Kitchen display · {staff.name}
+            </span>
+          )}
           <div className="min-w-0 flex-1" />
-          <ThemeToggle />
+          {!kitchenOnly && <ThemeToggle />}
           <ConnectivityIndicator />
+          {kitchenOnly && (
+            <button
+              data-testid="switch-staff"
+              onClick={() => switchStaff()}
+              className="btn-tertiary btn-sm"
+              aria-label="Log out"
+            >
+              <Icon name="logout" size={16} />
+              Log out
+            </button>
+          )}
         </header>
 
         <main
@@ -244,6 +271,7 @@ function AuthGate() {
       return (
         <>
           <KeyStorageBanner />
+          <IdleLockOverlay />
           <ReadyGate />
         </>
       );
