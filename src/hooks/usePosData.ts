@@ -151,6 +151,7 @@ export function usePosShift() {
   const outletId = useOutletId();
   const queryClient = useQueryClient();
   const idKey = shiftIdQueryKey(propertyId, outletId);
+  const offlineCash = getOperationalSession()?.mode === "offline-cash";
 
   // Authoritative resume: server open shift wins over a stale localStorage id.
   const { data: shift, isLoading: shiftLoading } = useQuery({
@@ -179,6 +180,7 @@ export function usePosShift() {
       queryClient.setQueryData(idKey, data.id);
       return data;
     },
+    enabled: !offlineCash,
     staleTime: 30_000,
     retry: false,
   });

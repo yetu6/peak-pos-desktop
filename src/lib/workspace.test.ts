@@ -31,5 +31,10 @@ describe("workspaceNav", () => {
       "manager",
       "status",
     ]);
+    expect(workspaceNav("offline-cash").map((item) => item.page)).toEqual([
+      "new",
+      "status",
+    ]);
+    expect(defaultWorkspacePage("offline-cash")).toBe("new");
   });
 });

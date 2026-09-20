@@ -9,6 +9,7 @@ import { ActiveOrders } from "./pages/ActiveOrders";
 import { Kitchen } from "./pages/Kitchen";
 import { Manager } from "./pages/Manager";
 import { NewOrder } from "./pages/NewOrder";
+import { OfflineNewOrder } from "./pages/OfflineNewOrder";
 import { OpenShiftScreen } from "./pages/OpenShiftScreen";
 import { PairingScreen } from "./pages/PairingScreen";
 import { PinUnlock } from "./pages/PinUnlock";
@@ -43,8 +44,11 @@ function useClock(): string {
 
 function PosShell() {
   const { session, switchStaff, identity } = useDeviceSession();
-  const nav = workspaceNav(identity?.mode);
-  const [page, setPage] = useState<Page>(() => defaultWorkspacePage(identity?.mode));
+  const offlineCash = session?.mode === "offline-cash";
+  const nav = workspaceNav(offlineCash ? "offline-cash" : identity?.mode);
+  const [page, setPage] = useState<Page>(() =>
+    defaultWorkspacePage(offlineCash ? "offline-cash" : identity?.mode),
+  );
   const outletId = useOutletId();
   const clock = useClock();
   const { shift } = usePosShift();
@@ -120,9 +124,14 @@ function PosShell() {
             {clock}
           </span>
           <span className="h-5 w-px bg-[var(--border)]" />
-          {!kitchenOnly && (
+          {!kitchenOnly && !offlineCash && (
             <span className="badge badge-success badge-dot" data-testid="shell-business-date">
               Business date {shift?.businessDate ?? "—"}
+            </span>
+          )}
+          {offlineCash && (
+            <span className="badge badge-warning badge-dot" data-testid="shell-offline-cash">
+              Offline cash · Sync Center in the header
             </span>
           )}
           {kitchenOnly && (
@@ -153,7 +162,7 @@ function PosShell() {
           {page === "orders" ? (
             <ActiveOrders onNewOrder={() => setPage("new")} />
           ) : page === "new" ? (
-            <NewOrder />
+            offlineCash ? <OfflineNewOrder /> : <NewOrder />
           ) : page === "kitchen" ? (
             <Kitchen />
           ) : page === "manager" ? (
@@ -220,8 +229,16 @@ function KeyStorageBanner() {
  * conditionally within one component, honoring the Rules of Hooks.
  */
 function ReadyGate() {
+  const { session } = useDeviceSession();
+  const offlineCash = session?.mode === "offline-cash";
   const { shift, isLoading: shiftLoading } = usePosShift();
-  const route = terminalRoute("ready", !shiftLoading, Boolean(shift));
+  // Offline cash resumes a lease-bound shift locally — never open a new one
+  // while Peak is unreachable (ONLINE REQUIRED for OpenShift).
+  const route = terminalRoute(
+    "ready",
+    offlineCash || !shiftLoading,
+    offlineCash || Boolean(shift),
+  );
   return (
     <>
       <span className="sr-only" data-testid="shell-state">

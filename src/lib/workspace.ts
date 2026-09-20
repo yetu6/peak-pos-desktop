@@ -18,11 +18,15 @@ const STATUS: WorkspaceItem = { page: "status", label: "Status", icon: "info" };
 /**
  * Mode is a workspace layout, not a security boundary. Peak still checks
  * every command. The till never picks its own mode — the manager did at pairing.
+ * `offline-cash` is a temporary operational mode from PIN unlock when Peak is
+ * unreachable (not a pairing workspace).
  */
 export function workspaceNav(mode?: string | null): WorkspaceItem[] {
   const normalized = (mode ?? "POS").trim().toUpperCase().replace(/-/g, "_");
   let items: WorkspaceItem[];
-  if (normalized === "KITCHEN_DISPLAY" || normalized === "BAR_DISPLAY") {
+  if (normalized === "OFFLINE_CASH") {
+    items = ALL.filter((item) => item.page === "new");
+  } else if (normalized === "KITCHEN_DISPLAY" || normalized === "BAR_DISPLAY") {
     items = ALL.filter((item) => item.page === "kitchen");
   } else if (normalized === "CASHIER") {
     items = ALL.filter((item) => item.page !== "kitchen");

@@ -37,8 +37,21 @@ function NativeConnectivityIndicator({state}:{state:RealtimeState}){
   return <>
     <StatusButton state={state} label={label} tone={tone} onClick={()=>setOpen(true)}/>
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="terminal-dialog w-[min(520px,calc(100vw-32px))] max-w-none p-5"><DialogTitle>Sync Center</DialogTitle><DialogDescription>Local financial evidence remains on this terminal after acknowledgement.</DialogDescription>
-      <dl className="grid grid-cols-2 gap-3 rounded-lg bg-[var(--surface-raised)] p-4 text-sm"><dt>Last synchronization</dt><dd>{local?.lastSuccessAtMs?new Date(local.lastSuccessAtMs).toLocaleString():"Not yet"}</dd><dt>Queued operations</dt><dd>{local?.queuedOperations??0}</dd><dt>Reconciled operations</dt><dd>{local?.reconciledOperations??0}</dd><dt>Exception / review</dt><dd>{local?.exceptionOperations??0}</dd><dt>Lease</dt><dd>{local?.leaseStatus??"Unavailable"}</dd><dt>Catalog</dt><dd>{local?.catalogStatus??"Unavailable"}</dd><dt>Offline shift eligibility</dt><dd>{local?.shiftOfflineEligible?"Eligible":"Not eligible"}</dd></dl>
-      <button className="btn-primary" disabled={sync.isFetching} onClick={()=>void retry()}>{sync.isFetching?"Checking…":"Retry synchronization"}</button>
+      <dl className="grid grid-cols-2 gap-3 rounded-lg bg-[var(--surface-raised)] p-4 text-sm">
+        <dt>Last synchronization</dt><dd>{local?.lastSuccessAtMs?new Date(local.lastSuccessAtMs).toLocaleString():"Not yet"}</dd>
+        <dt>Queued operations</dt><dd>{local?.queuedOperations??0}</dd>
+        <dt>Reconciled operations</dt><dd>{local?.reconciledOperations??0}</dd>
+        <dt>Exception / review</dt><dd>{local?.exceptionOperations??0}</dd>
+        <dt>Lease</dt><dd>{local?.leaseStatus??"Unavailable"}</dd>
+        <dt>Catalog</dt><dd>{local?.catalogStatus??"Unavailable"}</dd>
+        <dt>Offline shift eligibility</dt><dd>{local?.shiftOfflineEligible?"Eligible":"Not eligible"}</dd>
+      </dl>
+      {(local?.exceptionOperations??0)>0&&(
+        <p className="text-[12px] text-[var(--foreground-muted)]" data-testid="sync-exception-hint">
+          Exception sales stay on this terminal until a manager resolves them in Hospitality Web after reconnect.
+        </p>
+      )}
+      <button className="btn-primary" disabled={sync.isFetching||!getOperationalSession()} onClick={()=>void retry()}>{sync.isFetching?"Checking…":"Retry synchronization"}</button>
     </DialogContent></Dialog>
   </>;
 }
