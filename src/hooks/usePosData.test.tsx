@@ -23,7 +23,11 @@ const { openShiftSpy } = vi.hoisted(() => ({
 }));
 
 vi.mock("../lib/posApi", () => ({
-  createPosApi: () => ({ openShift: openShiftSpy, getShift: vi.fn(async () => ({ data: OPEN_SHIFT, error: null })) }),
+  createPosApi: () => ({
+    openShift: openShiftSpy,
+    getShift: vi.fn(async () => ({ data: OPEN_SHIFT, error: null })),
+    getCurrentShift: vi.fn(async () => ({ data: null, error: { status: 404 }, response: { status: 404 } })),
+  }),
 }));
 
 /** Two independent components each call usePosShift() — exactly how

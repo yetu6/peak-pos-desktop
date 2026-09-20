@@ -12,6 +12,7 @@ import type {
   PaymentMethod,
   POSOrder,
   POSShift,
+  ServiceType,
 } from "../lib/posContracts";
 
 export function usePropertyId(): string {
@@ -139,26 +140,35 @@ export function usePosShift() {
   const queryClient = useQueryClient();
   const idKey = shiftIdQueryKey(propertyId, outletId);
 
-  const { data: storedId = null, isLoading: idLoading } = useQuery({
-    queryKey: idKey,
-    queryFn: () => localStorage.getItem(shiftStorageKey(propertyId, outletId)),
-    staleTime: Infinity,
-  });
-
+  // Authoritative resume: server open shift wins over a stale localStorage id.
   const { data: shift, isLoading: shiftLoading } = useQuery({
-    queryKey: ["pos", "shift", storedId],
+    queryKey: ["pos", "shift", "current", propertyId, outletId],
     queryFn: async () => {
-      if (!storedId) return null;
-      const { data, error } = await createPosApi().getShift(storedId);
-      if (error || !data || data.status !== "OPEN") {
+      const api = createPosApi();
+      const current = await api.getCurrentShift();
+      if (current.data && (current.data.status === "OPEN" || current.data.status === "PENDING_VARIANCE_APPROVAL")) {
+        localStorage.setItem(shiftStorageKey(propertyId, outletId), current.data.id);
+        queryClient.setQueryData(idKey, current.data.id);
+        return current.data;
+      }
+      const storedId =
+        queryClient.getQueryData<string | null>(idKey) ??
+        localStorage.getItem(shiftStorageKey(propertyId, outletId));
+      if (!storedId) {
+        queryClient.setQueryData(idKey, null);
+        return null;
+      }
+      const { data, error } = await api.getShift(storedId);
+      if (error || !data || (data.status !== "OPEN" && data.status !== "PENDING_VARIANCE_APPROVAL")) {
         localStorage.removeItem(shiftStorageKey(propertyId, outletId));
         queryClient.setQueryData(idKey, null);
         return null;
       }
+      queryClient.setQueryData(idKey, data.id);
       return data;
     },
-    enabled: Boolean(storedId),
     staleTime: 30_000,
+    retry: false,
   });
 
   const open = useMutation({
@@ -167,6 +177,7 @@ export function usePosShift() {
     onSuccess: (data: POSShift) => {
       localStorage.setItem(shiftStorageKey(propertyId, outletId), data.id);
       queryClient.setQueryData(idKey, data.id);
+      queryClient.setQueryData(["pos", "shift", "current", propertyId, outletId], data);
       queryClient.invalidateQueries();
     },
   });
@@ -178,7 +189,10 @@ export function usePosShift() {
       supervisorPin?: string;
       idempotencyKey: string;
     }) => {
-      const currentId = queryClient.getQueryData<string | null>(idKey) ?? storedId;
+      const currentId =
+        shift?.id ??
+        queryClient.getQueryData<string | null>(idKey) ??
+        localStorage.getItem(shiftStorageKey(propertyId, outletId));
       if (!currentId) throw new Error("No open shift");
       return unwrap(
         createPosApi().closeShift(
@@ -196,12 +210,13 @@ export function usePosShift() {
       if (data.status === "CLOSED") {
         localStorage.removeItem(shiftStorageKey(propertyId, outletId));
         queryClient.setQueryData(idKey, null);
+        queryClient.setQueryData(["pos", "shift", "current", propertyId, outletId], null);
       }
       queryClient.invalidateQueries();
     },
   });
 
-  return { shift: shift ?? null, open, close, isLoading: idLoading || shiftLoading };
+  return { shift: shift ?? null, open, close, isLoading: shiftLoading };
 }
 
 export function useCashMovements(shiftId: string | undefined) {
@@ -265,6 +280,74 @@ export function useOrder(orderId: string | undefined) {
 function invalidateOrders(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: ["pos", "orders"] });
   queryClient.invalidateQueries({ queryKey: ["pos", "order"] });
+}
+
+export function useCreateOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      shiftId: string;
+      serviceType?: ServiceType;
+      tableLabel?: string;
+      notes?: string;
+      idempotencyKey: string;
+    }) =>
+      unwrap(
+        createPosApi().createOrder(
+          {
+            shiftId: args.shiftId,
+            serviceType: args.serviceType,
+            tableLabel: args.tableLabel,
+            notes: args.notes,
+          },
+          args.idempotencyKey,
+        ),
+      ),
+    onSuccess: (order: POSOrder) => {
+      queryClient.setQueryData(["pos", "order", order.id], order);
+      invalidateOrders(queryClient);
+    },
+  });
+}
+
+export function useAddOrderItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      orderId: string;
+      productId: string;
+      quantity: number;
+      modifierOptionIds?: string[];
+      version: number;
+      idempotencyKey: string;
+    }) => {
+      try {
+        return await unwrap(
+          createPosApi().addItem(
+            args.orderId,
+            {
+              productId: args.productId,
+              quantity: args.quantity,
+              modifierOptionIds: args.modifierOptionIds,
+              version: args.version,
+            },
+            args.idempotencyKey,
+          ),
+        );
+      } catch (err) {
+        // STALE_VERSION: refetch once and let the caller retry with the fresh version.
+        const message = err instanceof Error ? err.message : String(err);
+        if (/STALE_VERSION|stale version/i.test(message)) {
+          return unwrap(createPosApi().getOrder(args.orderId));
+        }
+        throw err;
+      }
+    },
+    onSuccess: (order: POSOrder) => {
+      queryClient.setQueryData(["pos", "order", order.id], order);
+      invalidateOrders(queryClient);
+    },
+  });
 }
 
 export function useRemoveOrderItem() {

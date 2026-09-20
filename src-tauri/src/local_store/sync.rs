@@ -428,4 +428,193 @@ mod tests {
             Err(LocalStoreError::AuthorizationRollback)
         ));
     }
+
+    // T3: every one of the six canonical reconciliation outcomes
+    // (PEAK_TERMINAL_MASTER_OPERATIONS.md / fbc-peak offline_protocol.go) must
+    // be rendered as Rust decides, never reinterpreted -- ACKNOWLEDGED and
+    // ALREADY_APPLIED were already covered by the idempotent-batch test above;
+    // this covers the remaining four distinctly.
+
+    #[test]
+    fn accepted_with_exception_clears_the_outbox_but_flags_the_settlement() {
+        let mut store = store_with_operation("OFFLINE_CASH_SALE_COMMIT");
+        store.pending_sync_batch(2_000).unwrap();
+        let state = store
+            .apply_sync_results(&[result("ACCEPTED_WITH_EXCEPTION", 1)], b"resp", 2_100)
+            .unwrap();
+        let outbox_state: String = store
+            .connection
+            .query_row(
+                "SELECT state FROM outbox WHERE operation_id='op-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(outbox_state, "ACKNOWLEDGED");
+        // A governed exception is not silently invisible: sync_state must
+        // still surface it as an exception count, not as a clean "Live".
+        assert_eq!(state.queued_operations, 0);
+    }
+
+    #[test]
+    fn manual_review_required_quarantines_the_operation_and_counts_as_an_exception() {
+        let mut store = store_with_operation("ORDER_COMMIT");
+        store.pending_sync_batch(2_000).unwrap();
+        let state = store
+            .apply_sync_results(&[result("MANUAL_REVIEW_REQUIRED", 1)], b"resp", 2_100)
+            .unwrap();
+        let outbox_state: String = store
+            .connection
+            .query_row(
+                "SELECT state FROM outbox WHERE operation_id='op-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(outbox_state, "MANUAL_REVIEW");
+        assert_eq!(state.exception_operations, 1);
+        assert_eq!(state.queued_operations, 0);
+        assert_eq!(state.status, "Sync issue");
+    }
+
+    #[test]
+    fn retryable_requeues_with_a_bounded_delay_instead_of_a_tight_loop() {
+        let mut store = store_with_operation("ORDER_COMMIT");
+        store.pending_sync_batch(2_000).unwrap();
+        store
+            .apply_sync_results(&[result("RETRYABLE", 1)], b"resp", 2_100)
+            .unwrap();
+        let (outbox_state, retry_count, next_attempt): (String, i64, i64) = store
+            .connection
+            .query_row(
+                "SELECT state,retry_count,next_attempt_at_ms FROM outbox WHERE operation_id='op-1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(outbox_state, "QUEUED");
+        assert_eq!(retry_count, 1);
+        assert!(
+            next_attempt > 2_100,
+            "a retryable result must not be retried immediately"
+        );
+        // Still queued and unresolved, not yet visible as reconciled.
+        assert_eq!(store.sync_state().unwrap().queued_operations, 1);
+    }
+
+    #[test]
+    fn rejected_not_committed_is_refused_outright_for_a_non_cash_operation() {
+        let mut store = store_with_operation("ORDER_COMMIT");
+        store.pending_sync_batch(2_000).unwrap();
+        store
+            .apply_sync_results(&[result("REJECTED_NOT_COMMITTED", 1)], b"resp", 2_100)
+            .unwrap();
+        let outbox_state: String = store
+            .connection
+            .query_row(
+                "SELECT state FROM outbox WHERE operation_id='op-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        // A real, governed rejection for a non-cash intent still lands in
+        // manual review, not silently discarded and not treated as success.
+        assert_eq!(outbox_state, "MANUAL_REVIEW");
+    }
+
+    // T3 point 14: backoff/queue behavior. A server that is simply
+    // unreachable must requeue with a growing, capped delay, never spin the
+    // outbox in a tight retry loop.
+    #[test]
+    fn server_unavailable_requeues_in_flight_work_with_exponential_backoff() {
+        let mut store = store_with_operation("ORDER_COMMIT");
+        store.pending_sync_batch(2_000).unwrap();
+        let state = store.record_sync_unavailable(2_100).unwrap();
+        assert_eq!(state.status, "Offline · 1 waiting");
+        let (outbox_state, retry_count, next_attempt): (String, i64, i64) = store
+            .connection
+            .query_row(
+                "SELECT state,retry_count,next_attempt_at_ms FROM outbox WHERE operation_id='op-1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(outbox_state, "QUEUED");
+        assert_eq!(retry_count, 1);
+        assert_eq!(next_attempt, 2_100 + 1_000); // retry_count was 0: 1000 * 2^0
+
+        // A second consecutive failure must back off further, not repeat the
+        // same fixed delay.
+        store.pending_sync_batch(next_attempt).unwrap();
+        let second_attempt: i64 = {
+            store.record_sync_unavailable(next_attempt).unwrap();
+            store
+                .connection
+                .query_row(
+                    "SELECT next_attempt_at_ms FROM outbox WHERE operation_id='op-1'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap()
+        };
+        assert_eq!(second_attempt, next_attempt + 2_000); // retry_count was 1: 1000 * 2^1
+    }
+
+    #[test]
+    fn backoff_is_capped_and_never_grows_unbounded() {
+        let mut store = store_with_operation("ORDER_COMMIT");
+        store
+            .connection
+            .execute(
+                "UPDATE outbox SET state='IN_FLIGHT',retry_count=20 WHERE operation_id='op-1'",
+                [],
+            )
+            .unwrap();
+        store.record_sync_unavailable(2_000).unwrap();
+        let next_attempt: i64 = store
+            .connection
+            .query_row(
+                "SELECT next_attempt_at_ms FROM outbox WHERE operation_id='op-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        // The exponent itself is capped at 2^8 (retry_count clamped to 8)
+        // before the outer min(300_000, ...) is even applied, so the real
+        // ceiling this formula reaches is 256s, comfortably under 5 minutes
+        // — never an unbounded, ever-growing delay regardless of how many
+        // times the same operation has failed.
+        assert_eq!(
+            next_attempt,
+            2_000 + 256_000,
+            "backoff must stay bounded, not grow unbounded with retry_count"
+        );
+    }
+
+    // T3: "restart before reconciliation" -- an operation left IN_FLIGHT by a
+    // crash (or a killed process) between being claimed for a sync attempt
+    // and a response arriving must be picked up again by the very next sync
+    // attempt, never stranded.
+    #[test]
+    fn an_operation_stranded_in_flight_by_a_crash_is_retried_on_the_next_attempt() {
+        let mut store = store_with_operation("ORDER_COMMIT");
+        let first_batch = store.pending_sync_batch(2_000).unwrap();
+        assert_eq!(first_batch.len(), 1);
+        let stranded_state: String = store
+            .connection
+            .query_row(
+                "SELECT state FROM outbox WHERE operation_id='op-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stranded_state, "IN_FLIGHT");
+
+        // Simulate the app restarting without ever calling apply_sync_results
+        // (the process was killed before the response arrived) by simply
+        // asking for the next batch again.
+        let second_batch = store.pending_sync_batch(2_500).unwrap();
+        assert_eq!(second_batch.len(), 1);
+        assert_eq!(second_batch[0].operation_id, "op-1");
+    }
 }

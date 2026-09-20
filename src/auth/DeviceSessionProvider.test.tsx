@@ -168,13 +168,18 @@ describe("DeviceSessionProvider", () => {
     expect(screen.getByTestId("outlet")).toHaveTextContent("o1");
     expect(getOperationalSession()?.token).toContain("ops_live");
     expect(getOperationalSession()?.tenantId).toBe("t1");
-    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+    expect(
+      fetchMock.mock.calls
+        .map(([url]) => String(url))
+        .filter((url) => !url.includes("/heartbeat")),
+    ).toEqual([
       "http://peak.test/api/v1/pos/device/challenges",
       "http://peak.test/api/v1/pos/device/challenges",
       "http://peak.test/api/v1/pos/sessions",
       "http://peak.test/api/v1/pos/catalog",
       "http://peak.test/api/v1/pos/orders?active=true",
     ]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/heartbeat"))).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("onboarding"))).toBe(false);
 
     await userEvent.click(screen.getByTestId("switch"));

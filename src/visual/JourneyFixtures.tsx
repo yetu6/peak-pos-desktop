@@ -24,12 +24,12 @@ export function PairingFixture() {
     <div className="auth-shell flex h-screen items-center justify-center p-6" data-testid="pairing-screen">
       <div className="glass-panel w-full max-w-lg p-8">
         <div className="mb-6 flex items-center justify-center gap-2">
-          <Icon name="peak-logo" size={28} className="text-[var(--gold-accent)]" />
-          <span className="font-display text-2xl text-[var(--foreground)]">Pair this terminal</span>
+          <Icon name="peak-logo" size={28} className="text-[var(--brass)]" />
+          <span className="font-display text-2xl text-[var(--foreground)]">Yetu POS</span>
         </div>
         <p className="text-sm text-[var(--foreground-muted)]">
-          This terminal starts with no hotel authority. Generate a short-lived code, then ask an
-          authorized manager to bind it to the correct property and outlet.
+          This terminal starts with no property authority. Generate a short-lived pairing code, then ask an
+          authorized manager to bind it to the correct outlet.
         </p>
         <button className="btn-primary mt-6 w-full">Generate pairing code</button>
       </div>
@@ -43,24 +43,27 @@ export function PairingWaitingFixture() {
     <div className="auth-shell flex h-screen items-center justify-center p-6" data-testid="pairing-screen">
       <div className="glass-panel w-full max-w-lg p-8">
         <div className="mb-6 flex items-center justify-center gap-2">
-          <Icon name="peak-logo" size={28} className="text-[var(--gold-accent)]" />
-          <span className="font-display text-2xl text-[var(--foreground)]">Pair this terminal</span>
+          <Icon name="peak-logo" size={28} className="text-[var(--brass)]" />
+          <span className="font-display text-2xl text-[var(--foreground)]">Yetu POS</span>
         </div>
         <p className="text-sm text-[var(--foreground-muted)]">
-          Ask an authorized property manager to approve this terminal using the pairing code.
+          This device isn&apos;t connected. Ask a manager to scan the QR or enter the pairing code.
         </p>
-        <div className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface-interactive)] p-5 text-center">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
+        <div className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--receipt-paper)] p-5 text-center text-[var(--slate-ink)]">
+          <div className="mx-auto grid size-[160px] place-items-center rounded-md border border-dashed border-[var(--slate-ink)]/20 text-xs">
+            QR · YETU-POS:1
+          </div>
+          <div className="mt-4 text-[11px] font-medium uppercase tracking-wide text-[var(--slate-ink)]/70">
             Pairing code
           </div>
-          <div className="mt-2 font-mono text-3xl font-semibold tracking-[0.16em] text-[var(--foreground)]">
-            7F3K-Q9
+          <div className="mt-2 font-mono text-3xl font-semibold tracking-[0.16em] text-[var(--slate-ink)]">
+            7F3KQ-9ABCD
           </div>
-          <div className="mt-3 break-all text-[11px] text-[var(--foreground-muted)]">
+          <div className="mt-3 break-all text-[11px] text-[var(--slate-ink)]/60">
             SHA256:3f9a2b…c81d
           </div>
         </div>
-        <p className="mt-4 text-center text-xs text-[var(--foreground-muted)]">Waiting for manager approval…</p>
+        <p className="mt-4 text-center text-xs text-[var(--foreground-muted)]">Waiting for connection…</p>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           <button className="btn-primary">Check approval</button>
           <button className="btn-secondary">Start over</button>
@@ -82,11 +85,11 @@ export function LockedRosterFixture() {
     <div className="auth-shell flex h-screen items-center justify-center p-6" data-testid="pin-screen">
       <div className="glass-panel w-full max-w-xl p-8">
         <div className="mb-5 flex items-center justify-center gap-2">
-          <Icon name="peak-logo" size={24} className="text-[var(--gold-accent)]" />
-          <span className="font-display text-xl text-[var(--foreground)]">Peak Terminal</span>
+          <Icon name="peak-logo" size={24} className="text-[var(--brass)]" />
+          <span className="font-display text-xl text-[var(--foreground)]">Yetu POS</span>
         </div>
         <p className="text-center text-[13px] font-medium text-[var(--foreground-muted)]">Main restaurant</p>
-        <p className="mt-2 text-center text-[11px] font-medium text-[var(--foreground-muted)]">Offline authority ready</p>
+        <p className="mt-2 text-center text-[11px] font-medium text-[var(--foreground-muted)]">Enter PIN to unlock</p>
         <p className="mt-5 text-center text-sm font-medium text-[var(--foreground)]">Who's using this terminal?</p>
         <div className="mt-4 grid grid-cols-3 gap-3">
           {ROSTER.map((entry) => (
@@ -118,8 +121,8 @@ export function LockedPinFixture() {
     <div className="auth-shell flex h-screen items-center justify-center p-6" data-testid="pin-screen">
       <div className="glass-panel w-full max-w-sm p-8">
         <div className="mb-5 flex items-center justify-center gap-2">
-          <Icon name="peak-logo" size={24} className="text-[var(--gold-accent)]" />
-          <span className="font-display text-xl text-[var(--foreground)]">Peak Terminal</span>
+          <Icon name="peak-logo" size={24} className="text-[var(--brass)]" />
+          <span className="font-display text-xl text-[var(--foreground)]">Yetu POS</span>
         </div>
         <p className="text-center text-[13px] font-medium text-[var(--foreground-muted)]">Main restaurant</p>
         <div className="mt-5 flex items-center justify-between">

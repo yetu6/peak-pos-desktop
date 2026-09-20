@@ -4,6 +4,7 @@ export interface PairingRecord {
   claimToken: string;
   fingerprint: string;
   expiresAt: string;
+  qrPayload?: string;
 }
 
 export interface DeviceIdentityRecord {

@@ -1,71 +1,436 @@
-import {useEffect,useState} from "react";
-import {Icon} from "../components/Icon";
-import {TillControls} from "../components/TillControls";
-import {ItemModifierDialog,type ModifierSelection} from "../components/ItemModifierDialog";
-import {CategoryTab,MoneyDisplay,OrderLine,OrderRail,ProductTile,QuantityStepper,TerminalState} from "../components/terminal/TerminalPrimitives";
-import {useLocalCatalog,useLocalDraft} from "../hooks/useLocalOrder";
-import type {LocalCatalogProduct} from "../lib/localPosCore";
-import {formatMinor,moneyFormatter} from "../lib/posMoney";
-import {LocalCashSaved,LocalCashSettlementDialog} from "../components/LocalCashSettlementDialog";
-import type {OfflineCashCommitResult} from "../lib/localPosCore";
+import { useMemo, useState } from "react";
+import { Icon } from "../components/Icon";
+import { TillControls } from "../components/TillControls";
+import { ItemModifierDialog, type ModifierSelection } from "../components/ItemModifierDialog";
+import { SettleDialog } from "../components/SettleDialog";
+import {
+  CategoryTab,
+  MoneyDisplay,
+  OrderLine,
+  OrderRail,
+  ProductTile,
+  QuantityStepper,
+  TerminalState,
+} from "../components/terminal/TerminalPrimitives";
+import {
+  useAddOrderItem,
+  useCatalog,
+  useCreateOrder,
+  useIdempotencyKey,
+  useMutationMessage,
+  usePosShift,
+  useRemoveOrderItem,
+  useSendOrder,
+} from "../hooks/usePosData";
+import type { POSCatalogProduct, POSOrder, ServiceType } from "../lib/posContracts";
+import { formatMinor, moneyFormatter } from "../lib/posMoney";
 
-export function NewOrder(){
-  const [activeCategory,setActiveCategory]=useState<string|undefined>();
-  const [search,setSearch]=useState("");
-  const catalog=useLocalCatalog(search,activeCategory);
-  const {draft,addItem,setQuantity,removeLine,updateContext,commit,settleCash}=useLocalDraft(catalog.data?.serviceTypes[0]?.id);
-  const [serviceType,setServiceType]=useState("");
-  const [tableLabel,setTableLabel]=useState("");
-  const [notes,setNotes]=useState("");
-  const [configuring,setConfiguring]=useState<LocalCatalogProduct|null>(null);
-  const [secured,setSecured]=useState<string|null>(null);
-  const [cashOpen,setCashOpen]=useState(false);
-  const [cashSaved,setCashSaved]=useState<OfflineCashCommitResult|null>(null);
-  const order=draft.data;
-  useEffect(()=>{if(order){setServiceType(order.serviceType);setTableLabel(order.tableLabel??"");setNotes(order.notes??"")}},[order?.id]);
-  const effectiveServiceType=serviceType||order?.serviceType||catalog.data?.serviceTypes[0]?.id||"";
-  // Peak catalogs are single-currency per outlet — the signed local snapshot
-  // is the authoritative source; a draft order already carries the real
-  // currency it was created under. Never a hardcoded default: `money()`
-  // shows "—" in the narrow window before either exists.
-  const currency=catalog.data?.currency??order?.currency;
-  const money=moneyFormatter(currency);
+const SERVICE_TYPES: Array<{ id: ServiceType; label: string }> = [
+  { id: "DINE_IN", label: "Dine in" },
+  { id: "TAKEAWAY", label: "Takeaway" },
+  { id: "ROOM_SERVICE", label: "Room service" },
+];
 
-  function tapProduct(product:LocalCatalogProduct){setSecured(null);if(product.modifierGroups.length>0)setConfiguring(product);else addItem.mutate({productId:product.id,quantity:1,modifierOptionIds:[]})}
-  function confirmModifiers(product:LocalCatalogProduct,selection:ModifierSelection){addItem.mutate({productId:product.id,quantity:selection.quantity,modifierOptionIds:selection.modifierOptionIds},{onSuccess:()=>setConfiguring(null)})}
-  function persistContext(nextService=effectiveServiceType){if(!order||!nextService)return;updateContext.mutate({serviceType:nextService,tableLabel:tableLabel.trim()||undefined,notes:notes.trim()||undefined})}
-  function secureOrder(){commit.mutate(undefined,{onSuccess:(result)=>{setSecured(result.id);setTableLabel("");setNotes("");void draft.refetch()}})}
-  const busy=addItem.isPending||setQuantity.isPending||removeLine.isPending||updateContext.isPending||commit.isPending||Boolean(settleCash?.isPending);
-  const totalItems=order?.lines.reduce((sum,line)=>sum+line.quantity,0)??0;
-  const error=catalog.error??draft.error??addItem.error??setQuantity.error??removeLine.error??updateContext.error??commit.error;
+const CATEGORY_COLORS = [
+  "#3D7EA6",
+  "#5B8C5A",
+  "#C9A227",
+  "#8B6BB5",
+  "#C23B22",
+  "#2A9D8F",
+];
 
-  return <div className="new-order-screen">
-    <div className="new-order-header"><div><h1 className="text-lg font-bold tracking-[-0.02em] text-[var(--foreground)]">New order</h1><p className="text-xs text-[var(--foreground-muted)]">Local-first ordering · prices secured by the active Peak catalog</p></div><TillControls currency={currency}/></div>
-    <div className="new-order-layout">
-      <section className="catalog-workspace" aria-label="Catalog">
-        <div className="catalog-toolbar">
-          {(catalog.data?.serviceTypes??[]).map(type=><CategoryTab key={type.id} data-testid={`service-type-${type.id}`} active={effectiveServiceType===type.id} disabled={busy} onClick={()=>{setServiceType(type.id);persistContext(type.id)}}>{type.label}</CategoryTab>)}
-          <label className="relative ml-auto min-w-44"><span className="sr-only">Search menu</span><input data-testid="catalog-search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Search menu" className="input w-full"/></label>
-          <input data-testid="table-label" value={tableLabel} onChange={event=>setTableLabel(event.target.value)} onBlur={()=>persistContext()} placeholder="Table / context" className="input w-40"/>
+/**
+ * Online register: catalog from GET /pos/catalog, ticket from live order
+ * mutations. Local-first offline path stays available elsewhere; this screen
+ * is the cashier till against the live API.
+ */
+export function NewOrder() {
+  const { shift } = usePosShift();
+  const catalog = useCatalog();
+  const [activeCategory, setActiveCategory] = useState<string | undefined>();
+  const [search, setSearch] = useState("");
+  const [serviceType, setServiceType] = useState<ServiceType>("DINE_IN");
+  const [tableLabel, setTableLabel] = useState("");
+  const [notes, setNotes] = useState("");
+  const [order, setOrder] = useState<POSOrder | null>(null);
+  const [configuring, setConfiguring] = useState<POSCatalogProduct | null>(null);
+  const [settleOpen, setSettleOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const createOrder = useCreateOrder();
+  const addItem = useAddOrderItem();
+  const removeItem = useRemoveOrderItem();
+  const sendOrder = useSendOrder();
+  const createKey = useIdempotencyKey();
+  const addKey = useIdempotencyKey();
+  const sendKey = useIdempotencyKey();
+  const removeKey = useIdempotencyKey();
+
+  const createError = useMutationMessage(createOrder.error);
+  const addError = useMutationMessage(addItem.error);
+  const removeError = useMutationMessage(removeItem.error);
+  const sendError = useMutationMessage(sendOrder.error);
+  const mutationError = createError ?? addError ?? removeError ?? sendError ?? actionError;
+
+  const products = useMemo(() => {
+    const all = catalog.data?.products ?? [];
+    const q = search.trim().toLowerCase();
+    return all.filter((product) => {
+      if (activeCategory && product.categoryId !== activeCategory) return false;
+      if (!q) return true;
+      return product.name.toLowerCase().includes(q) || product.code.toLowerCase().includes(q);
+    });
+  }, [catalog.data?.products, activeCategory, search]);
+
+  const categories = useMemo(
+    () => (catalog.data?.categories ?? []).filter((c) => c.isActive).sort((a, b) => a.sortOrder - b.sortOrder),
+    [catalog.data?.categories],
+  );
+
+  const currency = catalog.data?.products[0]?.currency ?? "TZS";
+  const money = moneyFormatter(currency);
+  const busy =
+    createOrder.isPending ||
+    addItem.isPending ||
+    removeItem.isPending ||
+    sendOrder.isPending;
+  const totalItems = order?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+  const canMutate = Boolean(shift) && !busy;
+
+  async function ensureOrder(): Promise<POSOrder | null> {
+    if (order) return order;
+    if (!shift) {
+      setActionError("Open a shift before taking orders.");
+      return null;
+    }
+    setActionError(null);
+    try {
+      const created = await createOrder.mutateAsync({
+        shiftId: shift.id,
+        serviceType,
+        tableLabel: tableLabel.trim() || undefined,
+        notes: notes.trim() || undefined,
+        idempotencyKey: createKey.next(),
+      });
+      setOrder(created);
+      return created;
+    } catch {
+      return null;
+    }
+  }
+
+  async function tapProduct(product: POSCatalogProduct) {
+    if (!canMutate) return;
+    if ((product.modifierGroups?.length ?? 0) > 0) {
+      setConfiguring(product);
+      return;
+    }
+    await addProduct(product, 1, []);
+  }
+
+  async function addProduct(product: POSCatalogProduct, quantity: number, modifierOptionIds: string[]) {
+    const current = await ensureOrder();
+    if (!current) return;
+    setActionError(null);
+    const next = await addItem.mutateAsync({
+      orderId: current.id,
+      productId: product.id,
+      quantity,
+      modifierOptionIds,
+      version: current.version,
+      idempotencyKey: addKey.next(),
+    });
+    // If STALE_VERSION returned a fresh order without applying the add, retry once.
+    if (next.version === current.version && next.items.length === current.items.length) {
+      const retried = await addItem.mutateAsync({
+        orderId: next.id,
+        productId: product.id,
+        quantity,
+        modifierOptionIds,
+        version: next.version,
+        idempotencyKey: addKey.next(),
+      });
+      setOrder(retried);
+      setConfiguring(null);
+      return;
+    }
+    setOrder(next);
+    setConfiguring(null);
+  }
+
+  async function bumpQuantity(itemId: string, delta: number) {
+    if (!order || !canMutate) return;
+    const line = order.items.find((item) => item.id === itemId);
+    if (!line || line.status !== "ADDED") return;
+    if (delta < 0) {
+      // No quantity-patch API: removing an unsent line is the certified correction.
+      const next = await removeItem.mutateAsync({
+        orderId: order.id,
+        itemId,
+        version: order.version,
+        idempotencyKey: removeKey.next(),
+      });
+      setOrder(next);
+      return;
+    }
+    const next = await addItem.mutateAsync({
+      orderId: order.id,
+      productId: line.productId,
+      quantity: delta,
+      version: order.version,
+      idempotencyKey: addKey.next(),
+    });
+    setOrder(next);
+  }
+
+  async function sendToKitchen() {
+    if (!order || order.items.length === 0) return;
+    setActionError(null);
+    const next = await sendOrder.mutateAsync({
+      orderId: order.id,
+      version: order.version,
+      idempotencyKey: sendKey.next(),
+    });
+    setOrder(next);
+  }
+
+  function clearTicket() {
+    setOrder(null);
+    setTableLabel("");
+    setNotes("");
+    setSettleOpen(false);
+    createKey.next();
+  }
+
+  return (
+    <div className="new-order-screen">
+      <div className="new-order-header">
+        <div>
+          <h1 className="text-lg font-bold tracking-[-0.02em] text-[var(--foreground)]">Register</h1>
+          <p className="text-xs text-[var(--foreground-muted)]">
+            Live catalog · ticket settles exactly · prices from the server
+          </p>
         </div>
-        {(catalog.data?.categories.length??0)>0&&<div className="category-tabs" aria-label="Menu categories"><CategoryTab data-testid="category-all" active={!activeCategory} onClick={()=>setActiveCategory(undefined)}>All</CategoryTab>{catalog.data!.categories.map(category=><CategoryTab key={category.id} data-testid={`category-${category.id}`} active={activeCategory===category.id} onClick={()=>setActiveCategory(category.id)}>{category.name}</CategoryTab>)}</div>}
-        {(catalog.isLoading||draft.isLoading)&&<div className="skeleton h-40 w-full rounded-xl"/>}
-        {(catalog.isError||draft.isError)&&<TerminalState state="offline" title="Certified menu unavailable" description="Ordering is locked until this terminal has a valid signed catalog, shift and offline authorization lease."/>}
-        {!catalog.isLoading&&!catalog.isError&&catalog.data?.products.length===0&&<TerminalState state="empty" title="No matching items" description="Try another category or search term."/>}
-        <div className="product-grid">{catalog.data?.products.map(product=><ProductTile key={product.id} data-testid={`menu-${product.name}`} disabled={!order||busy} onClick={()=>tapProduct(product)} name={product.name} price={formatMinor(product.priceMinor,product.currency)}/>)}</div>
-      </section>
-      <OrderRail title="Current order" data-testid="current-order-rail" headerMeta={<p className="mt-1 text-xs text-[var(--foreground-muted)]">{totalItems} {totalItems===1?"item":"items"} · {order?.syncState==="LOCAL_DRAFT"?"Saved locally":"Secured"}</p>} footer={<>
-        <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-[var(--foreground-muted)]"><span>Subtotal</span><MoneyDisplay className="text-right">{order?money(order.subtotalMinor):"—"}</MoneyDisplay><span>Tax</span><MoneyDisplay className="text-right">{order?money(order.taxMinor):"—"}</MoneyDisplay><span className="font-semibold text-[var(--foreground)]">Total</span><MoneyDisplay prominence="strong" className="text-right text-base" data-testid="cart-preview-total">{order&&order.lines.length>0?money(order.totalMinor):"—"}</MoneyDisplay></div>
-        <input data-testid="order-notes" value={notes} onChange={event=>setNotes(event.target.value)} onBlur={()=>persistContext()} placeholder="Order notes" className="input w-full"/>
-        {secured&&<div className="badge badge-success mt-3" data-testid="order-created">Order secured locally · waiting to sync</div>}
-        {cashSaved&&currency&&<LocalCashSaved result={cashSaved} currency={currency}/>}
-        {error&&<div className="badge badge-danger mt-3" data-testid="create-error">Intent not saved. Review terminal authorization and try again.</div>}
-        <div className="mt-4 grid grid-cols-2 gap-2"><button data-testid="create-order" onClick={secureOrder} disabled={!order||order.lines.length===0||busy} className="btn-secondary w-full"><Icon name="orders" size={17}/>{commit.isPending?"Securing…":"Secure order"}</button><button data-testid="settle-local-cash" onClick={()=>setCashOpen(true)} disabled={!order||order.lines.length===0||busy} className="btn-primary w-full">Settle cash</button></div>
-      </>}>
-        <ul>{(!order||order.lines.length===0)&&<li className="py-8 text-center text-xs text-[var(--foreground-muted)]">Tap a menu item to start this order.</li>}{order?.lines.map(line=><OrderLine key={line.id} data-testid={`cart-${line.name}`}><span className="min-w-0 flex-1"><span className="block truncate font-semibold text-[var(--foreground)]">{line.name}</span>{line.modifiers.length>0&&<span className="block truncate text-[11px] text-[var(--foreground-muted)]">{line.modifiers.map(item=>item.name).join(", ")}</span>}<MoneyDisplay className="mt-1 block text-[11px] text-[var(--foreground-muted)]">{money(line.lineTotalMinor)}</MoneyDisplay></span><QuantityStepper label={line.name} value={line.quantity} minimum={0} onDecrease={()=>line.quantity===1?removeLine.mutate(line.id):setQuantity.mutate({lineId:line.id,quantity:line.quantity-1})} onIncrease={()=>setQuantity.mutate({lineId:line.id,quantity:line.quantity+1})}/></OrderLine>)}</ul>
-      </OrderRail>
+        <TillControls currency={currency} />
+      </div>
+      <div className="new-order-layout">
+        <section className="catalog-workspace" aria-label="Catalog">
+          <div className="catalog-toolbar">
+            {SERVICE_TYPES.map((type) => (
+              <CategoryTab
+                key={type.id}
+                data-testid={`service-type-${type.id}`}
+                active={serviceType === type.id}
+                disabled={busy || Boolean(order)}
+                onClick={() => setServiceType(type.id)}
+              >
+                {type.label}
+              </CategoryTab>
+            ))}
+            <label className="relative ml-auto min-w-44">
+              <span className="sr-only">Search menu</span>
+              <input
+                data-testid="catalog-search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search menu"
+                className="input w-full"
+              />
+            </label>
+            <input
+              data-testid="table-label"
+              value={tableLabel}
+              onChange={(event) => setTableLabel(event.target.value)}
+              placeholder="Table"
+              className="input w-28"
+              disabled={Boolean(order)}
+            />
+          </div>
+          {categories.length > 0 && (
+            <div className="category-tabs" aria-label="Menu categories">
+              <CategoryTab data-testid="category-all" active={!activeCategory} onClick={() => setActiveCategory(undefined)}>
+                All
+              </CategoryTab>
+              {categories.map((category, index) => (
+                <CategoryTab
+                  key={category.id}
+                  data-testid={`category-${category.id}`}
+                  active={activeCategory === category.id}
+                  onClick={() => setActiveCategory(category.id)}
+                  style={{ ["--chip-accent" as string]: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }}
+                >
+                  {category.name}
+                </CategoryTab>
+              ))}
+            </div>
+          )}
+          {catalog.isLoading && <div className="skeleton h-40 w-full rounded-xl" />}
+          {catalog.isError && (
+            <TerminalState
+              state="offline"
+              title="Menu unavailable"
+              description="Could not load the outlet catalog. Check the connection and try again."
+            />
+          )}
+          {!catalog.isLoading && !catalog.isError && products.length === 0 && (
+            <TerminalState state="empty" title="No matching items" description="Try another category or search term." />
+          )}
+          <div className="product-grid">
+            {products.map((product) => (
+              <ProductTile
+                key={product.id}
+                data-testid={`menu-${product.name}`}
+                disabled={!shift || busy}
+                onClick={() => void tapProduct(product)}
+                name={product.name}
+                price={formatMinor(product.priceMinor, product.currency)}
+              />
+            ))}
+          </div>
+        </section>
+
+        <OrderRail
+          title="Ticket"
+          data-testid="current-order-rail"
+          className="receipt-ticket"
+          headerMeta={
+            <p className="mt-1 text-xs text-[var(--foreground-muted)]">
+              {totalItems} {totalItems === 1 ? "item" : "items"}
+              {order ? ` · ${order.orderNumber}` : " · new"}
+              {order ? ` · ${order.status.replaceAll("_", " ").toLowerCase()}` : ""}
+            </p>
+          }
+          footer={
+            <>
+              <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-[var(--foreground-muted)]">
+                <span>Subtotal</span>
+                <MoneyDisplay className="text-right">{order ? money(order.subtotalMinor) : "—"}</MoneyDisplay>
+                <span>Tax</span>
+                <MoneyDisplay className="text-right">{order ? money(order.taxMinor) : "—"}</MoneyDisplay>
+                <span className="font-semibold text-[var(--foreground)]">Total</span>
+                <MoneyDisplay
+                  prominence="strong"
+                  className="text-right text-base text-[var(--brass)]"
+                  data-testid="cart-preview-total"
+                >
+                  {order && order.items.length > 0 ? money(order.totalMinor) : "—"}
+                </MoneyDisplay>
+              </div>
+              <input
+                data-testid="order-notes"
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="Order notes"
+                className="input w-full"
+                disabled={Boolean(order)}
+              />
+              {mutationError && (
+                <div className="badge badge-danger mt-3" data-testid="create-error" role="alert">
+                  {mutationError}
+                </div>
+              )}
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  data-testid="send-order"
+                  onClick={() => void sendToKitchen()}
+                  disabled={!order || order.items.length === 0 || order.status !== "OPEN" || busy}
+                  className="btn-secondary w-full"
+                >
+                  <Icon name="orders" size={17} />
+                  {sendOrder.isPending ? "Sending…" : "Send"}
+                </button>
+                <button
+                  data-testid="pay-order"
+                  onClick={() => setSettleOpen(true)}
+                  disabled={
+                    !order ||
+                    order.items.length === 0 ||
+                    order.status === "CLOSED" ||
+                    order.status === "VOIDED" ||
+                    busy
+                  }
+                  className="btn-pay w-full"
+                >
+                  Pay
+                </button>
+              </div>
+              {order?.status === "OPEN" && order.items.some((item) => item.status === "ADDED") && (
+                <p className="mt-2 text-[11px] text-[var(--foreground-muted)]">
+                  Send for a kitchen ticket, or Pay to settle now.
+                </p>
+              )}
+              {order && (
+                <button
+                  type="button"
+                  className="btn-ghost mt-2 w-full text-xs"
+                  data-testid="new-ticket"
+                  onClick={clearTicket}
+                  disabled={busy}
+                >
+                  New ticket
+                </button>
+              )}
+            </>
+          }
+        >
+          <ul>
+            {(!order || order.items.length === 0) && (
+              <li className="py-8 text-center text-xs text-[var(--foreground-muted)]">
+                Tap a menu item to start this order.
+              </li>
+            )}
+            {order?.items.map((line) => (
+              <OrderLine key={line.id} data-testid={`cart-${line.name}`}>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold text-[var(--foreground)]">{line.name}</span>
+                  {line.modifiers && line.modifiers.length > 0 && (
+                    <span className="block truncate text-[11px] text-[var(--foreground-muted)]">
+                      {line.modifiers.map((item) => item.optionName).join(", ")}
+                    </span>
+                  )}
+                  <MoneyDisplay className="mt-1 block text-[11px] text-[var(--foreground-muted)]">
+                    {money(line.totalMinor)}
+                  </MoneyDisplay>
+                </span>
+                {line.status === "ADDED" ? (
+                  <QuantityStepper
+                    label={line.name}
+                    value={line.quantity}
+                    minimum={0}
+                    onDecrease={() => void bumpQuantity(line.id, -1)}
+                    onIncrease={() => void bumpQuantity(line.id, 1)}
+                  />
+                ) : (
+                  <span className="text-[11px] text-[var(--foreground-muted)]">×{line.quantity}</span>
+                )}
+              </OrderLine>
+            ))}
+          </ul>
+        </OrderRail>
+      </div>
+
+      {configuring && (
+        <ItemModifierDialog
+          product={configuring}
+          currency={configuring.currency}
+          onCancel={() => setConfiguring(null)}
+          onConfirm={(selection: ModifierSelection) =>
+            void addProduct(configuring, selection.quantity, selection.modifierOptionIds)
+          }
+        />
+      )}
+      {settleOpen && order && (
+        <SettleDialog
+          order={order}
+          currency={currency}
+          onClose={() => setSettleOpen(false)}
+          onSettled={() => {
+            setSettleOpen(false);
+            clearTicket();
+          }}
+        />
+      )}
     </div>
-    {configuring&&<ItemModifierDialog product={configuring} currency={configuring.currency} onCancel={()=>setConfiguring(null)} onConfirm={selection=>confirmModifiers(configuring,selection)}/>}
-    {cashOpen&&order&&settleCash&&currency&&<LocalCashSettlementDialog amountDueMinor={order.totalMinor} currency={currency} busy={settleCash.isPending} error={settleCash.isError} onCancel={()=>setCashOpen(false)} onConfirm={amount=>settleCash.mutate(amount,{onSuccess:result=>{setCashSaved(result);setCashOpen(false);setTableLabel("");setNotes("");void draft.refetch()}})}/>}
-  </div>
+  );
 }

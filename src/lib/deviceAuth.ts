@@ -31,6 +31,8 @@ export interface PairingRequest {
   pairingRequestId: string;
   pairingCode: string;
   claimToken: string;
+  /** Encoded as QR: YETU-POS:1:<pairingCode>. Never contains claimToken. */
+  qrPayload?: string;
   fingerprint: string;
   expiresAt: string;
 }
@@ -226,6 +228,28 @@ export async function issueChallenge(
     throw new Error("Challenge returned an incomplete response");
   }
   return body;
+}
+
+/** Device presence for Hospitality Web connectivity (ONLINE/STALE/OFFLINE). */
+export async function sendHeartbeat(
+  baseUrl: string,
+  terminalId: string,
+  deviceCredential: string,
+): Promise<void> {
+  const response = await fetch(
+    `${baseUrl}/api/v1/pos/terminals/${encodeURIComponent(terminalId)}/heartbeat`,
+    {
+      method: "POST",
+      headers: publicJsonHeaders(),
+      body: JSON.stringify({ deviceCredential }),
+    },
+  );
+  if (response.status === 401) {
+    throw new DeviceRevokedError();
+  }
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Heartbeat failed with HTTP ${response.status}`);
+  }
 }
 
 function optionalId(value: unknown): string | undefined {

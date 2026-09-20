@@ -23,7 +23,9 @@ describe("JourneyFixtures", () => {
 
   it("renders the waiting-for-approval pairing composition", () => {
     render(<PairingWaitingFixture />);
-    expect(screen.getByText("Waiting for manager approval…")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for connection…")).toBeInTheDocument();
+    expect(screen.getByText("Pairing code")).toBeInTheDocument();
+    expect(screen.getByText("7F3KQ-9ABCD")).toBeInTheDocument();
   });
 
   it("renders the tap-to-select staff roster composition", () => {

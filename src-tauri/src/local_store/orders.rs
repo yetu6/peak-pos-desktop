@@ -951,25 +951,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let mut store =
             LocalStore::open(&temp.path().join("orders.db"), &MemoryKeys::default()).unwrap();
-        store.connection.execute_batch("INSERT INTO terminal_authority VALUES ('term',1,'prop','out','reg','key',zeroblob(32),x'01','PAIRED',1,0,1,1);
-        INSERT INTO authorization_bundles(bundle_id,terminal_id,credential_epoch,generation,lease_id,property_id,outlet_id,register_id,shift_id,business_date,catalog_version,catalog_digest,issued_at_ms,not_before_ms,refresh_after_ms,hard_expires_at_ms,revocation_generation,max_operation_count,max_gross_minor,max_cash_minor,allowed_operations_json,signing_key_id,signed_payload,signature,state,received_at_ms) VALUES ('bundle','term',1,1,'lease','prop','out','reg','shift','2026-09-03','v1','digest',1,1,9000,10000,0,10,1000000,1000000,'[\"ORDER_DRAFT\",\"ORDER_COMMIT\",\"CASH_SETTLE\"]','key',x'01',zeroblob(64),'ACTIVE',1);
-        INSERT INTO offline_staff_verifiers(bundle_id,staff_id,display_name,verifier_phc,permissions_json,expires_at_ms,max_attempts,base_lockout_ms) VALUES ('bundle','staff','Cashier','x','[\"pos.order.create\"]',10000,5,1000);
-        INSERT INTO shift_authority VALUES ('bundle','shift','[\"staff\"]','ACTIVE',1,NULL);
-        INSERT INTO authorization_clock_anchor VALUES (1,1,1,1,1);
-        INSERT INTO catalog_snapshots(snapshot_id,version,digest,currency,published_at_ms,valid_until_ms,signed_manifest,payload,verification_state,property_id,outlet_id,not_before_ms,tax_mode) VALUES ('snap','v1','digest','TZS',1,500,x'01',x'01','VERIFIED','prop','out',1,'EXCLUSIVE');
-        INSERT INTO active_catalog VALUES (1,'snap',1);
-        INSERT INTO catalog_service_types VALUES ('snap','DINE_IN','Dine in',0,0);
-        INSERT INTO catalog_categories VALUES ('snap','food','FOOD','Food',0,1);
-        INSERT INTO catalog_products VALUES ('snap','tea','food','TEA','Tea','tea tea',10000,1800,1,0);
-        INSERT INTO catalog_modifier_groups VALUES ('snap','milk','tea','Milk',1,1,0,1);
-        INSERT INTO catalog_modifier_options VALUES ('snap','oat','milk','Oat milk',2000,0,1);
-        INSERT INTO offline_leases VALUES ('lease','term',1,'shift','2026-09-03','snap',1,10000,x'01','ACTIVE');
-        INSERT INTO shifts VALUES ('shift','shift','lease','staff','2026-09-03','ACTIVE',1,1);").unwrap();
-        store.active_staff = Some(crate::local_store::ActiveStaffSession {
-            staff_id: "staff".into(),
-            lease_id: "lease".into(),
-            expires_at_ms: 10_000,
-        });
+        seed_authority(&mut store);
         (temp, store)
     }
 
@@ -1120,6 +1102,260 @@ mod tests {
         let evidence: serde_json::Value = serde_json::from_slice(&payload).unwrap();
         assert_eq!(evidence["settlement"]["cashReceivedMinor"], 20_000);
         assert_eq!(evidence["order"]["totalMinor"], 14_160);
+    }
+
+    // T3: crash/failure-point coverage around the offline cash commit. Every
+    // one of these proves the same invariant from a different interruption
+    // point -- zero durable financial fact, or exactly one, never a partial
+    // or duplicated one. `commit_order`'s own signer-failure test above
+    // exercises the identical SQLite transaction boundary; these are the
+    // offline-cash-specific interruption points the certification explicitly
+    // calls out, since cash is the one outcome the backend can never reject
+    // after the fact (`pos_offline_cash_never_rejected`) -- correctness has
+    // to be enforced here, before the operation ever leaves the device.
+
+    fn priced_draft_for_cash(store: &mut LocalStore) -> LocalOrderView {
+        let draft = store
+            .get_or_create_order_draft(
+                CreateOrderDraftIntent {
+                    service_type: "DINE_IN".into(),
+                    table_label: None,
+                    notes: None,
+                },
+                100,
+            )
+            .unwrap();
+        store
+            .add_order_item(
+                AddOrderItemIntent {
+                    order_id: draft.id.clone(),
+                    expected_version: draft.version,
+                    product_id: "tea".into(),
+                    quantity: 1,
+                    modifier_option_ids: vec!["oat".into()],
+                },
+                200,
+            )
+            .unwrap()
+    }
+
+    fn no_financial_fact_exists(store: &LocalStore) -> bool {
+        let (settlements, operations, outbox): (i64, i64, i64) = store
+            .connection
+            .query_row(
+                "SELECT (SELECT count(*) FROM cash_settlements),(SELECT count(*) FROM operations),(SELECT count(*) FROM outbox)",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        settlements == 0 && operations == 0 && outbox == 0
+    }
+
+    #[test]
+    fn offline_cash_commit_leaves_zero_durable_fact_when_the_signer_fails() {
+        let (_temp, mut store) = seeded();
+        let priced = priced_draft_for_cash(&mut store);
+        let error = store
+            .commit_offline_cash_sale(&priced.id, priced.version, 20_000, 300, |_| {
+                Err(LocalStoreError::SigningFailure)
+            })
+            .unwrap_err();
+        assert_eq!(error.kind(), LocalStoreErrorKind::SigningFailure);
+        assert!(no_financial_fact_exists(&store));
+        let state: String = store
+            .connection
+            .query_row(
+                "SELECT state FROM orders WHERE local_order_id=?1",
+                [&priced.id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            state, "DRAFT",
+            "the order must remain re-attemptable, not stuck"
+        );
+    }
+
+    #[test]
+    fn offline_cash_commit_leaves_zero_durable_fact_when_the_signer_panics_are_caught_by_the_caller(
+    ) {
+        // A signer that fails after doing real work (e.g. a keyring call that
+        // errors mid-operation) must roll back exactly the same as an
+        // immediate failure -- the transaction boundary is what matters, not
+        // how long the signer ran before failing.
+        let (_temp, mut store) = seeded();
+        let priced = priced_draft_for_cash(&mut store);
+        let mut attempts = 0;
+        let error = store
+            .commit_offline_cash_sale(&priced.id, priced.version, 20_000, 300, |_| {
+                attempts += 1;
+                Err(LocalStoreError::SecureStoreUnavailable)
+            })
+            .unwrap_err();
+        assert_eq!(attempts, 1);
+        assert_eq!(error.kind(), LocalStoreErrorKind::SecureStoreUnavailable);
+        assert!(no_financial_fact_exists(&store));
+    }
+
+    #[test]
+    fn offline_cash_commit_never_reaches_the_signer_when_the_lease_ceiling_is_already_spent() {
+        let (_temp, mut store) = seeded();
+        store
+            .connection
+            .execute(
+                "UPDATE authorization_bundles SET used_cash_minor=999_999 WHERE bundle_id='bundle'",
+                [],
+            )
+            .unwrap();
+        let priced = priced_draft_for_cash(&mut store);
+        let error = store
+            .commit_offline_cash_sale(&priced.id, priced.version, 20_000, 300, |_| {
+                panic!("a ceiling-exceeding commit must fail before ever asking to sign")
+            })
+            .unwrap_err();
+        assert_eq!(error.kind(), LocalStoreErrorKind::LimitExceeded);
+        assert!(no_financial_fact_exists(&store));
+    }
+
+    #[test]
+    fn offline_cash_commit_never_reaches_the_signer_when_the_catalog_has_moved_on() {
+        let (_temp, mut store) = seeded();
+        let priced = priced_draft_for_cash(&mut store);
+        // A new lease/bundle activates referencing a genuinely new catalog
+        // version (e.g. a price change published and the terminal's
+        // authority refreshed) -- this specific draft was created under the
+        // old catalog and never re-priced, so its own captured
+        // catalog_snapshot_id is now stale relative to the terminal's
+        // current authority, which is exactly the case CatalogRequired
+        // exists to catch. authorization_bundles' own evidence columns are
+        // immutable (`immutable_authorization_bundle` trigger) by design --
+        // a real catalog change supersedes the old bundle and stages a new
+        // one, it never mutates the old bundle's catalog_version in place.
+        store
+            .connection
+            .execute_batch(
+                "UPDATE authorization_bundles SET state='SUPERSEDED' WHERE bundle_id='bundle';
+                 INSERT INTO catalog_snapshots(snapshot_id,version,digest,currency,published_at_ms,valid_until_ms,signed_manifest,payload,verification_state,property_id,outlet_id,not_before_ms,tax_mode) VALUES ('snap2','v2','digest2','TZS',1,500,x'01',x'01','VERIFIED','prop','out',1,'EXCLUSIVE');
+                 UPDATE active_catalog SET snapshot_id='snap2' WHERE singleton_id=1;
+                 INSERT INTO authorization_bundles(bundle_id,terminal_id,credential_epoch,generation,lease_id,property_id,outlet_id,register_id,shift_id,business_date,catalog_version,catalog_digest,issued_at_ms,not_before_ms,refresh_after_ms,hard_expires_at_ms,revocation_generation,max_operation_count,max_gross_minor,max_cash_minor,allowed_operations_json,signing_key_id,signed_payload,signature,state,received_at_ms) VALUES ('bundle2','term',1,2,'lease2','prop','out','reg','shift','2026-09-03','v2','digest2',1,1,9000,10000,0,10,1000000,1000000,'[\"ORDER_DRAFT\",\"ORDER_COMMIT\",\"CASH_SETTLE\"]','key',x'01',zeroblob(64),'ACTIVE',1);
+                 INSERT INTO offline_staff_verifiers(bundle_id,staff_id,display_name,verifier_phc,permissions_json,expires_at_ms,max_attempts,base_lockout_ms) VALUES ('bundle2','staff','Cashier','x','[\"pos.order.create\"]',10000,5,1000);
+                 INSERT INTO shift_authority VALUES ('bundle2','shift','[\"staff\"]','ACTIVE',1,NULL);",
+            )
+            .unwrap();
+        // The active session's lease pointer follows the new bundle, exactly
+        // as a real re-authorization would leave it.
+        store.active_staff = Some(crate::local_store::ActiveStaffSession {
+            staff_id: "staff".into(),
+            lease_id: "lease2".into(),
+            expires_at_ms: 10_000,
+        });
+        let error = store
+            .commit_offline_cash_sale(&priced.id, priced.version, 20_000, 300, |_| {
+                panic!("a stale-catalog commit must fail before ever asking to sign")
+            })
+            .unwrap_err();
+        assert_eq!(error.kind(), LocalStoreErrorKind::CatalogRequired);
+        assert!(no_financial_fact_exists(&store));
+    }
+
+    #[test]
+    fn a_retry_of_an_already_settled_order_is_refused_not_duplicated() {
+        let (_temp, mut store) = seeded();
+        let priced = priced_draft_for_cash(&mut store);
+        let first = store
+            .commit_offline_cash_sale(&priced.id, priced.version, 20_000, 300, |_| Ok(vec![9; 64]))
+            .unwrap();
+        assert_eq!(first.order.state, "SETTLED");
+
+        // The caller retries the identical intent -- e.g. a UI double-tap, or
+        // a crash between the commit succeeding and the confirmation
+        // reaching the register screen. The order is no longer a DRAFT at
+        // this version, so the retry must be refused outright rather than
+        // silently producing a second cash fact.
+        let retry = store.commit_offline_cash_sale(&priced.id, priced.version, 20_000, 400, |_| {
+            panic!("a retry against an already-settled order must never re-sign")
+        });
+        assert!(matches!(retry, Err(LocalStoreError::StaleDraft)));
+
+        let (settlements, operations, outbox): (i64, i64, i64) = store
+            .connection
+            .query_row(
+                "SELECT (SELECT count(*) FROM cash_settlements),(SELECT count(*) FROM operations),(SELECT count(*) FROM outbox)",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (settlements, operations, outbox),
+            (1, 1, 1),
+            "exactly one durable fact must survive a retry, never zero and never two"
+        );
+
+        // The recovery path for a caller that suspects a crash is to re-read
+        // the order, not to retry the commit -- and that read must show the
+        // real, already-settled state with its real settlement evidence.
+        let recovered = store.get_order_draft(&priced.id).unwrap();
+        assert_eq!(recovered.state, "SETTLED");
+    }
+
+    #[test]
+    fn offline_cash_commit_survives_a_real_process_restart_with_exactly_one_fact() {
+        let temp = tempfile::tempdir().unwrap();
+        let keys = MemoryKeys::default();
+        let db_path = temp.path().join("orders.db");
+        let (order_id, operation_id, settlement_id) = {
+            let mut store = LocalStore::open(&db_path, &keys).unwrap();
+            seed_authority(&mut store);
+            let priced = priced_draft_for_cash(&mut store);
+            let result = store
+                .commit_offline_cash_sale(&priced.id, priced.version, 20_000, 300, |_| {
+                    Ok(vec![9; 64])
+                })
+                .unwrap();
+            (priced.id, result.operation_id, result.local_settlement_id)
+            // `store` (and its SQLCipher connection) drops here, simulating
+            // the process ending right after the commit's transaction
+            // durably committed.
+        };
+
+        // A fresh process, same encrypted file, same key -- a genuine
+        // restart, not a reused in-memory connection.
+        let reopened = LocalStore::open(&db_path, &keys).unwrap();
+        let (settlements, operations, outbox, order_state): (i64, i64, i64, String) = reopened
+            .connection
+            .query_row(
+                "SELECT (SELECT count(*) FROM cash_settlements WHERE local_settlement_id=?1),
+                        (SELECT count(*) FROM operations WHERE operation_id=?2),
+                        (SELECT count(*) FROM outbox WHERE operation_id=?2),
+                        (SELECT state FROM orders WHERE local_order_id=?3)",
+                params![settlement_id, operation_id, order_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!((settlements, operations, outbox), (1, 1, 1));
+        assert_eq!(order_state, "SETTLED");
+    }
+
+    fn seed_authority(store: &mut LocalStore) {
+        store.connection.execute_batch("INSERT INTO terminal_authority VALUES ('term',1,'prop','out','reg','key',zeroblob(32),x'01','PAIRED',1,0,1,1);
+        INSERT INTO authorization_bundles(bundle_id,terminal_id,credential_epoch,generation,lease_id,property_id,outlet_id,register_id,shift_id,business_date,catalog_version,catalog_digest,issued_at_ms,not_before_ms,refresh_after_ms,hard_expires_at_ms,revocation_generation,max_operation_count,max_gross_minor,max_cash_minor,allowed_operations_json,signing_key_id,signed_payload,signature,state,received_at_ms) VALUES ('bundle','term',1,1,'lease','prop','out','reg','shift','2026-09-03','v1','digest',1,1,9000,10000,0,10,1000000,1000000,'[\"ORDER_DRAFT\",\"ORDER_COMMIT\",\"CASH_SETTLE\"]','key',x'01',zeroblob(64),'ACTIVE',1);
+        INSERT INTO offline_staff_verifiers(bundle_id,staff_id,display_name,verifier_phc,permissions_json,expires_at_ms,max_attempts,base_lockout_ms) VALUES ('bundle','staff','Cashier','x','[\"pos.order.create\"]',10000,5,1000);
+        INSERT INTO shift_authority VALUES ('bundle','shift','[\"staff\"]','ACTIVE',1,NULL);
+        INSERT INTO authorization_clock_anchor VALUES (1,1,1,1,1);
+        INSERT INTO catalog_snapshots(snapshot_id,version,digest,currency,published_at_ms,valid_until_ms,signed_manifest,payload,verification_state,property_id,outlet_id,not_before_ms,tax_mode) VALUES ('snap','v1','digest','TZS',1,500,x'01',x'01','VERIFIED','prop','out',1,'EXCLUSIVE');
+        INSERT INTO active_catalog VALUES (1,'snap',1);
+        INSERT INTO catalog_service_types VALUES ('snap','DINE_IN','Dine in',0,0);
+        INSERT INTO catalog_categories VALUES ('snap','food','FOOD','Food',0,1);
+        INSERT INTO catalog_products VALUES ('snap','tea','food','TEA','Tea','tea tea',10000,1800,1,0);
+        INSERT INTO catalog_modifier_groups VALUES ('snap','milk','tea','Milk',1,1,0,1);
+        INSERT INTO catalog_modifier_options VALUES ('snap','oat','milk','Oat milk',2000,0,1);
+        INSERT INTO offline_leases VALUES ('lease','term',1,'shift','2026-09-03','snap',1,10000,x'01','ACTIVE');
+        INSERT INTO shifts VALUES ('shift','shift','lease','staff','2026-09-03','ACTIVE',1,1);").unwrap();
+        store.active_staff = Some(crate::local_store::ActiveStaffSession {
+            staff_id: "staff".into(),
+            lease_id: "lease".into(),
+            expires_at_ms: 10_000,
+        });
     }
 
     #[test]

@@ -1,5 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-sans/700.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -11,37 +15,40 @@
   src: url("./assets/fonts/inter-latin.woff2") format("woff2");
 }
 
-/* Peak Terminal — canonical dark-first semantic tokens. */
+/* Yetu POS till — slate station + thermal receipt paper. */
 :root {
-  --background: #0c110f;
-  --surface: #131916;
-  --surface-raised: #1a221e;
-  --surface-interactive: #222c27;
-  --foreground: #f3f5f1;
-  --foreground-muted: #a8b1ab;
-  --primary: #17704f;
-  --primary-hover: #20845f;
-  --primary-foreground: #ffffff;
-  --primary-subtle: #153426;
-  --gold-accent: #c8a45d;
-  --gold-subtle: #332a19;
-  --border: #344039;
-  --border-strong: #4b5a52;
-  --border-subtle: #28322d;
-  --focus: #e1bd70;
-  --success: #43aa98;
-  --success-subtle: #122f2a;
-  --success-border: #28685e;
-  --warning: #e0a442;
+  --background: #1A1C1F;
+  --surface: #24272C;
+  --surface-raised: #2C3036;
+  --surface-interactive: #353A42;
+  --foreground: #F3F1EC;
+  --foreground-muted: #A8A59C;
+  --primary: #C9A227;
+  --primary-hover: #D4B03A;
+  --primary-foreground: #1A1C1F;
+  --primary-subtle: #3A3318;
+  --gold-accent: #C9A227;
+  --gold-subtle: #3A3318;
+  --brass: #C9A227;
+  --receipt-paper: #F4EFE4;
+  --slate-ink: #1A1C1F;
+  --border: #3A3F48;
+  --border-strong: #555B66;
+  --border-subtle: #2E3238;
+  --focus: #E1C25A;
+  --success: #43AA98;
+  --success-subtle: #122F2A;
+  --success-border: #28685E;
+  --warning: #E0A442;
   --warning-subtle: #342817;
-  --warning-border: #765a28;
-  --danger: #e36d70;
-  --danger-subtle: #351a1d;
-  --danger-border: #74393d;
-  --offline: #d58b54;
-  --info: #7eb5ea;
-  --info-subtle: #172a3d;
-  --info-border: #355a7c;
+  --warning-border: #765A28;
+  --danger: #C23B22;
+  --danger-subtle: #3A1A16;
+  --danger-border: #8A2E1E;
+  --offline: #D58B54;
+  --info: #7EB5EA;
+  --info-subtle: #172A3D;
+  --info-border: #355A7C;
 
   /* shadcn/Radix semantic bridge: primitives inherit Peak, never vice versa. */
   --card: var(--surface);
@@ -103,7 +110,8 @@
   --control-height: 48px;
   --control-height-compact: 44px;
   --control-height-prominent: 56px;
-  --product-tile-height: 84px;
+  --product-tile-height: 72px;
+  --control-height-prominent: 64px;
   --motion-fast: 100ms;
   --motion-sheet: 160ms;
   --shadow-overlay: 0 24px 64px rgb(0 0 0 / 0.48);
@@ -175,9 +183,10 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-focus: var(--focus);
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-heading: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
+  --font-sans: "IBM Plex Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-heading: "IBM Plex Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Sans", ui-monospace, monospace;
+  --font-display: "IBM Plex Sans", "Inter", sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -430,6 +439,51 @@
   .action-button--primary:hover {
     border-color: var(--primary-hover);
     background: var(--primary-hover);
+  }
+
+  .btn-pay {
+    display: inline-flex;
+    min-height: var(--control-height-prominent);
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: var(--radius-control);
+    border: 1px solid var(--brass);
+    background: var(--brass);
+    color: var(--slate-ink);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .btn-pay:hover:not(:disabled) {
+    filter: brightness(1.06);
+  }
+
+  .btn-pay:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--foreground-muted);
+  }
+
+  .receipt-ticket {
+    background: var(--receipt-paper) !important;
+    color: var(--slate-ink);
+    border-left-color: #d9d2c3 !important;
+  }
+
+  .receipt-ticket .current-order-rail__header,
+  .receipt-ticket .current-order-rail__footer {
+    border-color: #d9d2c3 !important;
+  }
+
+  .receipt-ticket .text-\[var\(--foreground\)\],
+  .receipt-ticket [class*="text-[var(--foreground)]"] {
+    color: var(--slate-ink);
   }
 
   .btn-secondary,
@@ -1010,7 +1064,7 @@
     display: grid;
     min-width: 0;
     min-height: 0;
-    grid-template-columns: minmax(0, 1fr) 304px;
+    grid-template-columns: minmax(0, 62fr) minmax(280px, 38fr);
   }
 
   .catalog-workspace {
@@ -1105,16 +1159,16 @@
   .terminal-nav__action[aria-current="page"]::before { left: -11px; }
   .terminal-staff { flex-direction: row; justify-content: flex-start; gap: 10px; padding: 10px; }
   .terminal-staff__meta { min-width: 0; flex: 1; }
-  .new-order-layout { grid-template-columns: minmax(0, 1fr) 340px; }
+  .new-order-layout { grid-template-columns: minmax(0, 62fr) minmax(300px, 38fr); }
 }
 
 @media (min-width: 1340px) {
-  .new-order-layout { grid-template-columns: minmax(0, 1fr) 360px; }
+  .new-order-layout { grid-template-columns: minmax(0, 62fr) minmax(320px, 38fr); }
 }
 
 @media (min-width: 1420px) {
   .terminal-shell { grid-template-columns: 180px minmax(0, 1fr); }
-  .new-order-layout { grid-template-columns: minmax(0, 1fr) 380px; }
+  .new-order-layout { grid-template-columns: minmax(0, 62fr) minmax(340px, 38fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -37,8 +37,8 @@ export function PeakTerminalFixture() {
     <div className="terminal-shell">
       <aside className="terminal-nav" aria-label="Terminal navigation">
         <div className="terminal-brand">
-          <Icon name="peak-logo" size={24} className="text-[var(--gold-accent)]" />
-          <span className="terminal-brand__name">Peak Terminal</span>
+          <Icon name="peak-logo" size={24} className="text-[var(--brass)]" />
+          <span className="terminal-brand__name">Yetu POS</span>
         </div>
         <nav className="terminal-nav__items">
           {NAV.map(([icon, label], index) => (
@@ -73,8 +73,8 @@ export function PeakTerminalFixture() {
           <div className="new-order-screen">
             <div className="new-order-header">
               <div>
-                <h1 className="text-lg font-bold tracking-[-0.02em]">New order</h1>
-                <p className="text-xs text-[var(--foreground-muted)]">Table 12 · Dine in</p>
+                <h1 className="text-lg font-bold tracking-[-0.02em]">Register</h1>
+                <p className="text-xs text-[var(--foreground-muted)]">Live catalog · ticket settles exactly</p>
               </div>
               <button className="btn-secondary"><Icon name="payments" size={17} />Cash drawer</button>
             </div>
@@ -100,15 +100,19 @@ export function PeakTerminalFixture() {
               </section>
 
               <OrderRail
-                title="Current order"
+                title="Ticket"
+                className="receipt-ticket"
                 headerMeta={<p className="mt-1 text-xs text-[var(--foreground-muted)]">3 items · Table 12</p>}
                 footer={
                   <>
                     <div className="mb-3 flex items-end justify-between gap-3">
                       <span className="text-xs text-[var(--foreground-muted)]">Total</span>
-                      <MoneyDisplay prominence="strong" className="text-lg">TZS 42,500</MoneyDisplay>
+                      <MoneyDisplay prominence="strong" className="text-lg text-[var(--brass)]">TZS 42,500</MoneyDisplay>
                     </div>
-                    <button className="btn-primary w-full"><Icon name="orders" size={17} />Create order</button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button className="btn-secondary w-full"><Icon name="orders" size={17} />Send</button>
+                      <button className="btn-pay w-full">Pay</button>
+                    </div>
                   </>
                 }
               >

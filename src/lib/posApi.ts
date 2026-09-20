@@ -44,6 +44,10 @@ export function createPosApi() {
         body: { openingCashMinor },
       });
     },
+    /** Resume an open (or variance-pending) shift after restart. 404 when none. */
+    getCurrentShift(): Promise<ApiResult<POSShift>> {
+      return client.GET<POSShift>("/api/v1/pos/shifts/current");
+    },
     getShift(shiftId: string): Promise<ApiResult<POSShift>> {
       return client.GET<POSShift>(`/api/v1/pos/shifts/${encodeURIComponent(shiftId)}`);
     },

@@ -21,6 +21,7 @@ import {
   humanDeviceError,
   isDeviceNetworkFailure,
   requestPairing,
+  sendHeartbeat,
   StaffLoginRejectedError,
   type RosterEntry,
 } from "../lib/deviceAuth";
@@ -114,7 +115,14 @@ export interface DeviceSessionProviderProps {
   localPosCore?: LocalPosCore;
 }
 
-const POLL_MS = 4_000;
+/** Pairing contract: 2s for the first 60s, then 5s, never slower than 15s. */
+function pairingPollDelay(elapsedMs: number): number {
+  if (elapsedMs < 60_000) return 2_000;
+  if (elapsedMs < 180_000) return 5_000;
+  return 15_000;
+}
+
+const HEARTBEAT_MS = 60_000;
 
 export function DeviceSessionProvider({
   children,
@@ -343,6 +351,7 @@ export function DeviceSessionProvider({
           claimToken: issued.claimToken,
           fingerprint: issued.fingerprint,
           expiresAt: issued.expiresAt,
+          qrPayload: issued.qrPayload ?? `YETU-POS:1:${issued.pairingCode}`,
         },
       });
       setPhase("waiting");
@@ -431,6 +440,8 @@ export function DeviceSessionProvider({
   useEffect(() => {
     if (phase !== "waiting") return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const startedAt = Date.now();
 
     const tick = async () => {
       if (cancelled) return;
@@ -449,15 +460,52 @@ export function DeviceSessionProvider({
       } catch (err) {
         if (!cancelled) setError(humanDeviceError(err));
       }
+      if (!cancelled && identityRef.current?.pairing) {
+        timer = setTimeout(() => void tick(), pairingPollDelay(Date.now() - startedAt));
+      }
     };
 
     void tick();
-    const id = setInterval(() => void tick(), POLL_MS);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [continueAfterApproval, phase, resetPairing]);
+
+  // Presence for Hospitality Web connectivity badges — device credential only.
+  // Failures are best-effort: a mocked or flaky heartbeat must never tear down
+  // a valid pairing or mid-PIN session. Revocation still surfaces on the next
+  // challenge / unlock attempt.
+  useEffect(() => {
+    if (phase !== "locked" && phase !== "ready") return;
+    const terminalId = identity?.terminalId ?? identity?.deviceCode;
+    const credential = identity?.deviceCredential ?? identity?.deviceCode;
+    if (!identity?.approved || !terminalId || !credential) return;
+    let cancelled = false;
+
+    const beat = async () => {
+      if (cancelled) return;
+      try {
+        await sendHeartbeat(peakUrl, terminalId, credential);
+      } catch {
+        // Best-effort presence only.
+      }
+    };
+
+    void beat();
+    const id = setInterval(() => void beat(), HEARTBEAT_MS);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
-  }, [continueAfterApproval, phase, resetPairing]);
+  }, [
+    identity?.approved,
+    identity?.deviceCode,
+    identity?.deviceCredential,
+    identity?.terminalId,
+    peakUrl,
+    phase,
+  ]);
 
   const unlock = useCallback(
     async (staffNumber: string, pin: string) => {
@@ -486,7 +534,7 @@ export function DeviceSessionProvider({
           offlineAuthorityRef.current ??= await loadNativeOfflineAuthority();
           localPosCoreRef.current ??= await loadLocalPosCore();
         }
-        await bootstrapOperationalSession(peakUrl, next, {
+        const bootstrap = await bootstrapOperationalSession(peakUrl, next, {
           installOfflineBootstrap: localPosCoreRef.current
             ? (terminalId, propertyId, outletId, bootstrap) => localPosCoreRef.current!.installBootstrap(terminalId, propertyId, outletId, bootstrap)
             : undefined,
@@ -497,11 +545,30 @@ export function DeviceSessionProvider({
             ? (envelope) => localPosCoreRef.current!.installCatalog(envelope)
             : undefined,
         });
-        if (offlineAuthorityRef.current) {
-          await offlineAuthorityRef.current.authenticateStaff(next.staffId, pin);
-          setOfflineEligibility(
-            await offlineAuthorityRef.current.eligibilityStatus(next.staffId),
-          );
+        // A terminal can be fully, legitimately ONLINE-only — no shift open
+        // yet, a momentary hiccup fetching the lease, or a property that has
+        // never needed offline authority at all. `offlineAuthorityRef.current`
+        // only tells us the native offline-authority module loaded, not that
+        // bootstrap actually staged a real bundle above; gating on it alone
+        // previously meant a real, successful PIN login (`/pos/sessions`
+        // already succeeded) could still be thrown away as "Something went
+        // wrong" whenever this purely-optional local pre-cache step had
+        // nothing to authenticate against. This pre-cache is best-effort:
+        // its own failure must never undo an already-successful online login.
+        const offlineAuthorityReady =
+          offlineAuthorityRef.current &&
+          (bootstrap.offlineAuthorization?.state === "STAGED" ||
+            bootstrap.offlineAuthorization?.state === "ACTIVE");
+        if (offlineAuthorityReady) {
+          try {
+            await offlineAuthorityRef.current!.authenticateStaff(next.staffId, pin);
+            setOfflineEligibility(
+              await offlineAuthorityRef.current!.eligibilityStatus(next.staffId),
+            );
+          } catch {
+            // The online session above is already valid and paid for;
+            // offline readiness simply stays whatever it already was.
+          }
         }
         try {
           await applyOpsToken(next.token);

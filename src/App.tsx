@@ -184,6 +184,28 @@ function KeyStorageBanner() {
 }
 
 /**
+ * Only reached once `phase === "ready"` — i.e. a real staff session already
+ * exists (PIN unlock sets it before ever advancing the phase this far). Only
+ * here is it safe to call `usePosShift()`: it resolves the property/outlet
+ * from that session, and calling it any earlier — before pairing, before
+ * unlock — has nothing real to resolve. Split into its own component (rather
+ * than an early return inside AuthGate) so the hook is never called
+ * conditionally within one component, honoring the Rules of Hooks.
+ */
+function ReadyGate() {
+  const { shift, isLoading: shiftLoading } = usePosShift();
+  const route = terminalRoute("ready", !shiftLoading, Boolean(shift));
+  return (
+    <>
+      <span className="sr-only" data-testid="shell-state">
+        {route}
+      </span>
+      {route === "NO_SHIFT" ? <OpenShiftScreen /> : <LiveRegister />}
+    </>
+  );
+}
+
+/**
  * The single source of truth for what appears on screen. Every other gate this
  * app used to have — a phase check here, a shell-state check there — is
  * folded into one explicit mapping from PEAK_TERMINAL_MASTER_OPERATIONS.md's
@@ -192,30 +214,39 @@ function KeyStorageBanner() {
  */
 function AuthGate() {
   const { phase } = useDeviceSession();
-  const { shift, isLoading: shiftLoading } = usePosShift();
-  const route = terminalRoute(phase, !shiftLoading, Boolean(shift));
 
   let screen: ReactNode;
-  switch (route) {
-    case "STARTING":
+  let route: string;
+  switch (phase) {
+    case "bootstrapping":
+      route = "STARTING";
       screen = <Splash />;
       break;
-    case "UNCONFIGURED":
+    case "needs-url":
+      route = "UNCONFIGURED";
       screen = <SetupScreen />;
       break;
-    case "UNPROVISIONED":
-    case "PAIRING":
+    case "unpaired":
+      route = "UNPROVISIONED";
       screen = <PairingScreen />;
       break;
-    case "LOCKED":
+    case "waiting":
+      route = "PAIRING";
+      screen = <PairingScreen />;
+      break;
+    case "locked":
+      route = "LOCKED";
       screen = <PinUnlock />;
       break;
-    case "NO_SHIFT":
-      screen = <OpenShiftScreen />;
-      break;
-    case "OPERATIONAL":
-      screen = <LiveRegister />;
-      break;
+    case "ready":
+      // ReadyGate renders its own shell-state marker once it knows the
+      // shift outcome — nothing to render here.
+      return (
+        <>
+          <KeyStorageBanner />
+          <ReadyGate />
+        </>
+      );
   }
 
   return (
