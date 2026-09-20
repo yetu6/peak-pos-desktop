@@ -352,6 +352,7 @@ export async function createStaffSession(args: {
 		assurance: "RESTRICTED",
     mode: optionalId(body.mode),
     terminalName: optionalId(body.terminalName),
+    prepStations: stringArray(body.prepStations),
 		capabilities: stringArray(body.capabilities),
 		permissions: stringArray(body.permissions),
   };

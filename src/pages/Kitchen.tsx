@@ -5,17 +5,23 @@ import {
   useActiveOrders,
   useIdempotencyKey,
   useMutationMessage,
+  useStationTickets,
   useTransitionOrderStatus,
+  useTransitionStationTicket,
 } from "../hooks/usePosData";
-import type { POSOrder, OrderStatus } from "../lib/posContracts";
+import type { POSOrder, OrderStatus, POSStationTicket } from "../lib/posContracts";
 
 /**
- * Kitchen production state is the order's own status
- * (`SENT → PREPARING → READY → SERVED`). Hotels with a wall screen use
- * KITCHEN_DISPLAY mode (full-screen expo). Hotels without use kitchen
- * print from the till; this page still works as a compact peek.
+ * Kitchen production: order-level bump on the compact peek, station-ticket
+ * bump on KITCHEN_DISPLAY / BAR_DISPLAY (Pass 4 multi-station routing).
  */
 const NEXT_STATUS: Partial<Record<OrderStatus, "PREPARING" | "READY" | "SERVED">> = {
+  SENT: "PREPARING",
+  PREPARING: "READY",
+  READY: "SERVED",
+};
+
+const NEXT_TICKET: Partial<Record<POSStationTicket["status"], "PREPARING" | "READY" | "SERVED">> = {
   SENT: "PREPARING",
   PREPARING: "READY",
   READY: "SERVED",
@@ -75,6 +81,76 @@ function playNewTicketChime(): void {
   } catch {
     // Audio is best-effort on shared kitchen hardware.
   }
+}
+
+function StationCard({
+  ticket,
+  ageLabel,
+  urgency,
+  pending,
+  onBump,
+}: {
+  ticket: POSStationTicket;
+  ageLabel: string;
+  urgency: string;
+  pending: boolean;
+  onBump: (ticket: POSStationTicket) => void;
+}) {
+  const next = NEXT_TICKET[ticket.status];
+  return (
+    <article
+      className={`kds-card kds-card--wall ${urgency}`}
+      data-testid={`kitchen-ticket-${ticket.id}`}
+    >
+      <header className="kds-card__header">
+        <div>
+          <div className="kds-card__number">{ticket.orderNumber}</div>
+          <div className="kds-card__meta">
+            {(ticket.tableLabel ? `Table ${ticket.tableLabel}` : "No table") +
+              " · " +
+              ticket.serviceType.replaceAll("_", " ") +
+              " · " +
+              ticket.station}
+          </div>
+          {ticket.waiterName && (
+            <div className="kds-card__waiter" data-testid={`waiter-${ticket.id}`}>
+              {ticket.waiterName}
+            </div>
+          )}
+        </div>
+        <span className="kds-card__timer" data-testid={`timer-${ticket.id}`}>
+          {ageLabel}
+        </span>
+      </header>
+      <ul className="kds-card__lines">
+        {ticket.items.map((item) => (
+          <li key={item.id}>
+            <span className="kds-card__qty">{item.quantity}×</span>
+            <span className="kds-card__name">
+              {item.name}
+              {item.modifiers?.length ? (
+                <span className="kds-card__mods">
+                  {item.modifiers.map((mod) => mod.optionName).filter(Boolean).join(", ")}
+                </span>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {ticket.notes?.trim() && <p className="kds-card__notes">{ticket.notes}</p>}
+      {next && (
+        <button
+          type="button"
+          className="kds-bump"
+          data-testid={`bump-ticket-${ticket.id}`}
+          disabled={pending}
+          onClick={() => onBump(ticket)}
+        >
+          {ACTION_LABEL[next] ?? next}
+        </button>
+      )}
+    </article>
+  );
 }
 
 function KitchenCard({
@@ -151,9 +227,11 @@ export function Kitchen() {
   const { identity } = useDeviceSession();
   const display = isDisplayMode(identity?.mode);
   const orders = useActiveOrders();
+  const tickets = useStationTickets(display);
   const transition = useTransitionOrderStatus();
+  const transitionTicket = useTransitionStationTicket();
   const transitionKey = useIdempotencyKey();
-  const transitionError = useMutationMessage(transition.error);
+  const transitionError = useMutationMessage(transition.error) ?? useMutationMessage(transitionTicket.error);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [nowMs, setNowMs] = useState(() => Date.now());
   const seenSent = useRef<Set<string>>(new Set());
@@ -165,13 +243,18 @@ export function Kitchen() {
     return () => window.clearInterval(id);
   }, []);
 
-  // Quiet poll so a dropped WS still refreshes the board.
   useEffect(() => {
     const id = window.setInterval(() => {
-      void orders.refetch();
+      if (display) void tickets.refetch();
+      else void orders.refetch();
     }, 15_000);
     return () => window.clearInterval(id);
-  }, [orders]);
+  }, [display, orders, tickets]);
+
+  const activeTickets = useMemo(
+    () => (tickets.data ?? []).filter((t) => t.status === "SENT" || t.status === "PREPARING" || t.status === "READY"),
+    [tickets.data],
+  );
 
   const active = useMemo(
     () =>
@@ -182,28 +265,27 @@ export function Kitchen() {
   );
 
   useEffect(() => {
-    for (const order of active) {
-      if (!firstSeen.current.has(order.id)) {
-        firstSeen.current.set(order.id, Date.now());
-      }
+    const source = display ? activeTickets.map((t) => ({ id: t.id, status: t.status })) : active.map((o) => ({ id: o.id, status: o.status }));
+    for (const row of source) {
+      if (!firstSeen.current.has(row.id)) firstSeen.current.set(row.id, Date.now());
     }
     if (!primed.current) {
-      active.forEach((order) => {
-        if (order.status === "SENT") seenSent.current.add(order.id);
+      source.forEach((row) => {
+        if (row.status === "SENT") seenSent.current.add(row.id);
       });
       primed.current = true;
       return;
     }
-    for (const order of active) {
-      if (order.status === "SENT" && !seenSent.current.has(order.id)) {
-        seenSent.current.add(order.id);
+    for (const row of source) {
+      if (row.status === "SENT" && !seenSent.current.has(row.id)) {
+        seenSent.current.add(row.id);
         playNewTicketChime();
       }
     }
-  }, [active]);
+  }, [active, activeTickets, display]);
 
-  function ageFor(orderId: string): { label: string; urgency: string } {
-    const seenAt = firstSeen.current.get(orderId);
+  function ageFor(id: string): { label: string; urgency: string } {
+    const seenAt = firstSeen.current.get(id);
     if (!seenAt) return { label: "—", urgency: "" };
     const iso = new Date(seenAt).toISOString();
     return { label: elapsedLabel(iso, nowMs), urgency: urgencyClass(iso, nowMs) };
@@ -220,6 +302,12 @@ export function Kitchen() {
     return by;
   }, [active]);
 
+  const stationLabel = useMemo(() => {
+    const bound = identity?.prepStations ?? [];
+    if (bound.length === 0) return "All stations";
+    return bound.join(" · ");
+  }, [identity?.prepStations]);
+
   function advance(order: POSOrder): void {
     const next = NEXT_STATUS[order.status];
     if (!next) return;
@@ -231,7 +319,18 @@ export function Kitchen() {
     });
   }
 
-  if (orders.isLoading) {
+  function advanceTicket(ticket: POSStationTicket): void {
+    const next = NEXT_TICKET[ticket.status];
+    if (!next) return;
+    transitionTicket.mutate({
+      ticketId: ticket.id,
+      status: next,
+      version: ticket.version,
+      idempotencyKey: transitionKey.next(),
+    });
+  }
+
+  if ((display && tickets.isLoading) || (!display && orders.isLoading)) {
     return (
       <div className="space-y-4">
         <div className="skeleton h-[96px] w-full rounded-xl" />
@@ -245,9 +344,11 @@ export function Kitchen() {
       <div className="kds-board" data-testid="kds-board">
         <header className="kds-board__header">
           <div>
-            <h1 className="kds-board__title">Kitchen</h1>
+            <h1 className="kds-board__title">
+              {(identity?.mode ?? "").includes("BAR") ? "Bar" : "Kitchen"}
+            </h1>
             <p className="kds-board__subtitle">
-              {active.length} active · tap a ticket to bump
+              {activeTickets.length} active · {stationLabel} · tap a ticket to bump
             </p>
           </div>
           {transitionError && (
@@ -258,29 +359,28 @@ export function Kitchen() {
         </header>
         <div className="kds-columns">
           {COLUMNS.map((column) => {
-            const tickets = active.filter((order) => order.status === column.status);
+            const columnTickets = activeTickets.filter((ticket) => ticket.status === column.status);
             return (
               <section key={column.status} className="kds-column" data-testid={`kds-col-${column.status}`}>
                 <div className="kds-column__head">
                   <span>{column.title}</span>
-                  <span className="kds-column__count">{tickets.length}</span>
+                  <span className="kds-column__count">{columnTickets.length}</span>
                 </div>
                 <div className="kds-column__body">
-                  {tickets.map((order) => {
-                    const age = ageFor(order.id);
+                  {columnTickets.map((ticket) => {
+                    const age = ageFor(ticket.id);
                     return (
-                    <KitchenCard
-                      key={order.id}
-                      order={order}
-                      ageLabel={age.label}
-                      urgency={age.urgency}
-                      display
-                      pending={transition.isPending}
-                      onBump={advance}
-                    />
+                      <StationCard
+                        key={ticket.id}
+                        ticket={ticket}
+                        ageLabel={age.label}
+                        urgency={age.urgency}
+                        pending={transitionTicket.isPending}
+                        onBump={advanceTicket}
+                      />
                     );
                   })}
-                  {tickets.length === 0 && <p className="kds-empty">Clear</p>}
+                  {columnTickets.length === 0 && <p className="kds-empty">Clear</p>}
                 </div>
               </section>
             );
@@ -366,15 +466,15 @@ export function Kitchen() {
         {filtered.map((order) => {
           const age = ageFor(order.id);
           return (
-          <KitchenCard
-            key={order.id}
-            order={order}
-            ageLabel={age.label}
-            urgency={age.urgency}
-            display={false}
-            pending={transition.isPending}
-            onBump={advance}
-          />
+            <KitchenCard
+              key={order.id}
+              order={order}
+              ageLabel={age.label}
+              urgency={age.urgency}
+              display={false}
+              pending={transition.isPending}
+              onBump={advance}
+            />
           );
         })}
         {filtered.length === 0 && (

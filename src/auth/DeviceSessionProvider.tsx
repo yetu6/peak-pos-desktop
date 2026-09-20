@@ -583,6 +583,7 @@ export function DeviceSessionProvider({
           approved: true,
           pairing: undefined,
           mode: next.mode ?? current.mode,
+          prepStations: next.prepStations ?? current.prepStations,
           terminalName: next.terminalName ?? current.terminalName,
         });
         armExpiry(next);

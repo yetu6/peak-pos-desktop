@@ -17,6 +17,8 @@ export interface DeviceIdentityRecord {
   approved?: boolean;
   pairing?: PairingRecord;
   mode?: string;
+  /** Pass 4: stations this KDS shows. Empty = all stations. */
+  prepStations?: string[];
   terminalName?: string;
 	terminalId?: string;
 	deviceCredential?: string;

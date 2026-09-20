@@ -10,6 +10,7 @@ import type {
   POSReceipt,
   POSRoomChargeCandidate,
   POSShift,
+  POSStationTicket,
   POSTenderResult,
   ServiceType,
 } from "./posContracts";
@@ -136,6 +137,22 @@ export function createPosApi() {
     ): Promise<ApiResult<void>> {
       return client.POST<void>(
         `/api/v1/pos/orders/${encodeURIComponent(orderId)}/status/${status}`,
+        { headers: idempotent(idempotencyKey), body: { version } },
+      );
+    },
+    listStationTickets(active = true): Promise<ApiResult<{ items: POSStationTicket[] }>> {
+      return client.GET<{ items: POSStationTicket[] }>("/api/v1/pos/station-tickets", {
+        params: { query: { active } },
+      });
+    },
+    transitionStationTicket(
+      ticketId: string,
+      status: "PREPARING" | "READY" | "SERVED",
+      version: number,
+      idempotencyKey: string,
+    ): Promise<ApiResult<void>> {
+      return client.POST<void>(
+        `/api/v1/pos/station-tickets/${encodeURIComponent(ticketId)}/status/${status}`,
         { headers: idempotent(idempotencyKey), body: { version } },
       );
     },

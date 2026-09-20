@@ -8,6 +8,8 @@ export interface OperationalSession {
   staffId: string;
   assurance: "RESTRICTED";
   mode?: string;
+  /** Pass 4: stations this display shows. Empty = all. */
+  prepStations?: string[];
   terminalName?: string;
   /** This property's authoritative effective capabilities (R6A-C), e.g.
    *  ["CORE","POS"] or ["CORE","LODGING","POS"] — never derived from

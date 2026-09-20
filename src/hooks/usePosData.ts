@@ -13,6 +13,7 @@ import type {
   PaymentMethod,
   POSOrder,
   POSShift,
+  POSStationTicket,
   ServiceType,
 } from "../lib/posContracts";
 
@@ -284,6 +285,30 @@ export function useActiveOrders() {
   return query;
 }
 
+export function useStationTickets(enabled = true) {
+  const outletId = useOutletId();
+  const query = useQuery({
+    queryKey: ["pos", "station-tickets", outletId],
+    queryFn: async () => {
+      const res = await unwrap(createPosApi().listStationTickets(true));
+      return res.items ?? [];
+    },
+    enabled,
+    retry: false,
+  });
+  const queryClient = useQueryClient();
+  useRealtimeEvents({ kind: "outletOrders", outletId }, async (event) => {
+    if (
+      event.type.startsWith("pos.order.") ||
+      event.type.startsWith("pos.station_ticket.") ||
+      event.type === "pos.print_job.created"
+    ) {
+      queryClient.invalidateQueries({ queryKey: ["pos", "station-tickets", outletId] });
+    }
+  });
+  return query;
+}
+
 export function useOrder(orderId: string | undefined) {
   return useQuery({
     queryKey: ["pos", "order", orderId],
@@ -295,6 +320,7 @@ export function useOrder(orderId: string | undefined) {
 function invalidateOrders(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: ["pos", "orders"] });
   queryClient.invalidateQueries({ queryKey: ["pos", "order"] });
+  queryClient.invalidateQueries({ queryKey: ["pos", "station-tickets"] });
 }
 
 export function useCreateOrder() {
@@ -424,6 +450,29 @@ export function useTransitionOrderStatus() {
     },
     onSuccess: (order: POSOrder) => {
       queryClient.setQueryData(["pos", "order", order.id], order);
+      invalidateOrders(queryClient);
+    },
+  });
+}
+
+export function useTransitionStationTicket() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      ticketId: string;
+      status: "PREPARING" | "READY" | "SERVED";
+      version: number;
+      idempotencyKey: string;
+    }) =>
+      unwrap(
+        createPosApi().transitionStationTicket(
+          args.ticketId,
+          args.status,
+          args.version,
+          args.idempotencyKey,
+        ),
+      ),
+    onSuccess: () => {
       invalidateOrders(queryClient);
     },
   });

@@ -22,6 +22,8 @@ export interface POSOrderItemModifier {
   priceDeltaMinor: number;
 }
 
+export type PrepStation = "GENERAL" | "HOT" | "COLD" | "BAR" | "GRILL" | "PASTRY";
+
 export interface POSOrderItem {
   id: string;
   productId: string;
@@ -31,7 +33,23 @@ export interface POSOrderItem {
   taxMinor: number;
   totalMinor: number;
   status: OrderItemStatus;
+  prepStation?: PrepStation;
   modifiers?: POSOrderItemModifier[];
+}
+
+export interface POSStationTicket {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  station: PrepStation;
+  status: "SENT" | "PREPARING" | "READY" | "SERVED";
+  serviceType: ServiceType;
+  tableLabel?: string;
+  notes?: string;
+  waiterName?: string;
+  version: number;
+  createdAt: string;
+  items: POSOrderItem[];
 }
 
 export interface POSOrder {
