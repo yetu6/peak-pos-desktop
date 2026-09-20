@@ -40,6 +40,7 @@ describe("Go POS device authentication", () => {
       terminalName: undefined,
       capabilities: [],
       permissions: [],
+      prepStations: [],
     });
     const login = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
     const body = JSON.parse(String(login[1].body));
