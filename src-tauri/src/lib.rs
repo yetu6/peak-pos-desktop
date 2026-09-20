@@ -26,6 +26,7 @@ pub fn run() {
             printer::print_document,
             printer::print_kitchen_ticket,
             printer::printer_status,
+            printer::print_test_page,
             diagnostics::host_diagnostics,
             socket::open_peak_socket,
             socket::send_peak_socket,

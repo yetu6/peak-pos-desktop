@@ -80,6 +80,8 @@ export interface POSCatalogProduct {
   priceMinor: number;
   currency: string;
   taxRateBp: number;
+  /** False when 86'd / sold out for this outlet. */
+  isAvailable: boolean;
   modifierGroups?: POSModifierGroup[];
 }
 

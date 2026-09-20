@@ -46,6 +46,8 @@ export type PairingWaitStatus =
 export interface PairingStatus {
   status: PairingWaitStatus;
   terminalId?: string;
+  /** Authoritative workspace mode from the approved terminal row. */
+  mode?: string;
   expiresAt?: string;
   offlineAuthority?: TerminalBinding;
 }
@@ -174,6 +176,7 @@ export async function getPairingStatus(
   return {
     status: body.status,
     terminalId,
+    mode: optionalId(body.mode),
     expiresAt: optionalId(body.expiresAt),
     offlineAuthority,
   };

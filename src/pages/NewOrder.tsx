@@ -23,6 +23,7 @@ import {
   usePropertyId,
   useRemoveOrderItem,
   useSendOrder,
+  useSetProductAvailability,
 } from "../hooks/usePosData";
 import { ReceiptView } from "../components/ReceiptView";
 import type { POSCatalogProduct, POSOrder, ServiceType } from "../lib/posContracts";
@@ -68,6 +69,7 @@ export function NewOrder() {
   const addItem = useAddOrderItem();
   const removeItem = useRemoveOrderItem();
   const sendOrder = useSendOrder();
+  const setAvailability = useSetProductAvailability();
   const createKey = useIdempotencyKey();
   const addKey = useIdempotencyKey();
   const sendKey = useIdempotencyKey();
@@ -77,7 +79,8 @@ export function NewOrder() {
   const addError = useMutationMessage(addItem.error);
   const removeError = useMutationMessage(removeItem.error);
   const sendError = useMutationMessage(sendOrder.error);
-  const mutationError = createError ?? addError ?? removeError ?? sendError ?? actionError;
+  const availabilityError = useMutationMessage(setAvailability.error);
+  const mutationError = createError ?? addError ?? removeError ?? sendError ?? availabilityError ?? actionError;
 
   const products = useMemo(() => {
     const all = catalog.data?.products ?? [];
@@ -128,11 +131,26 @@ export function NewOrder() {
 
   async function tapProduct(product: POSCatalogProduct) {
     if (!canMutate) return;
+    if (product.isAvailable === false) return;
     if ((product.modifierGroups?.length ?? 0) > 0) {
       setConfiguring(product);
       return;
     }
     await addProduct(product, 1, []);
+  }
+
+  async function toggleEightySix(product: POSCatalogProduct) {
+    if (!shift || busy) return;
+    const currentlyAvailable = product.isAvailable !== false;
+    const next = !currentlyAvailable;
+    const label = next ? `Restore ${product.name}?` : `86 ${product.name}? Sold out until restored.`;
+    if (!window.confirm(label)) return;
+    setActionError(null);
+    try {
+      await setAvailability.mutateAsync({ productId: product.id, isAvailable: next });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not update availability.");
+    }
   }
 
   async function addProduct(product: POSCatalogProduct, quantity: number, modifierOptionIds: string[]) {
@@ -295,8 +313,14 @@ export function NewOrder() {
               <ProductTile
                 key={product.id}
                 data-testid={`menu-${product.name}`}
-                disabled={!shift || busy}
+                disabled={!shift || busy || setAvailability.isPending}
+                soldOut={product.isAvailable === false}
                 onClick={() => void tapProduct(product)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  void toggleEightySix(product);
+                }}
+                title={product.isAvailable === false ? "Right-click to restore" : "Right-click to 86 (sold out)"}
                 name={product.name}
                 price={formatMinor(product.priceMinor, product.currency)}
               />

@@ -6,6 +6,7 @@ import {
   buildTechnicianSnapshot,
   loadHostDiagnostics,
   loadPrinterStatus,
+  printTestPage,
   probePeakServer,
   type HostDiagnostics,
   type PeakProbe,
@@ -54,6 +55,8 @@ export function Diagnostics() {
   const [printer, setPrinter] = useState<PrinterStatus | null>(null);
   const [host, setHost] = useState<HostDiagnostics | null>(null);
   const [keyStorage, setKeyStorage] = useState<DeviceKeyStorageStatus | null>(null);
+  const [testPrint, setTestPrint] = useState<string | null>(null);
+  const [testPrintBusy, setTestPrintBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     const [nextPeak, nextPrinter, nextHost, nextKeys] = await Promise.all([
@@ -69,6 +72,15 @@ export function Diagnostics() {
   }, []);
 
   useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const runTestPrint = useCallback(async () => {
+    setTestPrintBusy(true);
+    setTestPrint(null);
+    const result = await printTestPage();
+    setTestPrint(result.ok ? "Test page sent to the printer." : result.error);
+    setTestPrintBusy(false);
     void refresh();
   }, [refresh]);
 
@@ -146,6 +158,22 @@ export function Diagnostics() {
               <span className="badge badge-muted">Unknown on this host</span>
             )}
           </Row>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              data-testid="diag-test-print"
+              className="btn-secondary btn-sm"
+              disabled={testPrintBusy || printer?.available === false}
+              onClick={() => void runTestPrint()}
+            >
+              {testPrintBusy ? "Sending…" : "Print test page"}
+            </button>
+            {testPrint ? (
+              <p className="text-[12px] text-[var(--foreground-muted)]" data-testid="diag-test-print-result">
+                {testPrint}
+              </p>
+            ) : null}
+          </div>
         </div>
       ) : (
         <div className="glass-panel p-5" data-testid="diag-technician-view">
@@ -179,6 +207,20 @@ export function Diagnostics() {
             {snapshot.keyStorageBackend}
             {snapshot.keyStorageHardwareBacked === false ? " (not hardware-backed)" : ""}
           </Row>
+          <div className="mt-4">
+            <button
+              type="button"
+              data-testid="diag-test-print-tech"
+              className="btn-secondary btn-sm"
+              disabled={testPrintBusy}
+              onClick={() => void runTestPrint()}
+            >
+              {testPrintBusy ? "Sending…" : "Print test page"}
+            </button>
+            {testPrint ? (
+              <p className="mt-2 text-[12px] text-[var(--foreground-muted)]">{testPrint}</p>
+            ) : null}
+          </div>
         </div>
       )}
     </div>

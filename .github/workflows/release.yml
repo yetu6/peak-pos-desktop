@@ -1,0 +1,136 @@
+# Build Yetu POS Desktop installers and publish GitHub Releases with SHA256SUMS.
+#
+# Manual installs only — there is no automatic updater. See docs/v1-release.md
+# and docs/adr/0001-automatic-updater-deferred.md.
+#
+# Triggers:
+#   - tag v* (e.g. v0.1.0) → create a GitHub Release
+#   - workflow_dispatch → build artifacts without requiring a tag
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: "Create a GitHub Release from this run"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux
+          - os: windows-latest
+            platform: windows
+          - os: macos-latest
+            platform: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Linux bundling deps
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install JS deps
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck + unit tests
+        run: |
+          bun run typecheck
+          bun run test
+
+      - name: Cargo test
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Build Tauri bundle
+        run: bunx tauri build
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release
+          if [ "${{ matrix.platform }}" = "linux" ]; then
+            find src-tauri/target/release/bundle -type f \( -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' \) -exec cp -a {} dist/release/ \;
+          elif [ "${{ matrix.platform }}" = "windows" ]; then
+            find src-tauri/target/release/bundle -type f \( -name '*.msi' -o -name '*.exe' \) -exec cp -a {} dist/release/ \;
+          else
+            find src-tauri/target/release/bundle -type f \( -name '*.dmg' -o -name '*.app.tar.gz' \) -exec cp -a {} dist/release/ \;
+          fi
+          ls -la dist/release
+          test "$(find dist/release -type f | wc -l)" -gt 0
+
+      - name: Checksums
+        shell: bash
+        run: scripts/checksum-release.sh dist/release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yetu-pos-${{ matrix.platform }}
+          path: dist/release/
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.create_release
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Stage release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          find artifacts -type f -exec cp -a {} release/ \;
+          cd release
+          find . -type f ! -name 'SHA256SUMS' ! -name 'SHA256SUMS.asc' \
+            | sed 's|^\./||' | LC_ALL=C sort \
+            | while IFS= read -r file; do sha256sum -- "$file"; done > SHA256SUMS
+          cat SHA256SUMS
+          ls -la
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
+          name: Yetu POS ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
+          draft: ${{ github.ref_type != 'tag' }}
+          files: release/*
+          body: |
+            Yetu POS Desktop installers. Manual install only — no auto-updater.
+
+            Verify with `SHA256SUMS` before installing. See `docs/v1-release.md`.
+
+            Hospitality Web can link hotels here via `NEXT_PUBLIC_POS_DOWNLOAD_URL`.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

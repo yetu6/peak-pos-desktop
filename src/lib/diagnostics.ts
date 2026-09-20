@@ -74,6 +74,22 @@ export async function loadPrinterStatus(): Promise<PrinterStatus | null> {
   return invoke<PrinterStatus>("printer_status");
 }
 
+export async function printTestPage(): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!tauriAvailable()) {
+    return { ok: false, error: "Test print is only available in the desktop app." };
+  }
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("print_test_page");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 export async function loadHostDiagnostics(): Promise<HostDiagnostics | null> {
   if (!tauriAvailable()) return null;
   const { invoke } = await import("@tauri-apps/api/core");

@@ -101,6 +101,18 @@ export function useCatalog() {
   });
 }
 
+export function useSetProductAvailability() {
+  const queryClient = useQueryClient();
+  const propertyId = usePropertyId();
+  const outletId = useOutletId();
+  return useMutation({
+    mutationFn: (input: { productId: string; isAvailable: boolean }) =>
+      unwrap(createPosApi().setProductAvailability(input.productId, input.isAvailable)),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["pos", "catalog", propertyId, outletId] }),
+  });
+}
+
 /**
  * The outlet's one authoritative currency — mirrors how the local-first
  * path reads `LocalCatalogView.currency` from the signed offline snapshot.

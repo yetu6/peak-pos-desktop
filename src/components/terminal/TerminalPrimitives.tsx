@@ -17,13 +17,22 @@ export function ActionButton({
 export function ProductTile({
   name,
   price,
+  soldOut = false,
   className,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { name: string; price: string }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  name: string;
+  price: string;
+  soldOut?: boolean;
+}) {
   return (
-    <button type="button" className={cn("product-tile", className)} {...props}>
+    <button
+      type="button"
+      className={cn("product-tile", soldOut && "product-tile--sold-out", className)}
+      {...props}
+    >
       <span className="product-tile__name">{name}</span>
-      <span className="product-tile__price">{price}</span>
+      <span className="product-tile__price">{soldOut ? "86'd" : price}</span>
     </button>
   );
 }

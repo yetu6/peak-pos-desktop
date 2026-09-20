@@ -10,6 +10,7 @@ const PRODUCT: POSCatalogProduct = {
   priceMinor: 18_000,
   currency: "TZS",
   taxRateBp: 0,
+  isAvailable: true,
   modifierGroups: [],
 };
 

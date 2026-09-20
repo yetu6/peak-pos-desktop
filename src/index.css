@@ -42,7 +42,7 @@
   --warning: #E0A442;
   --warning-subtle: #342817;
   --warning-border: #765A28;
-  --danger: #C23B22;
+  --danger: #E85D45;
   --danger-subtle: #3A1A16;
   --danger-border: #8A2E1E;
   --offline: #D58B54;
@@ -736,6 +736,16 @@
 
   .product-tile:active { transform: translateY(1px); }
 
+  .product-tile--sold-out {
+    opacity: 0.55;
+    border-style: dashed;
+  }
+
+  .product-tile--sold-out .product-tile__price {
+    color: var(--danger, #c23b22);
+    font-weight: 700;
+  }
+
   .tender-tile {
     display: flex;
     min-height: var(--control-height-prominent);
@@ -1189,8 +1199,7 @@
   z-index: 80;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--slate-station, #1a1c1f) 72%, transparent);
-  backdrop-filter: blur(6px);
+  background: color-mix(in srgb, var(--slate-station, #1a1c1f) 88%, transparent);
 }
 .idle-lock-card {
   min-width: min(320px, calc(100vw - 32px));

@@ -37,7 +37,7 @@ function catalogFixture(currency: string): POSCatalog {
     outletId: "outlet-1",
     outletName: "Main restaurant",
     categories: [],
-    products: [{ id: "p1", code: "LUNCH", name: "Lunch", priceMinor: 1000, currency, taxRateBp: 1800 }],
+    products: [{ id: "p1", code: "LUNCH", name: "Lunch", priceMinor: 1000, currency, taxRateBp: 1800, isAvailable: true }],
   };
 }
 

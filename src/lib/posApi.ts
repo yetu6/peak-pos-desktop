@@ -36,6 +36,15 @@ export function createPosApi() {
     getCatalog(): Promise<ApiResult<POSCatalog>> {
       return client.GET<POSCatalog>("/api/v1/pos/catalog");
     },
+    setProductAvailability(
+      productId: string,
+      isAvailable: boolean,
+    ): Promise<ApiResult<void>> {
+      return client.POST<void>(
+        `/api/v1/pos/catalog/products/${encodeURIComponent(productId)}/availability`,
+        { body: { isAvailable } },
+      );
+    },
 
     // ---- Shifts --------------------------------------------------------
     openShift(openingCashMinor: number, idempotencyKey: string): Promise<ApiResult<POSShift>> {

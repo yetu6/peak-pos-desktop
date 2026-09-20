@@ -24,7 +24,7 @@ pub fn print_document(document: PrintDocument) -> Result<(), String> {
     let title = document.title.trim();
     send_to_os_printer(
         if title.is_empty() {
-            "peak-document"
+            "yetu-document"
         } else {
             title
         },
@@ -36,7 +36,7 @@ pub fn print_document(document: PrintDocument) -> Result<(), String> {
 #[tauri::command]
 pub fn print_kitchen_ticket(ticket: KitchenTicket) -> Result<(), String> {
     print_document(PrintDocument {
-        title: "peak-kitchen-ticket".to_string(),
+        title: "yetu-kitchen-ticket".to_string(),
         text: ticket.text,
     })
 }
@@ -48,7 +48,7 @@ pub struct PrinterStatus {
     pub name: Option<String>,
 }
 
-/// Reports whether `lp` is on PATH and which printer Peak will use.
+/// Reports whether a local print path exists and which printer Peak will use.
 /// This does not print a page.
 #[tauri::command]
 pub fn printer_status() -> PrinterStatus {
@@ -58,8 +58,25 @@ pub fn printer_status() -> PrinterStatus {
     }
 }
 
+/// Sends a one-page Diagnostics test to the OS printer.
+#[tauri::command]
+pub fn print_test_page() -> Result<(), String> {
+    let name = configured_printer_name().unwrap_or_else(|| "default".to_string());
+    let body = format!(
+        "YETU POS — printer test\nPrinter: {name}\nIf you can read this, the till can print.\n"
+    );
+    send_to_os_printer("yetu-printer-test", &body)
+}
+
 pub(crate) fn printer_is_available() -> bool {
-    which("lp").is_some()
+    #[cfg(windows)]
+    {
+        which("powershell").is_some() || which("powershell.exe").is_some()
+    }
+    #[cfg(not(windows))]
+    {
+        which("lp").is_some()
+    }
 }
 
 pub(crate) fn configured_printer_name() -> Option<String> {
@@ -71,6 +88,18 @@ pub(crate) fn configured_printer_name() -> Option<String> {
 }
 
 fn send_to_os_printer(title: &str, body: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        send_windows(title, body)
+    }
+    #[cfg(not(windows))]
+    {
+        send_unix_lp(title, body)
+    }
+}
+
+#[cfg(not(windows))]
+fn send_unix_lp(title: &str, body: &str) -> Result<(), String> {
     let lp = which("lp").ok_or_else(|| "No kitchen printer is configured".to_string())?;
     let printer = configured_printer_name();
 
@@ -112,6 +141,52 @@ fn send_to_os_printer(title: &str, body: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(windows)]
+fn send_windows(title: &str, body: &str) -> Result<(), String> {
+    let dir = std::env::temp_dir();
+    let safe_title: String = title
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let path = dir.join(format!("yetu-print-{safe_title}-{}.txt", std::process::id()));
+    std::fs::write(&path, format!("{body}\n")).map_err(|err| format!("Printer write failed: {err}"))?;
+
+    let path_display = path.display().to_string().replace('\'', "''");
+    let printer = configured_printer_name();
+    let script = if let Some(name) = printer {
+        let printer_name = name.replace('\'', "''");
+        format!(
+            "Get-Content -LiteralPath '{path_display}' | Out-Printer -Name '{printer_name}'"
+        )
+    } else {
+        format!("Get-Content -LiteralPath '{path_display}' | Out-Printer")
+    };
+
+    let powershell = which("powershell")
+        .or_else(|| which("powershell.exe"))
+        .ok_or_else(|| "No kitchen printer is configured".to_string())?;
+
+    let output = Command::new(powershell)
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|_| "No kitchen printer is configured".to_string())?;
+
+    let _ = std::fs::remove_file(&path);
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let detail = stderr.trim();
+        if detail.is_empty() {
+            return Err("No kitchen printer is configured".to_string());
+        }
+        return Err(format!("Print failed: {detail}"));
+    }
+    Ok(())
+}
+
 fn which(binary: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path).find_map(|dir| {
@@ -124,11 +199,13 @@ fn which(binary: &str) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use std::fs;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+    #[cfg(unix)]
     fn fake_lp_dir(script: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("peak-lp-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -141,6 +218,7 @@ mod tests {
         dir
     }
 
+    #[cfg(unix)]
     #[test]
     fn print_document_writes_title_and_body_to_lp_stdin() {
         let _guard = ENV_LOCK.lock().unwrap();
@@ -172,6 +250,7 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn missing_lp_is_a_device_failure() {
         let _guard = ENV_LOCK.lock().unwrap();
@@ -186,6 +265,7 @@ mod tests {
         std::env::set_var("PATH", original);
     }
 
+    #[cfg(unix)]
     #[test]
     fn printer_status_reports_missing_lp_without_printing() {
         let _guard = ENV_LOCK.lock().unwrap();
@@ -199,6 +279,7 @@ mod tests {
         std::env::set_var("PATH", original);
     }
 
+    #[cfg(unix)]
     #[test]
     fn printer_status_reports_the_configured_name() {
         let _guard = ENV_LOCK.lock().unwrap();
@@ -213,5 +294,15 @@ mod tests {
         std::env::set_var("PATH", original);
         std::env::remove_var("PEAK_PRINTER");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn empty_document_is_rejected() {
+        let error = print_document(PrintDocument {
+            title: "x".to_string(),
+            text: "   ".to_string(),
+        })
+        .unwrap_err();
+        assert_eq!(error, "Print document is empty");
     }
 }

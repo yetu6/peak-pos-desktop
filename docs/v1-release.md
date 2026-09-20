@@ -185,3 +185,35 @@ when that lab run happens.
 
 **NOT IMPLEMENTED.** Do not classify it as implemented, partial, or
 "coming in this binary."
+
+## CI / GitHub Releases
+
+Tag a version (`git tag v0.1.1 && git push origin v0.1.1`) to run
+`.github/workflows/release.yml`. It builds linux / windows / macos Tauri
+bundles, writes `SHA256SUMS`, and publishes a GitHub Release.
+
+`workflow_dispatch` can build the same artifacts as a draft release for
+smoke testing without a tag.
+
+## VPS download hosting
+
+Hotels should not need a GitHub account. Mirror the latest Release artifacts
+onto the existing API/ops host (or object storage) under a stable URL:
+
+```bash
+# On the VPS (example paths — adjust to your Caddy/nginx root)
+sudo mkdir -p /var/www/yetu-downloads/pos/latest
+# copy .msi / .dmg / .deb / AppImage + SHA256SUMS from the GitHub Release
+sudo chmod -R a+rX /var/www/yetu-downloads/pos
+```
+
+Serve that tree over TLS (same cert family as `api.yetu…`). Point Hospitality
+Web at it:
+
+```bash
+NEXT_PUBLIC_POS_DOWNLOAD_URL=https://downloads.yetu.fbcsoftwares.com/pos/latest/
+```
+
+Registers & Devices then shows **Download Yetu POS**. The till still has no
+auto-updater — managers download and install manually after verifying
+checksums.

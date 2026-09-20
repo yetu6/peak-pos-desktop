@@ -361,7 +361,7 @@ export function DeviceSessionProvider({
   }, [peakUrl, persist]);
 
   const markApproved = useCallback(
-    async (terminalId: string, binding?: TerminalBinding) => {
+    async (terminalId: string, binding?: TerminalBinding, mode?: string) => {
       const current = identityRef.current;
       if (!current?.deviceCredential) return;
       if (binding) {
@@ -376,6 +376,7 @@ export function DeviceSessionProvider({
         deviceCode: terminalId,
         terminalId,
         approved: true,
+        mode: mode?.trim() || current.mode || "POS",
         pairing: undefined,
       });
       setPhase("locked");
@@ -398,7 +399,7 @@ export function DeviceSessionProvider({
         pairing.claimToken,
       );
       if (status.status === "CONSUMED" && status.terminalId) {
-        await markApproved(status.terminalId, status.offlineAuthority);
+        await markApproved(status.terminalId, status.offlineAuthority, status.mode);
         return;
       }
       if (status.status === "PENDING") {

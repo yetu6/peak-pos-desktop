@@ -31,6 +31,7 @@ const CATALOG: POSCatalog = {
       priceMinor: 1200000,
       currency: "TZS",
       taxRateBp: 1800,
+      isAvailable: true,
     },
     {
       id: "00000000-0000-0000-0000-000000000006",
@@ -40,6 +41,7 @@ const CATALOG: POSCatalog = {
       priceMinor: 500000,
       currency: "TZS",
       taxRateBp: 1800,
+      isAvailable: true,
     },
   ],
 };
