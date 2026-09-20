@@ -34,6 +34,7 @@ jobs:
           - os: macos-latest
             platform: macos
     runs-on: ${{ matrix.os }}
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
@@ -65,8 +66,16 @@ jobs:
         working-directory: src-tauri
         run: cargo test
 
-      - name: Build Tauri bundle
-        run: bunx tauri build
+      - name: Build Tauri bundle (signed updater artifacts)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is required for release builds"
+            exit 1
+          fi
+          bunx tauri build
 
       - name: Collect artifacts
         shell: bash
@@ -74,11 +83,11 @@ jobs:
           set -euo pipefail
           mkdir -p dist/release
           if [ "${{ matrix.platform }}" = "linux" ]; then
-            find src-tauri/target/release/bundle -type f \( -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' \) -exec cp -a {} dist/release/ \;
+            find src-tauri/target/release/bundle -type f \( -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' -o -name '*.sig' \) -exec cp -a {} dist/release/ \;
           elif [ "${{ matrix.platform }}" = "windows" ]; then
-            find src-tauri/target/release/bundle -type f \( -name '*.msi' -o -name '*.exe' \) -exec cp -a {} dist/release/ \;
+            find src-tauri/target/release/bundle -type f \( -name '*.msi' -o -name '*.exe' -o -name '*.nsis.zip' -o -name '*.sig' \) -exec cp -a {} dist/release/ \;
           else
-            find src-tauri/target/release/bundle -type f \( -name '*.dmg' -o -name '*.app.tar.gz' \) -exec cp -a {} dist/release/ \;
+            find src-tauri/target/release/bundle -type f \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.sig' \) -exec cp -a {} dist/release/ \;
           fi
           ls -la dist/release
           test "$(find dist/release -type f | wc -l)" -gt 0
@@ -97,6 +106,7 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v') || inputs.create_release
     runs-on: ubuntu-22.04
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
@@ -106,15 +116,21 @@ jobs:
 
       - name: Stage release files
         shell: bash
+        env:
+          TAG_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
         run: |
           set -euo pipefail
           mkdir -p release
           find artifacts -type f -exec cp -a {} release/ \;
           cd release
-          find . -type f ! -name 'SHA256SUMS' ! -name 'SHA256SUMS.asc' \
+          find . -type f ! -name 'SHA256SUMS' ! -name 'SHA256SUMS.asc' ! -name 'latest.json' \
             | sed 's|^\./||' | LC_ALL=C sort \
             | while IFS= read -r file; do sha256sum -- "$file"; done > SHA256SUMS
+          VERSION="$TAG_NAME"
+          PUBLIC_BASE="https://downloads.yetu.fbcsoftwares.com/pos/${VERSION#v}"
+          ../scripts/build-updater-manifest.sh "$VERSION" "$PUBLIC_BASE" . > latest.json
           cat SHA256SUMS
+          cat latest.json
           ls -la
 
       - name: Publish GitHub Release
@@ -132,3 +148,70 @@ jobs:
             Hospitality Web links hotels via `NEXT_PUBLIC_POS_DOWNLOAD_URL`.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-downloads:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.create_release
+    runs-on: ubuntu-22.04
+    environment: production
+    concurrency:
+      group: production-pos-downloads
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Stage + build updater manifest
+        shell: bash
+        env:
+          TAG_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
+        run: |
+          set -euo pipefail
+          mkdir -p stage
+          find artifacts -type f -exec cp -a {} stage/ \;
+          VERSION="$TAG_NAME"
+          PUBLIC_BASE="https://downloads.yetu.fbcsoftwares.com/pos/${VERSION#v}"
+          scripts/build-updater-manifest.sh "$VERSION" "$PUBLIC_BASE" stage > stage/latest.json
+          (
+            cd stage
+            find . -type f ! -name 'SHA256SUMS' ! -name 'latest.json' \
+              | sed 's|^\./||' | LC_ALL=C sort \
+              | while IFS= read -r file; do sha256sum -- "$file"; done > SHA256SUMS
+          )
+
+      - name: SSH publish to peak-prod downloads
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          TAG_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SSH_PRIVATE_KEY" ] || [ -z "$SSH_KNOWN_HOSTS" ] || [ -z "$PRODUCTION_HOST" ] || [ -z "$PRODUCTION_USER" ]; then
+            echo "::error::production SSH secrets are missing"
+            exit 1
+          fi
+          PRODUCTION_HOST=$(printf '%s' "$PRODUCTION_HOST" | tr -d '\r\n[:space:]')
+          PRODUCTION_USER=$(printf '%s' "$PRODUCTION_USER" | tr -d '\r\n[:space:]')
+          python3 scripts/ci-write-ssh-key.py
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          REMOTE_STAGE=/tmp/yetu-pos-release-stage-$$
+          ssh -o IdentitiesOnly=yes -o BatchMode=yes \
+            "${PRODUCTION_USER}@${PRODUCTION_HOST}" \
+            "rm -rf '$REMOTE_STAGE' && mkdir -p '$REMOTE_STAGE'"
+          scp -o IdentitiesOnly=yes -o BatchMode=yes -r stage/* \
+            "${PRODUCTION_USER}@${PRODUCTION_HOST}:${REMOTE_STAGE}/"
+          ssh -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+            "${PRODUCTION_USER}@${PRODUCTION_HOST}" \
+            "PEAK_POS_VERSION=$TAG_NAME PEAK_POS_STAGE_DIR=$REMOTE_STAGE sh -s" \
+            < scripts/publish-downloads.sh
+          ssh -o IdentitiesOnly=yes -o BatchMode=yes \
+            "${PRODUCTION_USER}@${PRODUCTION_HOST}" \
+            "rm -rf '$REMOTE_STAGE'"

@@ -24,9 +24,9 @@ const queryClient = new QueryClient({
   },
 });
 
-// Development-only, deterministic viewport evidence for the pre-authentication
-// Peak Terminal journey -- see docs/PEAK_TERMINAL_MASTER_OPERATIONS.md T1.
-// Never reachable in a production build (`import.meta.env.DEV` gates it).
+// Development-only, deterministic viewport evidence for pre-authentication
+// Peak Terminal journeys. Never reachable in a production build
+// (`import.meta.env.DEV` gates it).
 const VISUAL_FIXTURES = {
   splash: SplashFixture,
   pairing: PairingFixture,

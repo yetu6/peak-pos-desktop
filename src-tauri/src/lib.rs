@@ -10,6 +10,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let runtime = local_store::runtime::LocalStoreRuntime::initialize_for_app(app.handle());
             app.manage(runtime);

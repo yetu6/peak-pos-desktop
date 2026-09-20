@@ -28,6 +28,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -35,5 +36,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE2MjMzNUU2QTVGNjNEMjEKUldRaFBmYWw1alVqcHM5VUZKWm91NllhUTg1TkZMTjBlbzJjVzlmWm4vbDNTVHJ5Nk9HZTlzUXUK",
+      "endpoints": [
+        "https://downloads.yetu.fbcsoftwares.com/pos/stable/latest.json"
+      ]
+    }
   }
 }

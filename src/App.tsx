@@ -5,6 +5,7 @@ import { IdleLockOverlay } from "./components/IdleLockOverlay";
 import { Icon } from "./components/Icon";
 import { ConnectivityIndicator } from "./components/ConnectivityIndicator";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { UpdaterBanner } from "./components/UpdaterBanner";
 import { ActiveOrders } from "./pages/ActiveOrders";
 import { Kitchen } from "./pages/Kitchen";
 import { Manager } from "./pages/Manager";
@@ -250,11 +251,8 @@ function ReadyGate() {
 }
 
 /**
- * The single source of truth for what appears on screen. Every other gate this
- * app used to have — a phase check here, a shell-state check there — is
- * folded into one explicit mapping from PEAK_TERMINAL_MASTER_OPERATIONS.md's
- * terminal state vocabulary to a screen, so there is exactly one place that
- * can send an operator to the wrong place.
+ * Maps device phase to the single on-screen route. Terminal vocabulary is
+ * enforced in `terminalRoute` / `shellStateOf` and their tests.
  */
 function AuthGate() {
   const { phase } = useDeviceSession();
@@ -287,6 +285,7 @@ function AuthGate() {
       // shift outcome — nothing to render here.
       return (
         <>
+          <UpdaterBanner />
           <KeyStorageBanner />
           <IdleLockOverlay />
           <ReadyGate />
@@ -296,6 +295,7 @@ function AuthGate() {
 
   return (
     <>
+      <UpdaterBanner />
       <KeyStorageBanner />
       <span className="sr-only" data-testid="shell-state">
         {route}

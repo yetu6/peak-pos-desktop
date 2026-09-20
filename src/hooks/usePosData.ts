@@ -13,7 +13,6 @@ import type {
   PaymentMethod,
   POSOrder,
   POSShift,
-  POSStationTicket,
   ServiceType,
 } from "../lib/posContracts";
 
