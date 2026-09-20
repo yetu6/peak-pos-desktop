@@ -3,6 +3,7 @@ import { Icon } from "../components/Icon";
 import { TillControls } from "../components/TillControls";
 import { ItemModifierDialog, type ModifierSelection } from "../components/ItemModifierDialog";
 import { SettleDialog } from "../components/SettleDialog";
+import { DiscountDialog } from "../components/DiscountDialog";
 import {
   CategoryTab,
   MoneyDisplay,
@@ -60,6 +61,7 @@ export function NewOrder() {
   const [order, setOrder] = useState<POSOrder | null>(null);
   const [configuring, setConfiguring] = useState<POSCatalogProduct | null>(null);
   const [settleOpen, setSettleOpen] = useState(false);
+  const [discountOpen, setDiscountOpen] = useState(false);
   const [invoiceOrderId, setInvoiceOrderId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -345,6 +347,14 @@ export function NewOrder() {
               <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-[var(--foreground-muted)]">
                 <span>Subtotal</span>
                 <MoneyDisplay className="text-right">{order ? money(order.subtotalMinor) : "—"}</MoneyDisplay>
+                {(order?.discountMinor ?? 0) > 0 && (
+                  <>
+                    <span>Discount</span>
+                    <MoneyDisplay className="text-right" data-testid="cart-discount">
+                      −{money(order!.discountMinor)}
+                    </MoneyDisplay>
+                  </>
+                )}
                 <span>Tax</span>
                 <MoneyDisplay className="text-right">{order ? money(order.taxMinor) : "—"}</MoneyDisplay>
                 <span className="font-semibold text-[var(--foreground)]">Total</span>
@@ -355,6 +365,16 @@ export function NewOrder() {
                 >
                   {order && order.items.length > 0 ? money(order.totalMinor) : "—"}
                 </MoneyDisplay>
+                {(order?.paidMinor ?? 0) > 0 && (
+                  <>
+                    <span>Paid</span>
+                    <MoneyDisplay className="text-right">{money(order!.paidMinor)}</MoneyDisplay>
+                    <span>Remaining</span>
+                    <MoneyDisplay className="text-right" data-testid="cart-remaining">
+                      {money(order!.remainingMinor)}
+                    </MoneyDisplay>
+                  </>
+                )}
               </div>
               <input
                 data-testid="order-notes"
@@ -394,6 +414,17 @@ export function NewOrder() {
                   Pay
                 </button>
               </div>
+              {order && order.items.length > 0 && (order.paidMinor ?? 0) === 0 && order.status !== "CLOSED" && order.status !== "VOIDED" && (
+                <button
+                  type="button"
+                  data-testid="discount-order"
+                  onClick={() => setDiscountOpen(true)}
+                  disabled={busy}
+                  className="btn-ghost mt-2 w-full text-xs"
+                >
+                  Apply discount
+                </button>
+              )}
               {order?.status === "OPEN" && order.items.some((item) => item.status === "ADDED") && (
                 <p className="mt-2 text-[11px] text-[var(--foreground-muted)]">
                   Send for a kitchen ticket, or Pay to settle now.
@@ -464,9 +495,18 @@ export function NewOrder() {
           order={order}
           currency={currency}
           onClose={() => setSettleOpen(false)}
+          onOrderChange={setOrder}
           onSettled={() => {
             void afterSettled(order.id);
           }}
+        />
+      )}
+      {discountOpen && order && currency && (
+        <DiscountDialog
+          order={order}
+          currency={currency}
+          onClose={() => setDiscountOpen(false)}
+          onApplied={(updated) => setOrder(updated)}
         />
       )}
       {invoiceOrderId && (

@@ -174,7 +174,15 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
         </>
       )}
 
-      {settling && currency && <SettleDialog order={settling} currency={currency} onClose={() => setSettling(null)} onSettled={(id) => void afterSettled(id)} />}
+      {settling && currency && (
+        <SettleDialog
+          order={settling}
+          currency={currency}
+          onClose={() => setSettling(null)}
+          onOrderChange={setSettling}
+          onSettled={(id) => void afterSettled(id)}
+        />
+      )}
       {removing && <RemoveItemDialog order={removing.order} item={removing.item} onClose={() => setRemoving(null)} />}
       {voiding && <VoidOrderDialog order={voiding} onClose={() => setVoiding(null)} />}
       {receiptOrderId && <ReceiptView orderId={receiptOrderId} onClose={() => setReceiptOrderId(null)} />}

@@ -23,8 +23,13 @@ const ORDER: POSOrder = {
   initiatedById: "staff-1",
   initiatedByName: "Amina Hassan",
   subtotalMinor: 20_000,
+  discountMinor: 0,
+  discountKind: "NONE",
+  discountInput: 0,
   taxMinor: 4_000,
   totalMinor: 24_000,
+  paidMinor: 0,
+  remainingMinor: 24_000,
   version: 3,
   items: [],
 };

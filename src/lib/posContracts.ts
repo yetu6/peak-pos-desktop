@@ -46,12 +46,28 @@ export interface POSOrder {
   initiatedById: string;
   initiatedByName: string;
   subtotalMinor: number;
+  discountMinor: number;
+  discountKind: "NONE" | "AMOUNT" | "PERCENT";
+  discountInput: number;
+  discountReason?: string;
   taxMinor: number;
   totalMinor: number;
+  paidMinor: number;
+  remainingMinor: number;
   /** Optimistic concurrency token. Every mutation must echo the value the
    *  desktop last saw; a stale value is refused with STALE_VERSION. */
   version: number;
   items: POSOrderItem[];
+}
+
+export type DiscountKind = "AMOUNT" | "PERCENT";
+
+export interface POSTenderResult {
+  paymentId: string;
+  orderClosed: boolean;
+  paidMinor: number;
+  remainingMinor: number;
+  version: number;
 }
 
 export interface POSModifierOption {

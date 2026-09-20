@@ -1,6 +1,7 @@
 import { createApiClient, type ApiResult } from "./api";
 import type {
   CashMovementType,
+  DiscountKind,
   PaymentMethod,
   POSBusinessDayCloseResult,
   POSCashMovement,
@@ -9,6 +10,7 @@ import type {
   POSReceipt,
   POSRoomChargeCandidate,
   POSShift,
+  POSTenderResult,
   ServiceType,
 } from "./posContracts";
 
@@ -141,11 +143,28 @@ export function createPosApi() {
       orderId: string,
       body: { paymentMethod: PaymentMethod; amountMinor: number; reference?: string; version: number },
       idempotencyKey: string,
-    ): Promise<ApiResult<{ paymentId: string }>> {
-      return client.POST<{ paymentId: string }>(
+    ): Promise<ApiResult<POSTenderResult>> {
+      return client.POST<POSTenderResult>(
         `/api/v1/pos/orders/${encodeURIComponent(orderId)}/payments`,
         { headers: idempotent(idempotencyKey), body },
       );
+    },
+    applyDiscount(
+      orderId: string,
+      body: {
+        kind: DiscountKind;
+        value: number;
+        reason: string;
+        supervisorStaffId: string;
+        supervisorPin: string;
+        version: number;
+      },
+      idempotencyKey: string,
+    ): Promise<ApiResult<POSOrder>> {
+      return client.POST<POSOrder>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/discount`, {
+        headers: idempotent(idempotencyKey),
+        body,
+      });
     },
     chargeToRoom(
       orderId: string,

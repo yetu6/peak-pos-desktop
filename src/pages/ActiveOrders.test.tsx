@@ -128,8 +128,13 @@ const OPEN_ORDER: POSOrder = {
   initiatedByName: "Amina Hassan",
   tableLabel: "T12",
   subtotalMinor: 1000,
+  discountMinor: 0,
+  discountKind: "NONE",
+  discountInput: 0,
   taxMinor: 180,
   totalMinor: 1180,
+  paidMinor: 0,
+  remainingMinor: 1180,
   version: 1,
   items: [{ id: "item-1", productId: "p1", name: "Lunch", quantity: 1, unitPriceMinor: 1000, taxMinor: 180, totalMinor: 1180, status: "ADDED" }],
 };

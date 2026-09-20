@@ -13,12 +13,11 @@ import {
 import type { PaymentMethod, POSOrder, POSRoomChargeCandidate } from "../lib/posContracts";
 
 /**
- * Peak's actual tender contract: one exact `paymentMethod` from
- * CASH/MOBILE_MONEY/BANK_TRANSFER/EXTERNAL_CARD/OTHER, an `amountMinor`,
- * and an optional free-text `reference` — there is no payment-provider
- * account concept in the certified backend. Non-cash methods are an
- * external settlement Peak *records*, never a PSP Peak processes; the copy
- * says so explicitly instead of implying integrated processing.
+ * Peak tender contract: one `paymentMethod` from
+ * CASH/MOBILE_MONEY/BANK_TRANSFER/EXTERNAL_CARD/OTHER against the remaining
+ * balance. Partial tenders leave the order open until remaining is zero
+ * (split pay). Non-cash methods record an external settlement — Peak never
+ * processes a PSP.
  */
 const METHODS: Array<{ id: PaymentMethod; label: string; helper?: string }> = [
   { id: "CASH", label: "Cash" },
@@ -30,25 +29,29 @@ const METHODS: Array<{ id: PaymentMethod; label: string; helper?: string }> = [
 
 const SEARCH_DEBOUNCE_MS = 250;
 
+function remainingOf(order: POSOrder): number {
+  return order.remainingMinor ?? Math.max(0, order.totalMinor - (order.paidMinor ?? 0));
+}
+
 export function SettleDialog({
   order,
   currency,
   onClose,
   onSettled,
+  onOrderChange,
 }: {
   order: POSOrder;
-  /** Required, no default — the caller (which already knows whether its
-   *  own catalog has resolved a real currency) decides when it is safe to
-   *  offer settlement at all, rather than this dialog silently assuming
-   *  one. */
   currency: string;
   onClose: () => void;
   onSettled: (orderId: string) => void;
+  onOrderChange?: (order: POSOrder) => void;
 }) {
+  const [liveOrder, setLiveOrder] = useState(order);
   const [tab, setTab] = useState<"tender" | "room">("tender");
   const [method, setMethod] = useState<PaymentMethod>("CASH");
   const [reference, setReference] = useState("");
   const [amountReceived, setAmountReceived] = useState("");
+  const [tenderAmount, setTenderAmount] = useState("");
   const [roomQuery, setRoomQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selected, setSelected] = useState<POSRoomChargeCandidate | null>(null);
@@ -62,46 +65,75 @@ export function SettleDialog({
   const tenderError = useMutationMessage(recordTender.error);
   const roomChargeError = useMutationMessage(chargeToRoom.error);
 
+  const dueMinor = remainingOf(liveOrder);
+  const paidMinor = liveOrder.paidMinor ?? 0;
+
+  useEffect(() => {
+    setLiveOrder(order);
+  }, [order]);
+
   useEffect(() => {
     const id = setTimeout(() => setDebouncedQuery(roomQuery.trim()), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(id);
   }, [roomQuery]);
 
   const receivedMinor = toMinor(amountReceived);
+  const explicitTenderMinor = toMinor(tenderAmount);
+  const applyMinor =
+    method === "CASH"
+      ? Math.min(receivedMinor ?? 0, dueMinor)
+      : explicitTenderMinor ?? dueMinor;
+
   const changeDueMinor =
-    method === "CASH" && receivedMinor != null ? Math.max(0, receivedMinor - order.totalMinor) : null;
+    method === "CASH" && receivedMinor != null ? Math.max(0, receivedMinor - dueMinor) : null;
 
   const canSubmitTender = useMemo(() => {
-    if (recordTender.isPending) return false;
-    if (method === "CASH") return receivedMinor != null && receivedMinor >= order.totalMinor;
-    return reference.trim().length > 0;
-  }, [method, receivedMinor, order.totalMinor, reference, recordTender.isPending]);
+    if (recordTender.isPending || dueMinor <= 0) return false;
+    if (method === "CASH") return receivedMinor != null && receivedMinor > 0 && applyMinor > 0;
+    return reference.trim().length > 0 && applyMinor > 0 && applyMinor <= dueMinor;
+  }, [method, receivedMinor, applyMinor, dueMinor, reference, recordTender.isPending]);
 
-  const canSubmitRoomCharge = selected != null && selected.postingEligible !== false && !chargeToRoom.isPending;
+  const canSubmitRoomCharge =
+    selected != null &&
+    selected.postingEligible !== false &&
+    !chargeToRoom.isPending &&
+    paidMinor === 0;
 
   function submitTender(): void {
+    if (applyMinor <= 0) return;
     recordTender.mutate(
       {
-        orderId: order.id,
+        orderId: liveOrder.id,
         paymentMethod: method,
-        amountMinor: order.totalMinor,
+        amountMinor: applyMinor,
         reference: method === "CASH" ? undefined : reference.trim(),
-        version: order.version,
-        idempotencyKey: tenderKey.current,
+        version: liveOrder.version,
+        idempotencyKey: tenderKey.next(),
       },
-      { onSuccess: () => onSettled(order.id) },
+      {
+        onSuccess: (updated) => {
+          setLiveOrder(updated);
+          onOrderChange?.(updated);
+          setAmountReceived("");
+          setTenderAmount("");
+          setReference("");
+          if ((updated.remainingMinor ?? 0) <= 0 || updated.status === "CLOSED") {
+            onSettled(updated.id);
+          }
+        },
+      },
     );
   }
 
   function submitRoomCharge(): void {
     if (!selected) return;
     chargeToRoom.mutate(
-      { orderId: order.id, stayId: selected.stayId, idempotencyKey: roomChargeKey.current },
-      { onSuccess: () => onSettled(order.id) },
+      { orderId: liveOrder.id, stayId: selected.stayId, idempotencyKey: roomChargeKey.current },
+      { onSuccess: () => onSettled(liveOrder.id) },
     );
   }
 
-  const showRoomChargeTab = roomChargeAvailable.data === true;
+  const showRoomChargeTab = roomChargeAvailable.data === true && paidMinor === 0;
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -113,9 +145,9 @@ export function SettleDialog({
       >
         <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] pb-4">
           <div>
-            <DialogTitle className="text-base font-bold text-[var(--foreground)]">Settle {order.orderNumber}</DialogTitle>
+            <DialogTitle className="text-base font-bold text-[var(--foreground)]">Settle {liveOrder.orderNumber}</DialogTitle>
             <DialogDescription className="mt-1 text-xs text-[var(--foreground-muted)]">
-              {order.serviceType.replaceAll("_", " ")}
+              {liveOrder.serviceType.replaceAll("_", " ")}
             </DialogDescription>
           </div>
           <button data-testid="settle-close" onClick={onClose} className="grid size-11 place-items-center rounded-md text-[var(--foreground-muted)] hover:bg-[var(--surface-interactive)]" aria-label="Close">
@@ -124,9 +156,20 @@ export function SettleDialog({
         </div>
 
         <div className="settlement-due">
-          <span>Amount due</span>
-          <strong className="money-display" data-testid="amount-due">{formatMinor(order.totalMinor, currency)}</strong>
+          <span>Remaining</span>
+          <strong className="money-display" data-testid="amount-due">{formatMinor(dueMinor, currency)}</strong>
         </div>
+        {paidMinor > 0 && (
+          <p className="mt-1 text-[11px] text-[var(--foreground-muted)]" data-testid="amount-paid">
+            Paid {formatMinor(paidMinor, currency)} of {formatMinor(liveOrder.totalMinor, currency)}
+          </p>
+        )}
+        {(liveOrder.discountMinor ?? 0) > 0 && (
+          <p className="mt-1 text-[11px] text-[var(--foreground-muted)]" data-testid="amount-discount">
+            Discount −{formatMinor(liveOrder.discountMinor, currency)}
+            {liveOrder.discountReason ? ` · ${liveOrder.discountReason}` : ""}
+          </p>
+        )}
 
         {showRoomChargeTab && (
           <div className="mt-4 flex gap-2">
@@ -180,14 +223,32 @@ export function SettleDialog({
                 />
                 {receivedMinor != null && (
                   <p className="settlement-change" data-testid="change-due">
-                    <span>Change due</span>
-                    <strong className="money-display">{formatMinor(changeDueMinor ?? 0, currency)}</strong>
+                    <span>Applied / change</span>
+                    <strong className="money-display">
+                      {formatMinor(applyMinor, currency)}
+                      {changeDueMinor != null && changeDueMinor > 0
+                        ? ` · change ${formatMinor(changeDueMinor, currency)}`
+                        : ""}
+                    </strong>
                     <span className="ml-1 text-[11px] text-[var(--foreground-muted)]">(display only)</span>
                   </p>
                 )}
               </div>
             ) : (
               <div className="mt-4 space-y-2">
+                <label htmlFor="tender-amount" className="block text-xs font-semibold text-[var(--foreground-muted)]">
+                  Tender amount (blank = remaining)
+                </label>
+                <input
+                  id="tender-amount"
+                  data-testid="tender-amount"
+                  type="number"
+                  inputMode="decimal"
+                  value={tenderAmount}
+                  onChange={(event) => setTenderAmount(event.target.value)}
+                  placeholder={formatMinor(dueMinor, currency)}
+                  className="input w-full"
+                />
                 <label htmlFor="tender-reference" className="block text-xs font-semibold text-[var(--foreground-muted)]">Reference</label>
                 <input
                   id="tender-reference"
@@ -212,7 +273,11 @@ export function SettleDialog({
               </button>
               <button data-testid="confirm-settle" onClick={submitTender} disabled={!canSubmitTender} className="btn-primary btn-sm">
                 <Icon name="check" size={14} />
-                {recordTender.isPending ? "Settling…" : "Confirm"}
+                {recordTender.isPending
+                  ? "Recording…"
+                  : applyMinor > 0 && applyMinor < dueMinor
+                    ? "Record partial"
+                    : "Confirm"}
               </button>
             </div>
           </>

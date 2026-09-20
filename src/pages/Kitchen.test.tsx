@@ -101,8 +101,13 @@ const SENT_ORDER: POSOrder = {
   initiatedById: "staff-1",
   initiatedByName: "Amina Hassan",
   subtotalMinor: 1000,
+  discountMinor: 0,
+  discountKind: "NONE",
+  discountInput: 0,
   taxMinor: 180,
   totalMinor: 1180,
+  paidMinor: 0,
+  remainingMinor: 1180,
   version: 2,
   items: [{ id: "line-1", productId: "p1", name: "Nyama Choma", quantity: 2, unitPriceMinor: 500, taxMinor: 90, totalMinor: 1180, status: "SENT" }],
 };

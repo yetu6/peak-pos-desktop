@@ -9,6 +9,7 @@ import { processPendingPrintJobs } from "../lib/printJobs";
 import { getOperationalSession } from "../lib/operationalSession";
 import type {
   CashMovementType,
+  DiscountKind,
   PaymentMethod,
   POSOrder,
   POSShift,
@@ -448,6 +449,40 @@ export function useRecordTender() {
       );
       return unwrap(createPosApi().getOrder(args.orderId));
     },
+    onSuccess: (order: POSOrder) => {
+      queryClient.setQueryData(["pos", "order", order.id], order);
+      invalidateOrders(queryClient);
+    },
+  });
+}
+
+export function useApplyDiscount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      orderId: string;
+      kind: DiscountKind;
+      value: number;
+      reason: string;
+      supervisorStaffId: string;
+      supervisorPin: string;
+      version: number;
+      idempotencyKey: string;
+    }) =>
+      unwrap(
+        createPosApi().applyDiscount(
+          args.orderId,
+          {
+            kind: args.kind,
+            value: args.value,
+            reason: args.reason,
+            supervisorStaffId: args.supervisorStaffId,
+            supervisorPin: args.supervisorPin,
+            version: args.version,
+          },
+          args.idempotencyKey,
+        ),
+      ),
     onSuccess: (order: POSOrder) => {
       queryClient.setQueryData(["pos", "order", order.id], order);
       invalidateOrders(queryClient);

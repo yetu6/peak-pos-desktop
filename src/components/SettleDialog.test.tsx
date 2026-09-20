@@ -10,8 +10,28 @@ const {
   roomChargeAvailableRef,
   candidatesRef,
 } = vi.hoisted(() => ({
-  recordTenderMutate: vi.fn((_vars: unknown, opts?: { onSuccess?: (id: string) => void }) => opts?.onSuccess?.("order-1")),
-  chargeToRoomMutate: vi.fn((_vars: unknown, opts?: { onSuccess?: (id: string) => void }) => opts?.onSuccess?.("order-1")),
+  recordTenderMutate: vi.fn(),
+  chargeToRoomMutate: vi.fn((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
+    opts?.onSuccess?.({
+      id: "order-1",
+      shiftId: "shift-1",
+      orderNumber: "POS-1",
+      status: "CLOSED",
+      serviceType: "DINE_IN",
+      initiatedById: "staff-1",
+      initiatedByName: "Amina Hassan",
+      subtotalMinor: 20_000,
+      discountMinor: 0,
+      discountKind: "NONE",
+      discountInput: 0,
+      taxMinor: 4_000,
+      totalMinor: 24_000,
+      paidMinor: 24_000,
+      remainingMinor: 0,
+      version: 3,
+      items: [],
+    }),
+  ),
   roomChargeAvailableRef: { data: false as boolean | undefined },
   candidatesRef: { data: [] as POSRoomChargeCandidate[] },
 }));
@@ -34,8 +54,13 @@ const ORDER: POSOrder = {
   initiatedById: "staff-1",
   initiatedByName: "Amina Hassan",
   subtotalMinor: 20_000,
+  discountMinor: 0,
+  discountKind: "NONE",
+  discountInput: 0,
   taxMinor: 4_000,
   totalMinor: 24_000,
+  paidMinor: 0,
+  remainingMinor: 24_000,
   version: 2,
   items: [],
 };
@@ -50,6 +75,9 @@ describe("SettleDialog", () => {
     vi.clearAllMocks();
     roomChargeAvailableRef.data = false;
     candidatesRef.data = [];
+    recordTenderMutate.mockImplementation((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
+      opts?.onSuccess?.({ ...ORDER, status: "CLOSED", paidMinor: 24_000, remainingMinor: 0, version: 3 }),
+    );
   });
 
   it("hides the room charge tab entirely when no candidate has ever been found", () => {
@@ -61,10 +89,9 @@ describe("SettleDialog", () => {
     expect(screen.queryByTestId("settle-tab-room")).not.toBeInTheDocument();
   });
 
-  it("settles cash for the server's total, never a client-computed amount", async () => {
+  it("settles cash for the remaining balance", async () => {
     const onSettled = renderDialog();
-    await userEvent.type(screen.getByTestId("amount-received"), "24000");
-    expect(screen.getByTestId("change-due")).toHaveTextContent("0");
+    await userEvent.type(screen.getByTestId("amount-received"), "240");
     await userEvent.click(screen.getByTestId("confirm-settle"));
     await waitFor(() =>
       expect(recordTenderMutate).toHaveBeenCalledWith(
@@ -75,10 +102,22 @@ describe("SettleDialog", () => {
     await waitFor(() => expect(onSettled).toHaveBeenCalledWith("order-1"));
   });
 
-  it("blocks cash settlement until the amount received covers the total", async () => {
-    renderDialog();
+  it("records a partial cash tender without closing the dialog callback", async () => {
+    recordTenderMutate.mockImplementation((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
+      opts?.onSuccess?.({ ...ORDER, paidMinor: 10_000, remainingMinor: 14_000, version: 3 }),
+    );
+    const onSettled = renderDialog();
     await userEvent.type(screen.getByTestId("amount-received"), "100");
-    expect(screen.getByTestId("confirm-settle")).toBeDisabled();
+    expect(screen.getByTestId("confirm-settle")).not.toBeDisabled();
+    await userEvent.click(screen.getByTestId("confirm-settle"));
+    await waitFor(() =>
+      expect(recordTenderMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ amountMinor: 10_000 }),
+        expect.anything(),
+      ),
+    );
+    expect(onSettled).not.toHaveBeenCalled();
+    expect(screen.getByTestId("amount-due")).toBeInTheDocument();
   });
 
   it("requires a reference for a recorded (non-integrated) mobile money payment", async () => {
