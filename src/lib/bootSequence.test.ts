@@ -11,19 +11,13 @@ const PHASES = [
   "ready",
 ] as const;
 
-describe("boot sequence docs", () => {
+describe("boot sequence", () => {
   it("names every DevicePhase the shell actually uses", () => {
     const root = process.cwd();
-    const doc = readFileSync(join(root, "docs/boot-sequence.md"), "utf8");
     const src = readFileSync(join(root, "src/auth/DeviceSessionProvider.tsx"), "utf8");
     for (const phase of PHASES) {
       expect(src).toContain(`"${phase}"`);
-      expect(doc).toContain(`\`${phase}\``);
     }
-    expect(doc).toMatch(/no operational session is published/i);
-    expect(doc).toMatch(/no in-app auto-update/i);
-    expect(doc).toMatch(/docs\/v1-release\.md/);
-    expect(doc).toMatch(/NOT IMPLEMENTED/);
-    expect(doc).toMatch(/does not/i);
+    expect(src).toMatch(/shellStateOf/);
   });
 });

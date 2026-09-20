@@ -1,7 +1,5 @@
 # Build Yetu POS Desktop installers and publish GitHub Releases with SHA256SUMS.
-#
-# Manual installs only — there is no automatic updater. See docs/v1-release.md
-# and docs/adr/0001-automatic-updater-deferred.md.
+# Also syncs signed updater metadata to the VPS download host.
 #
 # Triggers:
 #   - tag v* (e.g. v0.1.0) → create a GitHub Release
@@ -127,10 +125,10 @@ jobs:
           draft: ${{ github.ref_type != 'tag' }}
           files: release/*
           body: |
-            Yetu POS Desktop installers. Manual install only — no auto-updater.
+            Yetu POS Desktop installers (checksummed + signed updater channel).
 
-            Verify with `SHA256SUMS` before installing. See `docs/v1-release.md`.
+            Verify with `SHA256SUMS` before installing.
 
-            Hospitality Web can link hotels here via `NEXT_PUBLIC_POS_DOWNLOAD_URL`.
+            Hospitality Web links hotels via `NEXT_PUBLIC_POS_DOWNLOAD_URL`.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
