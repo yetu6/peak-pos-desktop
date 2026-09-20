@@ -74,7 +74,10 @@ jobs:
 
       - name: Cargo test
         working-directory: src-tauri
-        run: cargo test
+        env:
+          # Windows default thread stack is too small for Argon2 in debug tests.
+          RUST_MIN_STACK: "16777216"
+        run: cargo test -- --test-threads=1
 
       - name: Build Tauri bundle (signed updater artifacts)
         env:
