@@ -75,8 +75,12 @@ jobs:
       - name: Cargo test
         working-directory: src-tauri
         env:
-          # Windows default thread stack is too small for Argon2 in debug tests.
-          RUST_MIN_STACK: "16777216"
+          # Debug-build frames on Windows MSVC are large enough that the local
+          # store tests overflowed even a 16 MiB thread stack; 64 MiB for the
+          # test threads, and the same for the main thread through the linker,
+          # since libtest runs single-threaded here.
+          RUST_MIN_STACK: "67108864"
+          RUSTFLAGS: ${{ matrix.platform == 'windows' && '-C link-arg=/STACK:67108864' || '' }}
         run: cargo test -- --test-threads=1
 
       - name: Build Tauri bundle (signed updater artifacts)
