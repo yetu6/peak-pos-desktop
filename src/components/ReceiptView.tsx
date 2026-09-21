@@ -83,7 +83,7 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
                 <p className="text-[11px] text-[var(--slate-ink)]/60">Reprinted {receipt.data.reprintCount}×</p>
               )}
               <div className="invoice-yetu-footer" data-testid="invoice-yetu-footer">
-                <div className="font-semibold tracking-wide">Yetu</div>
+                <div className="font-semibold tracking-wide">Yetu · by FBC</div>
                 <div>Not a TRA fiscal receipt — use EFD for tax invoices.</div>
               </div>
             </div>

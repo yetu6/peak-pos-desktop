@@ -3,7 +3,7 @@ import { Splash } from "../pages/Splash";
 
 /**
  * Development-only, deterministic compositions of the pre-authentication
- * Peak Terminal journey (PEAK_TERMINAL_MASTER_OPERATIONS.md §7-11), captured
+ * Peak Terminal journey (setup through open shift), captured
  * from the real Tauri/WebKit rendering path exactly like PeakTerminalFixture
  * captures the operational register. These reuse the real screens' own
  * markup and CSS classes with static data standing in for a live backend --

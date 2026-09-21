@@ -4,6 +4,8 @@
 @import "@fontsource/ibm-plex-sans/500.css";
 @import "@fontsource/ibm-plex-sans/600.css";
 @import "@fontsource/ibm-plex-sans/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -15,7 +17,16 @@
   src: url("./assets/fonts/inter-latin.woff2") format("woff2");
 }
 
-/* Yetu POS till — slate station + thermal receipt paper. */
+/* Yetu POS till -- slate station + thermal receipt paper, in FBC's colours.
+ *
+ * The station stays dark-first (a till is read across a bar in low light),
+ * but every accent is now the FBC ramp from src/fbc-tokens.css (a vendored
+ * copy of PEAK/brand-assets/fbc-tokens.css): the primary action is the FBC
+ * orange with near-black text (5.4:1) -- on slate, the brand navy is too
+ * close to the surface to read as a button, and orange is what FBC's own
+ * calls to action use -- the focus ring is the lighter orange step, and the
+ * light theme's primary is FBC ink. src/peakTerminalFoundation.test.ts holds
+ * every pair to WCAG AA. */
 :root {
   --background: #1A1C1F;
   --surface: #24272C;
@@ -23,19 +34,21 @@
   --surface-interactive: #353A42;
   --foreground: #F3F1EC;
   --foreground-muted: #A8A59C;
-  --primary: #C9A227;
-  --primary-hover: #D4B03A;
-  --primary-foreground: #1A1C1F;
-  --primary-subtle: #3A3318;
-  --gold-accent: #C9A227;
-  --gold-subtle: #3A3318;
-  --brass: #C9A227;
+  --primary: #f75e2d;
+  --primary-hover: #ff7a4a;
+  --primary-foreground: #1a0d08;
+  --primary-subtle: #3a1f14;
+  /* Historic names for the accent: the FBC orange's text step on slate. */
+  --gold-accent: #ff9455;
+  --gold-subtle: #3a1f14;
+  --brass: #ff9455;
+  --brand-ink: #10417c;
   --receipt-paper: #F4EFE4;
   --slate-ink: #1A1C1F;
   --border: #3A3F48;
   --border-strong: #555B66;
   --border-subtle: #2E3238;
-  --focus: #E1C25A;
+  --focus: #ffa974;
   --success: #43AA98;
   --success-subtle: #122F2A;
   --success-border: #28685E;
@@ -68,21 +81,21 @@
   /* Compatibility aliases while existing screens move onto Peak primitives. */
   --color-bg: var(--background);
   --color-surface: var(--surface);
-  --color-surface-hover: #29352f;
+  --color-surface-hover: #2b3240;
   --color-surface-secondary: var(--surface-raised);
   --color-surface-tertiary: var(--surface-interactive);
   --color-text: var(--foreground);
   --color-text-primary: var(--foreground);
-  --color-text-secondary: #c4cbc6;
+  --color-text-secondary: #c2cfe0;
   --color-text-muted: var(--foreground-muted);
-  --color-text-tertiary: #88938c;
+  --color-text-tertiary: #8a9ab0;
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-border-subtle: var(--border-subtle);
   --color-brand: var(--primary);
   --color-brand-hover: var(--primary-hover);
   --color-brand-light: var(--primary-subtle);
-  --color-brand-dark: #10563d;
+  --color-brand-dark: #10417c;
   --color-gold: var(--gold-accent);
   --color-gold-light: var(--gold-subtle);
   --color-success: var(--success);
@@ -99,8 +112,8 @@
   --color-info-border: var(--info-border);
   --color-accent: var(--gold-accent);
   --color-accent-light: var(--gold-subtle);
-  --color-accent-border: #6f592e;
-  --color-pos-sidebar: #090e0c;
+  --color-accent-border: #7a3a1c;
+  --color-pos-sidebar: #071120;
 
   --radius: 0.625rem;
   --radius-control: 8px;
@@ -109,34 +122,33 @@
   --radius-sheet: 14px;
   --control-height: 48px;
   --control-height-compact: 44px;
-  --control-height-prominent: 56px;
-  --product-tile-height: 72px;
   --control-height-prominent: 64px;
+  --product-tile-height: 72px;
   --motion-fast: 100ms;
   --motion-sheet: 160ms;
   --shadow-overlay: 0 24px 64px rgb(0 0 0 / 0.48);
 }
 
 .light-theme {
-  --background: #ecefeb;
-  --surface: #f7f8f5;
+  --background: #eef1f6;
+  --surface: #fcfdfe;
   --surface-raised: #ffffff;
-  --surface-interactive: #e4e9e4;
-  --foreground: #17201b;
-  --foreground-muted: #56635b;
-  --primary: #126443;
-  --primary-hover: #0d5438;
+  --surface-interactive: #e3e8f0;
+  --foreground: #10202f;
+  --foreground-muted: #5a6577;
+  --primary: #10417c;
+  --primary-hover: #16528f;
   --primary-foreground: #ffffff;
-  --primary-subtle: #d8ece2;
-  --gold-accent: #8d6b24;
-  --gold-subtle: #eee5cf;
-  --border: #bdc7c0;
-  --border-strong: #9eaba3;
-  --border-subtle: #d3dad5;
-  --focus: #765516;
-  --success: #176b5c;
-  --success-subtle: #d8ede8;
-  --success-border: #8bbab0;
+  --primary-subtle: #eaf1fa;
+  --gold-accent: #c24309;
+  --gold-subtle: #fff0ea;
+  --border: #b9c5d6;
+  --border-strong: #7e8fa6;
+  --border-subtle: #dbe1ea;
+  --focus: #10417c;
+  --success: #1e7b2c;
+  --success-subtle: #eaf7ec;
+  --success-border: #b7e3bd;
   --warning: #8a5a08;
   --warning-subtle: #f4e8ce;
   --warning-border: #ceb273;
@@ -147,10 +159,10 @@
   --info: #235f91;
   --info-subtle: #dbeaf6;
   --info-border: #91b5d2;
-  --color-surface-hover: #dce3dd;
-  --color-text-secondary: #37443c;
-  --color-text-tertiary: #647169;
-  --color-pos-sidebar: #101713;
+  --color-surface-hover: #e3e8f0;
+  --color-text-secondary: #3d4a5c;
+  --color-text-tertiary: #5a6577;
+  --color-pos-sidebar: #0a1626;
 }
 
 @theme inline {
@@ -185,13 +197,21 @@
   --color-focus: var(--focus);
   --font-sans: "IBM Plex Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-heading: "IBM Plex Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "IBM Plex Sans", ui-monospace, monospace;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-display: "IBM Plex Sans", "Inter", sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
+
+/* The brand lockup follows the theme without a script: the station shows the
+   on-dark set, the light theme the ink set. */
+.brand-lockup { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.brand-lockup img { display: block; height: auto; }
+.brand-lockup__on-light { display: none; }
+body.light-theme .brand-lockup__on-dark { display: none; }
+body.light-theme .brand-lockup__on-light { display: block; }
 
 @layer base {
   *,

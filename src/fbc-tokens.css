@@ -1,0 +1,69 @@
+/* VENDORED COPY of PEAK/brand-assets/fbc-tokens.css -- edit the source, then re-copy. */
+/*
+ * FBC brand tokens -- the source of truth.
+ *
+ * Extracted from the official FBC site (fbc-website-v62p.vercel.app) on
+ * 2026-09-21. Every Yetu app carries a vendored copy of this file; edit here,
+ * then copy to peak-hospitality-web/app/fbc-tokens.css,
+ * peak-platform-web/app/fbc-tokens.css and peak-pos-desktop/src/fbc-tokens.css.
+ *
+ * Raw brand values only. Each app maps them onto its own semantic tokens
+ * (--primary, --background, ...) in its own globals file. The rule the ramp
+ * encodes: base --fbc-accent and --fbc-leaf fail text contrast on paper
+ * (3.13:1 and 2.68:1) and are fills and graphics; their -700 steps are the
+ * text colours (5.03:1 and 5.25:1). On night surfaces the -300 steps are the
+ * text colours. Contrast figures are checked by each app's token test.
+ */
+:root {
+  /* Ink -- the brand navy and the interaction colour on light surfaces. */
+  --fbc-ink: #10417c;        /* 9.97:1 on paper */
+  --fbc-ink-800: #16528f;    /* hover; 7.82:1 */
+  --fbc-ink-600: #2a639f;    /* secondary, info; 6.09:1 */
+  --fbc-ink-300: #6aa6ef;    /* interaction on night; 7.19:1 on night paper */
+  --fbc-ink-200: #8fb8f2;    /* hover and focus ring on night; 8.92:1 */
+  --fbc-ink-050: #eaf1fa;    /* subtle fill behind ink text */
+
+  /* Accent -- the orange. Fills, graphics, the primary action at a till. */
+  --fbc-accent: #f75e2d;
+  --fbc-accent-700: #c24309; /* accent as text on paper; 5.03:1 */
+  --fbc-accent-300: #ff9455; /* accent as text on night; 8.32:1 */
+  --fbc-accent-050: #fff0ea;
+
+  /* Leaf -- the green. Graphics only; the -700/-300 steps are success text. */
+  --fbc-leaf: #37b342;
+  --fbc-leaf-700: #1e7b2c;   /* 5.25:1 on paper */
+  --fbc-leaf-300: #5fd071;   /* 9.30:1 on night paper */
+  --fbc-leaf-050: #eaf7ec;
+
+  /* Neutrals -- paper. */
+  --fbc-night: #10202f;      /* body text on paper; 16.2:1 */
+  --fbc-slate: #5a6577;      /* secondary text on paper; 5.79:1, 5.21:1 on mist */
+  --fbc-slate-700: #3d4a5c;
+  --fbc-paper: #fcfdfe;
+  --fbc-mist: #eef1f6;
+  --fbc-hairline: #dbe1ea;
+  --fbc-hairline-strong: #b9c5d6;
+  --fbc-control: #7e8fa6;    /* form-control border; 3.30:1 on white (WCAG 1.4.11) */
+
+  /* Neutrals -- night, the dark theme's surfaces. */
+  --fbc-night-paper: #0a1626;
+  --fbc-night-card: #12263c;
+  --fbc-night-mist: #0f2033;
+  --fbc-night-raised: #1a3150;
+  --fbc-night-fg: #e9eff7;   /* 15.7:1 on night paper */
+  --fbc-slate-300: #9db0c7;  /* secondary text on night; 8.19:1, 6.92:1 on card */
+  --fbc-night-hairline: #22405f;
+  --fbc-night-hairline-strong: #2f5078;
+  --fbc-night-control: #6383ab; /* 3.9:1 on night card */
+
+  /* Status colours that are not brand colours, chosen to sit beside the ramp. */
+  --fbc-warning: #b45309;    /* 4.73:1 on its light */
+  --fbc-warning-050: #fff7ed;
+  --fbc-warning-border: #fde0b8;
+  --fbc-danger: #c81e1e;     /* 5.24:1 on its light */
+  --fbc-danger-050: #fef2f2;
+  --fbc-danger-border: #fecaca;
+  --fbc-warning-night: #fdb022;
+  --fbc-danger-night: #f97066;
+  --fbc-info-night: #53b1fd;
+}

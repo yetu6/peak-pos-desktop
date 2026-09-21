@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Icon } from "../components/Icon";
+import { BrandLockup } from "../components/BrandLockup";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
 
 /**
- * PEAK_TERMINAL_MASTER_OPERATIONS.md §7: a normal operator never sees this
+ * A normal operator never sees this
  * screen — the packaged server address (or a paired terminal's persisted
  * one) resolves before the app ever routes here. It only appears when
  * neither exists, which in production means an installer/service diagnostic
@@ -34,8 +34,8 @@ export function SetupScreen() {
     >
       <div className="glass-panel w-full max-w-md p-8">
         <div className="mb-2 flex items-center justify-center gap-2">
-          <Icon name="peak-logo" size={28} className="text-[var(--gold-accent)]" />
-          <span className="font-display text-2xl text-[var(--foreground)]">Peak Terminal</span>
+          <BrandLockup height={30} />
+          <span className="font-display text-2xl text-[var(--foreground)]">POS</span>
         </div>
         <p className="mb-6 text-center text-[12px] text-[var(--foreground-muted)]">
           Installer configuration — set once when this device is first prepared

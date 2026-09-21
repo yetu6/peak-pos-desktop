@@ -43,3 +43,20 @@ export function toMinor(input: string | number): number | null {
   if (!Number.isFinite(value) || value < 0) return null;
   return Math.round(value * 100);
 }
+
+/**
+ * What is still owed on an order. Peak sends `remainingMinor` with every
+ * order; when an older shape lacks it the balance is derived from total and
+ * paid. Never below zero either way: an over-tender is the server's to refuse
+ * (it does), not the till's to show as a negative debt.
+ */
+export function remainingMinorOf(order: {
+  totalMinor: number;
+  paidMinor?: number | null;
+  remainingMinor?: number | null;
+}): number {
+  if (order.remainingMinor != null && Number.isFinite(order.remainingMinor)) {
+    return Math.max(0, order.remainingMinor);
+  }
+  return Math.max(0, order.totalMinor - (order.paidMinor ?? 0));
+}

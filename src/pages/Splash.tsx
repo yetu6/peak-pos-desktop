@@ -1,10 +1,9 @@
-import { Icon } from "../components/Icon";
+import { BrandLockup } from "../components/BrandLockup";
 
 /**
- * The one screen every normal launch begins with (PEAK_TERMINAL_MASTER_OPERATIONS.md
- * §8.1). It communicates calm progress — never implementation detail, never a
- * raw percentage or step count — while the native core runs its startup
- * checks (§8.2) behind it.
+ * The one screen every normal launch begins with. It communicates calm
+ * progress — never implementation detail, never a raw percentage or step
+ * count — while the native core runs its startup checks behind it.
  */
 export function Splash() {
   return (
@@ -13,10 +12,10 @@ export function Splash() {
       data-testid="splash-screen"
     >
       <div className="flex flex-col items-center gap-3">
-        <Icon name="peak-logo" size={40} className="text-[var(--gold-accent)]" />
+        <BrandLockup height={40} />
         <div className="flex flex-col items-center leading-none">
           <span className="text-lg font-medium tracking-wide text-[var(--foreground-muted)]">
-            Peak
+            POS
           </span>
           <span className="text-2xl font-semibold tracking-[0.2em] text-[var(--foreground)]">
             TERMINAL

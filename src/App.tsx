@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { DeviceSessionProvider, useDeviceSession } from "./auth/DeviceSessionProvider";
 import { IdleLockOverlay } from "./components/IdleLockOverlay";
 import { Icon } from "./components/Icon";
+import { BrandLockup } from "./components/BrandLockup";
 import { ConnectivityIndicator } from "./components/ConnectivityIndicator";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { UpdaterBanner } from "./components/UpdaterBanner";
@@ -74,8 +75,8 @@ function PosShell() {
         aria-label="Terminal navigation"
       >
         <div className="terminal-brand">
-          <Icon name="peak-logo" size={24} className="text-[var(--brass)]" />
-          <span className="terminal-brand__name">Yetu POS</span>
+          <BrandLockup height={22} />
+          <span className="terminal-brand__name">POS</span>
         </div>
         <nav className="terminal-nav__items">
           {nav.map((item) => (

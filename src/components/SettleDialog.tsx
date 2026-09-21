@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "./Icon";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
-import { formatMinor, toMinor } from "../lib/posMoney";
+import { formatMinor, remainingMinorOf, toMinor } from "../lib/posMoney";
 import {
   useChargeToRoom,
   useIdempotencyKey,
@@ -28,10 +28,6 @@ const METHODS: Array<{ id: PaymentMethod; label: string; helper?: string }> = [
 ];
 
 const SEARCH_DEBOUNCE_MS = 250;
-
-function remainingOf(order: POSOrder): number {
-  return order.remainingMinor ?? Math.max(0, order.totalMinor - (order.paidMinor ?? 0));
-}
 
 export function SettleDialog({
   order,
@@ -65,7 +61,7 @@ export function SettleDialog({
   const tenderError = useMutationMessage(recordTender.error);
   const roomChargeError = useMutationMessage(chargeToRoom.error);
 
-  const dueMinor = remainingOf(liveOrder);
+  const dueMinor = remainingMinorOf(liveOrder);
   const paidMinor = liveOrder.paidMinor ?? 0;
 
   useEffect(() => {

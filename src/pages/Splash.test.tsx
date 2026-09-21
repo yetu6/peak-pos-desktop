@@ -7,7 +7,9 @@ describe("Splash", () => {
     render(<Splash />);
 
     const screenEl = screen.getByTestId("splash-screen");
-    expect(screenEl).toHaveTextContent("Peak");
+    // The brand is the lockup -- the FBC mark and the Yetu wordmark -- not a word.
+    expect(screen.getAllByAltText("Yetu").length).toBeGreaterThan(0);
+    expect(screenEl).toHaveTextContent("POS");
     expect(screenEl).toHaveTextContent("TERMINAL");
     expect(screenEl).toHaveTextContent("Preparing this terminal");
     expect(screenEl).not.toHaveTextContent(/%|step \d/i);

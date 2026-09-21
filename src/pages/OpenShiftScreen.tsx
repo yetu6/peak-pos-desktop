@@ -11,7 +11,7 @@ import { staffLabel } from "../lib/staffLabel";
 import { toMinor } from "../lib/posMoney";
 
 /**
- * The focused Open Shift workspace PEAK_TERMINAL_MASTER_OPERATIONS.md §11.1
+ * The focused Open Shift workspace the shift lifecycle
  * requires: an authenticated staff member with no open shift gets one
  * dominant job here, never a disabled register. Reuses the same
  * usePosShift() mutation TillControls uses so shift-open stays one contract.
