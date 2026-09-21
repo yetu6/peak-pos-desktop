@@ -21,7 +21,7 @@
  *
  * The station stays dark-first (a till is read across a bar in low light),
  * but every accent is now the FBC ramp from src/fbc-tokens.css (a vendored
- * copy of PEAK/brand-assets/fbc-tokens.css): the primary action is the FBC
+ * copy of fbc-peak/brand-assets/fbc-tokens.css): the primary action is the FBC
  * orange with near-black text (5.4:1) -- on slate, the brand navy is too
  * close to the surface to read as a button, and orange is what FBC's own
  * calls to action use -- the focus ring is the lighter orange step, and the
