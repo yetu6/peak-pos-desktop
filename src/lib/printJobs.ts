@@ -139,16 +139,40 @@ export async function listPrintJobs(status: PrintJobStatus | "" = "PENDING"): Pr
   return request(`/api/v1/pos/print-jobs${query ? `?${query}` : ""}`);
 }
 
+/**
+ * YQA-10: `headers()` above mints a fresh random Idempotency-Key on every
+ * call, so a job still PENDING on the next poll -- because the previous
+ * claim/ack's response was lost, not because it never reached the server --
+ * got claimed (or acked) again under a key that looked like an unrelated
+ * request. These three actions are already uniquely identified by (jobId,
+ * action), with no meaningfully varying body, so a deterministic key derived
+ * from them is stable across polling cycles and app restarts alike, which a
+ * held-in-memory random key never could be.
+ */
+function printJobIdempotencyKey(jobId: string, action: "claim" | "printed" | "failed"): string {
+  return `pos-print-job:${jobId}:${action}`;
+}
+
 export async function claimPrintJob(jobId: string): Promise<POSPrintJob> {
-  return request(`/api/v1/pos/print-jobs/${jobId}/claim`, { method: "POST" });
+  return request(`/api/v1/pos/print-jobs/${jobId}/claim`, {
+    method: "POST",
+    headers: { "Idempotency-Key": printJobIdempotencyKey(jobId, "claim") },
+  });
 }
 
 export async function ackPrinted(jobId: string): Promise<POSPrintJob> {
-  return request(`/api/v1/pos/print-jobs/${jobId}/printed`, { method: "POST" });
+  return request(`/api/v1/pos/print-jobs/${jobId}/printed`, {
+    method: "POST",
+    headers: { "Idempotency-Key": printJobIdempotencyKey(jobId, "printed") },
+  });
 }
 
 export async function ackFailed(jobId: string, error: string): Promise<POSPrintJob> {
-  return request(`/api/v1/pos/print-jobs/${jobId}/failed`, { method: "POST", body: JSON.stringify({ error }) });
+  return request(`/api/v1/pos/print-jobs/${jobId}/failed`, {
+    method: "POST",
+    headers: { "Idempotency-Key": printJobIdempotencyKey(jobId, "failed") },
+    body: JSON.stringify({ error }),
+  });
 }
 
 export async function processPrintJob(
