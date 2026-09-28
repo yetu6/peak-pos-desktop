@@ -11,7 +11,23 @@ permissions:
 jobs:
   check:
     name: typecheck / test / cargo test
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          # Only the Cargo test crash class this repo has actually had (the
+          # local_store tests overflowing a Windows MSVC debug-build thread
+          # stack, twice, first caught only at release-tag time -- see
+          # release.yml's own Cargo test step) justifies a second, slower
+          # platform on every PR. macOS's own release-build job has never
+          # failed this way, so it stays release-only rather than doubling
+          # ordinary PR CI time for a platform with no history of this
+          # defect.
+          - os: windows-latest
+            platform: windows
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,6 +36,7 @@ jobs:
           bun-version: latest
 
       - name: Install Linux deps
+        if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
@@ -42,5 +59,9 @@ jobs:
       - name: Cargo test
         working-directory: src-tauri
         env:
-          RUST_MIN_STACK: "16777216"
+          # Matches release.yml's own Cargo test step and its comment there
+          # on why 256 MiB, not 16/64 MiB, and why RUST_MIN_STACK rather
+          # than only the linker's main-thread stack flag.
+          RUST_MIN_STACK: "268435456"
+          RUSTFLAGS: ${{ matrix.platform == 'windows' && '-C link-arg=/STACK:268435456' || '' }}
         run: cargo test -- --test-threads=1
