@@ -69,17 +69,16 @@ jobs:
       # /usr/share/perl5/core_perl/Params/Check.pm"). Prepending Strawberry
       # Perl's own bin directory makes it win instead, without needing to
       # know where in PATH the wrong one sits.
-      - name: Prefer Strawberry Perl for the OpenSSL vendored build
+      - name: Confirm Strawberry Perl is present
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          $strawberry = "C:\Strawberry\perl\bin"
-          if (-not (Test-Path "$strawberry\perl.exe")) {
+          $strawberry = "C:\Strawberry\perl\bin\perl.exe"
+          if (-not (Test-Path $strawberry)) {
             Write-Error "Strawberry Perl not found at $strawberry -- runner image layout changed"
             exit 1
           }
-          Add-Content -Path $env:GITHUB_PATH -Value $strawberry
-          & "$strawberry\perl.exe" -v
+          & $strawberry -v
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -120,6 +119,22 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # openssl-sys (via rusqlite's bundled-sqlcipher-vendored-openssl,
+          # Cargo.toml) compiles OpenSSL from source and needs a real Perl
+          # to run its Configure script. Prepending Strawberry Perl's own
+          # directory to PATH (an earlier attempt at this same fix) did not
+          # survive into this step: this step's own `shell: bash` starts a
+          # fresh Git-for-Windows bash, which reconstructs PATH from its own
+          # MSYS profile and puts its bundled Perl (missing working core
+          # CPAN modules -- "BEGIN failed--compilation aborted at
+          # /usr/share/perl5/core_perl/Params/Check.pm") ahead of anything
+          # added to the outer Windows PATH beforehand. openssl-src's own
+          # build script reads the PERL env var before ever searching PATH
+          # (see openssl-src's lib.rs), which a child process's environment
+          # carries through a shell change that a PATH edit does not, so
+          # this is the one override guaranteed to reach it regardless of
+          # which shell invoked cargo.
+          PERL: ${{ matrix.platform == 'windows' && 'C:\Strawberry\perl\bin\perl.exe' || '' }}
         shell: bash
         run: |
           set -euo pipefail
