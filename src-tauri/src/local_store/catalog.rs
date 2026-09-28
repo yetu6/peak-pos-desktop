@@ -519,74 +519,119 @@ pub(super) fn normalize_search(value: &str) -> String {
 fn valid_text(value: &str) -> bool {
     !value.trim().is_empty() && value.len() <= MAX_TEXT
 }
+// Each check below returns on its own, single condition, rather than
+// contributing one term to a single enormous `||` chain: that chain (thirty
+// sub-conditions, five of them closures passed to `.any()`) put every
+// intermediate result and closure it built in one stack frame, which is
+// exactly what overflowed even a 256 MiB thread stack in an unoptimized
+// Windows MSVC debug build's Cargo test (see release.yml's Cargo test step,
+// and local_store::catalog::tests::altered_or_inapplicable_snapshot_fails_
+// closed, the test that first caught it -- v0.1.1's release build). Written
+// this way, no plausible future growth of this function should be able to
+// reopen that crash regardless of how large a stack budget the CI step
+// carries; a bug that a smaller function structurally cannot reproduce is a
+// more durable fix than a larger number chasing one that can.
 fn validate_payload(p: &CatalogSnapshotPayload, now: i64) -> Result<(), LocalStoreError> {
+    let reject = LocalStoreError::InvalidCatalog;
+    if p.protocol_version != PROTOCOL_VERSION || p.schema_version != SCHEMA_VERSION {
+        return Err(reject);
+    }
+    if !valid_text(&p.snapshot_id)
+        || !valid_text(&p.version)
+        || !valid_text(&p.property_id)
+        || !valid_text(&p.outlet_id)
+    {
+        return Err(reject);
+    }
+    if p.currency.len() != 3 || !p.currency.chars().all(|c| c.is_ascii_uppercase()) {
+        return Err(reject);
+    }
+    if !matches!(p.tax_mode.as_str(), "EXCLUSIVE" | "INCLUSIVE") {
+        return Err(reject);
+    }
+    if p.not_before_ms < p.published_at_ms
+        || p.valid_until_ms <= p.not_before_ms
+        || now < p.not_before_ms
+        || now > p.valid_until_ms
+    {
+        return Err(reject);
+    }
+    if p.service_types.is_empty() || p.service_types.len() > MAX_SERVICE_TYPES {
+        return Err(reject);
+    }
+    if p.categories.len() > MAX_CATEGORIES {
+        return Err(reject);
+    }
+    if p.products.is_empty() || p.products.len() > MAX_PRODUCTS {
+        return Err(reject);
+    }
+    if p.modifier_groups.len() > MAX_GROUPS || p.modifier_options.len() > MAX_OPTIONS {
+        return Err(reject);
+    }
+
     let category_ids: HashSet<_> = p.categories.iter().map(|v| &v.category_id).collect();
     let product_ids: HashSet<_> = p.products.iter().map(|v| &v.product_id).collect();
     let group_ids: HashSet<_> = p.modifier_groups.iter().map(|v| &v.group_id).collect();
     let option_ids: HashSet<_> = p.modifier_options.iter().map(|v| &v.option_id).collect();
     let service_ids: HashSet<_> = p.service_types.iter().map(|v| &v.service_type).collect();
-    let invalid = p.protocol_version != PROTOCOL_VERSION
-        || p.schema_version != SCHEMA_VERSION
-        || !valid_text(&p.snapshot_id)
-        || !valid_text(&p.version)
-        || !valid_text(&p.property_id)
-        || !valid_text(&p.outlet_id)
-        || p.currency.len() != 3
-        || !p.currency.chars().all(|c| c.is_ascii_uppercase())
-        || !matches!(p.tax_mode.as_str(), "EXCLUSIVE" | "INCLUSIVE")
-        || p.not_before_ms < p.published_at_ms
-        || p.valid_until_ms <= p.not_before_ms
-        || now < p.not_before_ms
-        || now > p.valid_until_ms
-        || p.service_types.is_empty()
-        || p.service_types.len() > MAX_SERVICE_TYPES
-        || p.categories.len() > MAX_CATEGORIES
-        || p.products.is_empty()
-        || p.products.len() > MAX_PRODUCTS
-        || p.modifier_groups.len() > MAX_GROUPS
-        || p.modifier_options.len() > MAX_OPTIONS
-        || service_ids.len() != p.service_types.len()
+    if service_ids.len() != p.service_types.len()
         || category_ids.len() != p.categories.len()
         || product_ids.len() != p.products.len()
         || group_ids.len() != p.modifier_groups.len()
         || option_ids.len() != p.modifier_options.len()
-        || p.service_types
-            .iter()
-            .any(|v| !valid_text(&v.service_type) || !valid_text(&v.label) || v.sort_order < 0)
-        || p.categories.iter().any(|v| {
-            !valid_text(&v.category_id)
-                || !valid_text(&v.code)
-                || !valid_text(&v.name)
-                || v.sort_order < 0
-        })
-        || p.products.iter().any(|v| {
-            !valid_text(&v.product_id)
-                || !valid_text(&v.code)
-                || !valid_text(&v.name)
-                || v.price_minor < 0
-                || !(0..=100_000).contains(&v.tax_rate_bp)
-                || v.sort_order < 0
-                || v.category_id
-                    .as_ref()
-                    .is_some_and(|id| !category_ids.contains(id))
-        })
-        || p.modifier_groups.iter().any(|v| {
-            !valid_text(&v.group_id)
-                || !valid_text(&v.name)
-                || !product_ids.contains(&v.product_id)
-                || v.min_select < 0
-                || v.max_select < v.min_select
-                || v.sort_order < 0
-        })
-        || p.modifier_options.iter().any(|v| {
-            !valid_text(&v.option_id)
-                || !valid_text(&v.name)
-                || !group_ids.contains(&v.group_id)
-                || v.sort_order < 0
-        });
-    if invalid {
-        return Err(LocalStoreError::InvalidCatalog);
+    {
+        return Err(reject);
     }
+
+    for v in &p.service_types {
+        if !valid_text(&v.service_type) || !valid_text(&v.label) || v.sort_order < 0 {
+            return Err(reject);
+        }
+    }
+    for v in &p.categories {
+        if !valid_text(&v.category_id)
+            || !valid_text(&v.code)
+            || !valid_text(&v.name)
+            || v.sort_order < 0
+        {
+            return Err(reject);
+        }
+    }
+    for v in &p.products {
+        if !valid_text(&v.product_id)
+            || !valid_text(&v.code)
+            || !valid_text(&v.name)
+            || v.price_minor < 0
+            || !(0..=100_000).contains(&v.tax_rate_bp)
+            || v.sort_order < 0
+            || v.category_id
+                .as_ref()
+                .is_some_and(|id| !category_ids.contains(id))
+        {
+            return Err(reject);
+        }
+    }
+    for v in &p.modifier_groups {
+        if !valid_text(&v.group_id)
+            || !valid_text(&v.name)
+            || !product_ids.contains(&v.product_id)
+            || v.min_select < 0
+            || v.max_select < v.min_select
+            || v.sort_order < 0
+        {
+            return Err(reject);
+        }
+    }
+    for v in &p.modifier_options {
+        if !valid_text(&v.option_id)
+            || !valid_text(&v.name)
+            || !group_ids.contains(&v.group_id)
+            || v.sort_order < 0
+        {
+            return Err(reject);
+        }
+    }
+
     for group in &p.modifier_groups {
         let available = p
             .modifier_options
