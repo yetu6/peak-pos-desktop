@@ -58,6 +58,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
+      # rusqlite's bundled-sqlcipher-vendored-openssl feature (Cargo.toml)
+      # compiles OpenSSL from source via openssl-src, which needs a real
+      # Perl to run its Configure script. windows-latest carries two: Git
+      # for Windows' own bundled MSYS/UnxUtils Perl (paths under
+      # /usr/share/perl5, missing working core modules like Params::Check)
+      # and the runner's native Strawberry Perl -- and whichever Git's own
+      # bin directory puts first in the default PATH wins `perl`, which was
+      # the Git one here ("BEGIN failed--compilation aborted at
+      # /usr/share/perl5/core_perl/Params/Check.pm"). Prepending Strawberry
+      # Perl's own bin directory makes it win instead, without needing to
+      # know where in PATH the wrong one sits.
+      - name: Prefer Strawberry Perl for the OpenSSL vendored build
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $strawberry = "C:\Strawberry\perl\bin"
+          if (-not (Test-Path "$strawberry\perl.exe")) {
+            Write-Error "Strawberry Perl not found at $strawberry -- runner image layout changed"
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $strawberry
+          & "$strawberry\perl.exe" -v
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
