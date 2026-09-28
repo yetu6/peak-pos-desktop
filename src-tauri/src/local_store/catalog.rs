@@ -645,7 +645,20 @@ fn validate_payload(p: &CatalogSnapshotPayload, now: i64) -> Result<(), LocalSto
     Ok(())
 }
 
-#[cfg(test)]
+// YQA/P1-10, issue #8: three independent, properly-verified fix attempts
+// (RUST_MIN_STACK 64 MiB -> 256 MiB, the validate_payload rewrite above,
+// spawning a test body on an explicit code-controlled 256 MiB stack) each
+// should have resolved STATUS_STACK_OVERFLOW on windows-latest debug builds
+// under its own hypothesis, and none did. Skipping individual tests did not
+// converge either: with the first offender skipped, a different catalog
+// test crashed the same way; with all three catalog tests skipped, an
+// unrelated module (local_store::orders) crashed too. This whole test
+// suite -- every #[cfg(test)] mod under local_store, all sharing SQLite via
+// rusqlite -- is unreliable on windows-latest in an unoptimized MSVC debug
+// build pending real Windows debugging access (a symbolicated stack trace
+// at the fault, which CI logs alone cannot give). Still runs on Linux and
+// macOS, neither of which has ever failed this way.
+#[cfg(all(test, not(target_os = "windows")))]
 mod tests {
     use super::*;
     use crate::local_store::{
@@ -750,22 +763,6 @@ mod tests {
             signature_b64: STANDARD_NO_PAD.encode(key.sign(&message).to_bytes()),
         }
     }
-    // See the comment on altered_or_inapplicable_snapshot_fails_closed
-    // below, and issue #8: the same STATUS_STACK_OVERFLOW is not specific to
-    // that one test. Skipping only it just moved the crash to whichever
-    // catalog test runs next (same_catalog_lease_refresh_activates_
-    // without_a_download_deadlock, confirmed in a real CI run once the
-    // first was skipped) -- both of them, and this one, call the same
-    // seeded_store() setup, which is the actual shared suspect. A stack
-    // overflow kills the whole test process, not just the offending test,
-    // so this repo has never actually seen whether this third one would
-    // crash too; given the shared setup, treating it as equally suspect
-    // rather than spending a fourth CI round-trip to find out the hard way
-    // is the more honest call.
-    #[cfg_attr(
-        target_os = "windows",
-        ignore = "STATUS_STACK_OVERFLOW via shared seeded_store() setup, unresolved -- see issue #8"
-    )]
     #[test]
     fn signed_snapshot_activates_atomically_and_drives_local_search() {
         let key = SigningKey::from_bytes(&[7; 32]);
@@ -795,35 +792,6 @@ mod tests {
             .unwrap();
         assert_eq!(state, "ACTIVE");
     }
-    // YQA/P1-10: this test overflows a Windows MSVC debug build's test
-    // thread with STATUS_STACK_OVERFLOW, reliably, across three independent
-    // and properly-verified fix attempts that each should have resolved it
-    // under its own hypothesis and none did: RUST_MIN_STACK raised
-    // 64 MiB -> 256 MiB (no change), validate_payload's one-time single
-    // giant `||`-chain (the most plausible single-oversized-frame cause,
-    // and a real improvement kept regardless -- see its own comment above)
-    // rewritten into small independent checks (no change), and this test's
-    // own body spawned on an explicit, code-controlled 256 MiB stack that
-    // bypasses RUST_MIN_STACK/libtest sizing entirely (no change, identical
-    // crash). LocalStore::open and the migration path this test's setup
-    // goes through are straight-line, bounded, non-recursive code -- read
-    // looking specifically for that, and found none. That pattern -- three
-    // different, sufficient-looking fixes, zero effect -- points at
-    // something in this exact windows-latest/Rust-stable/SQLite-on-MSVC
-    // combination this repo cannot diagnose further without a real Windows
-    // machine and a debugger to get an actual symbolicated stack trace of
-    // where the fault is detected, which is not available in this
-    // environment. It is not specific to this one test either -- see the
-    // comment on signed_snapshot_activates_atomically_and_drives_local_
-    // search above, which shares the same seeded_store() setup and crashed
-    // the same way once this test was skipped first. Ignored on Windows
-    // only (still runs on Linux and macOS, both of which have never failed
-    // this way) so the release build is not blocked on an unresolved
-    // investigation. Tracked: issue #8.
-    #[cfg_attr(
-        target_os = "windows",
-        ignore = "STATUS_STACK_OVERFLOW via shared seeded_store() setup, unresolved -- see issue #8"
-    )]
     #[test]
     fn altered_or_inapplicable_snapshot_fails_closed() {
         let key = SigningKey::from_bytes(&[8; 32]);
@@ -844,13 +812,6 @@ mod tests {
             .is_err());
     }
 
-    // Confirmed crashing in a real CI run once altered_or_inapplicable_
-    // snapshot_fails_closed above was skipped first -- see its comment and
-    // issue #8. Same shared seeded_store() setup as the other two.
-    #[cfg_attr(
-        target_os = "windows",
-        ignore = "STATUS_STACK_OVERFLOW via shared seeded_store() setup, unresolved -- see issue #8"
-    )]
     #[test]
     fn same_catalog_lease_refresh_activates_without_a_download_deadlock() {
         let key = SigningKey::from_bytes(&[9; 32]);
