@@ -781,22 +781,44 @@ mod tests {
     }
     #[test]
     fn altered_or_inapplicable_snapshot_fails_closed() {
-        let key = SigningKey::from_bytes(&[8; 32]);
-        let (_temp, mut store) = seeded_store(&key);
-        let mut bad = envelope(&key, &payload());
-        bad.digest = "0".repeat(64);
-        assert_eq!(
-            store
-                .install_catalog_snapshot(bad, 2_000)
-                .unwrap_err()
-                .kind(),
-            LocalStoreErrorKind::InvalidCatalog
-        );
-        let mut invalid = payload();
-        invalid.property_id = "another".into();
-        assert!(store
-            .install_catalog_snapshot(envelope(&key, &invalid), 2_000)
-            .is_err());
+        // Spawned on its own thread with an EXPLICIT stack size rather than
+        // relying on RUST_MIN_STACK/libtest's own thread-per-test sizing.
+        // This exact test overflowed a Windows MSVC debug build's test
+        // thread three times in real CI runs (release.yml / ci.yml) --
+        // first at 64 MiB, then again at 256 MiB after RUST_MIN_STACK was
+        // raised with no observable effect, then again after
+        // validate_payload's single giant expression (the suspected large-
+        // frame cause) was rewritten into small, independent checks. Three
+        // different fixes that should each have helped if the mechanism
+        // behind them were the real cause, and none did, is itself evidence
+        // that RUST_MIN_STACK was never actually reaching this thread's
+        // stack allocation in this environment -- so this bypasses that
+        // path entirely and asks the OS directly, in this test's own code,
+        // for a stack no environment variable, harness version, or shell
+        // quoting can fail to apply.
+        std::thread::Builder::new()
+            .stack_size(256 * 1024 * 1024)
+            .spawn(|| {
+                let key = SigningKey::from_bytes(&[8; 32]);
+                let (_temp, mut store) = seeded_store(&key);
+                let mut bad = envelope(&key, &payload());
+                bad.digest = "0".repeat(64);
+                assert_eq!(
+                    store
+                        .install_catalog_snapshot(bad, 2_000)
+                        .unwrap_err()
+                        .kind(),
+                    LocalStoreErrorKind::InvalidCatalog
+                );
+                let mut invalid = payload();
+                invalid.property_id = "another".into();
+                assert!(store
+                    .install_catalog_snapshot(envelope(&key, &invalid), 2_000)
+                    .is_err());
+            })
+            .expect("spawning the oversized-stack test thread")
+            .join()
+            .expect("the test thread panicked");
     }
 
     #[test]
