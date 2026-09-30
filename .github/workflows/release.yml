@@ -58,6 +58,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
+      # rusqlite's bundled-sqlcipher-vendored-openssl feature (Cargo.toml)
+      # compiles OpenSSL from source via openssl-src, which needs a real
+      # Perl to run its Configure script. windows-latest carries two: Git
+      # for Windows' own bundled MSYS/UnxUtils Perl (paths under
+      # /usr/share/perl5, missing working core modules like Params::Check)
+      # and the runner's native Strawberry Perl -- and whichever Git's own
+      # bin directory puts first in the default PATH wins `perl`, which was
+      # the Git one here ("BEGIN failed--compilation aborted at
+      # /usr/share/perl5/core_perl/Params/Check.pm"). Prepending Strawberry
+      # Perl's own bin directory makes it win instead, without needing to
+      # know where in PATH the wrong one sits.
+      - name: Confirm Strawberry Perl is present
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $strawberry = "C:\Strawberry\perl\bin\perl.exe"
+          if (-not (Test-Path $strawberry)) {
+            Write-Error "Strawberry Perl not found at $strawberry -- runner image layout changed"
+            exit 1
+          }
+          & $strawberry -v
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
@@ -75,18 +97,44 @@ jobs:
       - name: Cargo test
         working-directory: src-tauri
         env:
-          # Debug-build frames on Windows MSVC are large enough that the local
-          # store tests overflowed even a 16 MiB thread stack; 64 MiB for the
-          # test threads, and the same for the main thread through the linker,
-          # since libtest runs single-threaded here.
-          RUST_MIN_STACK: "67108864"
-          RUSTFLAGS: ${{ matrix.platform == 'windows' && '-C link-arg=/STACK:67108864' || '' }}
+          # Debug-build frames on Windows MSVC are large enough that
+          # local_store::catalog::tests::altered_or_inapplicable_snapshot_fails_closed
+          # overflowed even a 64 MiB thread stack (v0.1.0's own "raise the
+          # stack" release attempt, and v0.1.1 after it -- both still hit
+          # STATUS_STACK_OVERFLOW on this exact test). libtest spawns a
+          # dedicated OS thread for every test regardless of --test-threads
+          # (it does not fall back to running on the harness's own thread
+          # until thread creation itself fails), so RUST_MIN_STACK is the
+          # right lever for the actual crash site; the linker /STACK: flag
+          # only sizes the main thread, which is why raising it alone in the
+          # prior attempt was not enough on its own. 256 MiB for both, a 4x
+          # margin over the size measured to still be insufficient, so this
+          # is not another guess this same class of failure outgrows next
+          # release.
+          RUST_MIN_STACK: "268435456"
+          RUSTFLAGS: ${{ matrix.platform == 'windows' && '-C link-arg=/STACK:268435456' || '' }}
         run: cargo test -- --test-threads=1
 
       - name: Build Tauri bundle (signed updater artifacts)
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # openssl-sys (via rusqlite's bundled-sqlcipher-vendored-openssl,
+          # Cargo.toml) compiles OpenSSL from source and needs a real Perl
+          # to run its Configure script. Prepending Strawberry Perl's own
+          # directory to PATH (an earlier attempt at this same fix) did not
+          # survive into this step: this step's own `shell: bash` starts a
+          # fresh Git-for-Windows bash, which reconstructs PATH from its own
+          # MSYS profile and puts its bundled Perl (missing working core
+          # CPAN modules -- "BEGIN failed--compilation aborted at
+          # /usr/share/perl5/core_perl/Params/Check.pm") ahead of anything
+          # added to the outer Windows PATH beforehand. openssl-src's own
+          # build script reads the PERL env var before ever searching PATH
+          # (see openssl-src's lib.rs), which a child process's environment
+          # carries through a shell change that a PATH edit does not, so
+          # this is the one override guaranteed to reach it regardless of
+          # which shell invoked cargo.
+          PERL: ${{ matrix.platform == 'windows' && 'C:\Strawberry\perl\bin\perl.exe' || '' }}
         shell: bash
         run: |
           set -euo pipefail

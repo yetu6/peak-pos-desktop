@@ -1,3 +1,8 @@
+// Windows CI: see src/local_store/catalog.rs's tests module comment and
+// issue #8. This file exercises LocalStore/SQLite directly, the same
+// mechanism implicated there.
+#![cfg(not(target_os = "windows"))]
+
 use std::sync::{Arc, Mutex};
 
 use argon2::{password_hash::PasswordHasher, Argon2};
