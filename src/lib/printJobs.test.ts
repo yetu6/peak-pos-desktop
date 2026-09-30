@@ -106,6 +106,34 @@ describe("printJobs", () => {
     expect(results).toEqual([{ ok: false, error: "No printer is configured" }]);
   });
 
+  // YQA-10: a job still PENDING on a later poll -- because the previous
+  // claim's response was lost, not because the claim never reached the
+  // server -- must retry with the SAME Idempotency-Key. A fresh random one
+  // per call looks like an unrelated new claim, not a retry.
+  it("retrying the same still-PENDING job across polls reuses the claim's Idempotency-Key", async () => {
+    const claimKeys: (string | null)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/claim")) {
+          claimKeys.push(new Headers(init?.headers).get("Idempotency-Key"));
+          return json({ ...KITCHEN_JOB, status: "CLAIMED" });
+        }
+        if (url.endsWith("/printed")) return json({ ...KITCHEN_JOB, status: "PRINTED" });
+        if (url.includes("/pos/print-jobs")) return json([KITCHEN_JOB]);
+        return json({}, 500);
+      }),
+    );
+
+    await processPendingPrintJobs("prop", "order-1", async () => {});
+    await processPendingPrintJobs("prop", "order-1", async () => {});
+
+    expect(claimKeys).toHaveLength(2);
+    expect(claimKeys[0]).toBeTruthy();
+    expect(claimKeys[1]).toBe(claimKeys[0]);
+  });
+
   it("treats a claim conflict as another till winning, not a printer failure", async () => {
     vi.stubGlobal(
       "fetch",
