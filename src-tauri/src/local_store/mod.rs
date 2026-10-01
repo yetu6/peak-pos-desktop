@@ -457,10 +457,20 @@ fn pragma_rows(connection: &Connection, pragma: &str) -> Result<Vec<String>, Loc
         .map_err(classify_sql_error)
 }
 
+// cipher_memory_security wipes freed memory. Off on Windows: SQLCipher 4.14's
+// allocator wrapper recurses without bound there once a schema of real size
+// is created (STATUS_STACK_OVERFLOW on every store open, debug and release,
+// at any stack size -- issue #8). Encryption at rest and the OS-keystore key
+// are unaffected.
+#[cfg(not(target_os = "windows"))]
+const CIPHER_MEMORY_SECURITY: &str = "ON";
+#[cfg(target_os = "windows")]
+const CIPHER_MEMORY_SECURITY: &str = "OFF";
+
 fn apply_key(connection: &Connection, key: &[u8]) -> Result<(), rusqlite::Error> {
     let key_hex = encode_hex(key);
     connection.execute_batch(&format!(
-        "PRAGMA key = \"x'{key_hex}'\"; PRAGMA cipher_memory_security = ON;"
+        "PRAGMA key = \"x'{key_hex}'\"; PRAGMA cipher_memory_security = {CIPHER_MEMORY_SECURITY};"
     ))
 }
 
