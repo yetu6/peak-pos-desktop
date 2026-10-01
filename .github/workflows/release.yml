@@ -96,23 +96,6 @@ jobs:
 
       - name: Cargo test
         working-directory: src-tauri
-        env:
-          # Debug-build frames on Windows MSVC are large enough that
-          # local_store::catalog::tests::altered_or_inapplicable_snapshot_fails_closed
-          # overflowed even a 64 MiB thread stack (v0.1.0's own "raise the
-          # stack" release attempt, and v0.1.1 after it -- both still hit
-          # STATUS_STACK_OVERFLOW on this exact test). libtest spawns a
-          # dedicated OS thread for every test regardless of --test-threads
-          # (it does not fall back to running on the harness's own thread
-          # until thread creation itself fails), so RUST_MIN_STACK is the
-          # right lever for the actual crash site; the linker /STACK: flag
-          # only sizes the main thread, which is why raising it alone in the
-          # prior attempt was not enough on its own. 256 MiB for both, a 4x
-          # margin over the size measured to still be insufficient, so this
-          # is not another guess this same class of failure outgrows next
-          # release.
-          RUST_MIN_STACK: "268435456"
-          RUSTFLAGS: ${{ matrix.platform == 'windows' && '-C link-arg=/STACK:268435456' || '' }}
         run: cargo test -- --test-threads=1
 
       - name: Build Tauri bundle (signed updater artifacts)

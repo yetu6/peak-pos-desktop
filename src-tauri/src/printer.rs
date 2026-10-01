@@ -148,16 +148,18 @@ fn send_windows(title: &str, body: &str) -> Result<(), String> {
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
-    let path = dir.join(format!("yetu-print-{safe_title}-{}.txt", std::process::id()));
-    std::fs::write(&path, format!("{body}\n")).map_err(|err| format!("Printer write failed: {err}"))?;
+    let path = dir.join(format!(
+        "yetu-print-{safe_title}-{}.txt",
+        std::process::id()
+    ));
+    std::fs::write(&path, format!("{body}\n"))
+        .map_err(|err| format!("Printer write failed: {err}"))?;
 
     let path_display = path.display().to_string().replace('\'', "''");
     let printer = configured_printer_name();
     let script = if let Some(name) = printer {
         let printer_name = name.replace('\'', "''");
-        format!(
-            "Get-Content -LiteralPath '{path_display}' | Out-Printer -Name '{printer_name}'"
-        )
+        format!("Get-Content -LiteralPath '{path_display}' | Out-Printer -Name '{printer_name}'")
     } else {
         format!("Get-Content -LiteralPath '{path_display}' | Out-Printer")
     };

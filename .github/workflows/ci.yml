@@ -17,14 +17,10 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux
-          # Only the Cargo test crash class this repo has actually had (the
-          # local_store tests overflowing a Windows MSVC debug-build thread
-          # stack, twice, first caught only at release-tag time -- see
-          # release.yml's own Cargo test step) justifies a second, slower
-          # platform on every PR. macOS's own release-build job has never
-          # failed this way, so it stays release-only rather than doubling
-          # ordinary PR CI time for a platform with no history of this
-          # defect.
+          # Windows runs on every PR because the encrypted local store once
+          # crashed only there (SQLCipher cipher_memory_security recursion,
+          # issue #8), first caught at release-tag time. macOS stays
+          # release-only.
           - os: windows-latest
             platform: windows
     runs-on: ${{ matrix.os }}
@@ -58,10 +54,4 @@ jobs:
 
       - name: Cargo test
         working-directory: src-tauri
-        env:
-          # Matches release.yml's own Cargo test step and its comment there
-          # on why 256 MiB, not 16/64 MiB, and why RUST_MIN_STACK rather
-          # than only the linker's main-thread stack flag.
-          RUST_MIN_STACK: "268435456"
-          RUSTFLAGS: ${{ matrix.platform == 'windows' && '-C link-arg=/STACK:268435456' || '' }}
         run: cargo test -- --test-threads=1

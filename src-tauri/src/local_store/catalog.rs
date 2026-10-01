@@ -645,20 +645,7 @@ fn validate_payload(p: &CatalogSnapshotPayload, now: i64) -> Result<(), LocalSto
     Ok(())
 }
 
-// YQA/P1-10, issue #8: three independent, properly-verified fix attempts
-// (RUST_MIN_STACK 64 MiB -> 256 MiB, the validate_payload rewrite above,
-// spawning a test body on an explicit code-controlled 256 MiB stack) each
-// should have resolved STATUS_STACK_OVERFLOW on windows-latest debug builds
-// under its own hypothesis, and none did. Skipping individual tests did not
-// converge either: with the first offender skipped, a different catalog
-// test crashed the same way; with all three catalog tests skipped, an
-// unrelated module (local_store::orders) crashed too. This whole test
-// suite -- every #[cfg(test)] mod under local_store, all sharing SQLite via
-// rusqlite -- is unreliable on windows-latest in an unoptimized MSVC debug
-// build pending real Windows debugging access (a symbolicated stack trace
-// at the fault, which CI logs alone cannot give). Still runs on Linux and
-// macOS, neither of which has ever failed this way.
-#[cfg(all(test, not(target_os = "windows")))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::local_store::{

@@ -543,11 +543,7 @@ fn set_mode(_path: &Path, _mode: u32) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-// Windows CI: see catalog.rs's tests' own comment and issue #8 --
-// STATUS_STACK_OVERFLOW turned out not to be specific to any one test or
-// module; this whole test suite is unreliable on windows-latest debug
-// builds pending real Windows debugging access.
-#[cfg(all(test, not(target_os = "windows")))]
+#[cfg(test)]
 mod tests {
     use std::sync::Mutex;
 
@@ -565,6 +561,28 @@ mod tests {
             *self.0.lock().unwrap() = Some(envelope.to_string());
             Ok(())
         }
+    }
+
+    #[test]
+    fn store_opens_with_the_platform_memory_security_setting() {
+        let temporary = tempfile::tempdir().unwrap();
+        let store = LocalStore::open(
+            &temporary.path().join(STORE_FILE),
+            &MemoryKeyStore::default(),
+        )
+        .unwrap();
+        let enabled: String = store
+            .connection
+            .query_row("PRAGMA cipher_memory_security", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            enabled,
+            if cfg!(target_os = "windows") {
+                "0"
+            } else {
+                "1"
+            }
+        );
     }
 
     #[test]

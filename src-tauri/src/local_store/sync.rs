@@ -313,11 +313,7 @@ impl LocalStore {
     }
 }
 
-// Windows CI: see catalog.rs's tests' own comment and issue #8 --
-// STATUS_STACK_OVERFLOW turned out not to be specific to any one test or
-// module; this whole test suite is unreliable on windows-latest debug
-// builds pending real Windows debugging access.
-#[cfg(all(test, not(target_os = "windows")))]
+#[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
