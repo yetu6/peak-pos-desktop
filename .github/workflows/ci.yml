@@ -55,3 +55,21 @@ jobs:
       - name: Cargo test
         working-directory: src-tauri
         run: cargo test -- --test-threads=1
+
+  # Secret scan: the whole git history, with gitleaks, against a reviewed
+  # baseline (.gitleaks-baseline.json; every entry reviewed 2026-10-02 and
+  # found not to be a secret, values redacted). Any NEW finding fails this
+  # job.
+  # What to do on a finding: fbc-peak docs/operations/secret-scanning.md.
+  secret-scan:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks against the reviewed baseline
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo:ro" \
+            zricethezav/gitleaks:v8.28.0 git /repo --redact --no-banner \
+            --baseline-path /repo/.gitleaks-baseline.json
