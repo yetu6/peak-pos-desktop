@@ -79,7 +79,14 @@ export function createPosApi() {
       );
     },
     recordCashMovement(
-      body: { movementType: CashMovementType; amountMinor: number; reason: string },
+      body: {
+        movementType: CashMovementType;
+        amountMinor: number;
+        reason: string;
+        /** Required for CASH_OUT: a different supervisor's id and PIN. */
+        supervisorStaffId?: string;
+        supervisorPin?: string;
+      },
       idempotencyKey: string,
     ): Promise<ApiResult<POSCashMovement>> {
       return client.POST<POSCashMovement>("/api/v1/pos/cash-movements", {

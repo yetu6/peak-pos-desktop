@@ -35,18 +35,37 @@ describe("CashMovementDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("switches to cash out when selected", async () => {
+  // Money audit, 2026-10-06: cash leaves the drawer only with a different
+  // supervisor's approval, as the server requires.
+  it("cash out needs a supervisor and their PIN, and sends them", async () => {
     render(<CashMovementDialog shiftId="shift-1" onClose={vi.fn()} />);
 
     await userEvent.click(screen.getByTestId("movement-type-CASH_OUT"));
     await userEvent.type(screen.getByTestId("movement-amount"), "2000");
     await userEvent.type(screen.getByTestId("movement-reason"), "Petty cash");
-    await userEvent.click(screen.getByTestId("confirm-movement"));
+    const submit = screen.getByTestId("confirm-movement");
+    expect(submit).toBeDisabled();
 
+    await userEvent.type(screen.getByTestId("movement-supervisor-id"), "sup-7");
+    expect(submit).toBeDisabled();
+    await userEvent.type(screen.getByTestId("movement-supervisor-pin"), "736251");
+    expect(submit).not.toBeDisabled();
+
+    await userEvent.click(submit);
     expect(recordMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ movementType: "CASH_OUT" }),
+      expect.objectContaining({
+        movementType: "CASH_OUT",
+        amountMinor: 200_000,
+        supervisorStaffId: "sup-7",
+        supervisorPin: "736251",
+      }),
       expect.anything(),
     );
+  });
+
+  it("cash in asks for no supervisor", async () => {
+    render(<CashMovementDialog shiftId="shift-1" onClose={vi.fn()} />);
+    expect(screen.queryByTestId("movement-supervisor-pin")).toBeNull();
   });
 
   it("never allows a zero or negative amount to submit", async () => {
