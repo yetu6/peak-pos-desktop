@@ -1,26 +1,42 @@
 import { useState } from "react";
 import { Icon } from "./Icon";
+import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { toMinor } from "../lib/posMoney";
 import { useIdempotencyKey, useMutationMessage, useRecordCashMovement } from "../hooks/usePosData";
 import type { CashMovementType } from "../lib/posContracts";
 
 /** Cash In / Cash Out against the open shift. Append-only: there is no edit
  *  or delete on `POSCashMovement` in the certified contract, and none is
- *  offered here — a mistake is corrected with an offsetting movement. */
+ *  offered here — a mistake is corrected with an offsetting movement.
+ *
+ *  Cash out needs a DIFFERENT supervisor's own PIN, as the server requires:
+ *  without it, whoever held the till could take cash out "for petty cash" and
+ *  the drawer would still balance at close (money audit, 2026-10-06). */
 export function CashMovementDialog({ shiftId, onClose }: { shiftId: string; onClose: () => void }) {
   const [movementType, setMovementType] = useState<CashMovementType>("CASH_IN");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
+  const [supervisorStaffId, setSupervisorStaffId] = useState("");
+  const [supervisorPin, setSupervisorPin] = useState("");
+  const roster = useDeviceSessionOptional()?.roster ?? [];
   const record = useRecordCashMovement(shiftId);
   const idempotencyKey = useIdempotencyKey();
   const error = useMutationMessage(record.error);
   const amountMinor = toMinor(amount);
-  const canSubmit = amountMinor != null && amountMinor > 0 && reason.trim().length > 0 && !record.isPending;
+  const cashOut = movementType === "CASH_OUT";
+  const supervised = !cashOut || (supervisorStaffId.trim().length > 0 && /^\d{6}$/.test(supervisorPin));
+  const canSubmit = amountMinor != null && amountMinor > 0 && reason.trim().length > 0 && supervised && !record.isPending;
 
   function submit(): void {
     if (amountMinor == null) return;
     record.mutate(
-      { movementType, amountMinor, reason: reason.trim(), idempotencyKey: idempotencyKey.next() },
+      {
+        movementType,
+        amountMinor,
+        reason: reason.trim(),
+        ...(cashOut ? { supervisorStaffId: supervisorStaffId.trim(), supervisorPin } : {}),
+        idempotencyKey: idempotencyKey.next(),
+      },
       { onSuccess: onClose },
     );
   }
@@ -69,6 +85,48 @@ export function CashMovementDialog({ shiftId, onClose }: { shiftId: string; onCl
           placeholder="e.g. Change float top-up"
           className="input mt-1 w-full"
         />
+
+        {cashOut && (
+          <>
+            <p className="mt-3 text-[11px] text-[var(--foreground-muted)]">
+              Taking cash out needs a different supervisor's approval.
+            </p>
+            <label className="mt-2 block text-[12px] font-medium text-[var(--foreground-muted)]">Supervisor</label>
+            {roster.length > 0 ? (
+              <select
+                data-testid="movement-supervisor-select"
+                value={supervisorStaffId}
+                onChange={(event) => setSupervisorStaffId(event.target.value)}
+                className="input mt-1 w-full"
+              >
+                <option value="">Select supervisor…</option>
+                {roster.map((entry) => (
+                  <option key={entry.staffNumber} value={entry.staffNumber}>
+                    {entry.fullName}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                data-testid="movement-supervisor-id"
+                value={supervisorStaffId}
+                onChange={(event) => setSupervisorStaffId(event.target.value)}
+                placeholder="Supervisor staff id"
+                className="input mt-1 w-full"
+              />
+            )}
+            <label className="mt-3 block text-[12px] font-medium text-[var(--foreground-muted)]">Supervisor PIN</label>
+            <input
+              data-testid="movement-supervisor-pin"
+              type="password"
+              inputMode="numeric"
+              maxLength={6}
+              value={supervisorPin}
+              onChange={(event) => setSupervisorPin(event.target.value.replace(/\D/g, ""))}
+              className="input mt-1 w-full"
+            />
+          </>
+        )}
 
         {error && (
           <div className="badge badge-danger mt-4" data-testid="movement-error">

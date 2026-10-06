@@ -245,10 +245,24 @@ export function useCashMovements(shiftId: string | undefined) {
 export function useRecordCashMovement(shiftId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: { movementType: CashMovementType; amountMinor: number; reason: string; idempotencyKey: string }) =>
+    mutationFn: (args: {
+      movementType: CashMovementType;
+      amountMinor: number;
+      reason: string;
+      supervisorStaffId?: string;
+      supervisorPin?: string;
+      idempotencyKey: string;
+    }) =>
       unwrap(
         createPosApi().recordCashMovement(
-          { movementType: args.movementType, amountMinor: args.amountMinor, reason: args.reason },
+          {
+            movementType: args.movementType,
+            amountMinor: args.amountMinor,
+            reason: args.reason,
+            ...(args.movementType === "CASH_OUT"
+              ? { supervisorStaffId: args.supervisorStaffId, supervisorPin: args.supervisorPin }
+              : {}),
+          },
           args.idempotencyKey,
         ),
       ),
