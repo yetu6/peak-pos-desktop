@@ -2,10 +2,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DeviceSessionProvider, useDeviceSession } from "./auth/DeviceSessionProvider";
 import { IdleLockOverlay } from "./components/IdleLockOverlay";
-import { Icon } from "./components/Icon";
-import { BrandLockup } from "./components/BrandLockup";
 import { ConnectivityIndicator } from "./components/ConnectivityIndicator";
-import { ThemeToggle } from "./components/ThemeToggle";
+import { Banner } from "./components/system";
 import { UpdaterBanner } from "./components/UpdaterBanner";
 import { ActiveOrders } from "./pages/ActiveOrders";
 import { Kitchen } from "./pages/Kitchen";
@@ -20,7 +18,7 @@ import { Splash } from "./pages/Splash";
 import { Diagnostics } from "./pages/Diagnostics";
 import { RealtimeClient } from "./realtime/RealtimeClient";
 import { RealtimeProvider } from "./realtime/RealtimeProvider";
-import { useOutletId, usePosShift } from "./hooks/usePosData";
+import { usePosShift } from "./hooks/usePosData";
 import { REALTIME_BRIDGE_URL } from "./lib/env";
 import { createRealtimeSocket } from "./lib/peakSocket";
 import { getApiBaseUrl } from "./lib/peakConfig";
@@ -29,9 +27,12 @@ import {
   createRealtimeCursorStorage,
 } from "./lib/realtimeBackfill";
 import { SessionExpiredError } from "./lib/operationalSession";
-import { staffLabel } from "./lib/staffLabel";
+import { personLabel } from "./lib/staffLabel";
 import { terminalRoute } from "./lib/terminalRoute";
+import { applyModeDefaultTheme } from "./lib/theme";
+import { clockTime, shiftWords } from "./lib/words";
 import { defaultWorkspacePage, workspaceNav, type WorkspacePage } from "./lib/workspace";
+import { TillShell } from "./shell/TillShell";
 
 type Page = WorkspacePage;
 
@@ -41,140 +42,62 @@ function useClock(): string {
     const id = setInterval(() => setNow(new Date()), 15_000);
     return () => clearInterval(id);
   }, []);
-  return now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return clockTime(now);
+}
+
+/** Update and key-storage notices. Inside the shell they sit under the top bar. */
+function ShellBanners() {
+  return (
+    <>
+      <UpdaterBanner />
+      <KeyStorageBanner />
+    </>
+  );
 }
 
 function PosShell() {
-  const { session, switchStaff, identity } = useDeviceSession();
+  const { session, switchStaff, identity, roster } = useDeviceSession();
   const offlineCash = session?.mode === "offline-cash";
   const nav = workspaceNav(offlineCash ? "offline-cash" : identity?.mode);
   const [page, setPage] = useState<Page>(() =>
     defaultWorkspacePage(offlineCash ? "offline-cash" : identity?.mode),
   );
-  const outletId = useOutletId();
   const clock = useClock();
   const { shift } = usePosShift();
-  const staff = staffLabel(session?.staffId);
-  const kitchenOnly =
-    (identity?.mode ?? "").trim().toUpperCase().replace(/-/g, "_") === "KITCHEN_DISPLAY" ||
-    (identity?.mode ?? "").trim().toUpperCase().replace(/-/g, "_") === "BAR_DISPLAY";
+  const person = personLabel(session?.staffId, roster);
 
   if (!nav.some((item) => item.page === page)) {
     setPage(nav[0]?.page ?? "orders");
   }
 
   return (
-    <div
-      className={`terminal-shell ${kitchenOnly ? "terminal-shell--kds" : ""}`}
-      data-testid="pos-register"
+    <TillShell
+      mode={identity?.mode}
+      offlineCash={offlineCash}
+      page={page}
+      onNavigate={setPage}
+      tillName={identity?.terminalName}
+      person={person}
+      shiftText={shiftWords(shift)}
+      clock={clock}
+      connection={<ConnectivityIndicator />}
+      banners={<ShellBanners />}
+      onSwitchPerson={() => switchStaff()}
+      onLock={() => switchStaff()}
+      workspaceVariant={page === "new" ? "full" : "padded"}
     >
-      {!kitchenOnly && (
-      <aside
-        className="terminal-nav"
-        data-testid="terminal-navigation"
-        aria-label="Terminal navigation"
-      >
-        <div className="terminal-brand">
-          <BrandLockup height={22} />
-          <span className="terminal-brand__name">POS</span>
-        </div>
-        <nav className="terminal-nav__items">
-          {nav.map((item) => (
-            <button
-              key={item.page}
-              data-testid={`nav-${item.page}`}
-              onClick={() => setPage(item.page)}
-              className="terminal-nav__action"
-              aria-current={page === item.page ? "page" : undefined}
-              aria-label={item.label}
-              title={item.label}
-            >
-              <Icon name={item.icon} size={20} />
-              <span className="terminal-nav__label">{item.label}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="terminal-staff">
-          <span className="terminal-staff__avatar">
-              {staff.initials}
-          </span>
-          <div className="terminal-staff__meta">
-            <div className="truncate text-xs font-semibold" data-testid="staff-name">
-              {staff.name}
-            </div>
-            <div className="truncate text-[11px] text-[var(--foreground-muted)]" data-testid="till-label">
-              {identity?.terminalName?.trim() ||
-                (outletId ? `outlet ${outletId.slice(0, 8)}` : "property till")}
-            </div>
-          </div>
-          <button
-            data-testid="switch-staff"
-            onClick={() => switchStaff()}
-            className="btn-tertiary ml-auto !h-11 !w-11 !p-0"
-            aria-label="Log out"
-            title="Log out"
-          >
-            <Icon name="logout" size={18} />
-          </button>
-        </div>
-      </aside>
+      {page === "orders" ? (
+        <ActiveOrders onNewOrder={() => setPage("new")} />
+      ) : page === "new" ? (
+        offlineCash ? <OfflineNewOrder /> : <NewOrder />
+      ) : page === "kitchen" ? (
+        <Kitchen />
+      ) : page === "manager" ? (
+        <Manager />
+      ) : (
+        <Diagnostics />
       )}
-
-      <div className="terminal-frame">
-        <header className="terminal-header px-4">
-          <span className="font-mono text-[13px] font-semibold tabular-nums text-[var(--foreground-muted)]">
-            {clock}
-          </span>
-          <span className="h-5 w-px bg-[var(--border)]" />
-          {!kitchenOnly && !offlineCash && (
-            <span className="badge badge-success badge-dot" data-testid="shell-business-date">
-              Business date {shift?.businessDate ?? "—"}
-            </span>
-          )}
-          {offlineCash && (
-            <span className="badge badge-warning badge-dot" data-testid="shell-offline-cash">
-              Offline cash · Sync Center in the header
-            </span>
-          )}
-          {kitchenOnly && (
-            <span className="badge badge-info badge-dot" data-testid="kds-mode-badge">
-              Kitchen display · {staff.name}
-            </span>
-          )}
-          <div className="min-w-0 flex-1" />
-          {!kitchenOnly && <ThemeToggle />}
-          <ConnectivityIndicator />
-          {kitchenOnly && (
-            <button
-              data-testid="switch-staff"
-              onClick={() => switchStaff()}
-              className="btn-tertiary btn-sm"
-              aria-label="Log out"
-            >
-              <Icon name="logout" size={16} />
-              Log out
-            </button>
-          )}
-        </header>
-
-        <main
-          className={`terminal-workspace ${page === "new" ? "terminal-workspace--order" : ""}`}
-          data-testid="terminal-workspace"
-        >
-          {page === "orders" ? (
-            <ActiveOrders onNewOrder={() => setPage("new")} />
-          ) : page === "new" ? (
-            offlineCash ? <OfflineNewOrder /> : <NewOrder />
-          ) : page === "kitchen" ? (
-            <Kitchen />
-          ) : page === "manager" ? (
-            <Manager />
-          ) : (
-            <Diagnostics />
-          )}
-        </main>
-      </div>
-    </div>
+    </TillShell>
   );
 }
 
@@ -211,13 +134,9 @@ function KeyStorageBanner() {
   const { keyStorageWarning } = useDeviceSession();
   if (!keyStorageWarning) return null;
   return (
-    <div
-      className="fixed inset-x-0 top-0 z-50 bg-[#8B1E1E] px-4 py-2 text-center text-[12px] font-medium text-white"
-      data-testid="key-storage-warning"
-      role="alert"
-    >
+    <Banner tone="danger" data-testid="key-storage-warning">
       {keyStorageWarning}
-    </div>
+    </Banner>
   );
 }
 
@@ -246,7 +165,14 @@ function ReadyGate() {
       <span className="sr-only" data-testid="shell-state">
         {route}
       </span>
-      {route === "NO_SHIFT" ? <OpenShiftScreen /> : <LiveRegister />}
+      {route === "NO_SHIFT" ? (
+        <>
+          <ShellBanners />
+          <OpenShiftScreen />
+        </>
+      ) : (
+        <LiveRegister />
+      )}
     </>
   );
 }
@@ -256,7 +182,15 @@ function ReadyGate() {
  * enforced in `terminalRoute` / `shellStateOf` and their tests.
  */
 function AuthGate() {
-  const { phase } = useDeviceSession();
+  const { phase, identity } = useDeviceSession();
+  const mode = identity?.mode;
+
+  // A device nobody has chosen a theme for follows its paired mode's default
+  // (Light for tills, Dark for kitchen and bar displays). A choice made on the
+  // device always wins; nothing is stored here.
+  useEffect(() => {
+    applyModeDefaultTheme(mode);
+  }, [mode]);
 
   let screen: ReactNode;
   let route: string;
@@ -284,10 +218,9 @@ function AuthGate() {
     case "ready":
       // ReadyGate renders its own shell-state marker once it knows the
       // shift outcome — nothing to render here.
+      // Banners render inside the shell (under its top bar) from here on.
       return (
         <>
-          <UpdaterBanner />
-          <KeyStorageBanner />
           <IdleLockOverlay />
           <ReadyGate />
         </>
