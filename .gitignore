@@ -5,3 +5,5 @@ dist/
 .env.local
 src-tauri/target/
 src-tauri/gen/
+# Pixel harness output (screenshots, findings, report); no golden images yet.
+/visual-output/
