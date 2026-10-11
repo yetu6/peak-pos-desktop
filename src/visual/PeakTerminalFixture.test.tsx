@@ -6,7 +6,7 @@ describe("PeakTerminalFixture", () => {
   it("exercises the responsive three-plane terminal composition", () => {
     render(<PeakTerminalFixture />);
 
-    expect(screen.getByLabelText("Terminal navigation")).toBeInTheDocument();
+    expect(screen.getByLabelText("Till sections")).toBeInTheDocument();
     expect(screen.getByLabelText("Catalog workspace")).toBeInTheDocument();
     expect(screen.getByLabelText("Ticket")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pay" })).toBeInTheDocument();
