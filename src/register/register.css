@@ -264,6 +264,16 @@
 .y-ticket__totals dd { margin: 0; font-variant-numeric: tabular-nums; }
 .y-ticket__total dt { color: var(--text); font-size: var(--type-lead); font-weight: 700; }
 
+.y-ticket__error-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.y-ticket__error-row .y-ticket__error {
+  flex: 1;
+}
+
 .y-ticket__error {
   margin: 0;
   border: 1px solid var(--danger-line);

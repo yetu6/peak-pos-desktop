@@ -26,6 +26,7 @@ import { RegisterLayout } from "../register/RegisterLayout";
 import { TicketActions } from "../register/TicketActions";
 import { TicketPanel } from "../register/TicketPanel";
 import { sellProblem } from "../register/registerWords";
+import { useRequestKey } from "../lib/useRequestKey";
 import type { POSCatalogProduct, POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 
 /**
@@ -65,7 +66,8 @@ export function NewOrder() {
   const setAvailability = useSetProductAvailability();
   const createKey = useIdempotencyKey();
   const addKey = useIdempotencyKey();
-  const sendKey = useIdempotencyKey();
+  // A send whose answer was lost is the same request again (same key); a refused one is new.
+  const sendRequest = useRequestKey();
   const removeKey = useIdempotencyKey();
 
   const createProblem = sellProblem(createOrder.error, "create");
@@ -76,7 +78,8 @@ export function NewOrder() {
   const createError = createProblem?.words ?? null;
   const addError = addProblem?.words ?? null;
   const mutationError = createProblem ?? addProblem ?? removeProblem ?? sendProblem ?? availabilityProblem ?? actionError;
-
+  // Only a send whose answer was lost is offered again as it was; the order stays on the ticket.
+  const retrySend = sendProblem?.kind === "network" && order ? () => void sendToKitchen() : undefined;
 
   const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || sendOrder.isPending;
   const canMutate = Boolean(shift) && !busy;
@@ -210,13 +213,14 @@ export function NewOrder() {
       const next = await sendOrder.mutateAsync({
         orderId: order.id,
         version: order.version,
-        idempotencyKey: sendKey.next(),
+        idempotencyKey: sendRequest.keyFor(["send", order.id, order.version].join("|")),
       });
       setOrder(next);
       setSentAt(new Date());
       await printAfter(next.id);
-    } catch {
-      // The words come from sendOrder.error.
+    } catch (error) {
+      // The words come from sendOrder.error. Yetu refused it: the next press is a new request.
+      if (sellProblem(error, "send")?.kind !== "network") sendRequest.forget();
     }
   }
 
@@ -276,6 +280,8 @@ export function NewOrder() {
             lineBusy={busy}
             sentAt={sentAt}
             error={mutationError}
+            onRetry={retrySend}
+            retrying={sendOrder.isPending}
             notice={notice}
             actions={
               <TicketActions

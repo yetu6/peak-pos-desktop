@@ -537,5 +537,30 @@ describe("NewOrder", () => {
       expect(alert).toHaveClass("y-permission");
     });
 
+    it("a send whose answer was lost keeps the order and tries again with the same key", async () => {
+      sendOrderSpy.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      await ticketWithOneLine();
+      await userEvent.click(screen.getByTestId("send-order"));
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Can't reach Yetu. Check the internet connection, then try again.");
+      // The order is still on the ticket.
+      expect(screen.getByTestId("ticket-panel")).toHaveTextContent("Nyama Choma");
+      await userEvent.click(within(alert.closest("[data-testid=create-error]") ?? alert).getByRole("button", { name: "Try again" }));
+      await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledTimes(2));
+      const [first, second] = sendOrderSpy.mock.calls as unknown as Array<[string, number, string]>;
+      expect(second[2]).toBe(first[2]);
+      expect(second[1]).toBe(first[1]);
+    });
+
+    it("a send Yetu refused is a new request the next time", async () => {
+      sendOrderSpy.mockResolvedValueOnce({ data: undefined, error: { ...FORBIDDEN, status: 409, code: "CONFLICT", detail: "x" } } as never);
+      await ticketWithOneLine();
+      await userEvent.click(screen.getByTestId("send-order"));
+      await screen.findByRole("alert");
+      await userEvent.click(screen.getByTestId("send-order"));
+      await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledTimes(2));
+      const [first, second] = sendOrderSpy.mock.calls as unknown as Array<[string, number, string]>;
+      expect(second[2]).not.toBe(first[2]);
+    });
   });
 });

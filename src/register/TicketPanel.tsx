@@ -32,6 +32,9 @@ export interface TicketPanelProps {
   sentAt: Date | null;
   /** A refusal on the ticket: Yetu's 403 shows as a permission notice. */
   error: Refusal | string | null;
+  /** Offered beside a refusal whose answer was lost: the same request again. */
+  onRetry?: () => void;
+  retrying?: boolean;
   /** What just happened, in words (an order voided). */
   notice?: string | null;
   /** Send to kitchen, Pay and More. */
@@ -61,6 +64,8 @@ export function TicketPanel({
   lineBusy,
   sentAt,
   error,
+  onRetry,
+  retrying = false,
   notice = null,
   actions,
 }: TicketPanelProps) {
@@ -211,9 +216,16 @@ export function TicketPanel({
               <PermissionNotice live words={error.words} />
             </div>
           ) : (
-            <p className="y-ticket__error" role="alert" data-testid="create-error">
-              {typeof error === "string" ? error : error.words}
-            </p>
+            <div className="y-ticket__error-row" data-testid="create-error">
+              <p className="y-ticket__error" role="alert">
+                {typeof error === "string" ? error : error.words}
+              </p>
+              {onRetry ? (
+                <Button variant="secondary" disabled={retrying} onClick={onRetry}>
+                  {retrying ? "Trying again…" : "Try again"}
+                </Button>
+              ) : null}
+            </div>
           )
         ) : null}
         {actions}
