@@ -525,3 +525,14 @@
   font-size: var(--type-small);
   text-align: center;
 }
+
+/* The Pay sheet's footer: Cancel at the left, the one action at the right, always on screen. */
+.y-pay__footer {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--target-gap);
+}
+
+.y-pay__footer > .y-button--primary { min-width: min(100%, 360px); }

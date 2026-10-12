@@ -15,6 +15,9 @@ import { toMinor } from "../lib/posMoney";
 import { orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { roomChargeProblem, tenderProblem } from "./registerWords";
 
+const CASH_FORM = "pay-cash";
+const RECORDED_FORM = "pay-recorded";
+
 /** Named setting: how long the room search waits after typing before it asks Yetu. */
 export const ROOM_SEARCH_WAIT_MS = 250;
 
@@ -308,6 +311,51 @@ export function PaySheetView({
       description={[`Order ${order.orderNumber}`, serviceTypeWords(order.serviceType), orderPlaceWords(order.serviceType, order.tableLabel)]
         .filter(Boolean)
         .join(" · ")}
+      footer={
+        // The action stays in the sheet's footer, on screen at every size; the methods scroll above it.
+        <div className="y-pay__footer">
+          <Button variant="quiet" disabled={pending} onClick={onClose}>
+            Cancel
+          </Button>
+          {method === "CASH" ? (
+            <Button
+              type="submit"
+              form={CASH_FORM}
+              variant="primary"
+              size={64}
+              data-testid="confirm-settle"
+              disabled={cashTaken == null || pending}
+            >
+              {pending ? "Recording…" : cashTaken == null ? "Take cash" : `Take ${formatMoney(cashTaken, currency)} cash`}
+            </Button>
+          ) : method === "ROOM_CHARGE" ? (
+            <Button
+              variant="primary"
+              size={64}
+              data-testid="confirm-room-charge"
+              disabled={nothingDue || !chosenStay || chosenStay.postingEligible === false || roomBlocked !== null || pending}
+              onClick={() => chosenStay && onChargeRoom(chosenStay)}
+            >
+              {pending
+                ? "Charging…"
+                : chosenStay
+                  ? `Charge ${formatMoney(due, currency)} to room ${chosenStay.roomNumber}`
+                  : "Charge to room"}
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              form={RECORDED_FORM}
+              variant="primary"
+              size={64}
+              data-testid="confirm-settle"
+              disabled={nothingDue || amount == null || amount <= 0 || over || pending}
+            >
+              {pending ? "Recording…" : `Confirm ${formatMoney(amount, currency)} received`}
+            </Button>
+          )}
+        </div>
+      }
       testId="settle-dialog"
     >
       <div className="y-pay">
@@ -358,6 +406,7 @@ export function PaySheetView({
           <div ref={paneRef} className="y-pay__pane-wrap">
           {method === "CASH" ? (
             <form
+              id={CASH_FORM}
               className="y-pay__pane"
               onSubmit={(event) => {
                 event.preventDefault();
@@ -384,9 +433,6 @@ export function PaySheetView({
                     ? `Change to give ${formatMoney(receivedMinor - due, currency)}`
                     : `Part payment: ${formatMoney(receivedMinor, currency)} now, ${formatMoney(due - receivedMinor, currency)} still to pay`}
               </p>
-              <Button type="submit" variant="primary" size={64} block data-testid="confirm-settle" disabled={cashTaken == null || pending}>
-                {pending ? "Recording…" : cashTaken == null ? "Take cash" : `Take ${formatMoney(cashTaken, currency)} cash`}
-              </Button>
             </form>
           ) : method === "ROOM_CHARGE" ? (
             <div className="y-pay__pane">
@@ -432,23 +478,10 @@ export function PaySheetView({
                   })
                 )}
               </div>
-              <Button
-                variant="primary"
-                size={64}
-                block
-                data-testid="confirm-room-charge"
-                disabled={nothingDue || !chosenStay || chosenStay.postingEligible === false || roomBlocked !== null || pending}
-                onClick={() => chosenStay && onChargeRoom(chosenStay)}
-              >
-                {pending
-                  ? "Charging…"
-                  : chosenStay
-                    ? `Charge ${formatMoney(due, currency)} to room ${chosenStay.roomNumber}`
-                    : "Charge to room"}
-              </Button>
             </div>
           ) : (
             <form
+              id={RECORDED_FORM}
               className="y-pay__pane"
               onSubmit={(event) => {
                 event.preventDefault();
@@ -473,16 +506,6 @@ export function PaySheetView({
                 autoComplete="off"
                 data-testid="tender-reference"
               />
-              <Button
-                type="submit"
-                variant="primary"
-                size={64}
-                block
-                data-testid="confirm-settle"
-                disabled={nothingDue || amount == null || amount <= 0 || over || pending}
-              >
-                {pending ? "Recording…" : `Confirm ${formatMoney(amount, currency)} received`}
-              </Button>
             </form>
           )}
           </div>

@@ -168,6 +168,25 @@ async function measure(page: Page): Promise<Finding[]> {
         }
       }
 
+      // In an open sheet or dialog, its primary action and its Close are on screen
+      // without scrolling: a sale is never finished below the fold.
+      for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+        if (!rendered(dialog) || dialog.closest('[aria-hidden="true"], [inert]')) continue;
+        const actions = [
+          ...dialog.querySelectorAll(".y-button--primary"),
+          ...dialog.querySelectorAll('[aria-label="Close"]'),
+        ].filter(rendered);
+        for (const action of actions) {
+          const rect = action.getBoundingClientRect();
+          if (rect.top < 0 || rect.left < 0 || rect.bottom > window.innerHeight + 1 || rect.right > viewportWidth + 1) {
+            findings.push({
+              key: "sheet-actions",
+              detail: `${describe(action)} is off screen (top ${Math.round(rect.top)}, bottom ${Math.round(rect.bottom)} in ${viewportWidth}x${window.innerHeight})`,
+            });
+          }
+        }
+      }
+
       // No interactive target under 48px either way.
       const interactive = [
         "button",
