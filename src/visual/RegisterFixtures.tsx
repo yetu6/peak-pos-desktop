@@ -291,9 +291,9 @@ export function PayOtherFixture() {
   return <Pay initialMethod="OTHER" problem="That's more than is still owed. Check the amount, then try again." />;
 }
 
-/** Charge to room: guests found, one whose bill isn't open, one chosen. */
+/** Charge to room on a sent order: guests found, one whose bill isn't open, one chosen. */
 export function PayRoomFixture() {
-  return <Pay initialMethod="ROOM_CHARGE" roomQuery="1" searched candidates={STAYS} initialStayId="s12" />;
+  return <Pay order={SENT_ORDER} initialMethod="ROOM_CHARGE" roomQuery="1" searched candidates={STAYS} initialStayId="s12" />;
 }
 
 /** Paid in cash, with change to give. */

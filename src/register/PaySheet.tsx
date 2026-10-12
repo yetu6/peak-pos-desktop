@@ -238,7 +238,15 @@ export function PaySheetView({
   const nothingDue = due <= 0;
   const partPaid = order.paidMinor > 0;
   const methods: Method[] = roomAvailable ? [...TENDER_METHODS, "ROOM_CHARGE"] : [...TENDER_METHODS];
-  const usable = (candidate: Method) => !nothingDue && !(candidate === "ROOM_CHARGE" && partPaid);
+  // Yetu charges a room only for an order the kitchen has (SENT, READY or SERVED) and nothing paid yet.
+  const roomBlocked = partPaid
+    ? "Charge to room isn't possible once part of the bill is paid."
+    : order.status === "OPEN"
+      ? "Charge to room: send it to the kitchen first."
+      : order.status === "PREPARING"
+        ? "Charge to room: once the kitchen has it ready."
+        : null;
+  const usable = (candidate: Method) => !nothingDue && !(candidate === "ROOM_CHARGE" && roomBlocked !== null);
 
   // Prices below are Yetu's (what is owed); the change and a part payment's
   // remainder are worked out from the cash the person types, in whole minor units.
@@ -344,9 +352,7 @@ export function PaySheetView({
               </button>
             ))}
           </div>
-          {roomAvailable && partPaid ? (
-            <p className="y-pay__note">Charge to room isn't possible once part of the bill is paid.</p>
-          ) : null}
+          {roomAvailable && roomBlocked && !nothingDue ? <p className="y-pay__note">{roomBlocked}</p> : null}
         </section>
 
         <section className="y-pay__right" aria-label={paymentMethodWords(method)}>
@@ -432,7 +438,7 @@ export function PaySheetView({
                 size={64}
                 block
                 data-testid="confirm-room-charge"
-                disabled={nothingDue || !chosenStay || chosenStay.postingEligible === false || partPaid || pending}
+                disabled={nothingDue || !chosenStay || chosenStay.postingEligible === false || roomBlocked !== null || pending}
                 onClick={() => chosenStay && onChargeRoom(chosenStay)}
               >
                 {pending

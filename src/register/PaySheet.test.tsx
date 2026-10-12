@@ -252,6 +252,20 @@ describe("PaySheet", () => {
     expect(screen.getByText("Charge to room isn't possible once part of the bill is paid.")).toBeInTheDocument();
   });
 
+  it("charge to room waits until the order has gone to the kitchen, and says so", () => {
+    refs.roomAvailable = true;
+    renderPay({ ...ORDER, status: "OPEN" });
+    expect(screen.getByRole("radio", { name: "Charge to room" })).toBeDisabled();
+    expect(screen.getByText("Charge to room: send it to the kitchen first.")).toBeInTheDocument();
+  });
+
+  it("charge to room isn't taken while the kitchen is preparing it (the backend's rule), and says so", () => {
+    refs.roomAvailable = true;
+    renderPay({ ...ORDER, status: "PREPARING" });
+    expect(screen.getByRole("radio", { name: "Charge to room" })).toBeDisabled();
+    expect(screen.getByText("Charge to room: once the kitchen has it ready.")).toBeInTheDocument();
+  });
+
   it("a guest whose bill isn't open can't be charged", async () => {
     refs.roomAvailable = true;
     refs.candidates = [
