@@ -419,6 +419,9 @@
 
 .y-pay__rooms { display: grid; gap: var(--space-2); }
 
+/* Always in the page (a live region), so a recorded part payment is announced. */
+.y-pay__recorded { margin: 0; font-weight: 600; }
+
 .y-pay__room {
   display: grid;
   min-height: var(--target-frequent);

@@ -69,6 +69,8 @@ export function PaySheet({
   onPaid: (paid: PaidInfo) => void;
 }) {
   const [live, setLive] = useState(order);
+  // The last part payment Yetu recorded, said back to the person.
+  const [recorded, setRecorded] = useState<number | null>(null);
   const [roomQuery, setRoomQuery] = useState("");
   const [needle, setNeedle] = useState("");
   const recordTender = useRecordTender();
@@ -98,6 +100,7 @@ export function PaySheet({
       searched={Boolean(needle)}
       pending={recordTender.isPending || chargeToRoom.isPending}
       problem={problem?.words ?? null}
+      recordedMinor={recorded}
       onClose={onClose}
       onTender={(request) =>
         recordTender.mutate(
@@ -112,6 +115,7 @@ export function PaySheet({
           {
             onSuccess: (updated) => {
               setLive(updated);
+              setRecorded(request.amountMinor);
               onOrderChange?.(updated);
               if ((updated.remainingMinor ?? 0) <= 0 || updated.status === "CLOSED") {
                 onPaid({ order: updated, method: request.method, changeMinor: request.changeMinor, split: live.paidMinor > 0 });
@@ -144,6 +148,8 @@ export interface PaySheetViewProps {
   searched: boolean;
   pending: boolean;
   problem: string | null;
+  /** The last part payment Yetu recorded on this order, if any. */
+  recordedMinor?: number | null;
   onClose: () => void;
   onTender: (request: TenderRequest) => void;
   onChargeRoom: (candidate: POSRoomChargeCandidate) => void;
@@ -164,6 +170,7 @@ export function PaySheetView({
   searched,
   pending,
   problem,
+  recordedMinor = null,
   onClose,
   onTender,
   onChargeRoom,
@@ -178,15 +185,27 @@ export function PaySheetView({
   const [stayId, setStayId] = useState<string | null>(initialStayId ?? null);
   const methodRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
+  // Each payment Yetu records gives the order a new version: what was typed
+  // for it is cleared, so a second tap can't record the same money again.
+  const [seenVersion, setSeenVersion] = useState(order.version);
+  if (order.version !== seenVersion) {
+    setSeenVersion(order.version);
+    setReceived("");
+    setAmountText("");
+    setReference("");
+    setStayId(null);
+  }
+
   const due = order.remainingMinor;
+  const nothingDue = due <= 0;
   const partPaid = order.paidMinor > 0;
   const methods: Method[] = roomAvailable ? [...TENDER_METHODS, "ROOM_CHARGE"] : [...TENDER_METHODS];
-  const usable = (candidate: Method) => !(candidate === "ROOM_CHARGE" && partPaid);
+  const usable = (candidate: Method) => !nothingDue && !(candidate === "ROOM_CHARGE" && partPaid);
 
   // Prices below are Yetu's (what is owed); the change and a part payment's
   // remainder are worked out from the cash the person types, in whole minor units.
   const receivedMinor = toMinor(received);
-  const cashTaken = receivedMinor != null && receivedMinor > 0 ? Math.min(receivedMinor, due) : null;
+  const cashTaken = !nothingDue && receivedMinor != null && receivedMinor > 0 ? Math.min(receivedMinor, due) : null;
   const amount = amountText.trim() ? toMinor(amountText) : due;
   const over = amount != null && amount > due;
   const chosenStay = candidates.find((candidate) => candidate.stayId === stayId) ?? null;
@@ -222,7 +241,7 @@ export function PaySheetView({
   }
 
   function confirmRecorded() {
-    if (method === "CASH" || method === "ROOM_CHARGE" || amount == null || amount <= 0 || over || pending) return;
+    if (method === "CASH" || method === "ROOM_CHARGE" || nothingDue || amount == null || amount <= 0 || over || pending) return;
     onTender({ method, amountMinor: amount, reference: reference.trim() || undefined, changeMinor: 0 });
   }
 
@@ -294,7 +313,9 @@ export function PaySheetView({
                 takeCash();
               }}
             >
-              <QuickCash dueMinor={due} currency={currency} onPick={(minor) => setReceived(moneyFieldText(minor))} />
+              {nothingDue ? null : (
+                <QuickCash dueMinor={due} currency={currency} onPick={(minor) => setReceived(moneyFieldText(minor))} />
+              )}
               <MoneyField
                 label="Cash received"
                 currency={currency}
@@ -305,7 +326,9 @@ export function PaySheetView({
               />
               <Keypad label="Cash received" variant="money" onKey={onCashKey} testIdPrefix="cash-key" />
               <p className="y-pay__change" data-testid="change-due" aria-live="polite">
-                {receivedMinor == null || receivedMinor <= 0
+                {nothingDue
+                  ? "Nothing left to pay."
+                  : receivedMinor == null || receivedMinor <= 0
                   ? "Type or pick the cash the guest gives you."
                   : receivedMinor >= due
                     ? `Change to give ${formatMoney(receivedMinor - due, currency)}`
@@ -364,7 +387,7 @@ export function PaySheetView({
                 size={64}
                 block
                 data-testid="confirm-room-charge"
-                disabled={!chosenStay || chosenStay.postingEligible === false || partPaid || pending}
+                disabled={nothingDue || !chosenStay || chosenStay.postingEligible === false || partPaid || pending}
                 onClick={() => chosenStay && onChargeRoom(chosenStay)}
               >
                 {pending
@@ -406,12 +429,17 @@ export function PaySheetView({
                 size={64}
                 block
                 data-testid="confirm-settle"
-                disabled={amount == null || amount <= 0 || over || pending}
+                disabled={nothingDue || amount == null || amount <= 0 || over || pending}
               >
                 {pending ? "Recording…" : `Confirm ${formatMoney(amount, currency)} received`}
               </Button>
             </form>
           )}
+          <p className="y-pay__recorded" role="status" data-testid="tender-recorded">
+            {recordedMinor != null && due > 0
+              ? `Recorded ${formatMoney(recordedMinor, currency)}. ${formatMoney(due, currency)} still to pay.`
+              : ""}
+          </p>
           {problem ? (
             <Banner inline tone="danger" data-testid="settle-error">
               {problem}

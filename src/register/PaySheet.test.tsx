@@ -131,12 +131,60 @@ describe("PaySheet", () => {
     expect(onOrderChange).toHaveBeenCalledWith(expect.objectContaining({ paidMinor: 2_000_000 }));
     expect(screen.getByTestId("amount-due")).toHaveTextContent("TSh 22,500");
     expect(screen.getByRole("progressbar")).toHaveAccessibleName("Paid TSh 20,000 of TSh 42,500");
+    expect(screen.getByTestId("tender-recorded")).toHaveTextContent("Recorded TSh 20,000. TSh 22,500 still to pay.");
+  });
+
+  it("after a part payment in cash, the cash received is empty and a second tap sends nothing", async () => {
+    recordTenderMutate.mockImplementation((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
+      opts?.onSuccess?.({ ...ORDER, paidMinor: 3_000_000, remainingMinor: 1_250_000, version: 3 }),
+    );
+    renderPay();
+    await userEvent.type(screen.getByTestId("amount-received"), "30000");
+    await userEvent.click(pay());
+    expect(screen.getByTestId("amount-received")).toHaveValue("");
+    expect(screen.getByTestId("change-due")).not.toHaveTextContent(/Change to give/);
+    expect(pay()).toBeDisabled();
+    await userEvent.click(pay());
+    expect(recordTenderMutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("after a part payment by card, the amount and the reference are cleared", async () => {
+    recordTenderMutate.mockImplementation((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
+      opts?.onSuccess?.({ ...ORDER, paidMinor: 1_000_000, remainingMinor: 3_250_000, version: 3 }),
+    );
+    renderPay();
+    await userEvent.click(screen.getByRole("radio", { name: "Card (own machine)" }));
+    await userEvent.type(screen.getByTestId("tender-amount"), "10000");
+    await userEvent.type(screen.getByTestId("tender-reference"), "C-991");
+    await userEvent.click(pay());
+    expect(screen.getByTestId("tender-amount")).toHaveValue("");
+    expect(screen.getByTestId("tender-reference")).toHaveValue("");
+    expect(pay()).toHaveTextContent("Confirm TSh 32,500 received");
+  });
+
+  it("with nothing left to pay, shows no change and offers no tender", () => {
+    renderPay({ ...ORDER, paidMinor: 4_250_000, remainingMinor: 0 });
+    expect(screen.queryByRole("group", { name: "Quick cash" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("change-due")).toHaveTextContent("Nothing left to pay.");
+    expect(pay()).toBeDisabled();
+    for (const method of within(screen.getByRole("radiogroup", { name: "How the guest pays" })).getAllByRole("radio")) {
+      expect(method).toBeDisabled();
+    }
+  });
+
+  it("a split ends with the last tender, told to payment done as a split", async () => {
+    recordTenderMutate.mockImplementation((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
+      opts?.onSuccess?.({ ...ORDER, paidMinor: 2_000_000, remainingMinor: 2_250_000, version: 3 }),
+    );
+    const { onPaid } = renderPay();
+    await userEvent.type(screen.getByTestId("amount-received"), "20000");
+    await userEvent.click(pay());
     recordTenderMutate.mockImplementation((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
       opts?.onSuccess?.(CLOSED),
     );
-    await userEvent.click(screen.getByRole("radio", { name: "Mobile money" }));
+    await userEvent.type(screen.getByTestId("amount-received"), "22500");
     await userEvent.click(pay());
-    expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ method: "MOBILE_MONEY", split: true }));
+    expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ method: "CASH", split: true, changeMinor: 0 }));
   });
 
   it("card: take it on your own machine, then confirm here; the reference is optional", async () => {
