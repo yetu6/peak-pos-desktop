@@ -1,0 +1,202 @@
+/* Kitchen and bar: New, Preparing and Ready side by side, filling the work
+   area. Each column scrolls on its own; the board itself never scrolls, so
+   the columns stay where a cook expects them. */
+
+.y-kitchen {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-4);
+  color: var(--text);
+}
+
+/* The title, the station choice, what just happened, and any notice. */
+.y-kitchen__top { display: grid; gap: var(--space-3); }
+
+.y-kitchen__head {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.y-kitchen__titles { display: grid; gap: 2px; }
+
+.y-kitchen__title {
+  margin: 0;
+  font-size: var(--type-heading);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.y-kitchen__stations {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.y-kitchen__result {
+  min-width: 0;
+  flex: 1 1 200px;
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
+.y-kitchen__columns {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* ----------------------------------------------------------------- Columns */
+.y-kcol {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--space-2);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.y-kcol__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--type-lead);
+  font-weight: 700;
+}
+
+.y-kcol__count {
+  display: inline-flex;
+  min-width: 36px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  padding: 0 var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.y-kcol__body {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow-y: auto;
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.y-kcol__none {
+  margin: var(--space-4) 0;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ----------------------------------------------------------------- Tickets */
+/* A ticket is never taller than its column, so its next step is always on
+   screen with it: a long list of items scrolls inside the ticket. */
+.y-kticket {
+  display: flex;
+  max-height: 100%;
+  min-height: 0;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-left-width: 6px;
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  padding: var(--space-3);
+}
+
+/* The age's colour travels with its words in the chip; the edge repeats it. */
+.y-kticket--warning { border-left-color: var(--warning); }
+.y-kticket--danger { border-left-color: var(--danger); }
+.y-kticket--new { border-color: var(--accent); }
+
+.y-kticket__head {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.y-kticket__number {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--type-heading);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.y-kticket__age { margin-left: auto; }
+
+.y-kticket__meta {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.y-kticket__items {
+  display: grid;
+  min-height: 0;
+  flex: 0 1 auto;
+  gap: var(--space-2);
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.y-kticket__item {
+  display: grid;
+  grid-template-columns: minmax(2ch, auto) minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--type-title);
+  line-height: 1.25;
+}
+
+.y-kticket__qty {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  text-align: right;
+}
+
+.y-kticket__what { display: grid; min-width: 0; justify-items: start; gap: var(--space-1); }
+.y-kticket__name { font-weight: 600; overflow-wrap: anywhere; }
+
+/* Options and the note are what a cook must not miss: picked out, never faint. */
+.y-kticket__option {
+  border-left: 3px solid var(--warning);
+  border-radius: 4px;
+  background: var(--warning-subtle);
+  padding: 2px var(--space-2);
+  color: var(--text);
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+
+.y-kticket__note {
+  margin: 0;
+  border: 1px solid var(--warning-line);
+  border-radius: var(--radius-control);
+  background: var(--warning-subtle);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.y-kticket__next { flex: none; }
