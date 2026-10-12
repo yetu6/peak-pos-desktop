@@ -6,7 +6,6 @@
   height: 100%;
   min-height: 0;
   grid-template-rows: auto auto minmax(0, 1fr);
-  gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
   color: var(--text);
 }
@@ -17,6 +16,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-3);
 }
 
 .y-orders__title {
@@ -33,12 +33,13 @@
   margin-left: auto;
 }
 
+/* Always in place (a live region), taking no room while it has nothing to say. */
 .y-orders__status {
   margin: 0;
   color: var(--text-muted);
 }
 
-.y-orders__status:empty { display: none; }
+.y-orders__status:not(:empty) { margin-bottom: var(--space-3); }
 
 .y-orders__list {
   display: grid;
@@ -123,14 +124,15 @@
   gap: var(--space-4);
 }
 
-.y-detail__state { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.y-detail__state { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
 
+/* Beside the status; always in place (a live region), empty until something happens. */
 .y-detail__result {
+  min-width: 0;
+  flex: 1 1 180px;
   margin: 0;
   font-weight: 600;
 }
-
-.y-detail__result:empty { display: none; }
 
 .y-detail__section { display: grid; gap: var(--space-2); }
 

@@ -209,11 +209,10 @@ export function OrderDetailView({
           <StatusChip tone={orderStatusTone(order.status)} data-testid="order-detail-status">
             {orderStatusWords(order.status)}
           </StatusChip>
+          <p className="y-detail__result" role="status" data-testid="order-detail-result">
+            {result ?? ""}
+          </p>
         </div>
-
-        <p className="y-detail__result" role="status" data-testid="order-detail-result">
-          {result ?? ""}
-        </p>
         {problem ? (
           <Banner inline tone="danger" data-testid="order-detail-error">
             {problem}
