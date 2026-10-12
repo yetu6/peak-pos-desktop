@@ -180,7 +180,7 @@ describe("Keypad and QuickCash", () => {
     const buttons = within(screen.getByRole("group", { name: "Quick cash" })).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
       "ExactTSh 42,500",
-      "TSh 43,000",
+      "TSh 44,000",
       "TSh 45,000",
       "TSh 50,000",
     ]);

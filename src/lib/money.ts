@@ -16,15 +16,6 @@ export const CURRENCY_SYMBOLS: Readonly<Record<string, string>> = {
 export const MONEY_LOCALE = "en-GB";
 
 /**
- * Named setting: the note steps quick cash rounds up to, in major units, per
- * currency. TZS notes run 1,000 / 2,000 / 5,000 / 10,000; rounding to 1,000,
- * 5,000 and 10,000 gives the three amounts a guest most often hands over.
- */
-export const QUICK_CASH_STEPS: Readonly<Record<string, readonly number[]>> = {
-  TZS: [1_000, 5_000, 10_000],
-};
-
-/**
  * Named setting: the notes and coins a till counts note by note, per
  * currency, in major units, largest first. A currency not listed is counted
  * as one total.
@@ -32,6 +23,23 @@ export const QUICK_CASH_STEPS: Readonly<Record<string, readonly number[]>> = {
 export const CASH_DENOMINATIONS: Readonly<Record<string, readonly number[]>> = {
   TZS: [10_000, 5_000, 2_000, 1_000, 500, 200, 100, 50],
 };
+
+/**
+ * Named setting: the smallest note per currency, in major units. The cash
+ * denominations below it are coins; quick cash uses only the notes.
+ */
+export const SMALLEST_NOTE: Readonly<Record<string, number>> = {
+  TZS: 1_000,
+};
+
+/** The notes a guest hands over, largest first, from CASH_DENOMINATIONS. */
+export function cashNotes(currency: string | null | undefined): number[] {
+  const code = currency?.trim().toUpperCase();
+  if (!code) return [];
+  const smallest = SMALLEST_NOTE[code];
+  if (smallest === undefined) return [];
+  return [...(CASH_DENOMINATIONS[code] ?? [])].filter((value) => value >= smallest).sort((a, b) => b - a);
+}
 
 /** Named setting: the most quick-cash amounts shown beside Exact. */
 export const QUICK_CASH_MAX = 3;
@@ -82,17 +90,19 @@ export function formatMoney(amountMinor: number | null | undefined, currency: st
 
 /**
  * The amounts above the bill a guest is most likely to hand over, in minor
- * units, smallest first. Exact is offered separately; a currency with no note
- * steps set gets none.
+ * units, smallest first: for each of the largest notes, the next amount it
+ * makes above the bill (TSh 42,500 with notes of 10,000, 5,000 and 2,000
+ * gives 50,000, 45,000 and 44,000). Exact is offered separately; a currency
+ * with no notes set gets none.
  */
 export function quickCashAmounts(dueMinor: number, currency: string | null | undefined): number[] {
-  const code = normalizeCode(currency);
-  const steps = code ? QUICK_CASH_STEPS[code] : undefined;
-  if (!steps || !Number.isFinite(dueMinor) || dueMinor <= 0) return [];
-  const amounts = new Set<number>();
-  for (const step of steps) {
-    const stepMinor = step * MINOR_PER_MAJOR;
-    amounts.add((Math.floor(dueMinor / stepMinor) + 1) * stepMinor);
+  if (!Number.isFinite(dueMinor) || dueMinor <= 0) return [];
+  const amounts: number[] = [];
+  for (const note of cashNotes(currency)) {
+    const noteMinor = note * MINOR_PER_MAJOR;
+    const next = (Math.floor(dueMinor / noteMinor) + 1) * noteMinor;
+    if (!amounts.includes(next)) amounts.push(next);
+    if (amounts.length === QUICK_CASH_MAX) break;
   }
-  return [...amounts].sort((a, b) => a - b).slice(0, QUICK_CASH_MAX);
+  return amounts.sort((a, b) => a - b);
 }

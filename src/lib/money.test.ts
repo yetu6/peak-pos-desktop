@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   CASH_DENOMINATIONS,
   CURRENCY_SYMBOLS,
-  QUICK_CASH_STEPS,
+  SMALLEST_NOTE,
+  cashNotes,
   currencySymbol,
   formatMoney,
   majorDigits,
@@ -64,17 +65,17 @@ describe("majorDigits", () => {
 });
 
 describe("quickCashAmounts", () => {
-  it("offers the next amounts a guest is likely to hand over", () => {
-    expect(quickCashAmounts(4_250_000, "TZS")).toEqual([4_300_000, 4_500_000, 5_000_000]);
+  it("offers the next amount each of the largest notes makes above the bill, smallest first", () => {
+    expect(quickCashAmounts(4_250_000, "TZS")).toEqual([4_400_000, 4_500_000, 5_000_000]);
     expect(quickCashAmounts(350_000, "TZS")).toEqual([400_000, 500_000, 1_000_000]);
   });
 
   it("skips amounts equal to the bill (that is Exact) and duplicates", () => {
     expect(quickCashAmounts(900_000, "TZS")).toEqual([1_000_000]);
-    expect(quickCashAmounts(1_000_000, "TZS")).toEqual([1_100_000, 1_500_000, 2_000_000]);
+    expect(quickCashAmounts(1_000_000, "TZS")).toEqual([1_200_000, 1_500_000, 2_000_000]);
   });
 
-  it("offers nothing extra for a currency with no note steps set", () => {
+  it("offers nothing extra for a currency with no notes set", () => {
     expect(quickCashAmounts(4_250_000, "KES")).toEqual([]);
     expect(quickCashAmounts(4_250_000, undefined)).toEqual([]);
   });
@@ -84,8 +85,10 @@ describe("quickCashAmounts", () => {
     expect(quickCashAmounts(-5, "TZS")).toEqual([]);
   });
 
-  it("keeps the note steps in a named setting", () => {
-    expect(QUICK_CASH_STEPS.TZS).toEqual([1_000, 5_000, 10_000]);
+  it("takes its notes from the cash denominations setting: coins below the smallest note are left out", () => {
+    expect(cashNotes("TZS")).toEqual([10_000, 5_000, 2_000, 1_000]);
+    expect(SMALLEST_NOTE.TZS).toBe(1_000);
+    expect(cashNotes("KES")).toEqual([]);
   });
 });
 
