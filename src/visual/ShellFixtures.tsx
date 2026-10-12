@@ -1,21 +1,14 @@
 import { ReceiptText } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import {
-  Banner,
-  EmptyState,
-  ListRow,
-  Money,
-  Sheet,
-  StatusChip,
-  SupervisorApproval,
-  SupervisorApprovalActions,
-  Tabs,
-} from "../components/system";
+import { Banner, EmptyState, Sheet, StatusChip, SupervisorApproval, SupervisorApprovalActions } from "../components/system";
 import type { KeypadKey } from "../components/system";
-import type { POSOrder } from "../lib/posContracts";
-import { orderStatusTone, orderStatusWords, serviceTypeWords, shiftChipWords } from "../lib/words";
+import { sentTimesByOrder } from "../kitchen/kitchenTickets";
+import { shiftChipWords } from "../lib/words";
 import type { WorkspacePage } from "../lib/workspace";
+import { OrdersView, type OrdersTab } from "../orders/OrdersView";
 import { TillShell } from "../shell/TillShell";
+import { OPEN_ORDERS, PAID_ORDERS, STATION_TICKETS } from "./ordersData";
+import { CURRENCY } from "./registerData";
 import "./gallery.css";
 
 /**
@@ -28,61 +21,24 @@ import "./gallery.css";
 const BUSINESS_DATE = "2026-10-12";
 const OPENED_AT = new Date(2026, 9, 12, 7, 2).toISOString();
 
-const CURRENCY = "TZS";
-
-const ORDERS: Array<Pick<POSOrder, "id" | "orderNumber" | "status" | "serviceType" | "tableLabel" | "initiatedByName" | "totalMinor">> = [
-  { id: "order-142", orderNumber: "0142", status: "OPEN", serviceType: "DINE_IN", tableLabel: "12", initiatedByName: "Amina Hassan", totalMinor: 4_250_000 },
-  { id: "order-141", orderNumber: "0141", status: "PREPARING", serviceType: "ROOM_SERVICE", tableLabel: "Room 7", initiatedByName: "Juma Ally", totalMinor: 2_800_000 },
-  { id: "order-140", orderNumber: "0140", status: "READY", serviceType: "TAKEAWAY", initiatedByName: "Grace Mushi", totalMinor: 950_000 },
-  { id: "order-139", orderNumber: "0139", status: "SERVED", serviceType: "DINE_IN", tableLabel: "4", initiatedByName: "Amina Hassan", totalMinor: 6_100_000 },
-];
-
-function placeOf(order: (typeof ORDERS)[number]): string {
-  if (order.serviceType === "DINE_IN" && order.tableLabel) return `Table ${order.tableLabel}`;
-  return order.tableLabel ? `${serviceTypeWords(order.serviceType)} · ${order.tableLabel}` : serviceTypeWords(order.serviceType);
-}
-
+/** The Orders list as the shell shows it, with the Orders fixtures' own orders (ordersData.ts). */
 function OrdersPreview() {
-  const [tab, setTab] = useState<"open" | "paid">("open");
+  const [tab, setTab] = useState<OrdersTab>("open");
+  const [query, setQuery] = useState("");
   return (
-    <section className="y-fixture-panel" aria-labelledby="fixture-orders-heading">
-      <h1 id="fixture-orders-heading" className="y-fixture-heading">
-        Orders
-      </h1>
-      <Tabs
-        label="Order lists"
-        value={tab}
-        onChange={setTab}
-        tabs={[
-          { value: "open", label: "Open", count: ORDERS.length },
-          { value: "paid", label: "Paid today", count: 0 },
-        ]}
-      />
-      {tab === "open" ? (
-        <div>
-          {ORDERS.map((order) => (
-            <ListRow
-              key={order.id}
-              title={`Order ${order.orderNumber} · ${placeOf(order)}`}
-              meta={order.initiatedByName}
-              onClick={() => undefined}
-              trailing={
-                <>
-                  <StatusChip tone={orderStatusTone(order.status)}>{orderStatusWords(order.status)}</StatusChip>
-                  <Money minor={order.totalMinor} currency={CURRENCY} size="lead" />
-                </>
-              }
-            />
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          icon={<ReceiptText />}
-          title="No paid orders yet today"
-          description="Orders appear here once they are paid."
-        />
-      )}
-    </section>
+    <OrdersView
+      tab={tab}
+      onTab={setTab}
+      openOrders={OPEN_ORDERS}
+      paidOrders={PAID_ORDERS}
+      query={query}
+      onQuery={setQuery}
+      currency={CURRENCY}
+      sentTimes={sentTimesByOrder(STATION_TICKETS)}
+      onOpen={() => undefined}
+      openState={{ loading: false, failed: false, onRetry: () => undefined }}
+      paidState={{ loading: false, failed: false, onRetry: () => undefined }}
+    />
   );
 }
 
@@ -132,7 +88,7 @@ export function FixtureShell({
 /** The shell on a selling till, with the Orders list in the new components. */
 export function ShellFixture() {
   return (
-    <FixtureShell>
+    <FixtureShell workspaceVariant="full">
       <OrdersPreview />
     </FixtureShell>
   );
@@ -184,7 +140,7 @@ export function ApprovalSheetFixture() {
     setPinLength((length) => (key === "delete" ? Math.max(0, length - 1) : key === "clear" ? 0 : Math.min(6, length + 1)));
   }
   return (
-    <FixtureShell>
+    <FixtureShell workspaceVariant="full">
       <OrdersPreview />
       <Sheet
         open
@@ -222,7 +178,7 @@ export function CommandSearchFixture() {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }));
   }, []);
   return (
-    <FixtureShell>
+    <FixtureShell workspaceVariant="full">
       <OrdersPreview />
     </FixtureShell>
   );

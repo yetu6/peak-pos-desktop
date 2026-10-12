@@ -168,6 +168,35 @@ async function measure(page: Page): Promise<Finding[]> {
         }
       }
 
+      // The kitchen: each column's first ticket has its next step on screen,
+      // inside what the column shows, and no ticket's step is cut off by its
+      // own card (a long ticket scrolls its items, never its step).
+      for (const column of document.querySelectorAll("[data-kitchen-column]")) {
+        if (!rendered(column) || column.closest('[aria-hidden="true"], [inert]')) continue;
+        const shows = (column.querySelector(".y-kcol__body") ?? column).getBoundingClientRect();
+        const first = column.querySelector("[data-kitchen-next]");
+        if (first && rendered(first)) {
+          const step = first.getBoundingClientRect();
+          const top = Math.max(0, shows.top);
+          const bottom = Math.min(window.innerHeight, shows.bottom);
+          if (step.top < top - 1 || step.bottom > bottom + 1 || step.left < 0 || step.right > viewportWidth + 1) {
+            findings.push({
+              key: "kitchen-layout",
+              detail: `${describe(first)} is not on screen in its column (top ${Math.round(step.top)}, bottom ${Math.round(step.bottom)}; the column shows ${Math.round(top)} to ${Math.round(bottom)})`,
+            });
+          }
+        }
+      }
+      for (const card of document.querySelectorAll(".y-kticket")) {
+        const next = card.querySelector("[data-kitchen-next]");
+        if (!next || !rendered(card)) continue;
+        const step = next.getBoundingClientRect();
+        const box = card.getBoundingClientRect();
+        if (step.top < box.top - 1 || step.bottom > box.bottom + 1) {
+          findings.push({ key: "kitchen-layout", detail: `${describe(next)} is cut off by its ticket (step ${Math.round(step.bottom)}, ticket ${Math.round(box.bottom)})` });
+        }
+      }
+
       // In an open sheet or dialog, its primary action and its Close are on screen
       // without scrolling: a sale is never finished below the fold.
       for (const dialog of document.querySelectorAll('[role="dialog"]')) {

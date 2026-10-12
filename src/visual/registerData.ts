@@ -71,7 +71,12 @@ export const PRODUCTS: POSCatalogProduct[] = [
  * options' extra prices, times the quantity, with VAT at the item's rate
  * rounded half up.
  */
-function line(productId: string, quantity: number, options: Array<[string, string]> = [], status: POSOrderItem["status"] = "ADDED"): POSOrderItem {
+export function line(
+  productId: string,
+  quantity: number,
+  options: Array<[string, string]> = [],
+  status: POSOrderItem["status"] = "ADDED",
+): POSOrderItem {
   const product = PRODUCTS.find((candidate) => candidate.id === productId);
   if (!product) throw new Error(`${productId} is not on the fixture menu`);
   const modifiers = options.map(([groupName, optionName], index) => {
@@ -96,7 +101,7 @@ function line(productId: string, quantity: number, options: Array<[string, strin
 }
 
 /** An order's figures as Yetu works them out from its lines (recomputeOrderTotalsFromLines). */
-function order(items: POSOrderItem[], extra: Partial<POSOrder> = {}): POSOrder {
+export function order(items: POSOrderItem[], extra: Partial<POSOrder> = {}): POSOrder {
   const subtotalMinor = items.reduce((sum, item) => sum + item.unitPriceMinor * item.quantity, 0);
   const taxMinor = items.reduce((sum, item) => sum + item.taxMinor, 0);
   const totalMinor = subtotalMinor + taxMinor;

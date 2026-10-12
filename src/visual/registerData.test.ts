@@ -1,35 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { POSOrder } from "../lib/posContracts";
-import { CASH_RECEIVED, CHANGE_GIVEN, ORDER, PAID_ORDER, PRODUCTS, RECEIPT, SENT_ORDER, SPLIT_ORDER } from "./registerData";
-
-/**
- * The fixtures' figures are what Yetu would work out from their own lines
- * (fbc-peak AddItem and recomputeOrderTotalsFromLines): a line's gross is
- * its unit price (options included) times its quantity, its VAT is the gross
- * at the item's rate rounded half up, its total is gross plus VAT; the
- * order's subtotal, VAT and total are the sums, less any discount.
- */
-function lineVat(grossMinor: number, rateBp: number): number {
-  return Math.floor((grossMinor * rateBp + 5000) / 10000);
-}
-
-function expectYetuArithmetic(order: POSOrder) {
-  let subtotal = 0;
-  let vat = 0;
-  for (const line of order.items.filter((item) => item.status !== "VOIDED")) {
-    const product = PRODUCTS.find((candidate) => candidate.id === line.productId);
-    expect(product, `${line.name} is on the menu`).toBeDefined();
-    const gross = line.unitPriceMinor * line.quantity;
-    expect(line.taxMinor, `${line.name} VAT`).toBe(lineVat(gross, product!.taxRateBp));
-    expect(line.totalMinor, `${line.name} total`).toBe(gross + line.taxMinor);
-    subtotal += gross;
-    vat += line.taxMinor;
-  }
-  expect(order.subtotalMinor).toBe(subtotal);
-  expect(order.taxMinor).toBe(vat);
-  expect(order.totalMinor).toBe(subtotal + vat - order.discountMinor);
-  expect(order.remainingMinor).toBe(order.totalMinor - order.paidMinor);
-}
+import { CASH_RECEIVED, CHANGE_GIVEN, ORDER, PAID_ORDER, RECEIPT, SENT_ORDER, SPLIT_ORDER } from "./registerData";
+import { expectYetuArithmetic } from "./yetuArithmetic";
 
 describe("the Sell fixtures' figures", () => {
   it.each([
