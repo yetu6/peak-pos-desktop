@@ -803,6 +803,12 @@ button.y-ticket-line:hover { background: var(--surface-hover); }
 .y-banner--danger { border-bottom-color: var(--danger-line); background: var(--danger-subtle); }
 .y-banner--danger .y-banner__icon { color: var(--danger); }
 
+/* Inside a card or a sheet: a rounded notice with a full border, not the bar under the top bar. */
+.y-banner--inline { border: 1px solid var(--info-line); border-radius: var(--radius-control); }
+.y-banner--inline.y-banner--success { border-color: var(--success-line); }
+.y-banner--inline.y-banner--warning { border-color: var(--warning-line); }
+.y-banner--inline.y-banner--danger { border-color: var(--danger-line); }
+
 /* ------------------------------------------------------------------- Toast */
 .y-toast-region {
   position: fixed;

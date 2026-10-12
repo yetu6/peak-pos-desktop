@@ -69,6 +69,9 @@
 .y-cash__summary dd.y-cash__muted { grid-column: 1 / -1; text-align: left; }
 .y-cash__summary--compact > div { padding-bottom: var(--space-2); }
 
+/* A date or an amount stays on one line ("Tue 13 Oct"). */
+.y-cash__nowrap { white-space: nowrap; }
+
 .y-cash__result {
   margin: 0;
   font-size: var(--type-lead);

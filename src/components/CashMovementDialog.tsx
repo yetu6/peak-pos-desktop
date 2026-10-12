@@ -195,7 +195,7 @@ export function CashMovementSheetView({
         ) : null}
         {problem ? (
           <div data-testid="movement-error">
-            <Banner tone="danger">{problem.words}</Banner>
+            <Banner inline tone="danger">{problem.words}</Banner>
           </div>
         ) : null}
       </div>

@@ -253,11 +253,11 @@ export function CloseShiftSheetView({
           {/* Always in the page, so screen readers announce the result when it appears. */}
           <div role="status" aria-live="polite" data-testid="close-outcome">
             {step === "check" && refreshing ? (
-              <Banner tone="info" live={false}>
+              <Banner inline tone="info" live={false}>
                 Getting Yetu's latest figure…
               </Banner>
             ) : step === "check" && outcome ? (
-              <Banner tone={OUTCOME[outcome].tone} live={false}>
+              <Banner inline tone={OUTCOME[outcome].tone} live={false}>
                 {OUTCOME[outcome].words}
               </Banner>
             ) : null}

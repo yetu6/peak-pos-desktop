@@ -115,6 +115,7 @@ export function Banner({
   tone = "info",
   action,
   live = true,
+  inline = false,
   children,
   className,
   ...props
@@ -123,13 +124,15 @@ export function Banner({
   action?: ReactNode;
   /** False when the banner sits inside a live region that already announces it. */
   live?: boolean;
+  /** Inside a card or a sheet: a rounded notice, not the bar under the top bar. */
+  inline?: boolean;
   children: ReactNode;
   className?: string;
   "data-testid"?: string;
 }) {
   const ToneIcon = BANNER_ICON[tone];
   return (
-    <div className={cn("y-banner", `y-banner--${tone}`, className)} {...props}>
+    <div className={cn("y-banner", `y-banner--${tone}`, inline && "y-banner--inline", className)} {...props}>
       <ToneIcon className="y-banner__icon" aria-hidden="true" />
       <p className="y-banner__text" role={live ? (tone === "danger" ? "alert" : "status") : undefined}>
         {children}

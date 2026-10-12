@@ -50,7 +50,9 @@ export function CloseDayCardView({
           Close the day
         </h2>
         <div data-testid="day-close-result">
-          <Banner tone="success">{`Day closed. The new business day is ${nextDay || "set"}.`}</Banner>
+          <Banner inline tone="success">
+            Day closed. The new business day is <span className="y-cash__nowrap">{nextDay || "set"}</span>.
+          </Banner>
         </div>
       </section>
     );
@@ -87,7 +89,7 @@ export function CloseDayCardView({
       </ul>
       {problem ? (
         <div data-testid="day-close-error">
-          <Banner tone="danger">{problem.words}</Banner>
+          <Banner inline tone="danger">{problem.words}</Banner>
         </div>
       ) : null}
       <Button
