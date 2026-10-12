@@ -15,6 +15,7 @@ import { sentTimesByOrder } from "../kitchen/kitchenTickets";
 import type { POSOrder } from "../lib/posContracts";
 import { OrderDetail } from "../orders/OrderDetail";
 import { OrdersView, type OrdersTab } from "../orders/OrdersView";
+import { ORDERS_REFRESH_SECONDS } from "../orders/ordersSettings";
 import { usePaidOrders } from "../orders/usePaidOrders";
 import { PaymentDone } from "../register/PaymentDone";
 import { PaySheet, type PaidInfo } from "../register/PaySheet";
@@ -61,6 +62,14 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
   // only that a station ticket changed, which the open orders don't listen
   // for. So each time the station tickets come back new, the open orders are
   // asked for again.
+  // Besides live updates, ask again every so often (a missed update still shows).
+  // The station tickets are asked for; the open orders follow them (below).
+  const { refetch: refetchTickets } = tickets;
+  useEffect(() => {
+    const id = window.setInterval(() => void refetchTickets(), ORDERS_REFRESH_SECONDS * 1000);
+    return () => window.clearInterval(id);
+  }, [refetchTickets]);
+
   const ticketsUpdatedAt = tickets.dataUpdatedAt;
   const ticketsSeenAt = useRef(0);
   const { refetch: refetchOrders } = orders;

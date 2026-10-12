@@ -16,3 +16,10 @@ export const PAID_ROWS_SHOWN = 20;
  * is not asked for again on each payment.
  */
 export const PAID_LIST_REFRESH_SECONDS = 30;
+
+/**
+ * orders.refreshSeconds: while Orders is open, how often it asks Yetu again
+ * for the open orders (through their station tickets), besides live updates,
+ * so a missed update still shows. The same as the kitchen board's.
+ */
+export const ORDERS_REFRESH_SECONDS = 15;

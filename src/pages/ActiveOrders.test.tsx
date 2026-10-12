@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RealtimeClient } from "../realtime/RealtimeClient";
 import { RealtimeProvider } from "../realtime/RealtimeProvider";
 import { ActiveOrders } from "./ActiveOrders";
+import { ORDERS_REFRESH_SECONDS } from "../orders/ordersSettings";
 import { idleLockHeld } from "../lib/idleLock";
 import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
 import type { POSCatalog, POSOrder, POSReceipt, POSShift, POSStationTicket } from "../lib/posContracts";
@@ -309,6 +310,21 @@ describe("Orders", () => {
     );
     await waitFor(() => expect(within(sheet).getByTestId("order-detail-status")).toHaveTextContent("Preparing"));
     expect(screen.getByTestId("order-row-order-1")).toHaveTextContent("Preparing");
+  });
+
+  it("asks Yetu again every few seconds while open, so a missed update still shows (orders.refreshSeconds)", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      ordersStore.set("order-1", { ...OPEN_ORDER, status: "SENT", version: 2 });
+      renderOrders();
+      await screen.findByTestId("order-row-order-1");
+      await flush();
+      ordersStore.set("order-1", { ...OPEN_ORDER, status: "READY", version: 4 });
+      await act(async () => vi.advanceTimersByTime(ORDERS_REFRESH_SECONDS * 1000));
+      await waitFor(() => expect(screen.getByTestId("order-row-order-1")).toHaveTextContent("Ready"));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("empties the open list when Yetu says the shift closed", async () => {
