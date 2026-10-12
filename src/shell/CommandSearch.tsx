@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { KeyHint } from "../components/system";
+import { isComposing } from "../lib/keyboard";
 import { cn } from "../lib/utils";
 
 export interface ShellCommand {
@@ -62,6 +63,8 @@ function CommandSearchBody({ commands, onDone }: { commands: readonly ShellComma
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    // Enter that finishes a word in an input method is not "open this".
+    if (isComposing({ isComposing: event.nativeEvent.isComposing, keyCode: event.keyCode })) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       if (results.length === 0) return;

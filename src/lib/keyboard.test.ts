@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { GLOBAL_KEYS, globalCommandFor, keyHintFor } from "./keyboard";
 
-function key(init: Partial<Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">>) {
-  return { key: "", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...init };
+function key(
+  init: Partial<Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey" | "isComposing" | "keyCode">>,
+) {
+  return { key: "", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, isComposing: false, keyCode: 0, ...init };
 }
 
 describe("global keys", () => {
@@ -29,6 +31,13 @@ describe("global keys", () => {
     expect(globalCommandFor(key({ key: "F1", shiftKey: true }))).toBeNull();
     expect(globalCommandFor(key({ key: "l", ctrlKey: true, shiftKey: true }))).toBeNull();
     expect(globalCommandFor(key({ key: "Escape" }))).toBeNull();
+  });
+
+  it("ignores keys pressed while an input method is composing", () => {
+    expect(globalCommandFor(key({ key: "F2", isComposing: true }))).toBeNull();
+    expect(globalCommandFor(key({ key: "F2", keyCode: 229 }))).toBeNull();
+    expect(globalCommandFor(key({ key: "k", ctrlKey: true, isComposing: true }))).toBeNull();
+    expect(globalCommandFor(key({ key: "F2", keyCode: 113 }))).toEqual({ kind: "navigate", page: "orders" });
   });
 
   it("shows the key next to each section and never binds one key twice", () => {

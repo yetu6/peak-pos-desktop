@@ -186,7 +186,7 @@ describe("TillShell keyboard", () => {
     expect(screen.getByTestId("rail-reason")).toHaveTextContent(/connection/i);
   });
 
-  it("leaves an open dialog (a payment, a void) in place: section keys wait, Ctrl+L still locks", () => {
+  it("leaves an open dialog (a payment, a void) in place: section keys, search and lock all wait", () => {
     const onLock = vi.fn();
     render(
       <>
@@ -196,10 +196,48 @@ describe("TillShell keyboard", () => {
     );
     fireEvent.keyDown(window, { key: "F2" });
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "l", ctrlKey: true });
     expect(screen.getByTestId("current-page")).toHaveTextContent("new");
     expect(screen.queryByRole("combobox", { name: /search/i })).not.toBeInTheDocument();
-    fireEvent.keyDown(window, { key: "l", ctrlKey: true });
-    expect(onLock).toHaveBeenCalledTimes(1);
+    expect(onLock).not.toHaveBeenCalled();
+  });
+
+  it("never acts on a key while an input method is still composing a word", () => {
+    const onLock = vi.fn();
+    render(<Harness onLock={onLock} />);
+    fireEvent.keyDown(window, { key: "F2", isComposing: true });
+    fireEvent.keyDown(window, { key: "F2", keyCode: 229 });
+    fireEvent.keyDown(window, { key: "l", ctrlKey: true, isComposing: true });
+    expect(screen.getByTestId("current-page")).toHaveTextContent("new");
+    expect(onLock).not.toHaveBeenCalled();
+  });
+
+  it("does not open a search result while an input method is composing", async () => {
+    render(<Harness />);
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    const search = await screen.findByRole("combobox", { name: /search/i });
+    await userEvent.type(search, "close shift");
+    fireEvent.keyDown(search, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(search, { key: "Enter", keyCode: 229 });
+    expect(screen.getByTestId("current-page")).toHaveTextContent("new");
+    expect(screen.getByRole("combobox", { name: /search/i })).toBeInTheDocument();
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(screen.getByTestId("current-page")).toHaveTextContent("manager");
+  });
+
+  it("closes the person menu when a section key moves the till, and on Esc wherever focus is", async () => {
+    render(<Harness />);
+    await userEvent.click(screen.getByTestId("person-menu"));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "F2" });
+    expect(screen.getByTestId("current-page")).toHaveTextContent("orders");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("person-menu"));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("locks with Ctrl+L", () => {

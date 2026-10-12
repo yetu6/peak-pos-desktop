@@ -1,19 +1,25 @@
 import { ChevronDown, Lock, UsersRound } from "lucide-react";
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, type KeyboardEvent } from "react";
 import { KeyHint } from "../components/system";
 import { keyHintForCommand } from "../lib/keyboard";
 
-/** Who is signed in. Pressing the name offers Switch person and Lock. */
+/**
+ * Who is signed in. Pressing the name offers Switch person and Lock. The shell
+ * holds whether it is open, so a global key or Esc anywhere closes it.
+ */
 export function PersonMenu({
   person,
+  open,
+  onOpenChange: setOpen,
   onSwitchPerson,
   onLock,
 }: {
   person: { name: string; initials: string };
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onSwitchPerson: () => void;
   onLock: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -27,7 +33,7 @@ export function PersonMenu({
     }
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [open]);
+  }, [open, setOpen]);
 
   function close() {
     setOpen(false);
@@ -65,7 +71,7 @@ export function PersonMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(!open)}
       >
         <span className="y-avatar" aria-hidden="true">
           {person.initials}

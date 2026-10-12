@@ -107,6 +107,7 @@ export function TillShell({
   const display = isDisplayMode(mode);
   const rail = useMemo(() => railNav(mode, { offlineCash }), [mode, offlineCash]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [personMenuOpen, setPersonMenuOpen] = useState(false);
   const [reason, setReason] = useState<{ page: WorkspacePage; text: string; top: number } | null>(null);
   const reasonTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { theme } = useTheme();
@@ -138,17 +139,20 @@ export function TillShell({
       if (event.repeat || event.defaultPrevented) return;
       if (event.key === "Escape") {
         setReason(null);
+        setPersonMenuOpen(false);
         return;
       }
       const command = globalCommandFor(event);
       if (!command) return;
+      // A payment, a void or another sheet is open: every global key waits,
+      // Ctrl+L too, so nothing typed into it is lost.
+      if (otherDialogOpen()) return;
+      event.preventDefault();
+      setPersonMenuOpen(false);
       if (command.kind === "lock") {
-        event.preventDefault();
         onLock();
         return;
       }
-      if (otherDialogOpen()) return;
-      event.preventDefault();
       if (command.kind === "command-search") {
         setSearchOpen(true);
         return;
@@ -262,7 +266,13 @@ export function TillShell({
           {clock}
         </span>
         <ThemeToggle />
-        <PersonMenu person={person} onSwitchPerson={onSwitchPerson} onLock={onLock} />
+        <PersonMenu
+          person={person}
+          open={personMenuOpen}
+          onOpenChange={setPersonMenuOpen}
+          onSwitchPerson={onSwitchPerson}
+          onLock={onLock}
+        />
       </header>
 
       <div className="y-banners">{banners}</div>

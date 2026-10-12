@@ -27,9 +27,16 @@ export const GLOBAL_KEYS: readonly KeyBinding[] = [
   { keys: "Ctrl+K", command: { kind: "command-search" } },
 ];
 
-type KeyInput = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">;
+type KeyInput = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"> &
+  Partial<Pick<KeyboardEvent, "isComposing" | "keyCode">>;
+
+/** An input method (for example a phone-style or Asian keyboard) is still building a word. */
+export function isComposing(event: Partial<Pick<KeyboardEvent, "isComposing" | "keyCode">>): boolean {
+  return Boolean(event.isComposing) || event.keyCode === 229;
+}
 
 export function globalCommandFor(event: KeyInput): GlobalCommand | null {
+  if (isComposing(event)) return null;
   if (event.altKey || event.shiftKey) return null;
   const control = event.ctrlKey || event.metaKey;
   const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
