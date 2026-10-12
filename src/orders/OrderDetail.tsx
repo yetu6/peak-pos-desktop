@@ -220,6 +220,12 @@ export function OrderDetailView({
           </Banner>
         ) : null}
 
+        {order.notes?.trim() ? (
+          <p className="y-detail__note" data-testid="order-detail-note">
+            <strong>Note:</strong> {order.notes.trim()}
+          </p>
+        ) : null}
+
         <section className="y-detail__section" aria-labelledby="detail-timeline">
           <h3 id="detail-timeline" className="y-detail__heading">
             What happened
@@ -249,7 +255,7 @@ export function OrderDetailView({
                     name={line.name}
                     options={(line.modifiers ?? []).map((modifier) => modifier.optionName)}
                     amount={formatMoney(line.totalMinor, currency)}
-                    sent={line.status === "SENT"}
+                    sent={owing && line.status === "SENT"}
                     selected={selected}
                     onSelect={removable && !busy ? () => onSelectLine(selected ? null : line.id) : undefined}
                   />

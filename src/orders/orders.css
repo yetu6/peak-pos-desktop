@@ -162,6 +162,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+.y-detail__note {
+  margin: 0;
+  border: 1px solid var(--warning-line);
+  border-radius: var(--radius-control);
+  background: var(--warning-subtle);
+  padding: var(--space-2) var(--space-3);
+}
+
 .y-detail__line { margin: 0; }
 .y-detail__muted { color: var(--text-muted); }
 

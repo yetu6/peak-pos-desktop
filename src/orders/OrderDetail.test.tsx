@@ -136,6 +136,19 @@ describe("OrderDetailView", () => {
     expect(handlers.onReprint).toHaveBeenCalled();
   });
 
+  it("shows the order's note for the kitchen", () => {
+    renderDetail({ order: order({ status: "SENT", notes: "Guest has a nut allergy" }) });
+    expect(screen.getByTestId("order-detail-note")).toHaveTextContent("Note: Guest has a nut allergy");
+  });
+
+  it("says a line is with the kitchen only while the order is, not once it is paid", () => {
+    renderDetail({
+      order: order({ status: "CLOSED", paidMinor: 1_534_000, remainingMinor: 0, items: [line("l1", "Cappuccino", "SENT")] }),
+      receipt: RECEIPT,
+    });
+    expect(screen.getByTestId("order-detail-lines")).not.toHaveTextContent("Sent");
+  });
+
   it("a paid order waits for its receipt before it can print a copy", () => {
     renderDetail({ order: order({ status: "CLOSED", paidMinor: 1_534_000, remainingMinor: 0 }), receipt: undefined });
     expect(within(footer()).getByRole("button", { name: "Print receipt" })).toBeDisabled();
