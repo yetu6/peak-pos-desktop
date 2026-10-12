@@ -108,7 +108,7 @@ describe("TillShell", () => {
   it("working offline keeps closed sections in place and says why instead of moving", async () => {
     const onNavigate = vi.fn();
     render(<Harness offlineCash onNavigate={onNavigate} />);
-    expect(screen.getByTestId("shell-offline-cash")).toBeInTheDocument();
+    expect(screen.getByTestId("shell-offline-cash")).toHaveTextContent("Cash only");
     const orders = screen.getByTestId("nav-orders");
     expect(orders).toHaveAttribute("aria-disabled", "true");
     expect(orders).not.toBeDisabled();

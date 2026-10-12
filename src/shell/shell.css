@@ -50,7 +50,7 @@
 }
 
 .y-topbar__till {
-  min-width: 0;
+  min-width: 96px;
   max-width: 220px;
   flex: 0 1 auto;
   overflow: hidden;
@@ -61,10 +61,14 @@
   white-space: nowrap;
 }
 
+/* The shift (or mode) chip keeps its words whole; the till's name and the
+   connection chip give way first on a compact screen. */
 .y-topbar .y-chip {
   flex: 0 1 auto;
   min-width: 0;
 }
+
+.y-topbar .y-topbar__status { flex: none; }
 
 .y-topbar__spacer { flex: 1 1 0; min-width: 0; }
 

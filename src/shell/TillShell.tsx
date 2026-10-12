@@ -224,15 +224,25 @@ export function TillShell({
           {tillName?.trim() || "This till"}
         </span>
         {display ? (
-          <StatusChip tone="info" data-testid="kds-mode-badge">
+          <StatusChip tone="info" className="y-topbar__status" data-testid="kds-mode-badge">
             {displayName}
           </StatusChip>
         ) : offlineCash ? (
-          <StatusChip tone="warning" icon={<WifiOff aria-hidden="true" />} data-testid="shell-offline-cash">
-            Working offline · cash only
+          <StatusChip
+            tone="warning"
+            className="y-topbar__status"
+            icon={<WifiOff aria-hidden="true" />}
+            data-testid="shell-offline-cash"
+          >
+            Cash only
           </StatusChip>
         ) : (
-          <StatusChip tone="neutral" icon={<Clock aria-hidden="true" />} data-testid="shell-business-date">
+          <StatusChip
+            tone="neutral"
+            className="y-topbar__status"
+            icon={<Clock aria-hidden="true" />}
+            data-testid="shell-business-date"
+          >
             {shiftText || "No shift open"}
           </StatusChip>
         )}
