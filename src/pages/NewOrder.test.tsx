@@ -427,4 +427,17 @@ describe("NewOrder", () => {
     expect(await screen.findByRole("dialog", { name: "Take payment" })).toBeInTheDocument();
     expect(screen.getByTestId("catalog-search")).toHaveValue("");
   });
+
+  it("when adding from the options sheet fails, the sheet says so", async () => {
+    renderNewOrder();
+    const burger = await screen.findByTestId("menu-House burger");
+    await waitFor(() => expect(burger).not.toHaveAttribute("aria-disabled"));
+    await userEvent.click(burger);
+    const sheet = await screen.findByRole("dialog", { name: "House burger" });
+    addItemSpy.mockResolvedValueOnce({ data: null, error: { code: "CONFLICT", detail: "product is unavailable" } } as never);
+    await userEvent.click(within(sheet).getByRole("radio", { name: /Medium/ }));
+    await userEvent.click(within(sheet).getByTestId("modifier-confirm-add"));
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent(/./);
+    expect(screen.getByRole("dialog", { name: "House burger" })).toBeInTheDocument();
+  });
 });

@@ -127,10 +127,17 @@ export function NewOrder() {
     if (product.isAvailable === false) return;
     setNotice(null);
     if ((product.modifierGroups?.length ?? 0) > 0) {
-      setConfiguring(product);
+      openOptions(product);
       return;
     }
     await addProduct(product, 1, []);
+  }
+
+  /** A fresh options sheet starts without an earlier add's refusal. */
+  function openOptions(product: POSCatalogProduct) {
+    addItem.reset();
+    createOrder.reset();
+    setConfiguring(product);
   }
 
   async function setSoldOut(product: POSCatalogProduct, available: boolean) {
@@ -186,7 +193,7 @@ export function NewOrder() {
     }
     const ids = optionIdsFor(line, product);
     if (ids === null) {
-      setConfiguring(product);
+      openOptions(product);
       return;
     }
     await addProduct(product, 1, ids);
@@ -307,6 +314,7 @@ export function NewOrder() {
           product={configuring}
           currency={currency ?? configuring.currency}
           pending={busy}
+          error={createError ?? addError}
           onCancel={() => setConfiguring(null)}
           onAdd={(choice) => void addProduct(configuring, choice.quantity, choice.modifierOptionIds)}
         />

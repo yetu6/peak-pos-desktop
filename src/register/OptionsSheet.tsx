@@ -1,6 +1,6 @@
 import { Check } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Button, Sheet, Stepper } from "../components/system";
+import { Banner, Button, Sheet, Stepper } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSCatalogProduct, POSModifierGroup } from "../lib/posContracts";
 import { cn } from "../lib/utils";
@@ -35,12 +35,15 @@ export function OptionsSheet({
   onCancel,
   onAdd,
   pending = false,
+  error = null,
 }: {
   product: POSCatalogProduct;
   currency: string | undefined;
   onCancel: () => void;
   onAdd: (choice: { quantity: number; modifierOptionIds: string[] }) => void;
   pending?: boolean;
+  /** Why adding didn't work, said here as well as on the ticket behind. */
+  error?: string | null;
 }) {
   const groups = useMemo(() => {
     const active = (product.modifierGroups ?? []).filter((group) => group.isActive !== false);
@@ -149,6 +152,11 @@ export function OptionsSheet({
           <span className="y-options__name">Quantity</span>
           <Stepper label={product.name} value={quantity} onChange={setQuantity} min={1} />
         </div>
+        {error ? (
+          <Banner inline tone="danger">
+            {error}
+          </Banner>
+        ) : null}
       </div>
     </Sheet>
   );

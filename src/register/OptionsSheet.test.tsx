@@ -101,4 +101,13 @@ describe("OptionsSheet", () => {
     await userEvent.click(add());
     expect(onAdd).toHaveBeenCalledWith({ quantity: 2, modifierOptionIds: ["well", "egg"] });
   });
+
+  it("says inside the sheet when adding failed", () => {
+    render(
+      <OptionsSheet product={BURGER} currency="TZS" onCancel={vi.fn()} onAdd={vi.fn()} error="That can't be done right now. Refresh and try again." />,
+    );
+    expect(within(screen.getByRole("dialog", { name: "House burger" })).getByRole("alert")).toHaveTextContent(
+      "That can't be done right now. Refresh and try again.",
+    );
+  });
 });
