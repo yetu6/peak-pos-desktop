@@ -14,6 +14,8 @@ import {
   type TechnicianSnapshot,
 } from "../lib/diagnostics";
 import { getApiBaseUrl } from "../lib/peakConfig";
+import { useLastUpdateNote, type UpdateNote } from "../lib/updateNotes";
+import { clockTime } from "../lib/words";
 import { useRealtime } from "../realtime/RealtimeProvider";
 
 const REALTIME_LABEL: Record<string, string> = {
@@ -23,6 +25,16 @@ const REALTIME_LABEL: Record<string, string> = {
   disconnected: "Offline",
   error: "Realtime error",
 };
+
+/** The updater's last outcome, in words for the operator view. */
+function updateWords(note: UpdateNote | null): string {
+  if (!note) return "No update problems since the till started.";
+  if (note.kind === "ready") return "An update is ready. It installs the next time the till is locked.";
+  if (note.kind === "install-failed") {
+    return `An update didn't install at ${clockTime(note.at)}. The till keeps working; it will try again later.`;
+  }
+  return `Couldn't check for updates at ${clockTime(note.at)}. The till keeps working.`;
+}
 
 function toneClass(ok: boolean): string {
   return ok ? "badge badge-success" : "badge badge-danger";
@@ -50,6 +62,7 @@ function Row({
 export function Diagnostics() {
   const { state } = useRealtime();
   const { identity, session } = useDeviceSession();
+  const updateNote = useLastUpdateNote();
   const [view, setView] = useState<"operator" | "technician">("operator");
   const [peak, setPeak] = useState<PeakProbe | null>(null);
   const [printer, setPrinter] = useState<PrinterStatus | null>(null);
@@ -158,6 +171,9 @@ export function Diagnostics() {
               <span className="badge badge-muted">Unknown on this host</span>
             )}
           </Row>
+          <Row label="Updates" testId="diag-updates">
+            {updateWords(updateNote)}
+          </Row>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -206,6 +222,9 @@ export function Diagnostics() {
           <Row label="Key storage" testId="diag-key-storage">
             {snapshot.keyStorageBackend}
             {snapshot.keyStorageHardwareBacked === false ? " (not hardware-backed)" : ""}
+          </Row>
+          <Row label="Last update problem" testId="diag-update-detail">
+            {updateNote && updateNote.kind !== "ready" ? updateNote.detail ?? "No detail" : "None"}
           </Row>
           <div className="mt-4">
             <button
