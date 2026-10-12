@@ -4,6 +4,7 @@ import { useDeviceSession } from "../auth/DeviceSessionProvider";
 import { AccessLayout } from "../access/AccessLayout";
 import { PIN_LENGTH, ROSTER_SEARCH_AFTER } from "../access/accessSettings";
 import { offlineReadinessWords, pinNotice } from "../access/accessWords";
+import { rateLimitWords } from "../lib/posErrors";
 import { useNetworkOnline } from "../access/useNetworkOnline";
 import { Banner, Button, Field, Keypad, SearchField, type KeypadKey } from "../components/system";
 import type { RosterEntry } from "../lib/deviceAuth";
@@ -12,7 +13,7 @@ import type { OfflineEligibilityStatus } from "../lib/offlineAuthorization";
 
 /** The front door of every shift change: who's working, then their PIN. */
 export function PinUnlock() {
-  const { unlock, error, identity, roster, offlineEligibility } = useDeviceSession();
+  const { unlock, error, identity, roster, offlineEligibility, signInHeldUntil } = useDeviceSession();
   const online = useNetworkOnline();
   return (
     <PinUnlockView
@@ -22,6 +23,7 @@ export function PinUnlock() {
       error={error}
       online={online}
       onUnlock={unlock}
+      heldUntil={signInHeldUntil ?? null}
     />
   );
 }
@@ -41,6 +43,8 @@ export interface PinUnlockViewProps {
   error: string | null;
   online: boolean;
   onUnlock: (staffNumber: string, pin: string) => Promise<void>;
+  /** After too many sign-in attempts: when Yetu allows the next one (ms since the epoch). */
+  heldUntil?: number | null;
   /** Fixtures and tests start part-way through. */
   initialStaff?: RosterEntry | null;
   initialManual?: boolean;
@@ -54,6 +58,7 @@ export function PinUnlockView({
   error,
   online,
   onUnlock,
+  heldUntil = null,
   initialStaff = null,
   initialManual = false,
   initialFailures = 0,
@@ -82,6 +87,18 @@ export function PinUnlockView({
   );
   const [attempt, setAttempt] = useState<{ staff: string; count: number } | null>(null);
   const keypadRef = useRef<HTMLDivElement>(null);
+  const [now, setNow] = useState(() => Date.now());
+  // Read by the keypad and the keyboard at once, like pendingRef.
+  const heldRef = useRef(false);
+  // The screen looks again when Yetu's wait is over.
+  useEffect(() => {
+    setNow(Date.now());
+    if (heldUntil === null) return;
+    const left = heldUntil - Date.now();
+    if (left <= 0) return;
+    const timer = setTimeout(() => setNow(Date.now()), left);
+    return () => clearTimeout(timer);
+  }, [heldUntil]);
 
   const choosing = !selected && !manual;
   const currentStaff = selected?.staffNumber ?? staffNumber.trim();
@@ -122,7 +139,7 @@ export function PinUnlockView({
   }
 
   function onKey(key: KeypadKey) {
-    if (pendingRef.current) return;
+    if (pendingRef.current || heldRef.current) return;
     if (key === "delete") return setPinValue(pinRef.current.slice(0, -1));
     if (key === "clear") return setPinValue("");
     if (!/^\d$/.test(key) || pinRef.current.length >= PIN_LENGTH) return;
@@ -164,7 +181,12 @@ export function PinUnlockView({
     setManual(false);
   }
 
-  const notice = pinNotice(error, { failures: failures[currentStaff] ?? 0, manual: !selected });
+  // After too many attempts Yetu says when the next one is allowed: the keypad waits until then.
+  const held = heldUntil !== null && now < heldUntil;
+  heldRef.current = held;
+  const rawNotice = pinNotice(error, { failures: failures[currentStaff] ?? 0, manual: !selected });
+  // Once the wait is over, "too many attempts" no longer applies.
+  const notice = rawNotice?.kind === "sign-in-held" ? (held ? { ...rawNotice, words: rateLimitWords((heldUntil! - now) / 1000, new Date(now)) } : null) : rawNotice;
   const info = notice?.tone === "info" ? notice : null;
   const problem = localProblem ?? (notice && notice.tone !== "info" ? notice.words : null);
 
@@ -295,7 +317,7 @@ export function PinUnlockView({
             <span key={index} className={index < pin.length ? "y-pin__dot y-pin__dot--filled" : "y-pin__dot"} />
           ))}
         </div>
-        <Keypad label="PIN" variant="pin" onKey={onKey} disabled={pending} testIdPrefix="pin-key" groupRef={keypadRef} />
+        <Keypad label="PIN" variant="pin" onKey={onKey} disabled={pending || held} testIdPrefix="pin-key" groupRef={keypadRef} />
         <p className="y-pin__status" role="status">
           {pending ? "Checking your PIN…" : ""}
         </p>

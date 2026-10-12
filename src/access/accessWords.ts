@@ -9,6 +9,7 @@ import { PIN_PAUSE_AFTER_FAILURES } from "./accessSettings";
 
 export type AccessNoticeKind =
   | "pin-rejected"
+  | "sign-in-held"
   | "offline-pin-rejected"
   | "offline-pin-locked"
   | "session-ended"
@@ -37,6 +38,13 @@ const MESSAGES: Record<string, AccessNotice> = {
     kind: "pin-rejected",
     tone: "danger",
     words: "That PIN didn't match. Try again.",
+  },
+  // Yetu limits sign-in attempts from one address (429 on /pos/sessions); the PIN screen holds
+  // the keypad until Yetu's wait is over and names the wait (pinNotice).
+  "Too many sign-in attempts. Wait before trying again.": {
+    kind: "sign-in-held",
+    tone: "danger",
+    words: "Too many attempts. Wait a minute and try again.",
   },
   // Without internet the till checks the PIN itself (src-tauri local_store/offline_pin.rs): each
   // wrong try makes the next one wait longer, and at the limit the PIN stays locked on this till

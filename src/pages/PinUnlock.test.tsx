@@ -349,3 +349,42 @@ describe("Who's working", () => {
     expect(screen.getByTestId("till-name")).toHaveTextContent("Bar 1");
   });
 });
+
+describe("too many sign-in attempts (429)", () => {
+  it("holds the keypad until Yetu's wait is over, saying so", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      useDeviceSessionMock.mockReturnValue(
+        baseSession({ roster: TWO, error: "Too many sign-in attempts. Wait before trying again.", signInHeldUntil: Date.now() + 45_000 }),
+      );
+      render(<PinUnlock />);
+      await userEvent.click(screen.getByTestId("roster-entry-00001"));
+      expect(screen.getByRole("alert")).toHaveTextContent("Too many attempts. Wait a minute and try again.");
+      expect(screen.getByTestId("pin-key-1")).toBeDisabled();
+      act(() => vi.advanceTimersByTime(45_000));
+      expect(screen.getByTestId("pin-key-1")).toBeEnabled();
+      expect(screen.queryByText(/Too many attempts/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("doesn't take a PIN from the keyboard during the wait either", async () => {
+    useDeviceSessionMock.mockReturnValue(
+      baseSession({ roster: TWO, error: "Too many sign-in attempts. Wait before trying again.", signInHeldUntil: Date.now() + 45_000 }),
+    );
+    render(<PinUnlock />);
+    await userEvent.click(screen.getByTestId("roster-entry-00001"));
+    await userEvent.keyboard("418205");
+    expect(unlock).not.toHaveBeenCalled();
+  });
+
+  it("names the time when the wait is longer than a minute", async () => {
+    useDeviceSessionMock.mockReturnValue(
+      baseSession({ roster: TWO, error: "Too many sign-in attempts. Wait before trying again.", signInHeldUntil: Date.now() + 30 * 60_000 }),
+    );
+    render(<PinUnlock />);
+    await userEvent.click(screen.getByTestId("roster-entry-00001"));
+    expect(screen.getByRole("alert")).toHaveTextContent(/^Too many attempts\. Wait until \d\d:\d\d and try again\.$/);
+  });
+});
