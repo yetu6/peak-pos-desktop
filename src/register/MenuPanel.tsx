@@ -21,10 +21,12 @@ export interface MenuPanelProps {
   /** Why nothing can be added just now, in words; null when items can be added. */
   addBlocked: string | null;
   onTap: (product: POSCatalogProduct) => void;
-  /** Mark an item sold out (false) or back in stock (true), after asking. */
-  onSoldOutToggle: (product: POSCatalogProduct, available: boolean) => void;
+  /** Mark an item sold out (false) or back in stock (true), after asking. Left out where it can't be done (offline). */
+  onSoldOutToggle?: (product: POSCatalogProduct, available: boolean) => void;
   loading?: boolean;
   failed?: boolean;
+  /** What a menu that didn't load says, when it isn't Yetu's live menu (the one saved for working offline). */
+  failedWords?: { title: string; description: string };
 }
 
 /**
@@ -56,6 +58,10 @@ export function MenuPanel({
   onSoldOutToggle,
   loading = false,
   failed = false,
+  failedWords = {
+    title: "The menu didn't load",
+    description: "Check the internet connection. The menu loads again on its own when Yetu can be reached.",
+  },
 }: MenuPanelProps) {
   const [asking, setAsking] = useState<POSCatalogProduct | null>(null);
   const searchNow = useRef(search);
@@ -150,11 +156,7 @@ export function MenuPanel({
             ))}
           </div>
         ) : failed ? (
-          <EmptyState
-            icon={<UtensilsCrossed />}
-            title="The menu didn't load"
-            description="Check the internet connection. The menu loads again on its own when Yetu can be reached."
-          />
+          <EmptyState icon={<UtensilsCrossed />} title={failedWords.title} description={failedWords.description} />
         ) : shown.length === 0 ? (
           <EmptyState
             icon={<SearchX />}
@@ -175,7 +177,7 @@ export function MenuPanel({
                 onClick={() => onTap(item)}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  setAsking(item);
+                  if (onSoldOutToggle) setAsking(item);
                 }}
               />
             ))}
@@ -202,7 +204,7 @@ export function MenuPanel({
               <Button
                 variant="primary"
                 onClick={() => {
-                  onSoldOutToggle(asking, asking.isAvailable === false);
+                  onSoldOutToggle?.(asking, asking.isAvailable === false);
                   setAsking(null);
                 }}
               >

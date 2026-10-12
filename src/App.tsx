@@ -33,6 +33,8 @@ import { applyModeDefaultTheme } from "./lib/theme";
 import { clockTime, shiftChipWords } from "./lib/words";
 import { defaultWorkspacePage, isDisplayMode, workspaceNav, type WorkspacePage } from "./lib/workspace";
 import { TillShell } from "./shell/TillShell";
+import { Banner } from "./components/system";
+import { OFFLINE_BANNER } from "./register/offlineWords";
 
 type Page = WorkspacePage;
 
@@ -45,10 +47,15 @@ function useClock(): string {
   return clockTime(now);
 }
 
-/** Update and key-storage notices. Inside the shell they sit under the top bar. */
-function ShellBanners() {
+/** Update, key-storage and offline notices. Inside the shell they sit under the top bar. */
+function ShellBanners({ offlineCash = false }: { offlineCash?: boolean }) {
   return (
     <>
+      {offlineCash ? (
+        <Banner tone="warning" data-testid="offline-banner">
+          {OFFLINE_BANNER}
+        </Banner>
+      ) : null}
       <UpdaterBanner />
       <KeyStorageBanner />
     </>
@@ -81,7 +88,7 @@ function PosShell() {
       shift={shiftChipWords(shift)}
       clock={clock}
       connection={<ConnectivityIndicator />}
-      banners={<ShellBanners />}
+      banners={<ShellBanners offlineCash={offlineCash} />}
       onSwitchPerson={() => switchStaff()}
       onLock={() => switchStaff()}
       workspaceVariant={page === "new" || page === "orders" || page === "kitchen" ? "full" : "padded"}
