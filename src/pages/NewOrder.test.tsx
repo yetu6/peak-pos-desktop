@@ -216,7 +216,9 @@ describe("NewOrder", () => {
     await waitFor(() => expect(getCurrentShiftSpy).toHaveBeenCalled());
     expect(await screen.findByTestId("shift-open")).toBeInTheDocument();
 
+    await userEvent.click(screen.getByTestId("open-close-shift"));
     await userEvent.type(screen.getByTestId("counted-cash"), "0");
+    await userEvent.click(screen.getByRole("button", { name: "Check the count" }));
     await userEvent.click(screen.getByTestId("close-shift"));
     await waitFor(() =>
       expect(closeShiftSpy).toHaveBeenCalledWith(

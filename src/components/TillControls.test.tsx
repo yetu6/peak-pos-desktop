@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { TillControls } from "./TillControls";
 import type { POSShift } from "../lib/posContracts";
 
 const { usePosShiftMock, useHasPermissionMock } = vi.hoisted(() => ({
   usePosShiftMock: vi.fn(),
-  useHasPermissionMock: vi.fn(() => true),
+  useHasPermissionMock: vi.fn((_action: string) => true),
 }));
 
 vi.mock("../hooks/usePosData", () => ({
@@ -19,14 +21,18 @@ vi.mock("../hooks/usePosData", () => ({
 function mutation<T>(
   overrides: Partial<{ mutate: (value: unknown) => void; isPending: boolean; error: unknown; data: T }> = {},
 ) {
-  return { mutate: vi.fn(), isPending: false, error: null, ...overrides };
+  return { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false, error: null, ...overrides };
+}
+
+function renderControls(ui: ReactNode = <TillControls currency="TZS" />) {
+  return render(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
 }
 
 const OPEN_SHIFT: POSShift = {
   id: "shift-1",
   status: "OPEN",
   openingCashMinor: 10_000,
-  expectedCashMinor: 10_000,
+  expectedCashMinor: 7_400_000,
   businessDate: "2026-08-29",
   openedAt: "2026-08-29T08:00:00Z",
 };
@@ -42,24 +48,30 @@ describe("TillControls", () => {
     expect(open.mutate).toHaveBeenCalledWith({ openingCashMinor: 10_000, idempotencyKey: "key-1" });
   });
 
-  it("shows a variance that still needs a supervisor after close", () => {
-    usePosShiftMock.mockReturnValue({
-      shift: null,
-      open: mutation(),
-      close: mutation({ data: { status: "PENDING_VARIANCE_APPROVAL", varianceMinor: 500 } }),
-    });
-    render(<TillControls />);
-    expect(screen.getByTestId("shift-close-result")).toHaveTextContent("needs a supervisor");
-  });
-
-  it("closes with the counted drawer expressed in minor units", async () => {
+  it("Close shift opens the close-shift sheet, count first, never a one-field close", async () => {
     const close = mutation();
     usePosShiftMock.mockReturnValue({ shift: OPEN_SHIFT, open: mutation(), close });
-    render(<TillControls />);
-    expect(screen.getByTestId("shift-open")).toHaveTextContent("expected");
-    await userEvent.type(screen.getByTestId("counted-cash"), "100");
-    await userEvent.click(screen.getByTestId("close-shift"));
-    expect(close.mutate).toHaveBeenCalledWith({ countedCashMinor: 10_000, idempotencyKey: "key-1" });
+    renderControls();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("open-close-shift"));
+    const sheet = screen.getByRole("dialog", { name: "Close the shift" });
+    expect(within(sheet).getByTestId("close-step-count")).toBeInTheDocument();
+    expect(close.mutate).not.toHaveBeenCalled();
+    expect(close.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("shows the expected figure in the header only to managers (EXPECTED_CASH_VISIBLE_TO)", () => {
+    usePosShiftMock.mockReturnValue({ shift: OPEN_SHIFT, open: mutation(), close: mutation() });
+    const manager = renderControls();
+    expect(screen.getByTestId("shift-open")).toHaveTextContent("Shift open · expected TSh 74,000");
+    manager.unmount();
+
+    useHasPermissionMock.mockImplementation((action: string) => action !== "pos.report.manager");
+    renderControls();
+    expect(screen.getByTestId("shift-open")).toHaveTextContent("Shift open");
+    expect(document.body).not.toHaveTextContent("74,000");
+    expect(document.body).not.toHaveTextContent(/expected/i);
+    useHasPermissionMock.mockImplementation(() => true);
   });
 
   it("hides Open shift for a staff account without pos.shift.open, with an explanatory message instead of a dead button", () => {
