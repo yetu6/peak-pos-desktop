@@ -79,7 +79,8 @@ export function PaySheet({
   const tenderKey = useIdempotencyKey();
   const roomChargeKey = useIdempotencyKey();
   // A retry of the same request (after a lost response) reuses its key, so Yetu
-  // records it once; a changed request, or the next one after a success, gets a new key.
+  // records it once; a changed request gets a new key. Every success changes the
+  // order's version, which is part of the request, so the next payment is new.
   const lastTender = useRef<{ request: string; key: string } | null>(null);
   const lastRoomCharge = useRef<{ request: string; key: string } | null>(null);
 
@@ -138,7 +139,6 @@ export function PaySheet({
           },
           {
             onSuccess: (updated) => {
-              lastTender.current = null;
               setLive(updated);
               setRecorded(request.amountMinor);
               onOrderChange?.(updated);
@@ -161,7 +161,6 @@ export function PaySheet({
           },
           {
             onSuccess: (updated) => {
-              lastRoomCharge.current = null;
               onPaid({ order: updated, method: "ROOM_CHARGE", changeMinor: 0, roomNumber: candidate.roomNumber });
             },
           },

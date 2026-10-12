@@ -470,6 +470,10 @@ describe("NewOrder", () => {
     await userEvent.click(within(sheet).getByTestId("modifier-confirm-add"));
     expect(await within(sheet).findByRole("alert")).toHaveTextContent(/./);
     expect(screen.getByRole("dialog", { name: "House burger" })).toBeInTheDocument();
+    await userEvent.click(within(sheet).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(screen.getByTestId("menu-House burger"));
+    const again = await screen.findByRole("dialog", { name: "House burger" });
+    expect(within(again).queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("Add another asks for the options again rather than guess between groups with the same name", async () => {

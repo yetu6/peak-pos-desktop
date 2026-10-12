@@ -170,6 +170,9 @@ describe("PaySheet", () => {
     expect(screen.queryByRole("group", { name: "Quick cash" })).not.toBeInTheDocument();
     expect(screen.getByTestId("change-due")).toHaveTextContent("Nothing left to pay.");
     expect(pay()).toBeDisabled();
+    fireEvent.change(screen.getByTestId("amount-received"), { target: { value: "1000" } });
+    expect(screen.getByTestId("change-due")).toHaveTextContent("Nothing left to pay.");
+    expect(pay()).toBeDisabled();
     for (const method of within(screen.getByRole("radiogroup", { name: "How the guest pays" })).getAllByRole("radio")) {
       expect(method).toBeDisabled();
     }

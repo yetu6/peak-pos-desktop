@@ -109,6 +109,12 @@ describe("MenuPanel", () => {
     expect(screen.getByRole("searchbox", { name: "Search the menu" })).toHaveValue("");
   });
 
+  it("Space on the page itself doesn't go into the search", () => {
+    render(<Menu />);
+    fireEvent.keyDown(document.body, { key: " " });
+    expect(screen.getByRole("searchbox", { name: "Search the menu" })).toHaveValue("");
+  });
+
   it("a letter typed while a control has focus stays with that control", async () => {
     render(<Menu />);
     screen.getByTestId("menu-Soda").focus();
