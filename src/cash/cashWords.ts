@@ -80,6 +80,12 @@ export function closeShiftProblem(
     };
   }
   if (detail === "shift is not open") return { kind: "not-open", words: "This shift is already closed." };
+  // Today this never matches: fbc-peak internal/pos/http.go CloseShift writes
+  // every error from the close, the pos.shift.close permission check
+  // included, as CONFLICT with the error text as detail. A missing permission
+  // therefore arrives as a CONFLICT we don't name and gets the action's own
+  // words. Kept for when the backend answers FORBIDDEN (recorded as a backend
+  // follow-up).
   if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a cashier or manager can close the shift." };
   return { kind: "other", words: otherWords(problem, "The shift couldn't be closed. Try again.") };
 }
