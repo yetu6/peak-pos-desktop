@@ -281,3 +281,130 @@
   padding: var(--space-3);
   font-size: var(--type-lead);
 }
+
+/* ------------------------------------------------------------------- Pay */
+.y-pay {
+  display: grid;
+  min-height: 100%;
+  align-items: start;
+  gap: var(--space-6);
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+}
+
+.y-pay__left,
+.y-pay__right {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+}
+
+.y-pay__label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-lead);
+  font-weight: 600;
+}
+
+.y-pay__progress { display: grid; gap: var(--space-2); }
+
+.y-pay__bar {
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+}
+
+.y-pay__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--success);
+}
+
+.y-pay__paid { margin: 0; font-weight: 600; }
+
+.y-pay__methods {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.y-pay__method {
+  min-height: var(--target-money);
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  padding: var(--space-2) var(--space-4);
+  color: var(--text);
+  font-size: var(--type-lead);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.y-pay__method:hover:not(:disabled) { background: var(--surface-hover); }
+
+.y-pay__method[aria-checked="true"] {
+  border: 2px solid var(--action);
+  background: var(--surface-selected);
+}
+
+.y-pay__method:disabled {
+  border-style: dashed;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.y-pay__note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+}
+
+.y-pay__pane { display: grid; gap: var(--space-4); }
+
+.y-pay__step {
+  margin: 0;
+  border: 1px solid var(--info-line);
+  border-radius: var(--radius-control);
+  background: var(--info-subtle);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--type-lead);
+  font-weight: 500;
+}
+
+.y-pay__change {
+  min-height: 44px;
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.y-pay__rooms { display: grid; gap: var(--space-2); }
+
+.y-pay__room {
+  display: grid;
+  min-height: var(--target-frequent);
+  align-content: center;
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  padding: var(--space-2) var(--space-4);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.y-pay__room[aria-pressed="true"] {
+  border: 2px solid var(--action);
+  background: var(--surface-selected);
+}
+
+.y-pay__room:disabled { background: var(--surface); color: var(--text-muted); cursor: not-allowed; }
+.y-pay__room-name { font-size: var(--type-lead); font-weight: 600; }
+.y-pay__room-why { font-size: var(--type-small); }
+
+@media (max-width: 1279px) {
+  .y-pay { gap: var(--space-4); }
+}

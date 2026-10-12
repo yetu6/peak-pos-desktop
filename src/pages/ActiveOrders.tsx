@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Icon } from "../components/Icon";
-import { SettleDialog } from "../components/SettleDialog";
+import { PaySheet } from "../register/PaySheet";
 import { RemoveItemDialog } from "../components/RemoveItemDialog";
 import { VoidOrderDialog } from "../components/VoidOrderDialog";
 import { ReceiptView } from "../components/ReceiptView";
@@ -175,12 +175,12 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
       )}
 
       {settling && currency && (
-        <SettleDialog
+        <PaySheet
           order={settling}
           currency={currency}
           onClose={() => setSettling(null)}
           onOrderChange={setSettling}
-          onSettled={(id) => void afterSettled(id)}
+          onPaid={(paid) => void afterSettled(paid.order.id)}
         />
       )}
       {removing && <RemoveItemDialog order={removing.order} item={removing.item} onClose={() => setRemoving(null)} />}

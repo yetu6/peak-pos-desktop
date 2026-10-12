@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { SettleDialog } from "../components/SettleDialog";
 import { DiscountDialog } from "../components/DiscountDialog";
 import { VoidOrderDialog } from "../components/VoidOrderDialog";
 import {
@@ -20,6 +19,7 @@ import {
 import { ReceiptView } from "../components/ReceiptView";
 import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OptionsSheet } from "../register/OptionsSheet";
+import { PaySheet } from "../register/PaySheet";
 import { NoteSheet } from "../register/NoteSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
 import { TicketActions } from "../register/TicketActions";
@@ -305,14 +305,12 @@ export function NewOrder() {
         />
       )}
       {settleOpen && order && currency && (
-        <SettleDialog
+        <PaySheet
           order={order}
           currency={currency}
           onClose={() => setSettleOpen(false)}
           onOrderChange={setOrder}
-          onSettled={() => {
-            void afterSettled(order.id);
-          }}
+          onPaid={(paid) => void afterSettled(paid.order.id)}
         />
       )}
       {discountOpen && order && currency && (

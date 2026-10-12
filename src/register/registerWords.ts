@@ -43,3 +43,32 @@ export function voidProblem(error: unknown): RegisterProblem | null {
   }
   return { kind: "other", words: otherWords(problem, "The order wasn't voided. Try again.") };
 }
+
+/** Recording a payment (fbc-peak internal/pos/controls.go RecordTender). */
+export function tenderProblem(error: unknown): RegisterProblem | null {
+  const problem = problemOf(error);
+  if (!problem) return null;
+  if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  const detail = problem.detail ?? "";
+  if (detail === "tender exceeds remaining balance") {
+    return { kind: "other", words: "That's more than is still owed. Check the amount, then try again." };
+  }
+  if (detail === "order remaining balance is already settled") return { kind: "paid", words: "This order is already paid." };
+  if (/closed or voided order/i.test(detail)) return { kind: "paid", words: "This order is closed, so it can't take a payment." };
+  if (problem.code === "FORBIDDEN") return { kind: "other", words: "Only a cashier or manager can take payment." };
+  return { kind: "other", words: otherWords(problem, "The payment wasn't recorded. Try again.") };
+}
+
+/** Charging an order to a guest's room (fbc-peak internal/pos/operations.go ChargeRoom). */
+export function roomChargeProblem(error: unknown): RegisterProblem | null {
+  const problem = problemOf(error);
+  if (!problem) return null;
+  if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  const detail = problem.detail ?? "";
+  if (detail === "room charge cannot follow a partial tender") {
+    return { kind: "paid", words: "Charge to room isn't possible once part of the bill is paid." };
+  }
+  if (detail === "active stay with open folio not found") return { kind: "other", words: "That guest's bill isn't open. Ask the front desk." };
+  if (detail === "order is not eligible for room charge") return { kind: "other", words: "This order can't go on a room bill." };
+  return { kind: "other", words: otherWords(problem, "The room charge didn't go through. Try again.") };
+}
