@@ -1,17 +1,11 @@
 import { useState } from "react";
-import { Icon } from "../components/Icon";
 import { SettleDialog } from "../components/SettleDialog";
 import { DiscountDialog } from "../components/DiscountDialog";
-import {
-  CategoryTab,
-  MoneyDisplay,
-  OrderLine,
-  OrderRail,
-  QuantityStepper,
-} from "../components/terminal/TerminalPrimitives";
+import { Button } from "../components/system";
 import {
   useAddOrderItem,
   useCatalog,
+  useCatalogCurrency,
   useCreateOrder,
   useIdempotencyKey,
   useMutationMessage,
@@ -26,29 +20,41 @@ import { ReceiptView } from "../components/ReceiptView";
 import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OptionsSheet } from "../register/OptionsSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
-import type { POSCatalogProduct, POSOrder, ServiceType } from "../lib/posContracts";
-import { moneyFormatter } from "../lib/posMoney";
-
-const SERVICE_TYPES: Array<{ id: ServiceType; label: string }> = [
-  { id: "DINE_IN", label: "Dine in" },
-  { id: "TAKEAWAY", label: "Takeaway" },
-  { id: "ROOM_SERVICE", label: "Room service" },
-];
+import { TicketPanel } from "../register/TicketPanel";
+import type { POSCatalogProduct, POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 
 /**
- * Online register: catalog from GET /pos/catalog, ticket from live order
- * mutations. Local-first offline path stays available elsewhere; this screen
- * is the cashier till against the live API.
+ * The catalog option ids for a line's options, matched by group and option
+ * name (Yetu keeps the names on the line, not the ids). Null when any of them
+ * is no longer on the menu, so the options sheet asks again instead.
+ */
+function optionIdsFor(line: POSOrderItem, product: POSCatalogProduct): string[] | null {
+  const ids: string[] = [];
+  for (const modifier of line.modifiers ?? []) {
+    const group = product.modifierGroups?.find((candidate) => candidate.isActive !== false && candidate.name === modifier.groupName);
+    const option = group?.options?.find((candidate) => candidate.isAvailable !== false && candidate.name === modifier.optionName);
+    if (!option) return null;
+    ids.push(option.id);
+  }
+  return ids;
+}
+
+/**
+ * Sell, against the live API: the catalog from GET /pos/catalog and the
+ * ticket from the order mutations. The offline register is a separate screen.
  */
 export function NewOrder() {
   const { shift } = usePosShift();
   const catalog = useCatalog();
+  const currency = useCatalogCurrency();
   const [activeCategory, setActiveCategory] = useState<string>(ALL_CATEGORIES);
   const [search, setSearch] = useState("");
   const [serviceType, setServiceType] = useState<ServiceType>("DINE_IN");
   const [tableLabel, setTableLabel] = useState("");
   const [notes, setNotes] = useState("");
   const [order, setOrder] = useState<POSOrder | null>(null);
+  const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
+  const [sentAt, setSentAt] = useState<Date | null>(null);
   const [configuring, setConfiguring] = useState<POSCatalogProduct | null>(null);
   const [settleOpen, setSettleOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
@@ -74,14 +80,7 @@ export function NewOrder() {
   const availabilityError = useMutationMessage(setAvailability.error);
   const mutationError = createError ?? addError ?? removeError ?? sendError ?? availabilityError ?? actionError;
 
-  const currency = catalog.data?.products[0]?.currency ?? "TZS";
-  const money = moneyFormatter(currency);
-  const busy =
-    createOrder.isPending ||
-    addItem.isPending ||
-    removeItem.isPending ||
-    sendOrder.isPending;
-  const totalItems = order?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+  const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || sendOrder.isPending;
   const canMutate = Boolean(shift) && !busy;
   // Yetu adds items only to an order that is still open (not yet sent).
   const addBlocked = !shift
@@ -101,7 +100,8 @@ export function NewOrder() {
       const created = await createOrder.mutateAsync({
         shiftId: shift.id,
         serviceType,
-        tableLabel: tableLabel.trim() || undefined,
+        // Takeaway has no table or room; a label typed under another type is not sent.
+        tableLabel: serviceType === "TAKEAWAY" ? undefined : tableLabel.trim() || undefined,
         notes: notes.trim() || undefined,
         idempotencyKey: createKey.next(),
       });
@@ -136,73 +136,90 @@ export function NewOrder() {
     const current = await ensureOrder();
     if (!current) return;
     setActionError(null);
-    const next = await addItem.mutateAsync({
-      orderId: current.id,
-      productId: product.id,
-      quantity,
-      modifierOptionIds,
-      version: current.version,
-      idempotencyKey: addKey.next(),
-    });
-    // If STALE_VERSION returned a fresh order without applying the add, retry once.
-    if (next.version === current.version && next.items.length === current.items.length) {
-      const retried = await addItem.mutateAsync({
-        orderId: next.id,
+    try {
+      const next = await addItem.mutateAsync({
+        orderId: current.id,
         productId: product.id,
         quantity,
         modifierOptionIds,
-        version: next.version,
+        version: current.version,
         idempotencyKey: addKey.next(),
       });
-      setOrder(retried);
+      // If STALE_VERSION returned a fresh order without applying the add, retry once.
+      if (next.version === current.version && next.items.length === current.items.length) {
+        const retried = await addItem.mutateAsync({
+          orderId: next.id,
+          productId: product.id,
+          quantity,
+          modifierOptionIds,
+          version: next.version,
+          idempotencyKey: addKey.next(),
+        });
+        setOrder(retried);
+      } else {
+        setOrder(next);
+      }
       setConfiguring(null);
-      return;
+    } catch {
+      // The words come from addItem.error.
     }
-    setOrder(next);
-    setConfiguring(null);
   }
 
-  async function bumpQuantity(itemId: string, delta: number) {
-    if (!order || !canMutate) return;
-    const line = order.items.find((item) => item.id === itemId);
-    if (!line || line.status !== "ADDED") return;
-    if (delta < 0) {
-      // No quantity-patch API: removing an unsent line is the certified correction.
+  /** Another of the same line, with the same options (a new line: Yetu has no quantity change). */
+  async function addAnother(line: POSOrderItem) {
+    if (!canMutate) return;
+    const product = catalog.data?.products.find((candidate) => candidate.id === line.productId);
+    if (!product || product.isAvailable === false) {
+      setActionError(`${line.name} can't be added just now.`);
+      return;
+    }
+    const ids = optionIdsFor(line, product);
+    if (ids === null) {
+      setConfiguring(product);
+      return;
+    }
+    await addProduct(product, 1, ids);
+  }
+
+  async function removeLine(line: POSOrderItem) {
+    if (!order || !canMutate || line.status !== "ADDED") return;
+    try {
       const next = await removeItem.mutateAsync({
         orderId: order.id,
-        itemId,
+        itemId: line.id,
         version: order.version,
         idempotencyKey: removeKey.next(),
       });
       setOrder(next);
-      return;
+      setSelectedLineId(null);
+    } catch {
+      // The words come from removeItem.error.
     }
-    const next = await addItem.mutateAsync({
-      orderId: order.id,
-      productId: line.productId,
-      quantity: delta,
-      version: order.version,
-      idempotencyKey: addKey.next(),
-    });
-    setOrder(next);
   }
 
   async function sendToKitchen() {
     if (!order || order.items.length === 0) return;
     setActionError(null);
-    const next = await sendOrder.mutateAsync({
-      orderId: order.id,
-      version: order.version,
-      idempotencyKey: sendKey.next(),
-    });
-    setOrder(next);
-    await printAfter(next.id);
+    try {
+      const next = await sendOrder.mutateAsync({
+        orderId: order.id,
+        version: order.version,
+        idempotencyKey: sendKey.next(),
+      });
+      setOrder(next);
+      setSentAt(new Date());
+      await printAfter(next.id);
+    } catch {
+      // The words come from sendOrder.error.
+    }
   }
 
   function clearTicket() {
     setOrder(null);
     setTableLabel("");
     setNotes("");
+    setSelectedLineId(null);
+    setSentAt(null);
     setSettleOpen(false);
     createKey.next();
   }
@@ -214,6 +231,8 @@ export function NewOrder() {
     clearTicket();
   }
 
+  const hasLines = Boolean(order && order.items.some((item) => item.status !== "VOIDED"));
+
   return (
     <>
       <RegisterLayout
@@ -221,7 +240,7 @@ export function NewOrder() {
           <MenuPanel
             categories={catalog.data?.categories ?? []}
             products={catalog.data?.products ?? []}
-            currency={catalog.data?.products[0]?.currency}
+            currency={currency}
             activeCategory={activeCategory}
             onCategory={setActiveCategory}
             search={search}
@@ -234,190 +253,63 @@ export function NewOrder() {
           />
         }
         ticket={
-        <OrderRail
-          title="Ticket"
-          data-testid="current-order-rail"
-          className="receipt-ticket"
-          headerMeta={
-            <>
-            <div className="catalog-toolbar">
-              {SERVICE_TYPES.map((type) => (
-                <CategoryTab
-                  key={type.id}
-                  data-testid={`service-type-${type.id}`}
-                  active={serviceType === type.id}
-                  disabled={busy || Boolean(order)}
-                  onClick={() => setServiceType(type.id)}
-                >
-                  {type.label}
-                </CategoryTab>
-              ))}
-              <input
-                data-testid="table-label"
-                value={tableLabel}
-                onChange={(event) => setTableLabel(event.target.value)}
-                placeholder="Table"
-                className="input w-28"
-                disabled={Boolean(order)}
-              />
-            </div>
-            <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-              {totalItems} {totalItems === 1 ? "item" : "items"}
-              {order ? ` · ${order.orderNumber}` : " · new"}
-              {order ? ` · ${order.status.replaceAll("_", " ").toLowerCase()}` : ""}
-              {order?.initiatedByName ? ` · ${order.initiatedByName}` : ""}
-            </p>
-            </>
-          }
-          footer={
-            <>
-              <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-[var(--foreground-muted)]">
-                <span>Subtotal</span>
-                <MoneyDisplay className="text-right">{order ? money(order.subtotalMinor) : "—"}</MoneyDisplay>
-                {(order?.discountMinor ?? 0) > 0 && (
-                  <>
-                    <span>Discount</span>
-                    <MoneyDisplay className="text-right" data-testid="cart-discount">
-                      −{money(order!.discountMinor)}
-                    </MoneyDisplay>
-                  </>
-                )}
-                <span>Tax</span>
-                <MoneyDisplay className="text-right">{order ? money(order.taxMinor) : "—"}</MoneyDisplay>
-                <span className="font-semibold text-[var(--foreground)]">Total</span>
-                <MoneyDisplay
-                  prominence="strong"
-                  className="text-right text-base text-[var(--brass)]"
-                  data-testid="cart-preview-total"
-                >
-                  {order && order.items.length > 0 ? money(order.totalMinor) : "—"}
-                </MoneyDisplay>
-                {(order?.paidMinor ?? 0) > 0 && (
-                  <>
-                    <span>Paid</span>
-                    <MoneyDisplay className="text-right">{money(order!.paidMinor)}</MoneyDisplay>
-                    <span>Remaining</span>
-                    <MoneyDisplay className="text-right" data-testid="cart-remaining">
-                      {money(order!.remainingMinor)}
-                    </MoneyDisplay>
-                  </>
-                )}
-              </div>
-              <input
-                data-testid="order-notes"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="Order notes"
-                className="input w-full"
-                disabled={Boolean(order)}
-              />
-              {mutationError && (
-                <div className="badge badge-danger mt-3" data-testid="create-error" role="alert">
-                  {mutationError}
-                </div>
-              )}
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <button
+          <TicketPanel
+            order={order}
+            currency={currency}
+            serviceType={serviceType}
+            onServiceType={setServiceType}
+            label={tableLabel}
+            onLabel={setTableLabel}
+            selectedLineId={selectedLineId}
+            onSelectLine={setSelectedLineId}
+            onAddAnother={(line) => void addAnother(line)}
+            onRemoveLine={(line) => void removeLine(line)}
+            lineBusy={busy}
+            sentAt={sentAt}
+            error={mutationError}
+            actions={
+              <div className="y-ticket__actions">
+                <Button
                   data-testid="send-order"
                   onClick={() => void sendToKitchen()}
-                  disabled={!order || order.items.length === 0 || order.status !== "OPEN" || busy}
-                  className="btn-secondary w-full"
+                  disabled={!order || !hasLines || order.status !== "OPEN" || busy}
                 >
-                  <Icon name="orders" size={17} />
-                  {sendOrder.isPending ? "Sending…" : "Send"}
-                </button>
-                <button
+                  {sendOrder.isPending ? "Sending…" : "Send to kitchen"}
+                </Button>
+                <Button
+                  variant="primary"
                   data-testid="pay-order"
                   onClick={() => setSettleOpen(true)}
-                  disabled={
-                    !order ||
-                    order.items.length === 0 ||
-                    order.status === "CLOSED" ||
-                    order.status === "VOIDED" ||
-                    busy
-                  }
-                  className="btn-pay w-full"
+                  disabled={!order || !hasLines || order.status === "CLOSED" || order.status === "VOIDED" || busy}
                 >
                   Pay
-                </button>
+                </Button>
+                {order && hasLines && order.paidMinor === 0 && order.status !== "CLOSED" && order.status !== "VOIDED" ? (
+                  <Button variant="quiet" data-testid="discount-order" onClick={() => setDiscountOpen(true)} disabled={busy}>
+                    Apply discount
+                  </Button>
+                ) : null}
+                {order ? (
+                  <Button variant="quiet" data-testid="new-ticket" onClick={clearTicket} disabled={busy}>
+                    New ticket
+                  </Button>
+                ) : null}
               </div>
-              {order && order.items.length > 0 && (order.paidMinor ?? 0) === 0 && order.status !== "CLOSED" && order.status !== "VOIDED" && (
-                <button
-                  type="button"
-                  data-testid="discount-order"
-                  onClick={() => setDiscountOpen(true)}
-                  disabled={busy}
-                  className="btn-ghost mt-2 w-full text-xs"
-                >
-                  Apply discount
-                </button>
-              )}
-              {order?.status === "OPEN" && order.items.some((item) => item.status === "ADDED") && (
-                <p className="mt-2 text-[11px] text-[var(--foreground-muted)]">
-                  Send for a kitchen ticket, or Pay to settle now.
-                </p>
-              )}
-              {order && (
-                <button
-                  type="button"
-                  className="btn-ghost mt-2 w-full text-xs"
-                  data-testid="new-ticket"
-                  onClick={clearTicket}
-                  disabled={busy}
-                >
-                  New ticket
-                </button>
-              )}
-            </>
-          }
-        >
-          <ul>
-            {(!order || order.items.length === 0) && (
-              <li className="py-8 text-center text-xs text-[var(--foreground-muted)]">
-                Tap a menu item to start this order.
-              </li>
-            )}
-            {order?.items.map((line) => (
-              <OrderLine key={line.id} data-testid={`cart-${line.name}`}>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold text-[var(--foreground)]">{line.name}</span>
-                  {line.modifiers && line.modifiers.length > 0 && (
-                    <span className="block truncate text-[11px] text-[var(--foreground-muted)]">
-                      {line.modifiers.map((item) => item.optionName).join(", ")}
-                    </span>
-                  )}
-                  <MoneyDisplay className="mt-1 block text-[11px] text-[var(--foreground-muted)]">
-                    {money(line.totalMinor)}
-                  </MoneyDisplay>
-                </span>
-                {line.status === "ADDED" ? (
-                  <QuantityStepper
-                    label={line.name}
-                    value={line.quantity}
-                    minimum={0}
-                    onDecrease={() => void bumpQuantity(line.id, -1)}
-                    onIncrease={() => void bumpQuantity(line.id, 1)}
-                  />
-                ) : (
-                  <span className="text-[11px] text-[var(--foreground-muted)]">×{line.quantity}</span>
-                )}
-              </OrderLine>
-            ))}
-          </ul>
-        </OrderRail>
+            }
+          />
         }
       />
 
       {configuring && (
         <OptionsSheet
           product={configuring}
-          currency={configuring.currency}
+          currency={currency ?? configuring.currency}
           pending={busy}
           onCancel={() => setConfiguring(null)}
           onAdd={(choice) => void addProduct(configuring, choice.quantity, choice.modifierOptionIds)}
         />
       )}
-      {settleOpen && order && (
+      {settleOpen && order && currency && (
         <SettleDialog
           order={order}
           currency={currency}
@@ -436,9 +328,7 @@ export function NewOrder() {
           onApplied={(updated) => setOrder(updated)}
         />
       )}
-      {invoiceOrderId && (
-        <ReceiptView orderId={invoiceOrderId} onClose={() => setInvoiceOrderId(null)} />
-      )}
+      {invoiceOrderId && <ReceiptView orderId={invoiceOrderId} onClose={() => setInvoiceOrderId(null)} />}
     </>
   );
 }

@@ -150,3 +150,96 @@
   justify-content: space-between;
   gap: var(--target-gap);
 }
+
+/* ---------------------------------------------------------------- Ticket */
+.y-ticket {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.y-ticket__head {
+  display: grid;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-3) var(--space-4);
+}
+
+.y-ticket__title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.y-ticket__title { margin: 0; font-size: var(--type-title); font-weight: 700; }
+.y-ticket__who { color: var(--text-muted); font-size: var(--type-small); }
+
+.y-ticket__lines {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-2) var(--space-3);
+}
+
+.y-ticket__list {
+  display: grid;
+  margin: 0;
+  gap: var(--space-1);
+  padding: 0;
+  list-style: none;
+}
+
+.y-ticket__line-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--target-gap);
+  margin: var(--space-1) 0 var(--space-2) 40px;
+}
+
+.y-ticket__line-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+}
+
+.y-ticket__foot {
+  display: grid;
+  gap: var(--space-3);
+  border-top: 1px solid var(--line);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.y-ticket__totals {
+  display: grid;
+  margin: 0;
+  gap: var(--space-1);
+}
+
+.y-ticket__totals > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.y-ticket__totals dt { color: var(--text-muted); }
+.y-ticket__totals dd { margin: 0; font-variant-numeric: tabular-nums; }
+.y-ticket__total dt { color: var(--text); font-size: var(--type-lead); font-weight: 700; }
+
+.y-ticket__error {
+  margin: 0;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius-control);
+  background: var(--danger-subtle);
+  padding: var(--space-2) var(--space-3);
+  font-weight: 500;
+}
+
+.y-ticket__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--target-gap);
+}
