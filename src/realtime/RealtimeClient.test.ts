@@ -69,3 +69,27 @@ describe("connect after dispose (a StrictMode remount)", () => {
     expect(sockets).toHaveLength(1);
   });
 });
+
+describe("a socket from before a dispose", () => {
+  it("closing late doesn't make the current connection look like it is reconnecting", async () => {
+    const sockets: FakeSocket[] = [];
+    const client = new RealtimeClient({
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket as unknown as WebSocket;
+      },
+    });
+    client.connect();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    sockets[0].open();
+    client.dispose();
+    client.connect();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    sockets[1].open();
+    expect(client.connectionState.phase).toBe("connected");
+    sockets[0].onclose?.({ reason: "closed late" });
+    expect(client.connectionState.phase).toBe("connected");
+    client.dispose();
+  });
+});

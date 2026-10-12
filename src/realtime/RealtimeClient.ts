@@ -85,8 +85,9 @@ export class RealtimeClient {
     try { (await this.options.backfillEvents(this.cursor)).forEach((event) => this.deliver(event)); } catch { /* snapshots recover on connect */ }
   }
 
+  /** Only called by connect() once its catch-up is done, for the attempt that is still current. */
   private open(generation: number): void {
-    if (this.disposed || generation !== this.generation) return;
+    if (this.disposed) return;
     this.setState({ phase: this.state.established ? "reconnecting" : "connecting", attempt: this.attempt });
     const socket = this.options.createSocket();
     this.socket = socket;
