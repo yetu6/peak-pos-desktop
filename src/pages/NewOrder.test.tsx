@@ -111,6 +111,8 @@ const {
   addItemSpy,
   sendOrderSpy,
   removeItemSpy,
+  getOrderSpy,
+  recordTenderSpy,
 } = vi.hoisted(() => ({
   getCurrentShiftSpy: vi.fn(async () => ({
     data: {
@@ -182,6 +184,8 @@ const {
   addItemSpy: vi.fn(async () => ({ data: OPEN_ORDER, error: null })),
   sendOrderSpy: vi.fn(async () => ({ data: { ...OPEN_ORDER, status: "SENT", version: 3 }, error: null })),
   removeItemSpy: vi.fn(async () => ({ data: { ...OPEN_ORDER, items: [], version: 3 }, error: null })),
+  getOrderSpy: vi.fn(async () => ({ data: OPEN_ORDER, error: null })),
+  recordTenderSpy: vi.fn(async () => ({ data: { paymentId: "pay-1", orderClosed: true, paidMinor: 1200000, remainingMinor: 0, version: 3 }, error: null })),
 }));
 
 vi.mock("../lib/posApi", () => ({
@@ -194,7 +198,9 @@ vi.mock("../lib/posApi", () => ({
     createOrder: createOrderSpy,
     addItem: addItemSpy,
     sendOrder: sendOrderSpy,
-    getOrder: vi.fn(async () => ({ data: OPEN_ORDER, error: null })),
+    getOrder: getOrderSpy,
+    recordTender: recordTenderSpy,
+    listPrintJobs: vi.fn(async () => ({ data: [], error: null })),
     removeItem: removeItemSpy,
   }),
 }));
@@ -387,5 +393,21 @@ describe("NewOrder", () => {
     await startOrder();
     fireEvent.keyDown(document.body, { key: "F9" });
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("after payment shows Paid with the change, and New sale clears the ticket", async () => {
+    await startOrder();
+    getOrderSpy.mockResolvedValueOnce({
+      data: { ...OPEN_ORDER, status: "CLOSED", paidMinor: 1200000, remainingMinor: 0, version: 3 },
+      error: null,
+    });
+    await userEvent.click(screen.getByTestId("pay-order"));
+    await userEvent.type(screen.getByTestId("amount-received"), "15000");
+    await userEvent.click(screen.getByTestId("confirm-settle"));
+    const done = await screen.findByRole("dialog", { name: "Paid" });
+    expect(within(done).getByTestId("done-change")).toHaveTextContent("Change to give TSh 3,000");
+    await userEvent.click(within(done).getByRole("button", { name: /New sale/ }));
+    expect(screen.queryByRole("dialog", { name: "Paid" })).not.toBeInTheDocument();
+    expect(ticket().getByText("Tap an item to start an order.")).toBeInTheDocument();
   });
 });

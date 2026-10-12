@@ -19,7 +19,8 @@ import {
 import { ReceiptView } from "../components/ReceiptView";
 import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OptionsSheet } from "../register/OptionsSheet";
-import { PaySheet } from "../register/PaySheet";
+import { PaymentDone } from "../register/PaymentDone";
+import { PaySheet, type PaidInfo } from "../register/PaySheet";
 import { NoteSheet } from "../register/NoteSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
 import { TicketActions } from "../register/TicketActions";
@@ -64,7 +65,8 @@ export function NewOrder() {
   const [voidOpen, setVoidOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [invoiceOrderId, setInvoiceOrderId] = useState<string | null>(null);
+  const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
+  const [paid, setPaid] = useState<PaidInfo | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const canSend = useHasPermission("pos.order.send");
@@ -233,10 +235,15 @@ export function NewOrder() {
     createKey.next();
   }
 
-  async function afterSettled(orderId: string): Promise<void> {
-    await printAfter(orderId);
+  function afterPaid(info: PaidInfo) {
     setSettleOpen(false);
-    setInvoiceOrderId(orderId);
+    setPaid(info);
+    // The receipt Yetu made on closing is printed as before; the till doesn't hear back here (S8).
+    void printAfter(info.order.id);
+  }
+
+  function newSale() {
+    setPaid(null);
     clearTicket();
   }
 
@@ -310,7 +317,7 @@ export function NewOrder() {
           currency={currency}
           onClose={() => setSettleOpen(false)}
           onOrderChange={setOrder}
-          onPaid={(paid) => void afterSettled(paid.order.id)}
+          onPaid={afterPaid}
         />
       )}
       {discountOpen && order && currency && (
@@ -341,7 +348,18 @@ export function NewOrder() {
           onClose={() => setNoteOpen(false)}
         />
       )}
-      {invoiceOrderId && <ReceiptView orderId={invoiceOrderId} onClose={() => setInvoiceOrderId(null)} />}
+      {paid && currency && (
+        <PaymentDone
+          paid={paid}
+          currency={currency}
+          onNewSale={newSale}
+          onViewReceipt={() => {
+            setReceiptOrderId(paid.order.id);
+            newSale();
+          }}
+        />
+      )}
+      {receiptOrderId && <ReceiptView orderId={receiptOrderId} onClose={() => setReceiptOrderId(null)} />}
     </>
   );
 }

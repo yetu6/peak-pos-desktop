@@ -36,6 +36,8 @@ export interface PaidInfo {
   /** Change given for the last cash tender: the cash received less what was owed. */
   changeMinor: number;
   roomNumber?: string;
+  /** Part of it was paid before this last tender. */
+  split?: boolean;
 }
 
 export interface TenderRequest {
@@ -112,7 +114,7 @@ export function PaySheet({
               setLive(updated);
               onOrderChange?.(updated);
               if ((updated.remainingMinor ?? 0) <= 0 || updated.status === "CLOSED") {
-                onPaid({ order: updated, method: request.method, changeMinor: request.changeMinor });
+                onPaid({ order: updated, method: request.method, changeMinor: request.changeMinor, split: live.paidMinor > 0 });
               }
             },
           },

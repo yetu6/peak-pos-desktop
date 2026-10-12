@@ -408,3 +408,32 @@
 @media (max-width: 1279px) {
   .y-pay { gap: var(--space-4); }
 }
+
+/* ---------------------------------------------------------- Payment done */
+.y-done {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+
+.y-done__tick { width: 64px; height: 64px; color: var(--success); }
+.y-done__how { margin: 0; color: var(--text-muted); font-size: var(--type-lead); }
+
+.y-done__change {
+  margin: 0;
+  font-size: var(--type-heading);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.y-done__actions {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: var(--target-gap);
+  margin-top: var(--space-3);
+}
+
+.y-done__actions > .y-button:last-child { flex: 1; }
+.y-done__countdown { margin: 0; color: var(--text-muted); font-size: var(--type-small); }
