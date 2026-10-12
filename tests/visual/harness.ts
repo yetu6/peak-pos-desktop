@@ -24,7 +24,7 @@ export const MIN_TECHNICAL_TEXT_PX = 13;
 export const MIN_TARGET_PX = 48;
 
 export interface Finding {
-  /** `overflow`, `text-size`, `target-size` or `axe:<rule>`. */
+  /** `overflow`, `must-fit`, `text-size`, `target-size` or `axe:<rule>`. */
   key: string;
   detail: string;
 }
@@ -43,10 +43,6 @@ export interface FixtureResult {
  * anywhere, so the list can only shrink: delete the line when a slice fixes it.
  */
 export const KNOWN_DEBT: Partial<Record<VisualFixtureName, { owner: string; keys: string[] }>> = {
-  splash: { owner: "S2 access", keys: ["text-size"] },
-  "pairing-waiting": { owner: "S2 access", keys: ["text-size"] },
-  "locked-roster": { owner: "S2 access", keys: ["text-size", "target-size"] },
-  "locked-pin": { owner: "S2 access", keys: ["text-size", "target-size"] },
   "no-shift": { owner: "S3 shift and cash", keys: ["text-size", "target-size"] },
   terminal: { owner: "S4 register", keys: ["text-size"] },
 };

@@ -81,6 +81,12 @@ async function measure(page: Page): Promise<Finding[]> {
         if (!contained) findings.push({ key: "overflow", detail: `${describe(element)} reaches ${Math.round(rect.right)}px` });
       }
 
+      // A screen marked must-fit shows everything without scrolling the screen itself.
+      for (const element of document.querySelectorAll("[data-must-fit]")) {
+        const over = element.scrollHeight - element.clientHeight;
+        if (over > 1) findings.push({ key: "must-fit", detail: `${describe(element)} needs ${over}px more height` });
+      }
+
       // No operational text under 14px; 13px only inside technical details.
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -96,6 +102,7 @@ async function measure(page: Page): Promise<Finding[]> {
       // No interactive target under 48px either way.
       const interactive = [
         "button",
+        "summary",
         "a[href]",
         "input:not([type=hidden])",
         "select",

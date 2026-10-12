@@ -5,12 +5,25 @@
  * the type there makes a missing one a compile error.
  */
 export const VISUAL_FIXTURE_NAMES = [
-  // Existing screens, redesigned in S2 (access) and S4 (register).
+  // S2 access: every state before a person is signed in.
   "splash",
+  "splash-slow",
+  "setup",
+  "setup-problem",
   "pairing",
   "pairing-waiting",
+  "pairing-declined",
   "locked-roster",
+  "locked-roster-search",
   "locked-pin",
+  "locked-pin-wrong",
+  "locked-pin-paused",
+  "locked-manual",
+  "locked-offline",
+  "locked-session-ended",
+  "access-banners",
+  "idle-lock",
+  // Existing screens, redesigned in S3 (open shift) and S4 (register).
   "no-shift",
   "terminal",
   // S1 design foundation.
