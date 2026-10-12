@@ -13,10 +13,10 @@
  * approved by a different supervisor -> close the shift (blind count, check,
  * a manager approves the shortfall).
  *
- * Three checks are soft (recorded as failures, the run goes on so the rest is
- * still proven): the PIN screen opening on the names, the realtime pill
- * reaching Live, and no tap lost to the idle-lock countdown. Each was a till
- * defect when this was written (2026-10-12).
+ * Three checks were soft when this was written (2026-10-12), each a till
+ * defect then, and are hard now that the till is fixed: the PIN screen opens
+ * on the names once they arrive, the realtime pill reaches Live, and no tap is
+ * lost to the idle-lock countdown.
  *
  * What a plain browser cannot be, and what this run does instead:
  * - The Tauri shell keeps the device key in the OS secure store (Rust
@@ -206,14 +206,10 @@ test("a cashier's shift on the redesigned till, against the live API", async ({ 
   await test.step("3. The cashier signs in with their PIN", async () => {
     staff = (await body<{ staff: Array<{ id: string; displayName: string }> }>(roster!, 201)).staff;
     expect(staff.map((person) => person.id)).toEqual(expect.arrayContaining([seeded.cashierStaffId, seeded.managerStaffId]));
-    // With the roster known, the PIN screen should ask "Who's working?" with
-    // names to tap. Recorded, and the run goes on the way a cashier would.
-    await expect
-      .soft(page.getByTestId("staff-roster"), "the PIN screen opens on the names once the roster has arrived")
-      .toBeVisible({ timeout: 5_000 });
-    if (!(await page.getByTestId("staff-roster").isVisible())) {
-      await page.getByTestId("staff-choose-from-roster").click();
-    }
+    // With the roster known, the PIN screen asks "Who's working?" with names to tap.
+    await expect(page.getByTestId("staff-roster"), "the PIN screen opens on the names once the roster has arrived").toBeVisible({
+      timeout: 5_000,
+    });
     await page.getByTestId(`roster-entry-${seeded.cashierStaffId}`).click();
     const signedIn = nextApi(page, "POST", /^\/api\/v1\/pos\/sessions$/);
     const menu = nextApi(page, "GET", /^\/api\/v1\/pos\/catalog$/);
@@ -235,9 +231,9 @@ test("a cashier's shift on the redesigned till, against the live API", async ({ 
     await expect(page.getByTestId("pos-register")).toBeVisible();
     await expect(page.getByTestId("shell-state")).toHaveText("OPERATIONAL");
     // Realtime through the dev bridge: the connection pill should reach Live.
-    await expect
-      .soft(page.getByTestId("conn-label"), "the till's realtime connection goes Live through the bridge")
-      .toHaveText("Live", { timeout: 5_000 });
+    await expect(page.getByTestId("conn-label"), "the till's realtime connection goes Live through the bridge").toHaveText("Live", {
+      timeout: 5_000,
+    });
     connection.push(`after opening the shift: ${await page.getByTestId("conn-label").textContent()}`);
   });
 
@@ -414,6 +410,6 @@ test("a cashier's shift on the redesigned till, against the live API", async ({ 
   connection.push(`at the end: ${await page.getByTestId("conn-label").textContent({ timeout: 1_000 }).catch(() => "not on screen (Open shift has no top bar)")}`);
   await testInfo.attach("connection-pill.txt", { body: connection.join("\n"), contentType: "text/plain" });
   await testInfo.attach("idle-countdown-taps.txt", { body: String(swallowed()), contentType: "text/plain" });
-  expect.soft(swallowed(), "taps the idle-lock countdown took instead of the button pressed").toBe(0);
+  expect(swallowed(), "taps the idle-lock countdown took instead of the button pressed").toBe(0);
   expect(pageErrors, "uncaught errors in the till").toEqual([]);
 });
