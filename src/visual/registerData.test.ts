@@ -8,7 +8,7 @@ describe("the Sell fixtures' figures", () => {
     ["sent to the kitchen", SENT_ORDER],
     ["part paid", SPLIT_ORDER],
     ["paid", PAID_ORDER],
-  ])("order 0142 %s adds up from its lines", (_name, order) => {
+  ])("the order %s adds up from its lines", (_name, order) => {
     expectYetuArithmetic(order);
   });
 

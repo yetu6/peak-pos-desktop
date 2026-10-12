@@ -217,7 +217,9 @@ function OrderRow({
       aria-haspopup="dialog"
       onClick={() => onOpen(order)}
     >
-      <span className="y-orow__number">{order.orderNumber}</span>
+      <span className="y-orow__number" data-whole="">
+        {order.orderNumber}
+      </span>
       <span className="y-orow__main">
         <span className="y-orow__place">{placeWords(order)}</span>
         {meta ? <span className="y-orow__meta">{meta}</span> : null}

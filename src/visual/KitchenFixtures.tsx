@@ -25,7 +25,7 @@ function Board({ mode = "POS", ...props }: Partial<KitchenBoardProps> & { mode?:
 
 /** A selling till's kitchen: new, getting late, late, preparing and ready, with what just happened. */
 export function KitchenFixture() {
-  return <Board result="Order 0140 is ready." />;
+  return <Board result="Order POS-5be2d871 is ready." />;
 }
 
 /** Nothing waiting. */

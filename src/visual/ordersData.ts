@@ -6,7 +6,8 @@ import { CURRENCY, line, ORDER, order, PRODUCTS } from "./registerData";
  * way Yetu builds it: each order's figures from its own lines (registerData's
  * line and order), its station tickets from its sent lines (one per station,
  * made when it was sent), and a paid order's receipt from the order itself.
- * The screens are seen at 14:32 on Mon 12 Oct, the shell's clock.
+ * The screens are seen at 14:32 on Mon 12 Oct, the shell's clock. Order
+ * numbers are as Yetu writes them: POS- and eight letters and digits.
  */
 
 /** The moment the fixtures are seen: the shell's clock, 14:32. */
@@ -37,8 +38,8 @@ function sentOrder(id: string, number: string, items: POSOrderItem[], extra: Par
   );
 }
 
-/** 0141: room service for room 204, two stations, sent 12 minutes ago, the grill cooking. */
-export const ROOM_ORDER = sentOrder("order-141", "0141", [made("chicken", 1), made("juice", 2)], {
+/** POS-a3f90c14: room service for room 204, two stations, sent 12 minutes ago, the grill cooking. */
+export const ROOM_ORDER = sentOrder("order-141", "POS-a3f90c14", [made("chicken", 1), made("juice", 2)], {
   status: "PREPARING",
   serviceType: "ROOM_SERVICE",
   tableLabel: "204",
@@ -48,8 +49,8 @@ export const ROOM_ORDER = sentOrder("order-141", "0141", [made("chicken", 1), ma
   version: 6,
 });
 
-/** 0140: takeaway, ready, TSh 10,000 paid in cash so far. */
-export const TAKEAWAY_ORDER = sentOrder("order-140", "0140", [made("curry", 1), made("burger", 1, [["Cooked", "Well done"], ["Extras", "Fried egg"]])], {
+/** POS-5be2d871: takeaway, ready, TSh 10,000 paid in cash so far. */
+export const TAKEAWAY_ORDER = sentOrder("order-140", "POS-5be2d871", [made("curry", 1), made("burger", 1, [["Cooked", "Well done"], ["Extras", "Fried egg"]])], {
   status: "READY",
   serviceType: "TAKEAWAY",
   tableLabel: undefined,
@@ -59,15 +60,15 @@ export const TAKEAWAY_ORDER = sentOrder("order-140", "0140", [made("curry", 1), 
   version: 7,
 });
 
-/** 0143: table 4, sent 15 seconds ago, nobody has started it. */
-export const NEW_ORDER = sentOrder("order-143", "0143", [made("breakfast", 2), made("flat", 2)], {
+/** POS-e09b7c41: table 4, sent 15 seconds ago, nobody has started it. */
+export const NEW_ORDER = sentOrder("order-143", "POS-e09b7c41", [made("breakfast", 2), made("flat", 2)], {
   status: "SENT",
   tableLabel: "4",
   version: 3,
 });
 
-/** 0138: table 7, sent 18 minutes ago and still waiting. */
-export const LATE_ORDER = sentOrder("order-138", "0138", [made("nyama", 2), made("tusker", 3)], {
+/** POS-91d4f3a2: table 7, sent 18 minutes ago and still waiting. */
+export const LATE_ORDER = sentOrder("order-138", "POS-91d4f3a2", [made("nyama", 2), made("tusker", 3)], {
   status: "SENT",
   tableLabel: "7",
   initiatedById: "staff-juma",
@@ -75,8 +76,8 @@ export const LATE_ORDER = sentOrder("order-138", "0138", [made("nyama", 2), made
   version: 3,
 });
 
-/** 0137: table 9, served, nothing paid yet. */
-export const SERVED_ORDER = sentOrder("order-137", "0137", [made("chicken", 2), made("water", 2)], {
+/** POS-0c6a85fe: table 9, served, nothing paid yet. */
+export const SERVED_ORDER = sentOrder("order-137", "POS-0c6a85fe", [made("chicken", 2), made("water", 2)], {
   status: "SERVED",
   tableLabel: "9",
   version: 9,
@@ -120,10 +121,10 @@ export const OPEN_ORDERS: POSOrder[] = [SERVED_ORDER, LATE_ORDER, TAKEAWAY_ORDER
 /** The station tickets still in the kitchen (served ones leave Yetu's active list). */
 export const STATION_TICKETS: POSStationTicket[] = [LATE_ORDER, TAKEAWAY_ORDER, ROOM_ORDER, NEW_ORDER].flatMap(ticketsFor);
 
-/** 0136 and 0135: paid on this shift, the latest first. */
+/** Two orders paid on this shift, the most recent first. */
 export const PAID_ORDERS: POSOrder[] = [
-  sentOrder("order-136", "0136", [made("capp", 2), made("tart", 1)], { status: "CLOSED", tableLabel: "3", version: 8 }),
-  sentOrder("order-135", "0135", [made("nyama", 1), made("tusker", 2)], {
+  sentOrder("order-136", "POS-d2b7194e", [made("capp", 2), made("tart", 1)], { status: "CLOSED", tableLabel: "3", version: 8 }),
+  sentOrder("order-135", "POS-46ef0b3c", [made("nyama", 1), made("tusker", 2)], {
     status: "CLOSED",
     serviceType: "ROOM_SERVICE",
     tableLabel: "112",
@@ -133,7 +134,7 @@ export const PAID_ORDERS: POSOrder[] = [
   }),
 ].map((paid) => ({ ...paid, paidMinor: paid.totalMinor, remainingMinor: 0 }));
 
-/** The receipt Yetu kept for paid order 0136: taken in cash by Grace, printed again once. */
+/** The receipt Yetu kept for the first paid order: taken in cash by Grace, printed again once. */
 export const PAID_RECEIPT: POSReceipt = (() => {
   const paid = PAID_ORDERS[0];
   return {
@@ -177,7 +178,7 @@ export const PAID_RECEIPT: POSReceipt = (() => {
 /** A long order for the busy kitchen: every item on the menu, so the ticket is taller than its column. */
 export const LONG_ORDER = sentOrder(
   "order-144",
-  "0144",
+  "POS-b81c5d07",
   PRODUCTS.filter((product) => product.isAvailable && !product.modifierGroups?.length).map((product) => made(product.id, 1)),
   { status: "SENT", tableLabel: "15", version: 2 },
 );

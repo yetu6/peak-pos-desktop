@@ -2,7 +2,8 @@ import type { POSCatalogProduct, POSCategory, POSOrder, POSOrderItem, POSReceipt
 
 /**
  * The Sell fixtures' data in the backend's shapes: one menu and one order
- * (0142) seen on the ticket, in Pay, when paid and on its receipt.
+ * (POS-7c41e09b, numbered as Yetu numbers orders) seen on the ticket, in
+ * Pay, when paid and on its receipt.
  */
 
 export const CURRENCY = "TZS";
@@ -109,7 +110,7 @@ export function order(items: POSOrderItem[], extra: Partial<POSOrder> = {}): POS
   return {
     id: "order-1",
     shiftId: "shift-1",
-    orderNumber: "0142",
+    orderNumber: "POS-7c41e09b",
     status: "OPEN",
     serviceType: "DINE_IN",
     tableLabel: "12",
@@ -135,7 +136,7 @@ const LINES: Array<[string, number, Array<[string, string]>]> = [
   ["water", 1, []],
 ];
 
-/** Order 0142 on the ticket, not yet sent. */
+/** The order on the ticket, not yet sent. */
 export const ORDER: POSOrder = order(LINES.map(([id, quantity, options]) => line(id, quantity, options)));
 
 /** The same order after it went to the kitchen. */

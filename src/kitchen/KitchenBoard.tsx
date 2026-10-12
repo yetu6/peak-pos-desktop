@@ -284,7 +284,7 @@ function TicketCard({
       data-testid={`kitchen-ticket-${ticket.id}`}
     >
       <header className="y-kticket__head">
-        <h3 id={headingId} className="y-kticket__number">
+        <h3 id={headingId} className="y-kticket__number" data-whole="">
           {ticket.orderNumber}
         </h3>
         {fresh ? (

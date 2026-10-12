@@ -217,8 +217,9 @@ async function measure(page: Page): Promise<Finding[]> {
       }
 
       // A control's words are never cut: nothing written in a button, tab or
-      // choice runs past its own edges.
-      for (const control of document.querySelectorAll("button, [role=tab], [role=radio]")) {
+      // choice runs past its own edges, nor anything marked to stay whole (an
+      // order number).
+      for (const control of document.querySelectorAll("button, [role=tab], [role=radio], [data-whole]")) {
         if (!rendered(control) || control.closest('[aria-hidden="true"], [inert]')) continue;
         const style = getComputedStyle(control);
         if (style.overflowX !== "visible" && style.textOverflow === "ellipsis") continue;

@@ -27,9 +27,11 @@ describe("the Orders and Kitchen fixtures' data", () => {
     },
   );
 
-  it("numbers each order once, all on this shift", () => {
+  it("numbers each order once, as Yetu writes numbers (POS- and eight letters and digits), all on this shift", () => {
     const all = [...OPEN_ORDERS, ...PAID_ORDERS, LONG_ORDER];
     expect(new Set(all.map((entry) => entry.orderNumber)).size).toBe(all.length);
+    // fbc-peak operations.go CreateOrder: "POS-" + the first eight characters of a new UUID.
+    for (const entry of all) expect(entry.orderNumber).toMatch(/^POS-[0-9a-f]{8}$/);
     expect(all.every((entry) => entry.shiftId === SHIFT_ID)).toBe(true);
   });
 
@@ -69,7 +71,7 @@ describe("the Orders and Kitchen fixtures' data", () => {
     }
   });
 
-  it("keeps the receipt of order 0136 as the order itself: its lines and totals", () => {
+  it("keeps the paid order's receipt as the order itself: its lines and totals", () => {
     const paid = PAID_ORDERS.find((entry) => entry.id === PAID_RECEIPT.orderId)!;
     const doc = PAID_RECEIPT.document;
     expect(doc.orderNumber).toBe(paid.orderNumber);

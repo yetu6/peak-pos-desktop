@@ -84,7 +84,8 @@
   display: grid;
   width: 100%;
   min-height: 72px;
-  grid-template-columns: 88px minmax(0, 1fr) auto minmax(132px, auto);
+  /* The number column fits Yetu's numbers whole: POS- and eight letters and digits. */
+  grid-template-columns: 9.5em minmax(0, 1fr) auto minmax(132px, auto);
   align-items: center;
   gap: var(--space-4);
   border: 0;
@@ -105,9 +106,10 @@
 
 .y-orow__number {
   font-family: var(--font-display);
-  font-size: var(--type-heading);
+  font-size: var(--type-title);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .y-orow__main { display: grid; min-width: 0; gap: 2px; }
