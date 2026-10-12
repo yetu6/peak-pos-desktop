@@ -44,10 +44,15 @@ export function OpenShiftScreen() {
       error={openError}
       closed={closed}
       closeDay={isManager && !hotel ? <CloseDayCard thisTillShiftOpen={false} /> : null}
-      onSwitchPerson={() => switchStaff()}
-      onOpen={(openingCashMinor) => {
-        open.mutate({ openingCashMinor, idempotencyKey: openKey.next() });
+      onSwitchPerson={() => {
+        // The last shift's result is for the person who closed it.
         forgetClosedShift();
+        switchStaff();
+      }}
+      onOpen={(openingCashMinor) => {
+        // The summary goes only once the new shift is open. A refusal keeps it
+        // on screen; its words come from open.error above.
+        open.mutateAsync({ openingCashMinor, idempotencyKey: openKey.next() }).then(forgetClosedShift, () => undefined);
       }}
     />
   );

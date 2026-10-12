@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { forgetClosedShift, rememberClosedShift } from "../cash/closedShift";
+import { forgetClosedShift, lastClosedShift, rememberClosedShift } from "../cash/closedShift";
 import type { POSShift } from "../lib/posContracts";
 import { OpenShiftScreen } from "./OpenShiftScreen";
 
 const { switchStaff, openMutate, useDeviceSessionMock, grants, dayClose, dayCloseMutate } = vi.hoisted(() => ({
   switchStaff: vi.fn(),
-  openMutate: vi.fn(),
+  openMutate: vi.fn((_vars: unknown) => new Promise<unknown>(() => {})),
   useDeviceSessionMock: vi.fn(),
   grants: { permissions: [] as string[], capabilities: [] as string[] },
   dayClose: { error: null as unknown, data: undefined as unknown, isPending: false },
@@ -25,7 +25,7 @@ vi.mock("../hooks/usePosData", () => ({
   useMutationMessage: (error: unknown) => (error ? String(error) : null),
   useCatalogCurrency: () => "TZS",
   usePosShift: () => ({
-    open: { mutate: openMutate, isPending: false, error: null },
+    open: { mutateAsync: openMutate, isPending: false, error: null },
   }),
   useCloseBusinessDay: () => ({ mutate: dayCloseMutate, ...dayClose }),
 }));
@@ -112,6 +112,34 @@ describe("OpenShiftScreen after a shift closes", () => {
     businessDate: "2026-10-12",
     openedAt: "2026-10-12T04:02:00Z",
   };
+
+  it("keeps the summary when the new shift doesn't open", async () => {
+    openMutate.mockRejectedValueOnce(new Error(JSON.stringify({ code: "CONFLICT", detail: "x" })));
+    rememberClosedShift({ shift: CLOSED, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) });
+    render(<OpenShiftScreen />);
+    await userEvent.type(screen.getByTestId("opening-float"), "50000");
+    await userEvent.click(screen.getByTestId("open-shift"));
+    expect(openMutate).toHaveBeenCalled();
+    expect(lastClosedShift()).not.toBeNull();
+    expect(screen.getByTestId("closed-shift-summary")).toBeInTheDocument();
+  });
+
+  it("forgets the summary once the new shift is open", async () => {
+    openMutate.mockResolvedValueOnce({ ...CLOSED, id: "shift-2", status: "OPEN" });
+    rememberClosedShift({ shift: CLOSED, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) });
+    render(<OpenShiftScreen />);
+    await userEvent.type(screen.getByTestId("opening-float"), "50000");
+    await userEvent.click(screen.getByTestId("open-shift"));
+    await waitFor(() => expect(lastClosedShift()).toBeNull());
+  });
+
+  it("forgets the summary when the person switches", async () => {
+    rememberClosedShift({ shift: CLOSED, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) });
+    render(<OpenShiftScreen />);
+    await userEvent.click(screen.getByTestId("open-shift-switch-staff"));
+    expect(switchStaff).toHaveBeenCalled();
+    expect(lastClosedShift()).toBeNull();
+  });
 
   it("shows the closed shift as Yetu worked it out", () => {
     rememberClosedShift({ shift: CLOSED, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) });
