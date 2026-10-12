@@ -43,5 +43,5 @@ test("the production build's realtime goes Live", async ({ page }) => {
   await page.getByTestId("opening-float").fill(typed(5_000_000));
   await page.getByTestId("open-shift").click();
   await expect(page.getByTestId("pos-register")).toBeVisible();
-  await expect(page.getByTestId("conn-label")).toHaveText("Live", { timeout: 15_000 });
+  await expect(page.getByTestId("conn-label")).toHaveText("Online", { timeout: 15_000 });
 });

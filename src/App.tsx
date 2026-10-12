@@ -3,7 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { DeviceSessionProvider, useDeviceSession } from "./auth/DeviceSessionProvider";
 import { AccessFrame } from "./access/AccessLayout";
 import { IdleLockOverlay } from "./components/IdleLockOverlay";
-import { ConnectivityIndicator } from "./components/ConnectivityIndicator";
 import { KeyStorageBanner } from "./components/KeyStorageBanner";
 import { UpdaterBanner } from "./components/UpdaterBanner";
 import { ActiveOrders } from "./pages/ActiveOrders";
@@ -35,6 +34,7 @@ import { defaultWorkspacePage, isDisplayMode, workspaceNav, type WorkspacePage }
 import { TillShell } from "./shell/TillShell";
 import { Banner } from "./components/system";
 import { OFFLINE_BANNER } from "./register/offlineWords";
+import { SyncChip, SyncProblemBanner, SyncSheet, useSyncCenter } from "./sync/SyncCenter";
 
 type Page = WorkspacePage;
 
@@ -48,9 +48,10 @@ function useClock(): string {
 }
 
 /** Update, key-storage and offline notices. Inside the shell they sit under the top bar. */
-function ShellBanners({ offlineCash = false }: { offlineCash?: boolean }) {
+function ShellBanners({ offlineCash = false, sync = null }: { offlineCash?: boolean; sync?: ReactNode }) {
   return (
     <>
+      {sync}
       {offlineCash ? (
         <Banner tone="warning" data-testid="offline-banner">
           {OFFLINE_BANNER}
@@ -72,6 +73,7 @@ function PosShell() {
   const clock = useClock();
   const { shift } = usePosShift();
   const person = personLabel(session?.staffId, roster);
+  const sync = useSyncCenter();
 
   if (!nav.some((item) => item.page === page)) {
     setPage(nav[0]?.page ?? "orders");
@@ -87,8 +89,8 @@ function PosShell() {
       person={person}
       shift={shiftChipWords(shift)}
       clock={clock}
-      connection={<ConnectivityIndicator />}
-      banners={<ShellBanners offlineCash={offlineCash} />}
+      connection={<SyncChip sync={sync} />}
+      banners={<ShellBanners offlineCash={offlineCash} sync={<SyncProblemBanner sync={sync} />} />}
       onSwitchPerson={() => switchStaff()}
       onLock={() => switchStaff()}
       workspaceVariant={page === "new" || page === "orders" || page === "kitchen" ? "full" : "padded"}
@@ -104,6 +106,7 @@ function PosShell() {
       ) : (
         <Diagnostics />
       )}
+      <SyncSheet sync={sync} />
     </TillShell>
   );
 }

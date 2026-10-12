@@ -13,6 +13,7 @@
 @import "./register/register.css";
 @import "./kitchen/kitchen.css";
 @import "./orders/orders.css";
+@import "./sync/sync.css";
 
 @custom-variant dark (&:is(.dark *));
 

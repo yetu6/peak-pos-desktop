@@ -104,14 +104,22 @@
   color: var(--text);
 }
 
-/* The connection chip (ConnectivityIndicator) is a 48px button in the bar. */
-.y-topbar .shift-pill {
+/* The connection and sync chip (SyncChip) is a 48px button in the bar that opens Sync. */
+.y-sync-chip {
+  display: inline-flex;
+  min-width: var(--target-min);
   min-height: var(--target-min);
-  flex: none;
-  padding: 0 var(--space-3);
-  font-size: var(--type-small);
+  flex: 0 1 auto;
+  align-items: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  padding: 0 var(--space-1);
   cursor: pointer;
 }
+
+.y-sync-chip:hover .y-chip { filter: brightness(0.97); }
+.y-sync-chip .y-chip { max-width: 100%; }
 
 /* ------------------------------------------------------------- Person menu */
 /* The person's name gives way before the connection chip; the menu shows it in full. */

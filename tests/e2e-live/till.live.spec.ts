@@ -124,7 +124,7 @@ test("a cashier's shift on the redesigned till, against the live API", async ({ 
   await test.step("4. Open the shift with a float", async () => {
     shift = await openShift(page, OPENING_FLOAT_MINOR, tap);
     // Realtime through the dev bridge: the connection pill should reach Live.
-    await expect(page.getByTestId("conn-label"), "the till's realtime connection goes Live through the bridge").toHaveText("Live", {
+    await expect(page.getByTestId("conn-label"), "the till's realtime connection goes Online through the bridge").toHaveText("Online", {
       timeout: 5_000,
     });
     connection.push(`after opening the shift: ${await page.getByTestId("conn-label").textContent()}`);
