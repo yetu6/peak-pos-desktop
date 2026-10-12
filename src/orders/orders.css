@@ -60,6 +60,18 @@
   padding: var(--space-3);
 }
 
+.y-orders__caption {
+  margin: 0;
+  padding: var(--space-3) var(--space-4) 0;
+  color: var(--text-muted);
+}
+
+.y-orders__more {
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--space-4) var(--space-4);
+}
+
 .y-orders__rows {
   display: grid;
   margin: 0;

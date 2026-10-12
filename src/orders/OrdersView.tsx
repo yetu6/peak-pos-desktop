@@ -1,9 +1,10 @@
 import { Plus, ReceiptText, SearchX } from "lucide-react";
-import type { KeyboardEvent } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { Banner, Button, EmptyState, Money, SearchField, Skeleton, StatusChip, Tabs } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSOrder } from "../lib/posContracts";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, serviceTypeWords } from "../lib/words";
+import { PAID_ROWS_SHOWN } from "./ordersSettings";
 import { orderMatches } from "./ordersWords";
 
 export type OrdersTab = "open" | "paid";
@@ -78,7 +79,11 @@ export function OrdersView({
 }: OrdersViewProps) {
   const list = tab === "open" ? openOrders : (paidOrders ?? []);
   const state = tab === "open" ? openState : paidState;
-  const shown = list.filter((order) => orderMatches(order, query));
+  const found = list.filter((order) => orderMatches(order, query));
+  // The paid list can be long: a page at a time ("Show more"); the search covers them all.
+  const [paidRows, setPaidRows] = useState(PAID_ROWS_SHOWN);
+  const paged = tab === "paid";
+  const shown = paged ? found.slice(0, paidRows) : found;
   const searching = query.trim().length > 0;
   const status = [notice, searching && !state.loading ? matchWords(shown.length) : null].filter(Boolean).join(" ");
 
@@ -162,13 +167,25 @@ export function OrdersView({
             action={<Button onClick={() => onQuery("")}>Show all orders</Button>}
           />
         ) : (
-          <ul className="y-orders__rows" onKeyDown={moveBetweenRows}>
-            {shown.map((order) => (
-              <li key={order.id}>
-                <OrderRow order={order} currency={currency} sentAt={sentTimes.get(order.id)} onOpen={onOpen} />
-              </li>
-            ))}
-          </ul>
+          <>
+            {paged ? (
+              <p className="y-orders__caption" data-testid="orders-caption">
+                Most recent orders first · showing {shown.length} of {found.length}
+              </p>
+            ) : null}
+            <ul className="y-orders__rows" onKeyDown={moveBetweenRows}>
+              {shown.map((order) => (
+                <li key={order.id}>
+                  <OrderRow order={order} currency={currency} sentAt={sentTimes.get(order.id)} onOpen={onOpen} />
+                </li>
+              ))}
+            </ul>
+            {paged && shown.length < found.length ? (
+              <div className="y-orders__more">
+                <Button onClick={() => setPaidRows((rows) => rows + PAID_ROWS_SHOWN)}>Show more</Button>
+              </div>
+            ) : null}
+          </>
         )}
       </div>
     </div>

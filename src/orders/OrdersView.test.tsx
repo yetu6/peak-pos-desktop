@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { POSOrder } from "../lib/posContracts";
 import { clockTime } from "../lib/words";
 import { OrdersView, type OrdersViewProps } from "./OrdersView";
+import { PAID_ROWS_SHOWN } from "./ordersSettings";
 
 function order(id: string, extra: Partial<POSOrder> = {}): POSOrder {
   return {
@@ -130,6 +131,30 @@ describe("OrdersView", () => {
     expect(screen.getByText("No open orders")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "New sale" }));
     expect(onNewSale).toHaveBeenCalled();
+  });
+
+  it("shows the paid orders a page at a time, the most recent orders first, saying so", async () => {
+    const many = Array.from({ length: PAID_ROWS_SHOWN * 2 + 5 }, (_, index) =>
+      order(`p${String(index).padStart(3, "0")}`, { status: "CLOSED", paidMinor: 4_779_000, remainingMinor: 0 }),
+    );
+    render(<Harness tab="paid" paidOrders={many} />);
+    expect(screen.getAllByTestId(/^order-row-/)).toHaveLength(PAID_ROWS_SHOWN);
+    expect(screen.getByTestId("orders-caption")).toHaveTextContent(`Most recent orders first · showing ${PAID_ROWS_SHOWN} of ${many.length}`);
+    await userEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(screen.getAllByTestId(/^order-row-/)).toHaveLength(PAID_ROWS_SHOWN * 2);
+    await userEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(screen.getAllByTestId(/^order-row-/)).toHaveLength(many.length);
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+    expect(screen.getByTestId("orders-caption")).toHaveTextContent(`Most recent orders first · showing ${many.length} of ${many.length}`);
+  });
+
+  it("searches every paid order, not just the ones shown", async () => {
+    const many = Array.from({ length: PAID_ROWS_SHOWN + 3 }, (_, index) =>
+      order(`p${String(index).padStart(3, "0")}`, { status: "CLOSED", paidMinor: 4_779_000, remainingMinor: 0 }),
+    );
+    render(<Harness tab="paid" paidOrders={many} />);
+    await userEvent.type(screen.getByRole("searchbox", { name: "Find an order" }), `p${String(PAID_ROWS_SHOWN + 2).padStart(3, "0")}`);
+    expect(screen.getAllByTestId(/^order-row-/)).toHaveLength(1);
   });
 
   it("says there are no paid orders on this shift yet", () => {
