@@ -2,7 +2,6 @@ import { ChefHat, Printer, Trash2, Wallet } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Banner, Button, PermissionNotice, Sheet, StatusChip, TicketLine } from "../components/system";
 import {
-  useIdempotencyKey,
   usePrintAfter,
   usePropertyId,
   useReceipt,
@@ -15,6 +14,7 @@ import { isComposing } from "../lib/keyboard";
 import { formatMoney } from "../lib/money";
 import type { POSOrder, POSOrderItem, POSReceipt } from "../lib/posContracts";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
+import { useRequestKey } from "../lib/useRequestKey";
 import { orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { REGISTER_KEYS } from "../register/TicketActions";
 import { orderTimeline, removeProblem, reprintProblem, sendProblem, type TimelineEntry } from "./ordersWords";
@@ -323,18 +323,6 @@ export function OrderDetailView({
       </div>
     </Sheet>
   );
-}
-
-/** One key per request: asking again after a lost answer reuses it; a changed request gets a new one. */
-function useRequestKey() {
-  const fresh = useIdempotencyKey();
-  const last = useRef<{ request: string; key: string } | null>(null);
-  return (request: string): string => {
-    if (last.current?.request === request) return last.current.key;
-    const key = fresh.next();
-    last.current = { request, key };
-    return key;
-  };
 }
 
 /**

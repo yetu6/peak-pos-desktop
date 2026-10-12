@@ -4,15 +4,16 @@ import userEvent from "@testing-library/user-event";
 import { ReceiptView } from "./ReceiptView";
 import type { POSReceipt } from "../lib/posContracts";
 
-const { reprintMutate, receiptRef } = vi.hoisted(() => ({
+const { reprintMutate, receiptRef, keys } = vi.hoisted(() => ({
   reprintMutate: vi.fn(),
   receiptRef: { data: undefined as POSReceipt | undefined, isLoading: false, isError: false },
+  keys: { minted: 0 },
 }));
 
 vi.mock("../hooks/usePosData", () => ({
   useReceipt: () => receiptRef,
   useReprintReceipt: () => ({ mutate: reprintMutate, isPending: false, error: null }),
-  useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
+  useIdempotencyKey: () => ({ current: "", next: () => `key-${++keys.minted}` }),
   useMutationMessage: () => null,
 }));
 
@@ -94,14 +95,23 @@ describe("ReceiptView", () => {
     expect(screen.getByTestId("reprint-receipt")).toBeDisabled();
   });
 
-  it("calls the certified reprint endpoint with a fresh idempotency key, never a new original", async () => {
+  it("calls the certified reprint endpoint, never a new original: the same key when asked again after a lost answer, a new one for the next copy", async () => {
     receiptRef.data = RECEIPT;
     receiptRef.isLoading = false;
     receiptRef.isError = false;
-    render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+    const view = render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
 
     await userEvent.click(screen.getByTestId("reprint-receipt"));
-    expect(reprintMutate).toHaveBeenCalledWith({ orderId: "order-1", idempotencyKey: "key-1" });
+    await userEvent.click(screen.getByTestId("reprint-receipt"));
+    const [first, again] = reprintMutate.mock.calls.map(([args]) => args as { orderId: string; idempotencyKey: string });
+    expect(first.orderId).toBe("order-1");
+    expect(again.idempotencyKey).toBe(first.idempotencyKey);
+
+    // Yetu recorded the copy: the receipt now counts one reprint.
+    receiptRef.data = { ...RECEIPT, reprintCount: 1 };
+    view.rerender(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+    await userEvent.click(screen.getByTestId("reprint-receipt"));
+    expect(reprintMutate.mock.calls[2][0].idempotencyKey).not.toBe(first.idempotencyKey);
   });
 
   it("surfaces receipt-unavailable rather than fabricating one", () => {

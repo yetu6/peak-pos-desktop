@@ -1,7 +1,8 @@
 import { Printer } from "lucide-react";
-import { useIdempotencyKey, useMutationMessage, useReceipt, useReprintReceipt } from "../hooks/usePosData";
+import { useMutationMessage, useReceipt, useReprintReceipt } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
 import type { POSReceipt } from "../lib/posContracts";
+import { useRequestKey } from "../lib/useRequestKey";
 import { businessDayWords, clockTime, orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { Banner, Button, Dialog, Skeleton } from "./system";
 
@@ -19,7 +20,8 @@ function settledWords(method: string): string {
 export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: () => void }) {
   const receipt = useReceipt(orderId);
   const reprint = useReprintReceipt();
-  const idempotencyKey = useIdempotencyKey();
+  // A copy asked for again after a lost answer reuses its key; each new copy (a new count) gets a new one.
+  const requestKey = useRequestKey();
   const reprintError = useMutationMessage(reprint.error);
   return (
     <ReceiptSheet
@@ -28,7 +30,10 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
       failed={receipt.isError}
       reprinting={reprint.isPending}
       reprintError={reprintError}
-      onReprint={() => reprint.mutate({ orderId, idempotencyKey: idempotencyKey.next() })}
+      onReprint={() => {
+        if (!receipt.data) return;
+        reprint.mutate({ orderId, idempotencyKey: requestKey([orderId, receipt.data.reprintCount].join("|")) });
+      }}
       onClose={onClose}
     />
   );
