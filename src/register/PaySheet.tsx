@@ -15,6 +15,7 @@ import type { PaymentMethod, POSOrder, POSRoomChargeCandidate } from "../lib/pos
 import { toMinor } from "../lib/posMoney";
 import { orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { afterLostAnswer, lostAnswerRefusalWords, roomChargeProblem, tenderProblem } from "./registerWords";
+import { PAY_CHECK_EVERY_SECONDS } from "./registerSettings";
 
 const CASH_FORM = "pay-cash";
 const RECORDED_FORM = "pay-recorded";
@@ -22,12 +23,6 @@ const RECORDED_FORM = "pay-recorded";
 /** Named setting: how long the room search waits after typing before it asks Yetu. */
 export const ROOM_SEARCH_WAIT_MS = 250;
 
-/**
- * Named setting: while a payment's answer was lost, how often the sheet asks
- * Yetu again for the order (it asks at once, then this often) until Yetu
- * answers.
- */
-export const PAY_CHECK_EVERY_SECONDS = 5;
 
 /**
  * A payment or room charge whose answer was lost: the request itself (its

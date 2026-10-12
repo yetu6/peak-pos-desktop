@@ -3,7 +3,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import type { POSOrder, POSRoomChargeCandidate } from "../lib/posContracts";
 import { IDLE_LOCK_MAX_DEFERRAL_SECONDS, idleLockHeld, watchIdleActivity } from "../lib/idleLock";
-import { PAY_CHECK_EVERY_SECONDS, PaySheet } from "./PaySheet";
+import { PaySheet } from "./PaySheet";
+import { PAY_CHECK_EVERY_SECONDS } from "./registerSettings";
 
 const ORDER: POSOrder = {
   id: "order-1",

@@ -15,6 +15,10 @@
 #   tests/e2e-live/live-api.sh api    # build and run cmd/api on 127.0.0.1:18080 (foreground)
 #   tests/e2e-live/live-api.sh env    # print the variables the suites read (no secrets)
 #   tests/e2e-live/live-api.sh reset-limits  # start this API's per-address rate limits again
+#   tests/e2e-live/live-api.sh payments <orderId>  # how many pos_payments rows an order has (read-only)
+#
+# E2E_SKIP_BUILD=1 makes `api` start the binary already built (the S6 suite
+# stops and restarts the API mid-payment and must not wait for a build).
 #
 # Why a copy of an empty test database rather than a fresh CREATE DATABASE:
 # a fresh database needs fbc-peak's principals bootstrap replayed against it
@@ -107,7 +111,9 @@ PY
 }
 
 cmd_api() {
-  (cd "$backend" && go build -o "$work/peak-api" ./cmd/api)
+  if [ "${E2E_SKIP_BUILD:-}" != 1 ] || [ ! -x "$work/peak-api" ]; then
+    (cd "$backend" && go build -o "$work/peak-api" ./cmd/api)
+  fi
   local database_url
   database_url="$(runtime_url peak-property-api app_dev_password)"
   echo "API on http://127.0.0.1:${port} (database ${db}, Redis db ${redis_db}, sign-in through ZITADEL off)"
@@ -137,6 +143,14 @@ cmd_reset_limits() {
   echo "cleared $(printf '%s' "$keys" | grep -c . || true) rate-limit counters in Redis db ${redis_db}"
 }
 
+# The till's own payments for one order, counted in the database (read-only):
+# the S6 suite proves a payment whose answer was lost is recorded once.
+cmd_payments() {
+  local order="${1:-}"
+  [[ "$order" =~ ^[0-9a-f-]{36}$ ]] || { echo "usage: $0 payments <order uuid>" >&2; exit 2; }
+  admin_psql -d "$db" -c "BEGIN READ ONLY; SELECT count(*) FROM pos_payments WHERE order_id='${order}'; COMMIT;" | grep -E '^[0-9]+$'
+}
+
 cmd_env() {
   cat <<EOF
 PEAK_JOURNEY_BASE_URL=http://127.0.0.1:${port}
@@ -151,5 +165,6 @@ case "${1:-}" in
   api) cmd_api ;;
   env) cmd_env ;;
   reset-limits) cmd_reset_limits ;;
-  *) echo "usage: $0 db|seed|api|env|reset-limits" >&2; exit 2 ;;
+  payments) cmd_payments "${2:-}" ;;
+  *) echo "usage: $0 db|seed|api|env|reset-limits|payments" >&2; exit 2 ;;
 esac

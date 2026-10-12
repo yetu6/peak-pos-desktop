@@ -9,3 +9,10 @@
  * pointer is over the payment screen or one of its buttons has focus.
  */
 export const REGISTER_AUTO_RETURN_SECONDS = 8;
+
+/**
+ * register.payCheckEverySeconds: while a payment's answer was lost, how often
+ * the Pay sheet sends the same request to Yetu again (once at once, then this
+ * often) until Yetu answers for it.
+ */
+export const PAY_CHECK_EVERY_SECONDS = 5;
