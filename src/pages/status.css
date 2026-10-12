@@ -1,0 +1,94 @@
+/* Status: the till's checks in words, each with what to do. */
+.y-status {
+  display: grid;
+  max-width: 920px;
+  gap: var(--space-5);
+}
+
+.y-status__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.y-status__title {
+  margin: 0;
+  font-size: var(--type-heading);
+  font-weight: 600;
+}
+
+.y-status__lede {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+}
+
+.y-status__checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.y-status__check {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  padding: var(--space-4);
+}
+
+.y-status__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.y-status__name {
+  margin: 0;
+  font-size: var(--type-lead);
+  font-weight: 600;
+}
+
+.y-status__words { margin: 0; }
+
+.y-status__fix {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.y-status__print {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.y-status__result {
+  margin: 0;
+  font-weight: 600;
+}
+
+.y-status__result[role="alert"] { color: var(--danger); }
+
+.y-status__updates {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.y-status__updates p { margin: 0; }
+
+.y-status__technical {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.y-status__technical dd { margin: 0; overflow-wrap: anywhere; }
