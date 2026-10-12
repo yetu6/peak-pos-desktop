@@ -21,27 +21,12 @@ import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OptionsSheet } from "../register/OptionsSheet";
 import { PaymentDone } from "../register/PaymentDone";
 import { PaySheet, type PaidInfo } from "../register/PaySheet";
+import { optionIdsFor } from "../register/repeatLine";
 import { NoteSheet } from "../register/NoteSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
 import { TicketActions } from "../register/TicketActions";
 import { TicketPanel } from "../register/TicketPanel";
 import type { POSCatalogProduct, POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
-
-/**
- * The catalog option ids for a line's options, matched by group and option
- * name (Yetu keeps the names on the line, not the ids). Null when any of them
- * is no longer on the menu, so the options sheet asks again instead.
- */
-function optionIdsFor(line: POSOrderItem, product: POSCatalogProduct): string[] | null {
-  const ids: string[] = [];
-  for (const modifier of line.modifiers ?? []) {
-    const group = product.modifierGroups?.find((candidate) => candidate.isActive !== false && candidate.name === modifier.groupName);
-    const option = group?.options?.find((candidate) => candidate.isAvailable !== false && candidate.name === modifier.optionName);
-    if (!option) return null;
-    ids.push(option.id);
-  }
-  return ids;
-}
 
 /**
  * Sell, against the live API: the catalog from GET /pos/catalog and the

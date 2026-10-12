@@ -67,6 +67,37 @@ const CATALOG: POSCatalog = {
         },
       ],
     },
+    {
+      id: "00000000-0000-0000-0000-000000000010",
+      categoryId: "cat-1",
+      code: "DB",
+      name: "Double burger",
+      priceMinor: 1200000,
+      currency: "TZS",
+      taxRateBp: 1800,
+      isAvailable: true,
+      // Two active groups with the same name: a line's options can't be matched by name alone.
+      modifierGroups: [
+        {
+          id: "extras-a",
+          productId: "00000000-0000-0000-0000-000000000010",
+          name: "Extras",
+          minSelect: 0,
+          maxSelect: 1,
+          isActive: true,
+          options: [{ id: "cheese-a", groupId: "extras-a", name: "Cheese", priceDeltaMinor: 0, isAvailable: true }],
+        },
+        {
+          id: "extras-b",
+          productId: "00000000-0000-0000-0000-000000000010",
+          name: "Extras",
+          minSelect: 0,
+          maxSelect: 1,
+          isActive: true,
+          options: [{ id: "cheese-b", groupId: "extras-b", name: "Cheese", priceDeltaMinor: 50000, isAvailable: true }],
+        },
+      ],
+    },
   ],
 };
 
@@ -439,5 +470,33 @@ describe("NewOrder", () => {
     await userEvent.click(within(sheet).getByTestId("modifier-confirm-add"));
     expect(await within(sheet).findByRole("alert")).toHaveTextContent(/./);
     expect(screen.getByRole("dialog", { name: "House burger" })).toBeInTheDocument();
+  });
+
+  it("Add another asks for the options again rather than guess between groups with the same name", async () => {
+    addItemSpy.mockResolvedValueOnce({
+      data: {
+        ...OPEN_ORDER,
+        items: [
+          {
+            id: "item-10",
+            productId: "00000000-0000-0000-0000-000000000010",
+            name: "Double burger",
+            quantity: 1,
+            unitPriceMinor: 1200000,
+            taxMinor: 0,
+            totalMinor: 1200000,
+            status: "ADDED",
+            modifiers: [{ id: "row-1", groupName: "Extras", optionName: "Cheese", priceDeltaMinor: 0 }],
+          },
+        ],
+      },
+      error: null,
+    });
+    const line = await startOrder("Double burger");
+    addItemSpy.mockClear();
+    await userEvent.click(line);
+    await userEvent.click(ticket().getByRole("button", { name: "Add another" }));
+    expect(await screen.findByRole("dialog", { name: "Double burger" })).toBeInTheDocument();
+    expect(addItemSpy).not.toHaveBeenCalled();
   });
 });
