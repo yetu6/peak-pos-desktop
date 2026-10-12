@@ -13,6 +13,7 @@ import {
   type HostDiagnostics,
   type PeakProbe,
   type PrinterStatus,
+  type TechnicianSnapshot,
 } from "../lib/diagnostics";
 import { getApiBaseUrl } from "../lib/peakConfig";
 import { useLastUpdateNote, type UpdateNote } from "../lib/updateNotes";
@@ -32,7 +33,7 @@ function updateWords(note: UpdateNote | null): string {
 
 type CheckState = "ok" | "problem" | "unknown";
 
-interface Check {
+export interface Check {
   id: string;
   name: string;
   state: CheckState;
@@ -220,9 +221,52 @@ export function Diagnostics() {
     setTestPrintBusy(false);
   }
 
-  const checks = statusChecks({ online, peak, realtime: state.phase, printer, native, keyStorage });
-  const snapshot = buildTechnicianSnapshot({ identity, session, host, printer, keyStorage, peakOrigin: getApiBaseUrl() });
+  return (
+    <StatusView
+      checks={statusChecks({ online, peak, realtime: state.phase, printer, native, keyStorage })}
+      canPrintTestPage={native && printer?.available === true}
+      checking={checking}
+      onCheckAgain={() => void refresh()}
+      testPrint={testPrint}
+      testPrintBusy={testPrintBusy}
+      onTestPrint={() => void runTestPrint()}
+      updateNote={updateNote}
+      snapshot={buildTechnicianSnapshot({ identity, session, host, printer, keyStorage, peakOrigin: getApiBaseUrl() })}
+      peak={peak}
+      realtime={state}
+    />
+  );
+}
 
+export interface StatusViewProps {
+  checks: readonly Check[];
+  /** The till app has a print path and a printer to send to (print_test_page). */
+  canPrintTestPage: boolean;
+  checking: boolean;
+  onCheckAgain: () => void;
+  testPrint: { ok: boolean; detail: string | null } | null;
+  testPrintBusy: boolean;
+  onTestPrint: () => void;
+  updateNote: UpdateNote | null;
+  snapshot: TechnicianSnapshot;
+  peak: PeakProbe | null;
+  realtime: { phase: string; attempt: number; lastError: string | null };
+}
+
+/** The Status screen itself, from what the container found out. */
+export function StatusView({
+  checks,
+  canPrintTestPage,
+  checking,
+  onCheckAgain,
+  testPrint,
+  testPrintBusy,
+  onTestPrint,
+  updateNote,
+  snapshot,
+  peak,
+  realtime: state,
+}: StatusViewProps) {
   return (
     <div className="y-status" data-testid="diagnostics">
       <header className="y-status__top">
@@ -230,7 +274,7 @@ export function Diagnostics() {
           <h1 className="y-status__title">Status</h1>
           <p className="y-status__lede">How this till is doing, and what to do if something isn't right.</p>
         </div>
-        <Button variant="secondary" icon={<RefreshCw />} disabled={checking} onClick={() => void refresh()}>
+        <Button variant="secondary" icon={<RefreshCw />} disabled={checking} onClick={onCheckAgain}>
           {checking ? "Checking…" : "Check again"}
         </Button>
       </header>
@@ -241,9 +285,9 @@ export function Diagnostics() {
         ))}
       </ul>
 
-      {native && printer?.available ? (
+      {canPrintTestPage ? (
         <div className="y-status__print">
-          <Button icon={<Printer />} disabled={testPrintBusy} onClick={() => void runTestPrint()}>
+          <Button icon={<Printer />} disabled={testPrintBusy} onClick={onTestPrint}>
             {testPrintBusy ? "Sending…" : "Print test page"}
           </Button>
           {testPrint ? (

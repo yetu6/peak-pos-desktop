@@ -244,3 +244,28 @@ export function CloseBalancedFixture() {
 export function CloseOverFixture() {
   return <Close initialCounted="74500" initialStep="check" />;
 }
+
+/** Cash out after too many approvals in an hour (429): the words, and Record waits until Yetu allows it. */
+export function CashOutRateLimitedFixture() {
+  return (
+    <Cash>
+      <CashMovementSheetView
+        onClose={nothing}
+        currency={CURRENCY}
+        initialType="CASH_OUT"
+        roster={ROSTER}
+        requesterId={AMINA}
+        pending={false}
+        waiting
+        error={
+          new Error(
+            JSON.stringify({ type: "about:blank", title: "Too many requests.", status: 429, code: "RATE_LIMITED", detail: "Too many requests. Try again in 41 seconds.", request_id: "req-7", retryAfterSeconds: 41 }),
+          )
+        }
+        onRecord={nothing}
+        initialAmount="20000"
+        initialReason="Gas delivery"
+      />
+    </Cash>
+  );
+}

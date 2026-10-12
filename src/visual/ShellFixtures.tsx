@@ -48,6 +48,7 @@ export function FixtureShell({
   initialPage = "orders",
   banners,
   workspaceVariant = "padded",
+  connection,
   children,
 }: {
   mode?: string;
@@ -55,6 +56,8 @@ export function FixtureShell({
   initialPage?: WorkspacePage;
   banners?: ReactNode;
   workspaceVariant?: "padded" | "full";
+  /** The top bar's connection and sync chip, when a fixture shows the real one. */
+  connection?: ReactNode;
   children: ReactNode;
 }) {
   const [page, setPage] = useState<WorkspacePage>(initialPage);
@@ -69,7 +72,9 @@ export function FixtureShell({
       shift={shiftChipWords({ status: "OPEN", openedAt: OPENED_AT, businessDate: BUSINESS_DATE })}
       clock="14:32"
       connection={
-        offlineCash ? (
+        connection ? (
+          connection
+        ) : offlineCash ? (
           <StatusChip tone="warning">Offline · 3 sales waiting to send</StatusChip>
         ) : (
           <StatusChip tone="success">Online</StatusChip>

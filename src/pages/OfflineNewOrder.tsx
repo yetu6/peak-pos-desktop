@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocalCatalog, useLocalDraft } from "../hooks/useLocalOrder";
-import type { LocalCatalogView, OfflineCashCommitResult } from "../lib/localPosCore";
-import type { POSCatalogProduct, POSCategory } from "../lib/posContracts";
+import type { OfflineCashCommitResult } from "../lib/localPosCore";
+import type { POSCatalogProduct } from "../lib/posContracts";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OfflineCashSheet } from "../register/OfflineCashSheet";
@@ -10,49 +10,10 @@ import { OfflineTicket } from "../register/OfflineTicket";
 import { OptionsSheet } from "../register/OptionsSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
 import { OFFLINE_MENU_MISSING, offlineProblemWords } from "../register/offlineWords";
+import { menuOf } from "../register/offlineMenu";
 
 /** The order type a new offline sale starts with (the store needs one to make the draft). */
 const FIRST_SERVICE_TYPE = "DINE_IN";
-
-/** The saved menu in the shapes the menu panel reads (positions and names as saved). */
-function menuOf(catalog: LocalCatalogView | undefined): { categories: POSCategory[]; products: POSCatalogProduct[] } {
-  if (!catalog) return { categories: [], products: [] };
-  return {
-    categories: catalog.categories.map((category, index) => ({
-      id: category.id,
-      outletId: "",
-      code: category.code,
-      name: category.name,
-      sortOrder: index,
-      isActive: true,
-    })),
-    products: catalog.products.map((product) => ({
-      id: product.id,
-      categoryId: product.categoryId,
-      code: product.code,
-      name: product.name,
-      priceMinor: product.priceMinor,
-      currency: product.currency,
-      taxRateBp: product.taxRateBp,
-      isAvailable: true,
-      modifierGroups: product.modifierGroups.map((group) => ({
-        id: group.id,
-        productId: product.id,
-        name: group.name,
-        minSelect: group.minSelect,
-        maxSelect: group.maxSelect,
-        isActive: true,
-        options: group.options.map((option) => ({
-          id: option.id,
-          groupId: group.id,
-          name: option.name,
-          priceDeltaMinor: option.priceDeltaMinor,
-          isAvailable: true,
-        })),
-      })),
-    })),
-  };
-}
 
 /**
  * Sell while the till works offline (PIN unlock entered `offline-cash`: Yetu

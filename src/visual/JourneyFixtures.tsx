@@ -4,7 +4,7 @@ import { PIN_PAUSE_AFTER_FAILURES } from "../access/accessSettings";
 import { IdleLockView } from "../components/IdleLockOverlay";
 import { KeyStorageBannerView } from "../components/KeyStorageBanner";
 import { UpdateBannerView } from "../components/UpdaterBanner";
-import { StaffLoginRejectedError, humanDeviceError, type RosterEntry } from "../lib/deviceAuth";
+import { StaffLoginRateLimitedError, StaffLoginRejectedError, humanDeviceError, type RosterEntry } from "../lib/deviceAuth";
 import type { PairingRecord } from "../lib/deviceIdentity";
 import { PairingView } from "../pages/PairingScreen";
 import { PinUnlockView, type PinUnlockViewProps } from "../pages/PinUnlock";
@@ -221,5 +221,16 @@ export function IdleLockFixture() {
       <ShellFixture />
       <IdleLockView remaining={8} />
     </>
+  );
+}
+
+/** LOCKED after too many sign-in attempts (429): the keypad waits until Yetu allows the next one. */
+export function LockedPinHeldFixture() {
+  return (
+    <Locked
+      initialStaff={rosterOf(1)[0]}
+      error={humanDeviceError(new StaffLoginRateLimitedError(1_800))}
+      heldUntil={Date.now() + 1_800_000}
+    />
   );
 }

@@ -153,7 +153,10 @@ async function measure(page: Page): Promise<Finding[]> {
         }
         const grid = document.querySelector('[data-testid="menu-grid"]');
         const columns = grid ? getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length : 0;
-        if (columns !== wantColumns) {
+        // A menu with nothing to show (none saved for working offline, or it didn't load) shows
+        // its empty state instead of a grid; only that may stand in for the grid.
+        const emptyMenu = !grid && Boolean(document.querySelector('[aria-label="Menu"] .y-empty'));
+        if (columns !== wantColumns && !emptyMenu) {
           findings.push({ key: "register-layout", detail: `the menu has ${columns} columns, not ${wantColumns}` });
         }
         // The menu sits beside the ticket, on screen: left of it, starting within the window.
