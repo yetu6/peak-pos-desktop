@@ -109,6 +109,38 @@ describe("CloseShiftSheet: check", () => {
     expect(screen.getByTestId("close-shift")).toBeDisabled();
   });
 
+  describe("an approval holds only for the count it was given", () => {
+    async function approveAsGrace() {
+      await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+      for (const digit of "736251") await userEvent.click(screen.getByTestId(`close-pin-key-${digit}`));
+      expect(screen.getByTestId("close-shift")).not.toBeDisabled();
+    }
+
+    it("asks again after the count changes", async () => {
+      renderSheet();
+      await count("73500");
+      await approveAsGrace();
+      await userEvent.click(screen.getByRole("button", { name: "Change the count" }));
+      await userEvent.clear(screen.getByTestId("counted-cash"));
+      await count("70000");
+      expect(screen.getByRole("radio", { name: /Grace Mushi/ })).not.toBeChecked();
+      expect(screen.getByTestId("pin-dots")).toHaveAccessibleName("0 digits entered");
+      expect(screen.getByTestId("close-shift")).toBeDisabled();
+      await userEvent.click(screen.getByTestId("close-shift"));
+      expect(closeAsync).not.toHaveBeenCalled();
+    });
+
+    it("asks again after leaving the check, even with the same count", async () => {
+      renderSheet();
+      await count("73500");
+      await approveAsGrace();
+      await userEvent.click(screen.getByRole("button", { name: "Change the count" }));
+      await userEvent.click(screen.getByRole("button", { name: "Check the count" }));
+      expect(screen.getByRole("radio", { name: /Grace Mushi/ })).not.toBeChecked();
+      expect(screen.getByTestId("close-shift")).toBeDisabled();
+    });
+  });
+
   it("says a short drawer in words", async () => {
     renderSheet();
     await count("73500");

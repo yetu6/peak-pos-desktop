@@ -78,6 +78,17 @@ export function CloseShiftSheetView({
   const approved = Boolean(supervisor) && pin.length === PIN_LENGTH;
   const ready = countedMinor !== null && (!needsSupervisor || approved) && !pending;
 
+  /**
+   * An approval is for one count, seen on one Check. Leaving the Check clears
+   * the chosen supervisor and the PIN, and the count can only be changed on
+   * the Count step, so a changed count always needs a fresh approval.
+   */
+  function backToCount() {
+    setSupervisorId(null);
+    setPin("");
+    setStep("count");
+  }
+
   function onPinKey(key: KeypadKey) {
     if (key === "delete") setPin((value) => value.slice(0, -1));
     else if (key === "clear") setPin("");
@@ -131,7 +142,7 @@ export function CloseShiftSheetView({
             </div>
           ) : (
             <div className="y-cash__footer">
-              <Button variant="quiet" onClick={() => setStep("count")}>
+              <Button variant="quiet" onClick={backToCount}>
                 Change the count
               </Button>
               <Button variant="primary" size={64} data-testid="close-shift" disabled={!ready} onClick={() => void submit()}>

@@ -90,6 +90,12 @@ export function CashMovementSheetView({
   const supervised = !cashOut || (Boolean(supervisor) && pin.length === PIN_LENGTH);
   const canSubmit = amountMinor != null && amountMinor > 0 && reason.trim().length > 0 && supervised && !pending;
 
+  /** A cash-out approval is for one amount, reason and direction: changing any of them asks again. */
+  function clearApproval() {
+    setSupervisorId(null);
+    setPin("");
+  }
+
   function onPinKey(key: KeypadKey) {
     if (key === "delete") setPin((value) => value.slice(0, -1));
     else if (key === "clear") setPin("");
@@ -138,7 +144,7 @@ export function CashMovementSheetView({
           value={movementType}
           onChange={(type) => {
             setMovementType(type);
-            setPin("");
+            clearApproval();
           }}
           options={[
             { value: "CASH_IN", label: "Cash in" },
@@ -150,7 +156,10 @@ export function CashMovementSheetView({
           label="Amount"
           currency={currency}
           value={amount}
-          onValueChange={(text) => setAmount(text)}
+          onValueChange={(text) => {
+            setAmount(text);
+            clearApproval();
+          }}
           inputTestId="movement-amount"
           autoFocus
         />
@@ -158,7 +167,10 @@ export function CashMovementSheetView({
           label="Reason"
           hint={cashOut ? "What the cash is for, for example the gas delivery." : "Where the cash came from, for example a float top-up."}
           value={reason}
-          onChange={setReason}
+          onChange={(text) => {
+            setReason(text);
+            clearApproval();
+          }}
           data-testid="movement-reason"
           autoComplete="off"
         />

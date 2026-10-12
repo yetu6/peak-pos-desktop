@@ -126,6 +126,45 @@ describe("CashMovementDialog", () => {
     expect(screen.getByTestId("confirm-movement")).toBeDisabled();
   });
 
+  describe("a cash-out approval holds only for what was approved", () => {
+    async function approvedCashOut() {
+      sessionRef.value = { session: { staffId: "staff-amina" }, roster: ROSTER };
+      render(<CashMovementDialog shiftId="shift-1" currency="TZS" initialType="CASH_OUT" onClose={vi.fn()} />);
+      await userEvent.type(screen.getByTestId("movement-amount"), "20000");
+      await userEvent.type(screen.getByTestId("movement-reason"), "Gas delivery");
+      await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+      await typePin("736251");
+      expect(screen.getByTestId("confirm-movement")).not.toBeDisabled();
+    }
+
+    function expectApprovalCleared() {
+      expect(screen.getByRole("radio", { name: /Grace Mushi/ })).not.toBeChecked();
+      expect(screen.getByTestId("pin-dots")).toHaveAccessibleName("0 digits entered");
+      expect(screen.getByTestId("confirm-movement")).toBeDisabled();
+    }
+
+    it("asks again after the amount changes", async () => {
+      await approvedCashOut();
+      await userEvent.type(screen.getByTestId("movement-amount"), "0");
+      expectApprovalCleared();
+      await userEvent.click(screen.getByTestId("confirm-movement"));
+      expect(recordMutate).not.toHaveBeenCalled();
+    });
+
+    it("asks again after the reason changes", async () => {
+      await approvedCashOut();
+      await userEvent.type(screen.getByTestId("movement-reason"), " and charcoal");
+      expectApprovalCleared();
+    });
+
+    it("asks again after switching to cash in and back", async () => {
+      await approvedCashOut();
+      await userEvent.click(screen.getByTestId("movement-type-CASH_IN"));
+      await userEvent.click(screen.getByTestId("movement-type-CASH_OUT"));
+      expectApprovalCleared();
+    });
+  });
+
   it("says a refused cash out in words", () => {
     record.error = new Error(
       JSON.stringify({ code: "FORBIDDEN", detail: "Taking cash out of the drawer needs a supervisor's approval: their name and PIN." }),
