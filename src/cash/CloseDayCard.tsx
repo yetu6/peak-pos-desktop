@@ -41,6 +41,21 @@ export function CloseDayCardView({
   const problem = dayCloseProblem(error);
   const nextDay = nextBusinessDate ? businessDayWords(nextBusinessDate) : "";
 
+  // Once Yetu has closed the day, the card shows that and nothing to press:
+  // a second tap could otherwise close the next day too.
+  if (nextBusinessDate) {
+    return (
+      <section className="y-cash__card" data-testid="close-day" aria-labelledby="close-day-title">
+        <h2 id="close-day-title" className="y-cash__card-title">
+          Close the day
+        </h2>
+        <div data-testid="day-close-result">
+          <Banner tone="success">{`Day closed. The new business day is ${nextDay || "set"}.`}</Banner>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="y-cash__card" data-testid="close-day" aria-labelledby="close-day-title">
       <h2 id="close-day-title" className="y-cash__card-title">
@@ -73,11 +88,6 @@ export function CloseDayCardView({
       {problem ? (
         <div data-testid="day-close-error">
           <Banner tone="danger">{problem.words}</Banner>
-        </div>
-      ) : null}
-      {nextBusinessDate ? (
-        <div data-testid="day-close-result">
-          <Banner tone="success">{`Day closed. The new business day is ${nextDay || "set"}.`}</Banner>
         </div>
       ) : null}
       <Button

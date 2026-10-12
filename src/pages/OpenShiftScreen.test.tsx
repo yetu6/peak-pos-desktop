@@ -152,6 +152,15 @@ describe("Close the day", () => {
     expect(screen.getByTestId("day-close-result")).toHaveTextContent("Day closed. The new business day is Tue 13 Oct.");
   });
 
+  it("once the day has closed, there is no Close the day to press again", () => {
+    grants.permissions = ["pos.report.manager"];
+    dayClose.data = { businessDate: "2026-10-12", nextBusinessDate: "2026-10-13", shiftsClosed: 3, settledAmountMinor: 0, closedAt: "" };
+    render(<OpenShiftScreen />);
+    expect(screen.getByTestId("day-close-result")).toBeInTheDocument();
+    expect(screen.queryByTestId("close-business-day")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /close the day/i })).not.toBeInTheDocument();
+  });
+
   it("is not offered without pos.report.manager, nor on a hotel (night audit closes the day there)", () => {
     grants.permissions = ["pos.shift.open"];
     const { unmount } = render(<OpenShiftScreen />);
