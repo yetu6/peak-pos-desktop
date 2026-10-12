@@ -426,6 +426,11 @@ describe("type, spacing and sizes", () => {
     });
   });
 
+  it("names the window the way staff name it", () => {
+    expect(tauriConfig.app.windows[0].title).toBe("Yetu till");
+    expect(read("index.html")).toContain("<title>Yetu till</title>");
+  });
+
   it("drops the old coloured bar down the side of the sign-in screens", () => {
     expect(indexCss).not.toMatch(/\.auth-shell::before/);
   });
