@@ -313,8 +313,10 @@ describe("Kitchen on a selling till (whole orders)", () => {
     signIn(["pos.order.read"]);
     ordersStore.set("order-1", SENT_ORDER);
     renderKitchen();
-    expect(await screen.findByTestId("kitchen-next-order-1")).toBeDisabled();
+    expect(await screen.findByTestId("kitchen-next-order-1")).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("note")).toHaveTextContent("Only kitchen and waiting staff can move tickets on.");
+    await userEvent.click(screen.getByTestId("kitchen-next-order-1"));
+    expect(transitionStatusSpy).not.toHaveBeenCalled();
   });
 });
 

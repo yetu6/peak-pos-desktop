@@ -91,6 +91,7 @@ export function KitchenBoard({
   const columns = boardColumns(tickets);
   const empty = tickets.length === 0;
   const columnsRef = useRef<HTMLDivElement>(null);
+  const whyClosedId = useId();
   // The step a keyboard user was on: a step that moves its ticket to another
   // column (or off the board) takes its button away, and focus with it.
   const lastStep = useRef<{ id: string; column: string; row: number } | null>(null);
@@ -151,7 +152,9 @@ export function KitchenBoard({
         </header>
 
         {!canMove ? (
-          <PermissionNotice who="kitchen and waiting staff" action="move tickets on" next="Ask a manager." />
+          <div id={whyClosedId}>
+            <PermissionNotice who="kitchen and waiting staff" action="move tickets on" next="Ask a manager." />
+          </div>
         ) : null}
         {problem ? (
           <Banner inline tone="danger" data-testid="kitchen-error">
@@ -184,6 +187,7 @@ export function KitchenBoard({
               nowMs={nowMs}
               busyIds={busyIds}
               canMove={canMove}
+              whyClosedId={canMove ? undefined : whyClosedId}
               onNextStep={onNextStep}
               thresholds={thresholds}
             />
@@ -200,6 +204,7 @@ function Column({
   nowMs,
   busyIds,
   canMove,
+  whyClosedId,
   onNextStep,
   thresholds,
 }: {
@@ -209,6 +214,8 @@ function Column({
   nowMs: number;
   busyIds: ReadonlySet<string>;
   canMove: boolean;
+  /** The notice that says why the steps are closed, when they are. */
+  whyClosedId?: string;
   onNextStep: (ticket: BoardTicket) => void;
   thresholds?: AgeThresholds;
 }) {
@@ -243,6 +250,7 @@ function Column({
               nowMs={nowMs}
               busy={busyIds.has(ticket.id)}
               canMove={canMove}
+              whyClosedId={whyClosedId}
               onNextStep={onNextStep}
               thresholds={thresholds}
             />
@@ -258,6 +266,7 @@ function TicketCard({
   nowMs,
   busy,
   canMove,
+  whyClosedId,
   onNextStep,
   thresholds,
 }: {
@@ -265,6 +274,7 @@ function TicketCard({
   nowMs: number;
   busy: boolean;
   canMove: boolean;
+  whyClosedId?: string;
   onNextStep: (ticket: BoardTicket) => void;
   thresholds?: AgeThresholds;
 }) {
@@ -327,9 +337,10 @@ function TicketCard({
           data-ticket-id={ticket.id}
           data-testid={`kitchen-next-${ticket.id}`}
           aria-label={`${busy ? next.pendingWords : next.words} order ${ticket.orderNumber}`}
-          // While the step is with Yetu the button keeps its focus (not the native disabled); the click is ignored.
-          aria-disabled={busy || undefined}
-          disabled={!canMove}
+          // Held while the step is with Yetu, or closed to a person who can't move tickets: the press is
+          // ignored but the button keeps its focus and place (not the native disabled), with the reason.
+          aria-disabled={busy || !canMove || undefined}
+          aria-describedby={canMove ? undefined : whyClosedId}
           onClick={() => {
             if (!busy && canMove) onNextStep(ticket);
           }}

@@ -190,10 +190,17 @@ describe("KitchenBoard", () => {
     expect(document.body).toHaveFocus();
   });
 
-  it("shows the step disabled, with who can, to a person who can't move tickets", () => {
-    renderBoard({ tickets: [ticket("a1", "SENT", MINUTE)], canMove: false });
-    expect(screen.getByTestId("kitchen-next-a1")).toBeDisabled();
+  it("shows the step closed, with who can, to a person who can't move tickets; it can still be reached to scroll and read", async () => {
+    const { onNextStep } = renderBoard({ tickets: [ticket("a1", "SENT", MINUTE)], canMove: false });
+    const step = screen.getByTestId("kitchen-next-a1");
     expect(screen.getByRole("note")).toHaveTextContent("Only kitchen and waiting staff can move tickets on. Ask a manager.");
+    expect(step).toHaveAttribute("aria-disabled", "true");
+    expect(step).toHaveAccessibleDescription("Only kitchen and waiting staff can move tickets on. Ask a manager.");
+    step.focus();
+    expect(step).toHaveFocus();
+    await userEvent.click(step);
+    await userEvent.keyboard("{Enter}");
+    expect(onNextStep).not.toHaveBeenCalled();
   });
 
   it("says nothing is waiting when the board is empty, and keeps its three columns", () => {
