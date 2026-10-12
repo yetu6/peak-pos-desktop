@@ -9,7 +9,8 @@ import { PIN_PAUSE_AFTER_FAILURES } from "./accessSettings";
 
 export type AccessNoticeKind =
   | "pin-rejected"
-  | "offline-pin-paused"
+  | "offline-pin-rejected"
+  | "offline-pin-locked"
   | "session-ended"
   | "idle-locked"
   | "unreachable"
@@ -37,15 +38,18 @@ const MESSAGES: Record<string, AccessNotice> = {
     tone: "danger",
     words: "That PIN didn't match. Try again.",
   },
+  // Without internet the till checks the PIN itself (src-tauri local_store/offline_pin.rs): each
+  // wrong try makes the next one wait longer, and at the limit the PIN stays locked on this till
+  // until its offline permission runs out, so only reconnecting helps.
   "That staff number or offline PIN was not accepted.": {
-    kind: "pin-rejected",
+    kind: "offline-pin-rejected",
     tone: "danger",
-    words: "That PIN didn't match. Try again.",
+    words: "That PIN didn't match. Without internet, each wrong try makes the next one wait longer.",
   },
   "Offline PIN locked. Reconnect to Peak or wait before retrying.": {
-    kind: "offline-pin-paused",
+    kind: "offline-pin-locked",
     tone: "danger",
-    words: "Too many tries. Wait a little, then try again, or reconnect to Yetu.",
+    words: "Too many tries on this till without internet. Reconnect to Yetu to sign in.",
   },
   "Session expired — enter your PIN again": {
     kind: "session-ended",
@@ -144,19 +148,28 @@ export function accessNotice(message: string | null | undefined): AccessNotice |
 
 /**
  * The PIN screen's notice: a refused PIN reads differently for a person typed
- * in by number, and once refusals reach the backend's pause rule it says the
- * PIN is paused.
+ * in by number. Once online refusals for that person reach the backend's
+ * pause rule it says the PIN may be paused: the till counts only its own
+ * tries, and the server's count also includes other tills and earlier tries,
+ * so a pause is never stated as certain. Offline refusals have their own
+ * rules and never count toward it.
  */
 export function pinNotice(
   message: string | null | undefined,
   { failures, manual }: { failures: number; manual: boolean },
 ): AccessNotice | null {
   const notice = accessNotice(message);
+  if (notice?.kind === "offline-pin-rejected" && manual) {
+    return {
+      ...notice,
+      words: "That staff number and PIN didn't match. Without internet, each wrong try makes the next one wait longer.",
+    };
+  }
   if (notice?.kind !== "pin-rejected") return notice;
   if (failures >= PIN_PAUSE_AFTER_FAILURES) {
     return {
       ...notice,
-      words: "Too many tries. This PIN is paused for at least a minute. Wait, then try again, or ask a manager.",
+      words: "Too many tries. Your PIN may be paused for a minute — wait, then try again, or ask a manager.",
     };
   }
   return manual ? { ...notice, words: "That staff number and PIN didn't match. Try again." } : notice;
@@ -191,9 +204,10 @@ export function groupPairingCode(code: string): string {
 
 /** What this till's readiness to work offline means for the person signing in. */
 export function offlineReadinessWords(state: OfflineEligibilityStatus["state"]): string {
-  if (state === "ELIGIBLE") return "If the internet drops, this till can keep taking cash.";
+  // ELIGIBLE is the till's own readiness; each person also needs to have signed in here online.
+  if (state === "ELIGIBLE") return "If the internet drops, this till can keep taking cash for staff who have signed in here before.";
   if (state === "CATALOG_REQUIRED") {
-    return "Taking cash without internet isn't ready yet. It will be after a sign-in with a connection.";
+    return "Taking cash without internet isn't ready yet. It usually will be after a sign-in with a connection.";
   }
   return "This till can't take cash without internet.";
 }

@@ -32,6 +32,7 @@ vi.mock("../auth/DeviceSessionProvider", async () => {
 const useDeviceSessionMock = { mockReturnValue: (value: Record<string, unknown>) => store.set(value) };
 
 const REJECTED = humanDeviceError(new StaffLoginRejectedError());
+const OFFLINE_REJECTED = "That staff number or offline PIN was not accepted.";
 
 function baseSession(overrides: Record<string, unknown> = {}) {
   return {
@@ -191,8 +192,40 @@ describe("PIN entry", () => {
     }
     expect(unlock).toHaveBeenCalledTimes(5);
     expect(screen.getByTestId("pin-error")).toHaveTextContent(
-      "Too many tries. This PIN is paused for at least a minute. Wait, then try again, or ask a manager.",
+      "Too many tries. Your PIN may be paused for a minute — wait, then try again, or ask a manager.",
     );
+  });
+
+  it("never counts offline refusals toward the online pause", async () => {
+    store.set(baseSession({ roster: TWO }));
+    unlock.mockImplementation(async () => {
+      store.set({ ...store.get(), error: OFFLINE_REJECTED });
+    });
+    render(<PinUnlock />);
+    await userEvent.click(screen.getByTestId("roster-entry-00001"));
+    for (let attempt = 1; attempt <= 6; attempt += 1) {
+      await typePin("111111");
+      await waitFor(() => expect(unlock).toHaveBeenCalledTimes(attempt));
+    }
+    expect(screen.getByTestId("pin-error")).toHaveTextContent(
+      "That PIN didn't match. Without internet, each wrong try makes the next one wait longer.",
+    );
+  });
+
+  it("starts the online count afresh after offline refusals", async () => {
+    store.set(baseSession({ roster: TWO }));
+    let calls = 0;
+    unlock.mockImplementation(async () => {
+      calls += 1;
+      store.set({ ...store.get(), error: calls <= 4 ? OFFLINE_REJECTED : REJECTED });
+    });
+    render(<PinUnlock />);
+    await userEvent.click(screen.getByTestId("roster-entry-00001"));
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      await typePin("111111");
+      await waitFor(() => expect(unlock).toHaveBeenCalledTimes(attempt));
+    }
+    expect(screen.getByTestId("pin-error")).toHaveTextContent("That PIN didn't match. Try again.");
   });
 
   it("says a typed staff number and PIN didn't match", async () => {
@@ -264,7 +297,7 @@ describe("Who's working", () => {
     useDeviceSessionMock.mockReturnValue(baseSession({ roster: TWO, offlineEligibility: { state: "ELIGIBLE" } }));
     render(<PinUnlock />);
     expect(screen.getByTestId("offline-authority-state")).toHaveTextContent(
-      "If the internet drops, this till can keep taking cash.",
+      "If the internet drops, this till can keep taking cash for staff who have signed in here before.",
     );
   });
 

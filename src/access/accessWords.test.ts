@@ -39,6 +39,10 @@ describe("settings that mirror the backend's rules", () => {
   });
 });
 
+// A tripwire, not a proof: it reads string literals passed straight to
+// setError(…), ternaries and `return "…"` in the files below. A message built
+// from a variable or a template literal slips past it, so new messages must
+// still be added to accessWords.ts by hand.
 describe("every message the sign-in code can show has plain words", () => {
   function stringsIn(source: string, pattern: RegExp): string[] {
     return [...source.matchAll(pattern)].map((match) => match[1]);
@@ -125,6 +129,33 @@ describe("access notices", () => {
   });
 });
 
+describe("offline refusals follow the till's own rules, not the server's", () => {
+  const offlineDenied = "That staff number or offline PIN was not accepted.";
+  const offlineLocked = "Offline PIN locked. Reconnect to Peak or wait before retrying.";
+
+  it("gives an offline refusal its own kind and words", () => {
+    expect(accessNotice(offlineDenied)).toEqual({
+      kind: "offline-pin-rejected",
+      tone: "danger",
+      words: "That PIN didn't match. Without internet, each wrong try makes the next one wait longer.",
+    });
+  });
+
+  it("never applies the online pause rule to offline refusals", () => {
+    expect(pinNotice(offlineDenied, { failures: PIN_PAUSE_AFTER_FAILURES + 3, manual: false })?.words).toBe(
+      "That PIN didn't match. Without internet, each wrong try makes the next one wait longer.",
+    );
+  });
+
+  it("says an offline lock lasts until the till reconnects, not 'wait a little'", () => {
+    expect(accessNotice(offlineLocked)).toEqual({
+      kind: "offline-pin-locked",
+      tone: "danger",
+      words: "Too many tries on this till without internet. Reconnect to Yetu to sign in.",
+    });
+  });
+});
+
 describe("PIN notices follow the backend's pause rule", () => {
   const rejected = humanDeviceError(new StaffLoginRejectedError());
 
@@ -138,9 +169,9 @@ describe("PIN notices follow the backend's pause rule", () => {
     );
   });
 
-  it("says the PIN is paused once the backend pauses it", () => {
+  it("says the PIN may be paused once refusals reach the backend's rule, never as certain", () => {
     const words = pinNotice(rejected, { failures: PIN_PAUSE_AFTER_FAILURES, manual: false })?.words;
-    expect(words).toBe("Too many tries. This PIN is paused for at least a minute. Wait, then try again, or ask a manager.");
+    expect(words).toBe("Too many tries. Your PIN may be paused for a minute — wait, then try again, or ask a manager.");
     expect(pinNotice(rejected, { failures: PIN_PAUSE_AFTER_FAILURES - 1, manual: false })?.words).toBe(
       "That PIN didn't match. Try again.",
     );
@@ -181,9 +212,11 @@ describe("small formats", () => {
   });
 
   it("says what offline readiness means for the person, in words", () => {
-    expect(offlineReadinessWords("ELIGIBLE")).toBe("If the internet drops, this till can keep taking cash.");
+    expect(offlineReadinessWords("ELIGIBLE")).toBe(
+      "If the internet drops, this till can keep taking cash for staff who have signed in here before.",
+    );
     expect(offlineReadinessWords("CATALOG_REQUIRED")).toBe(
-      "Taking cash without internet isn't ready yet. It will be after a sign-in with a connection.",
+      "Taking cash without internet isn't ready yet. It usually will be after a sign-in with a connection.",
     );
     expect(offlineReadinessWords("STORAGE_UNHEALTHY")).toBe("This till can't take cash without internet.");
     expect(offlineReadinessWords("ELIGIBLE")).not.toMatch(NOT_PLAIN);
