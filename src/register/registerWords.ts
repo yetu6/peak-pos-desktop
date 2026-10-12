@@ -110,3 +110,56 @@ export function sellProblem(error: unknown, step: keyof typeof SELL_STEPS): Regi
   if (described.kind === "STALE_VERSION") return { kind: "stale", words: described.message };
   return { kind: "other", words: described.message };
 }
+
+/**
+ * What Yetu's answer to a request means for one whose earlier answer was lost.
+ * Yetu replays a key that succeeded before any other check (fbc-peak
+ * idempotency.Begin, inside the same transaction as the payment), so:
+ * - "unsure": no answer about the request yet (the connection, Yetu busy or
+ *   down, or the first request still running: IDEMPOTENT_REQUEST_IN_PROGRESS);
+ * - "cannot-tell": refused before Yetu looked at the request (the session, the
+ *   till or the property), so its fate is still unknown and can't be asked here;
+ * - "refused": Yetu looked and refused it, so it was not recorded.
+ */
+export function afterLostAnswer(error: unknown): "unsure" | "cannot-tell" | "refused" {
+  const problem = problemOf(error);
+  if (problem === "network") return "unsure";
+  if (!problem) return "refused";
+  if (problem.code === "IDEMPOTENT_REQUEST_IN_PROGRESS") return "unsure";
+  switch (describePosError(problem).kind) {
+    case "NETWORK_ERROR":
+    case "SERVER_UNAVAILABLE":
+    case "RETRYABLE_INFRASTRUCTURE_ERROR":
+    case "RATE_LIMITED":
+      return "unsure";
+    case "AUTHENTICATION_REQUIRED":
+    case "SESSION_EXPIRED":
+    case "DEVICE_REVOKED":
+    case "CAPABILITY_NOT_ENABLED":
+      return "cannot-tell";
+    default:
+      return "refused";
+  }
+}
+
+/** A payment or room charge Yetu refused after its first answer was lost: what to say. */
+export function lostAnswerRefusalWords(error: unknown, room: boolean): string {
+  const what = room ? "charge" : "payment";
+  const kind = afterLostAnswer(error);
+  if (kind === "cannot-tell") {
+    return `Yetu couldn't answer for this ${what} because your session ended. Sign in again, then check this order in Orders before taking any money.`;
+  }
+  const refusal = room ? roomChargeProblem(error) : tenderProblem(error);
+  // Refused because the order moved on: stale, already paid, more than is owed, not eligible.
+  if (refusal && (refusal.kind === "stale" || refusal.kind === "paid" || refusal.kind === "other")) {
+    const problem = problemOf(error);
+    const moved =
+      problem !== "network" &&
+      problem !== null &&
+      (problem.code === "STALE_VERSION" || problem.code === "CONFLICT" || problem.code === "INVALID_STATE");
+    if (moved) {
+      return `This order was paid or changed on another till, so this ${what} wasn't recorded. The amounts here are Yetu's latest: check them before taking any money.`;
+    }
+  }
+  return refusal?.words ?? `The ${what} wasn't recorded. Try again.`;
+}
