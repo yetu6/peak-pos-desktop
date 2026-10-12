@@ -119,25 +119,25 @@ export function MenuPanel({
   ];
 
   return (
-    <div className="y-menu">
-      <div className="y-menu__bar">
-        <Tabs label="Menu categories" tabs={tabs} value={activeCategory} onChange={onCategory} className="y-menu__tabs" />
+    <div className="y-catalog">
+      <div className="y-catalog__bar">
+        <Tabs label="Menu categories" tabs={tabs} value={activeCategory} onChange={onCategory} className="y-catalog__tabs" />
         <SearchField
           label="Search the menu"
           placeholder="Search the menu"
           value={search}
           onChange={onSearch}
           size={56}
-          className="y-menu__search"
+          className="y-catalog__search"
           inputProps={{ id: SEARCH_ID, "data-testid": "catalog-search" } as Record<string, string>}
         />
       </div>
       {addBlocked ? (
-        <p className="y-menu__blocked" role="status">
+        <p className="y-catalog__blocked" role="status">
           {addBlocked}
         </p>
       ) : null}
-      <div className="y-menu__scroll">
+      <div className="y-catalog__scroll">
         {loading ? (
           <div className="y-menu-grid" aria-label="Loading the menu" data-testid="menu-grid">
             {Array.from({ length: 12 }, (_, index) => (
@@ -190,7 +190,7 @@ export function MenuPanel({
               : "It stays on the menu, greyed, and can't be added until it is back in stock."
           }
           footer={
-            <div className="y-menu__ask-actions">
+            <div className="y-catalog__ask-actions">
               <Button variant="quiet" onClick={() => setAsking(null)}>
                 Cancel
               </Button>

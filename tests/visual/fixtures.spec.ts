@@ -139,6 +139,16 @@ async function measure(page: Page): Promise<Finding[]> {
         if (columns !== wantColumns) {
           findings.push({ key: "register-layout", detail: `the menu has ${columns} columns, not ${wantColumns}` });
         }
+        // The menu sits beside the ticket, on screen: left of it, starting within the window.
+        if (grid) {
+          const menu = grid.getBoundingClientRect();
+          if (menu.right > box.left + 1 || menu.top >= Math.min(box.bottom, window.innerHeight) || menu.left < 0) {
+            findings.push({
+              key: "register-layout",
+              detail: `the menu is not beside the ticket (menu ${Math.round(menu.left)},${Math.round(menu.top)}; ticket starts at ${Math.round(box.left)})`,
+            });
+          }
+        }
       }
 
       // No interactive target under 48px either way.
