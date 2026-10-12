@@ -315,17 +315,41 @@ describe("nothing the screens read is left undefined", () => {
   });
 
   it("resolves every colour variable the screens use in both themes", () => {
-    const used = new Set<string>();
+    // Utility classes in the screens: solid colours (contrast is checked on them).
+    const solid = new Set<string>();
+    // The screens' own style sheets: any colour, overlays (rgb with alpha) included.
+    const styled = new Set<string>();
     for (const { path, text } of sources) {
-      if (!path.endsWith(".tsx")) continue;
-      for (const match of text.matchAll(/(?:text|bg|border|fill|stroke|outline|ring)-\[var\((--[\w-]+)\)\]/g)) {
-        used.add(match[1]);
+      if (path.endsWith(".tsx")) {
+        for (const match of text.matchAll(/(?:text|bg|border|fill|stroke|outline|ring)-\[var\((--[\w-]+)\)\]/g)) {
+          solid.add(match[1]);
+        }
+      }
+      if (path.endsWith(".css") && !path.endsWith("tokens.css")) {
+        const colourProperty = /(?:^|[;{\s])(color|background(?:-color)?|border(?:-(?:top|right|bottom|left))?(?:-color)?|outline(?:-color)?|fill|stroke)\s*:([^;}]*)/g;
+        for (const [, property, value] of text.matchAll(colourProperty)) {
+          // In a border or outline shorthand the colour follows the line style; the width comes first.
+          const shorthand = /^(border|outline)(-(top|right|bottom|left))?$/.test(property);
+          const colourPart = shorthand ? (value.split(/\b(?:solid|dashed|dotted|double)\b/)[1] ?? "") : value;
+          for (const match of colourPart.matchAll(/var\((--[\w-]+)\)/g)) styled.add(match[1]);
+        }
       }
     }
-    expect(used.size).toBeGreaterThan(5);
+    expect(solid.size).toBeGreaterThan(3);
+    expect(styled.size).toBeGreaterThan(20);
     for (const theme of ["light", "dark"] as const) {
-      for (const name of used) {
+      for (const name of solid) {
         expect(() => colour(theme, name), `${name} (${theme})`).not.toThrow();
+      }
+      for (const name of styled) {
+        const value = (() => {
+          try {
+            return resolve(theme, name).toLowerCase();
+          } catch (error) {
+            return String(error);
+          }
+        })();
+        expect(value, `${name} (${theme})`).toMatch(/^(#[0-9a-f]{6}|rgba?\(.+\)|transparent)$/);
       }
     }
   });
