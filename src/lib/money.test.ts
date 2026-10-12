@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CASH_DENOMINATIONS,
   CURRENCY_SYMBOLS,
   QUICK_CASH_STEPS,
   currencySymbol,
@@ -85,5 +86,12 @@ describe("quickCashAmounts", () => {
 
   it("keeps the note steps in a named setting", () => {
     expect(QUICK_CASH_STEPS.TZS).toEqual([1_000, 5_000, 10_000]);
+  });
+});
+
+describe("cash denominations", () => {
+  it("lists the notes and coins a till counts, per currency, as a named setting", () => {
+    expect(CASH_DENOMINATIONS.TZS).toEqual([10_000, 5_000, 2_000, 1_000, 500, 200, 100, 50]);
+    expect(CASH_DENOMINATIONS.KES).toBeUndefined();
   });
 });

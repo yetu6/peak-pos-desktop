@@ -24,11 +24,20 @@ export const QUICK_CASH_STEPS: Readonly<Record<string, readonly number[]>> = {
   TZS: [1_000, 5_000, 10_000],
 };
 
+/**
+ * Named setting: the notes and coins a till counts note by note, per
+ * currency, in major units, largest first. A currency not listed is counted
+ * as one total.
+ */
+export const CASH_DENOMINATIONS: Readonly<Record<string, readonly number[]>> = {
+  TZS: [10_000, 5_000, 2_000, 1_000, 500, 200, 100, 50],
+};
+
 /** Named setting: the most quick-cash amounts shown beside Exact. */
 export const QUICK_CASH_MAX = 3;
 
 /** Peak's minor units are hundredths of the major unit for every currency it sends. */
-const MINOR_PER_MAJOR = 100;
+export const MINOR_PER_MAJOR = 100;
 
 function normalizeCode(currency: string | null | undefined): string | null {
   const code = currency?.trim().toUpperCase();

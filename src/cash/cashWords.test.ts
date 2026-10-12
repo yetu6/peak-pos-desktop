@@ -1,0 +1,107 @@
+import { describe, expect, it } from "vitest";
+import { CASH_DENOMINATIONS } from "../lib/money";
+import {
+  cashMovementProblem,
+  closeShiftProblem,
+  countOutcome,
+  dayCloseProblem,
+  differenceWords,
+  noteCountMinor,
+} from "./cashWords";
+
+/** The hooks reject with the backend's problem as JSON in the message (usePosData `unwrap`). */
+function problem(code: string, detail: string): Error {
+  return new Error(JSON.stringify({ code, detail, status: 409, title: "x" }));
+}
+
+describe("closing a shift: the backend's refusals in words", () => {
+  // fbc-peak internal/pos/controls.go CloseShift, returned as CONFLICT with these details.
+  it("names each refusal and what to do", () => {
+    expect(closeShiftProblem(problem("CONFLICT", "shift has open orders"))).toEqual({
+      kind: "open-orders",
+      words: "Some orders on this till are still open. Take payment for them or void them, then close the shift.",
+    });
+    expect(closeShiftProblem(problem("CONFLICT", "shift has unresolved offline cash"))?.kind).toBe("offline-cash");
+    expect(closeShiftProblem(problem("CONFLICT", "supervisor approval failed"))).toEqual({
+      kind: "supervisor",
+      words: "The drawer doesn't match what Yetu expects, so a manager must approve. Their PIN wasn't accepted, or they can't approve this.",
+    });
+    expect(closeShiftProblem(problem("CONFLICT", "shift is not open"))?.kind).toBe("not-open");
+  });
+
+  it("never shows the backend's own words or a code", () => {
+    const words = closeShiftProblem(problem("CONFLICT", "something new: pq error 23505"))?.words ?? "";
+    expect(words).toBe("The shift couldn't be closed. Try again.");
+    expect(closeShiftProblem(new TypeError("Failed to fetch"))?.words).toBe(
+      "Can't reach Yetu. Check the internet connection, then try again.",
+    );
+    expect(closeShiftProblem(null)).toBeNull();
+  });
+});
+
+describe("closing the day: what blocks it, in words", () => {
+  // fbc-peak internal/pos/business_day.go, returned as INVALID_STATE.
+  it("counts the shifts still open", () => {
+    expect(
+      dayCloseProblem(problem("INVALID_STATE", "a shift for this business date is still open: 2 shift(s) for 2026-10-12")),
+    ).toEqual({ kind: "shifts-open", words: "2 shifts are still open today. Close every till's shift, then close the day." });
+    expect(
+      dayCloseProblem(problem("INVALID_STATE", "a shift for this business date is still open: 1 shift(s) for 2026-10-12"))?.words,
+    ).toBe("1 shift is still open today. Close every till's shift, then close the day.");
+  });
+
+  it("names unsent offline cash and night audit", () => {
+    expect(
+      dayCloseProblem(problem("INVALID_STATE", "a shift for this business date is still open: 3 unresolved offline cash operation(s)")),
+    ).toEqual({
+      kind: "offline-cash",
+      words: "3 cash sales made without internet haven't been settled. Reconnect those tills or sort them out in Yetu, then close the day.",
+    });
+    expect(
+      dayCloseProblem(problem("INVALID_STATE", "This property's business date is controlled by Lodging Night Audit, not POS Day Close."))?.kind,
+    ).toBe("night-audit");
+    expect(dayCloseProblem(problem("FORBIDDEN", "x"))?.kind).toBe("permission");
+  });
+
+  it("never shows an ISO date or the backend's sentence", () => {
+    const words = dayCloseProblem(problem("INVALID_STATE", "a shift for this business date is still open: 2 shift(s) for 2026-10-12"))?.words;
+    expect(words).not.toMatch(/\d{4}-\d{2}-\d{2}|shift\(s\)/);
+  });
+});
+
+describe("cash in and out: the backend's refusals in words", () => {
+  it("says a cash-out needs a different supervisor", () => {
+    expect(
+      cashMovementProblem(problem("FORBIDDEN", "Taking cash out of the drawer needs a supervisor's approval: their name and PIN.")),
+    ).toEqual({
+      kind: "supervisor",
+      words: "A different supervisor must approve taking cash out. Their PIN wasn't accepted, or they can't approve this.",
+    });
+    expect(cashMovementProblem(problem("CONFLICT", "no open shift on this terminal"))?.kind).toBe("no-shift");
+  });
+});
+
+describe("count and difference", () => {
+  it("compares the count with Yetu's expected figure, without working out money", () => {
+    expect(countOutcome(7_400_000, 7_400_000)).toBe("balanced");
+    expect(countOutcome(7_450_000, 7_400_000)).toBe("over");
+    expect(countOutcome(7_350_000, 7_400_000)).toBe("short");
+  });
+
+  it("words the difference Yetu worked out", () => {
+    expect(differenceWords(0, "TZS")).toBe("Balanced");
+    expect(differenceWords(50_000, "TZS")).toBe("Over by TSh 500");
+    expect(differenceWords(-50_000, "TZS")).toBe("Short by TSh 500");
+  });
+});
+
+describe("note-by-note counting", () => {
+  it("keeps the notes and coins in a named setting", () => {
+    expect(CASH_DENOMINATIONS.TZS).toEqual([10_000, 5_000, 2_000, 1_000, 500, 200, 100, 50]);
+  });
+
+  it("adds a count in whole minor units", () => {
+    expect(noteCountMinor({ 10000: 7, 5000: 0, 2000: 2, 500: 1 })).toBe(7_450_000);
+    expect(noteCountMinor({})).toBe(0);
+  });
+});
