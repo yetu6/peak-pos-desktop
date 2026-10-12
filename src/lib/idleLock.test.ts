@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_IDLE_LOCK_SECONDS,
+  IDLE_LOCK_MAX_DEFERRAL_SECONDS,
   IDLE_LOCK_WARNING_SECONDS,
   holdIdleLock,
   idleLockHeld,
@@ -22,25 +23,68 @@ describe("idleLock", () => {
     expect(IDLE_LOCK_WARNING_SECONDS).toBe(10);
   });
 
-  it("never locks while a money request holds it, then waits a full idle window after", () => {
+  it("defers the lock while a money request is with Yetu, and locks as usual once it settles", () => {
     vi.useFakeTimers();
     let now = 0;
     const onIdle = vi.fn();
     const stop = watchIdleActivity(onIdle, { idleMs: 60_000, now: () => now });
     const release = holdIdleLock();
     expect(idleLockHeld()).toBe(true);
-    now = 120_000;
+    now = 70_000;
     vi.advanceTimersByTime(250);
     expect(onIdle).not.toHaveBeenCalled();
     release();
-    expect(idleLockHeld()).toBe(false);
-    now = 120_000 + 59_000;
-    vi.advanceTimersByTime(250);
-    expect(onIdle).not.toHaveBeenCalled();
-    now = 120_000 + 60_250;
     vi.advanceTimersByTime(250);
     expect(onIdle).toHaveBeenCalledTimes(1);
     stop();
+  });
+
+  it("a request that never settles still locks after the lock time plus the most it may defer", () => {
+    vi.useFakeTimers();
+    let now = 0;
+    const onIdle = vi.fn();
+    const stop = watchIdleActivity(onIdle, { idleMs: 60_000, now: () => now });
+    const release = holdIdleLock();
+    now = 60_000 + IDLE_LOCK_MAX_DEFERRAL_SECONDS * 1_000 - 1_000;
+    vi.advanceTimersByTime(250);
+    expect(onIdle).not.toHaveBeenCalled();
+    now = 60_000 + IDLE_LOCK_MAX_DEFERRAL_SECONDS * 1_000 + 250;
+    vi.advanceTimersByTime(250);
+    expect(onIdle).toHaveBeenCalledTimes(1);
+    release();
+    stop();
+  });
+
+  it("never locks before its configured time, held or not", () => {
+    vi.useFakeTimers();
+    let now = 0;
+    const onIdle = vi.fn();
+    const stop = watchIdleActivity(onIdle, { idleMs: 60_000, now: () => now });
+    const release = holdIdleLock();
+    now = 59_000;
+    vi.advanceTimersByTime(250);
+    release();
+    vi.advanceTimersByTime(250);
+    expect(onIdle).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it("locks rather than stay open when something goes wrong in the watcher", () => {
+    vi.useFakeTimers();
+    const onIdle = vi.fn();
+    const stop = watchIdleActivity(onIdle, {
+      idleMs: 60_000,
+      onCountdown: () => {
+        throw new Error("broken");
+      },
+    });
+    vi.advanceTimersByTime(250);
+    expect(onIdle).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it("the most the lock may be deferred is a named setting", () => {
+    expect(IDLE_LOCK_MAX_DEFERRAL_SECONDS).toBe(30);
   });
 
   it("counts down and locks when idle, and activity cancels", () => {

@@ -35,6 +35,8 @@ export function CloseShiftSheet(props: Omit<CloseShiftSheetViewProps, "onClose" 
   const { close } = usePosShift();
   const closeKey = useIdempotencyKey();
   const queryClient = useQueryClient();
+  // The lock waits (within its bound) while the close is with Yetu: the mutation's own status.
+  useHoldIdleLock(close.isPending);
   return (
     <CloseShiftSheetView
       {...props}
@@ -93,8 +95,6 @@ export function CloseShiftSheetView({
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  // The till doesn't lock itself while the close is with Yetu.
-  useHoldIdleLock(pending || refreshing);
 
   const countedMinor = toMinor(counted);
   const outcome = countedMinor === null ? null : countOutcome(countedMinor, shift.expectedCashMinor);

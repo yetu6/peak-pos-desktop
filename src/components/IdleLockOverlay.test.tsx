@@ -64,6 +64,27 @@ describe("IdleLockOverlay", () => {
   });
 });
 
+describe("an unmounted sheet", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    switchStaff.mockClear();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  function Holder({ active }: { active: boolean }) {
+    useHoldIdleLock(active);
+    return null;
+  }
+
+  it("doesn't keep the till unlocked: the lock comes at the usual time", () => {
+    render(<IdleLockOverlay idleSeconds={60} />);
+    const sheet = render(<Holder active />);
+    sheet.unmount();
+    act(() => vi.advanceTimersByTime(60_500));
+    expect(switchStaff).toHaveBeenCalledWith("Locked after idle");
+  });
+});
+
 describe("useHoldIdleLock", () => {
   function Holder({ active }: { active: boolean }) {
     useHoldIdleLock(active);

@@ -8,11 +8,20 @@ export const DEFAULT_IDLE_LOCK_SECONDS = 60;
 /** Named setting: the countdown shows only for this many seconds before the lock. */
 export const IDLE_LOCK_WARNING_SECONDS = 10;
 
+/**
+ * Named setting: the most the lock may wait for a money request still with
+ * Yetu, past its usual time. After that the till locks regardless (the
+ * request's own result still lands; the person signs back in to see it).
+ */
+export const IDLE_LOCK_MAX_DEFERRAL_SECONDS = 30;
+
 // While a money request is with Yetu (a payment, closing a shift, cash in or
-// out, a discount, a void) the till never locks: it waits for the answer.
+// out, a discount, a void) the lock waits for the answer, up to
+// IDLE_LOCK_MAX_DEFERRAL_SECONDS past its time. Holds come from the sheets'
+// live mutation status and are let go when a sheet closes (useHoldIdleLock).
 const holds = new Set<symbol>();
 
-/** Keeps the till from locking until the returned release is called. */
+/** Defers the lock (within the bound) until the returned release is called. */
 export function holdIdleLock(): () => void {
   const hold = Symbol("idle-lock-hold");
   holds.add(hold);
@@ -56,8 +65,16 @@ export function watchIdleActivity(
   } = { idleMs: idleLockMs() },
 ): () => void {
   const now = options.now ?? Date.now;
+  // An unusable lock time locks at the usual default, never later.
+  const idleMs = Number.isFinite(options.idleMs) && options.idleMs > 0 ? options.idleMs : DEFAULT_IDLE_LOCK_SECONDS * 1_000;
+  const deferralMs = IDLE_LOCK_MAX_DEFERRAL_SECONDS * 1_000;
   let last = now();
   let fired = false;
+  const lock = () => {
+    if (fired) return;
+    fired = true;
+    onIdle();
+  };
   const mark = () => {
     last = now();
     fired = false;
@@ -67,24 +84,21 @@ export function watchIdleActivity(
     window.addEventListener(event, mark, { passive: true });
   }
   const timer = window.setInterval(() => {
-    if (holds.size > 0) {
-      // Waiting on Yetu counts as use: each tick while held moves the start, so
-      // a full idle window runs from when it settles.
-      last = now();
-      fired = false;
-      options.onCountdown?.(null);
-      return;
-    }
-    const remainingMs = options.idleMs - (now() - last);
-    if (remainingMs <= 0) {
-      options.onCountdown?.(0);
-      if (!fired) {
-        fired = true;
-        onIdle();
+    try {
+      // Idle time runs from the last touch; a pending money request moves the
+      // lock later by at most the deferral, never earlier than its time.
+      const limit = holds.size > 0 ? idleMs + deferralMs : idleMs;
+      const remainingMs = limit - (now() - last);
+      if (remainingMs <= 0) {
+        options.onCountdown?.(0);
+        lock();
+        return;
       }
-      return;
+      options.onCountdown?.(Math.ceil(remainingMs / 1_000));
+    } catch {
+      // Anything unexpected locks rather than leaving the till open.
+      lock();
     }
-    options.onCountdown?.(Math.ceil(remainingMs / 1_000));
   }, 250);
   return () => {
     window.clearInterval(timer);

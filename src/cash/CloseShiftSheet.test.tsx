@@ -8,10 +8,10 @@ import { idleLockHeld } from "../lib/idleLock";
 import { CloseShiftSheet } from "./CloseShiftSheet";
 import { lastClosedShift, forgetClosedShift } from "./closedShift";
 
-const { closeAsync } = vi.hoisted(() => ({ closeAsync: vi.fn() }));
+const { closeAsync, closeState } = vi.hoisted(() => ({ closeAsync: vi.fn(), closeState: { isPending: false } }));
 
 vi.mock("../hooks/usePosData", () => ({
-  usePosShift: () => ({ close: { mutateAsync: closeAsync, isPending: false } }),
+  usePosShift: () => ({ close: { mutateAsync: closeAsync, isPending: closeState.isPending } }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
 }));
 
@@ -306,13 +306,14 @@ describe("CloseShiftSheet: check", () => {
     expect(screen.getByRole("button", { name: "Change the count" })).toBeDisabled();
   });
 
-  it("keeps the till from locking while the close is with Yetu", async () => {
-    closeAsync.mockReturnValue(new Promise(() => {}));
+  it("keeps the till from locking while the close is with Yetu (the mutation's own status)", () => {
     renderSheet();
-    await count("74000");
     expect(idleLockHeld()).toBe(false);
-    await userEvent.click(screen.getByTestId("close-shift"));
+    closeState.isPending = true;
+    const second = renderSheet();
     expect(idleLockHeld()).toBe(true);
+    second.unmount();
+    closeState.isPending = false;
   });
 
   it("says why Yetu would not close it, in words", async () => {
