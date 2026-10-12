@@ -425,4 +425,8 @@ describe("type, spacing and sizes", () => {
       minHeight: 768,
     });
   });
+
+  it("drops the old coloured bar down the side of the sign-in screens", () => {
+    expect(indexCss).not.toMatch(/\.auth-shell::before/);
+  });
 });

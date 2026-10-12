@@ -1,0 +1,431 @@
+/*
+ * Screens before a person is signed in: starting, server setup, connecting
+ * the till, who's working and the PIN. Built on the S1 tokens and components.
+ */
+
+.y-access-frame {
+  display: flex;
+  height: 100dvh;
+  min-width: 1024px;
+  flex-direction: column;
+  background: var(--canvas);
+}
+
+.y-access-frame__screen {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.y-access {
+  display: flex;
+  min-height: 100%;
+  flex: 1;
+  flex-direction: column;
+  padding: var(--space-5) var(--space-8) var(--space-6);
+  color: var(--text);
+}
+
+.y-access__top {
+  display: flex;
+  min-height: var(--target-min);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.y-access__till {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--type-lead);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.y-access__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4) 0;
+}
+
+.y-access__panel {
+  display: grid;
+  width: 100%;
+  gap: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  padding: var(--space-8);
+}
+
+.y-access__panel--regular { max-width: 520px; }
+.y-access__panel--wide { max-width: 920px; }
+
+.y-access__title {
+  margin: 0;
+  font-size: var(--type-heading);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.y-access__lede {
+  margin-top: calc(-1 * var(--space-2));
+  color: var(--text-muted);
+}
+
+.y-access__lede p { margin: 0; }
+
+.y-access__notice .y-banner { border: 1px solid; border-radius: var(--radius-control); }
+.y-access__notice .y-banner--info { border-color: var(--info-line); }
+.y-access__notice .y-banner--warning { border-color: var(--warning-line); }
+.y-access__notice .y-banner--danger { border-color: var(--danger-line); }
+
+.y-access__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--target-gap);
+}
+
+.y-access__muted {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+}
+
+/* ------------------------------------------------------------------ Splash */
+.y-splash {
+  display: flex;
+  min-height: 100%;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-5);
+  padding: var(--space-8);
+  text-align: center;
+}
+
+.y-splash__title {
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+
+.y-splash__dots {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.y-splash__dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--action);
+  animation: y-splash-dot 1.2s ease-in-out infinite;
+}
+
+.y-splash__dots span:nth-child(2) { animation-delay: 0.15s; }
+.y-splash__dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes y-splash-dot {
+  0%,
+  100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+.y-splash__slow { max-width: 560px; text-align: left; }
+.y-splash__slow .y-banner { border: 1px solid var(--warning-line); border-radius: var(--radius-control); }
+
+/* ----------------------------------------------------------------- Pairing */
+.y-pairing {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-6);
+}
+
+.y-pairing__code-card {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  padding: var(--space-5);
+}
+
+/* The QR code is read by a phone camera: it stays black on white in both themes. */
+.y-pairing__qr {
+  width: 200px;
+  height: 200px;
+  border-radius: var(--radius-control);
+  background: #ffffff;
+  padding: var(--space-2);
+}
+
+.y-pairing__qr--waiting {
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.y-pairing__code-label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  font-weight: 600;
+}
+
+.y-pairing__code {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--type-figure);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.y-pairing__expiry {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.y-steps {
+  display: grid;
+  margin: 0;
+  gap: var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.y-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.y-steps__number {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--surface-selected);
+  color: var(--action-text);
+  font-weight: 700;
+}
+
+.y-steps__text { padding-top: 4px; }
+
+.y-live {
+  display: grid;
+  margin: 0;
+  gap: var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.y-live li {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-muted);
+}
+
+.y-live li svg { width: 20px; height: 20px; flex: none; }
+.y-live__done { color: var(--success) !important; }
+.y-live__done span { color: var(--text); }
+.y-live__now { color: var(--text) !important; font-weight: 600; }
+.y-live__now svg { color: var(--action-text); }
+
+.y-section-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--type-lead);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------- Who's working, PIN */
+.y-roster {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--target-gap);
+}
+
+.y-roster__person {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  padding: var(--space-2) var(--space-4);
+  color: var(--text);
+  font-size: var(--type-lead);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-press), border-color var(--motion-press);
+}
+
+.y-roster__person:hover { border-color: var(--action); background: var(--surface-hover); }
+.y-roster__person .y-avatar { width: 44px; height: 44px; font-size: var(--type-body); }
+
+.y-roster__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.y-roster__scroll {
+  max-height: min(44dvh, 470px);
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.y-pin {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-4);
+}
+
+.y-pin__who {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.y-pin__person {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.y-pin__who--manual .y-field { flex: 1; }
+
+.y-pin__who-name {
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 700;
+}
+
+.y-pin .y-keypad { width: 100%; max-width: 360px; }
+
+.y-pin__dots {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.y-pin__dot {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--line-control);
+  border-radius: 999px;
+}
+
+.y-pin__dot--filled {
+  border-color: var(--action);
+  background: var(--action);
+}
+
+/* Empty until a PIN is being checked, so it takes no room. */
+.y-pin__status {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.y-pin__status:empty { display: none; }
+
+.y-pin__message {
+  display: flex;
+  width: 100%;
+  margin: 0;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius-control);
+  background: var(--danger-subtle);
+  padding: var(--space-3) var(--space-4);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.y-pin__message svg { width: 20px; height: 20px; flex: none; color: var(--danger); }
+
+/* ---------------------------------------------------------------- Idle lock */
+.idle-lock-overlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--scrim);
+}
+
+.idle-lock-card {
+  display: grid;
+  min-width: min(420px, calc(100vw - 32px));
+  justify-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  padding: var(--space-8);
+  color: var(--text);
+  text-align: center;
+  box-shadow: var(--shadow-sheet);
+}
+
+.idle-lock-label {
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+
+.idle-lock-count {
+  font-family: var(--font-display);
+  font-size: var(--type-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.idle-lock-hint {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+@media (max-width: 1279px) {
+  .y-access { padding: var(--space-4) var(--space-6) var(--space-5); }
+  .y-access__panel { padding: var(--space-6); }
+  .y-pairing { gap: var(--space-5); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .y-splash__dots span { animation: none; opacity: 0.7; }
+}
+
+.y-access__column {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+}
+
+.y-section-title--spaced { margin-top: var(--space-2); }

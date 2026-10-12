@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DeviceSessionProvider, useDeviceSession } from "./auth/DeviceSessionProvider";
+import { AccessFrame } from "./access/AccessLayout";
 import { IdleLockOverlay } from "./components/IdleLockOverlay";
 import { ConnectivityIndicator } from "./components/ConnectivityIndicator";
-import { Banner } from "./components/system";
+import { KeyStorageBanner } from "./components/KeyStorageBanner";
 import { UpdaterBanner } from "./components/UpdaterBanner";
 import { ActiveOrders } from "./pages/ActiveOrders";
 import { Kitchen } from "./pages/Kitchen";
@@ -130,16 +131,6 @@ function LiveRegister() {
   );
 }
 
-function KeyStorageBanner() {
-  const { keyStorageWarning } = useDeviceSession();
-  if (!keyStorageWarning) return null;
-  return (
-    <Banner tone="danger" data-testid="key-storage-warning">
-      {keyStorageWarning}
-    </Banner>
-  );
-}
-
 /**
  * Only reached once `phase === "ready"` — i.e. a real staff session already
  * exists (PIN unlock sets it before ever advancing the phase this far). Only
@@ -228,14 +219,19 @@ function AuthGate() {
   }
 
   return (
-    <>
-      <UpdaterBanner />
-      <KeyStorageBanner />
+    <AccessFrame
+      banners={
+        <>
+          <UpdaterBanner />
+          <KeyStorageBanner />
+        </>
+      }
+    >
       <span className="sr-only" data-testid="shell-state">
         {route}
       </span>
       {screen}
-    </>
+    </AccessFrame>
   );
 }
 

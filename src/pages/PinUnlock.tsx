@@ -1,8 +1,30 @@
-import { useMemo, useState } from "react";
-import { Icon } from "../components/Icon";
+import { CircleAlert } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
+import { AccessLayout } from "../access/AccessLayout";
+import { PIN_LENGTH, ROSTER_SEARCH_AFTER } from "../access/accessSettings";
+import { offlineReadinessWords, pinNotice } from "../access/accessWords";
+import { useNetworkOnline } from "../access/useNetworkOnline";
+import { Banner, Button, Field, Keypad, SearchField, type KeypadKey } from "../components/system";
+import type { RosterEntry } from "../lib/deviceAuth";
+import { isComposing } from "../lib/keyboard";
+import type { OfflineEligibilityStatus } from "../lib/offlineAuthorization";
 
-const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK"] as const;
+/** The front door of every shift change: who's working, then their PIN. */
+export function PinUnlock() {
+  const { unlock, error, identity, roster, offlineEligibility } = useDeviceSession();
+  const online = useNetworkOnline();
+  return (
+    <PinUnlockView
+      tillName={identity?.terminalName?.trim() || null}
+      roster={roster}
+      offlineState={offlineEligibility?.state ?? null}
+      error={error}
+      online={online}
+      onUnlock={unlock}
+    />
+  );
+}
 
 function initialsOf(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -11,209 +33,270 @@ function initialsOf(fullName: string): string {
   return (first + last).toUpperCase() || "?";
 }
 
-export function PinUnlock() {
-  const { unlock, error, identity, roster, offlineEligibility } = useDeviceSession();
-  const [selectedName, setSelectedName] = useState<string | null>(null);
+export interface PinUnlockViewProps {
+  tillName: string | null;
+  roster: readonly RosterEntry[];
+  offlineState: OfflineEligibilityStatus["state"] | null;
+  /** The device session's message after the last attempt or lock. */
+  error: string | null;
+  online: boolean;
+  onUnlock: (staffNumber: string, pin: string) => Promise<void>;
+  /** Fixtures and tests start part-way through. */
+  initialStaff?: RosterEntry | null;
+  initialManual?: boolean;
+  initialFailures?: number;
+}
+
+export function PinUnlockView({
+  tillName,
+  roster,
+  offlineState,
+  error,
+  online,
+  onUnlock,
+  initialStaff = null,
+  initialManual = false,
+  initialFailures = 0,
+}: PinUnlockViewProps) {
+  const sortedRoster = useMemo(() => [...roster].sort((a, b) => a.fullName.localeCompare(b.fullName)), [roster]);
+  const [selected, setSelected] = useState<RosterEntry | null>(initialStaff);
+  const [manual, setManual] = useState(initialManual || sortedRoster.length === 0);
   const [staffNumber, setStaffNumber] = useState("");
-  const [manualEntry, setManualEntry] = useState(false);
   const [pin, setPin] = useState("");
-  const [pending, setPending] = useState(false);
-  const till = identity?.terminalName?.trim();
-
-  const sortedRoster = useMemo(
-    () => [...roster].sort((a, b) => a.fullName.localeCompare(b.fullName)),
-    [roster],
+  const pinRef = useRef("");
+  const [pending, setPendingState] = useState(false);
+  // Read by the keypad at once: a tap right after an attempt finishes is never lost to a stale render.
+  const pendingRef = useRef(false);
+  const setPending = (value: boolean) => {
+    pendingRef.current = value;
+    setPendingState(value);
+  };
+  const [query, setQuery] = useState("");
+  const [localProblem, setLocalProblem] = useState<string | null>(null);
+  const [failures, setFailures] = useState<Record<string, number>>(() =>
+    initialStaff && initialFailures ? { [initialStaff.staffNumber]: initialFailures } : {},
   );
+  const [attempt, setAttempt] = useState<{ staff: string; count: number } | null>(null);
 
-  const staffChosen = staffNumber.trim().length > 0;
-  const showingRoster = !manualEntry && !selectedName && sortedRoster.length > 0;
+  const choosing = !selected && !manual;
+  const currentStaff = selected?.staffNumber ?? staffNumber.trim();
 
-  function chooseFromRoster(entry: { fullName: string; staffNumber: string }): void {
-    setSelectedName(entry.fullName);
-    setStaffNumber(entry.staffNumber);
-    setPin("");
+  // After each attempt: a refused PIN counts toward the backend's pause rule.
+  useEffect(() => {
+    if (!attempt) return;
+    if (pinNotice(error, { failures: 0, manual: false })?.kind === "pin-rejected") {
+      setFailures((current) => ({ ...current, [attempt.staff]: (current[attempt.staff] ?? 0) + 1 }));
+    }
+    // Only a new attempt counts, not a re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempt]);
+
+  function setPinValue(next: string) {
+    pinRef.current = next;
+    setPin(next);
   }
 
-  function changeStaff(): void {
-    setSelectedName(null);
-    setStaffNumber("");
-    setPin("");
-    setManualEntry(sortedRoster.length === 0);
-  }
-
-  async function submit(): Promise<void> {
-    if (!staffChosen || pin.length < 4 || pending) return;
+  async function submit(pinValue: string) {
+    const staff = currentStaff;
+    if (!staff) {
+      setLocalProblem("Type your staff number first.");
+      setPinValue("");
+      return;
+    }
+    setLocalProblem(null);
     setPending(true);
     try {
-      await unlock(staffNumber.trim(), pin);
+      await onUnlock(staff, pinValue);
     } finally {
-      setPin("");
+      setPinValue("");
       setPending(false);
+      setAttempt((last) => ({ staff, count: (last?.count ?? 0) + 1 }));
     }
   }
 
-  function onKey(key: (typeof KEYS)[number]): void {
-    if (key === "⌫") {
-      setPin((value) => value.slice(0, -1));
-      return;
+  function onKey(key: KeypadKey) {
+    if (pendingRef.current) return;
+    if (key === "delete") return setPinValue(pinRef.current.slice(0, -1));
+    if (key === "clear") return setPinValue("");
+    if (!/^\d$/.test(key) || pinRef.current.length >= PIN_LENGTH) return;
+    const next = pinRef.current + key;
+    setPinValue(next);
+    if (next.length === PIN_LENGTH) void submit(next);
+  }
+
+  // A keyboard types the PIN too, unless the staff number field has focus.
+  const onKeyRef = useRef(onKey);
+  onKeyRef.current = onKey;
+  useEffect(() => {
+    if (choosing) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented || isComposing(event) || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (/^\d$/.test(event.key)) onKeyRef.current(event.key as KeypadKey);
+      else if (event.key === "Backspace") onKeyRef.current("delete");
+      else return;
+      event.preventDefault();
     }
-    if (key === "OK") {
-      void submit();
-      return;
-    }
-    setPin((value) => (value.length < 8 ? value + key : value));
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [choosing]);
+
+  function chooseFromRoster(entry: RosterEntry) {
+    setSelected(entry);
+    setManual(false);
+    setPinValue("");
+    setLocalProblem(null);
+  }
+
+  function changePerson() {
+    setSelected(null);
+    setStaffNumber("");
+    setPinValue("");
+    setLocalProblem(null);
+    setManual(sortedRoster.length === 0);
+  }
+
+  const notice = pinNotice(error, { failures: failures[currentStaff] ?? 0, manual: !selected });
+  const info = notice?.tone === "info" ? notice : null;
+  const problem = localProblem ?? (notice && notice.tone !== "info" ? notice.words : null);
+
+  const notices =
+    !online || info ? (
+      <>
+        {!online ? (
+          <div data-testid="offline-banner">
+            <Banner tone="warning">Working offline. Only cash sales are possible until the connection returns.</Banner>
+          </div>
+        ) : null}
+        {info ? (
+          <div data-testid="pin-notice">
+            <Banner tone="info">{info.words}</Banner>
+          </div>
+        ) : null}
+      </>
+    ) : null;
+
+  const readiness = offlineState ? (
+    <p className="y-access__muted" data-testid="offline-authority-state">
+      {offlineReadinessWords(offlineState)}
+    </p>
+  ) : null;
+
+  const problemLine = problem ? (
+    <p className="y-pin__message" data-testid="pin-error" role="alert">
+      <CircleAlert aria-hidden="true" />
+      {problem}
+    </p>
+  ) : null;
+
+  if (choosing) {
+    const needle = query.trim().toLowerCase();
+    const shown = needle ? sortedRoster.filter((entry) => entry.fullName.toLowerCase().includes(needle)) : sortedRoster;
+    return (
+      <AccessLayout
+        testId="pin-screen"
+        title="Who's working?"
+        lede={<p>Tap your name.</p>}
+        tillName={tillName}
+        width="wide"
+        notice={notices}
+      >
+        {sortedRoster.length > ROSTER_SEARCH_AFTER ? (
+          <SearchField label="Find your name" placeholder="Find your name" value={query} onChange={setQuery} />
+        ) : null}
+        <div className="y-roster__scroll">
+          <div className="y-roster" data-testid="staff-roster">
+            {shown.map((entry) => (
+              <button
+                key={entry.staffNumber}
+                type="button"
+                className="y-roster__person"
+                data-testid={`roster-entry-${entry.staffNumber}`}
+                onClick={() => chooseFromRoster(entry)}
+              >
+                <span className="y-avatar" aria-hidden="true">
+                  {initialsOf(entry.fullName)}
+                </span>
+                <span className="y-roster__name">{entry.fullName}</span>
+              </button>
+            ))}
+          </div>
+          {shown.length === 0 ? (
+            <p className="y-access__muted">No one called “{query.trim()}” works here. Use your staff number instead.</p>
+          ) : null}
+        </div>
+        {problemLine}
+        <div className="y-access__actions">
+          <Button variant="quiet" data-testid="staff-manual-entry" onClick={() => setManual(true)}>
+            Use staff number instead
+          </Button>
+        </div>
+        {readiness}
+      </AccessLayout>
+    );
   }
 
   return (
-    <div
-      className="auth-shell flex h-screen items-center justify-center p-6"
-      data-testid="pin-screen"
+    <AccessLayout
+      testId="pin-screen"
+      title={selected ? "Enter your PIN" : "Sign in with your staff number"}
+      tillName={tillName}
+      notice={notices}
     >
-      <div className={`glass-panel w-full p-8 ${showingRoster ? "max-w-xl" : "max-w-sm"}`}>
-        <div className="mb-5 flex items-center justify-center gap-2">
-          <Icon name="peak-logo" size={24} className="text-[var(--brass)]" />
-          <span className="font-display text-xl text-[var(--foreground)]">Yetu POS</span>
-        </div>
-        {till && (
-          <p
-            className="text-center text-[13px] font-medium text-[var(--foreground-muted)]"
-            data-testid="till-name"
-          >
-            {till}
-          </p>
-        )}
-        {offlineEligibility && (
-          <p
-            className="mt-2 text-center text-[11px] font-medium text-[var(--foreground-muted)]"
-            data-testid="offline-authority-state"
-          >
-            {offlineEligibility.state === "ELIGIBLE"
-              ? "Ready for offline PIN if the network drops"
-              : offlineEligibility.state === "CATALOG_REQUIRED"
-                ? "Online · offline catalog certification pending"
-                : "Online · offline authority unavailable"}
-          </p>
-        )}
-
-        {showingRoster ? (
-          <>
-            <p className="mt-5 text-center text-sm font-medium text-[var(--foreground)]">
-              Who&apos;s using this terminal?
-            </p>
-            <p className="mt-1 text-center text-[12px] text-[var(--foreground-muted)]">
-              Select your name, then enter your PIN
-            </p>
-            <div
-              className="mt-4 grid grid-cols-3 gap-3"
-              data-testid="staff-roster"
-            >
-              {sortedRoster.map((entry) => (
-                <button
-                  key={entry.staffNumber}
-                  data-testid={`roster-entry-${entry.staffNumber}`}
-                  onClick={() => chooseFromRoster(entry)}
-                  className="flex min-h-[112px] flex-col items-center justify-center gap-2 rounded-[var(--radius-tile)] border border-[var(--border)] bg-[var(--surface-raised)] p-3 transition-colors hover:border-[var(--brass)] hover:bg-[var(--surface-interactive)]"
-                >
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--surface-interactive)] text-base font-semibold text-[var(--foreground)]">
-                    {initialsOf(entry.fullName)}
-                  </span>
-                  <span className="text-center text-[13px] font-medium leading-tight text-[var(--foreground)]">
-                    {entry.fullName}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <button
-              data-testid="staff-manual-entry"
-              onClick={() => setManualEntry(true)}
-              className="mt-4 h-11 w-full text-center text-[12px] font-medium text-[var(--foreground-muted)] underline"
-            >
-              Enter staff number instead
-            </button>
-          </>
+      <div className="y-pin">
+        {selected ? (
+          <div className="y-pin__who">
+            <span className="y-pin__person">
+              <span className="y-avatar" aria-hidden="true">
+                {initialsOf(selected.fullName)}
+              </span>
+              <span className="y-pin__who-name" data-testid="selected-staff-name">
+                {selected.fullName}
+              </span>
+            </span>
+            <Button variant="quiet" data-testid="staff-change" onClick={changePerson}>
+              Not you?
+            </Button>
+          </div>
         ) : (
-          <>
-            {selectedName ? (
-              <div className="mt-5 flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-medium text-[var(--foreground-muted)]">
-                    Signing in as
-                  </p>
-                  <p
-                    className="text-sm font-semibold text-[var(--foreground)]"
-                    data-testid="selected-staff-name"
-                  >
-                    {selectedName}
-                  </p>
-                </div>
-                <button
-                  data-testid="staff-change"
-                  onClick={changeStaff}
-                  className="text-[12px] font-medium text-[var(--foreground-muted)] underline"
-                >
-                  Not you?
-                </button>
-              </div>
-            ) : (
-              <>
-                <label className="mt-5 block text-[11px] font-medium text-[var(--foreground-muted)]">
-                  Staff number
-                </label>
-                <input
-                  data-testid="staff-number"
-                  value={staffNumber}
-                  onChange={(event) => setStaffNumber(event.target.value)}
-                  className="input mt-1 w-full bg-[var(--surface-interactive)] text-[var(--foreground)]"
-                  autoComplete="off"
-                />
-                {sortedRoster.length > 0 && (
-                  <button
-                    data-testid="staff-choose-from-roster"
-                    onClick={() => setManualEntry(false)}
-                    className="mt-2 text-[12px] font-medium text-[var(--foreground-muted)] underline"
-                  >
-                    Choose from list instead
-                  </button>
-                )}
-              </>
-            )}
-            <label className="mt-3 block text-[11px] font-medium text-[var(--foreground-muted)]">
-              PIN
-            </label>
-            <div
-              className="mt-1 flex h-11 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-interactive)] font-mono text-lg tracking-[0.4em] text-[var(--foreground)]"
-              data-testid="pin-dots"
-            >
-              {"•".repeat(pin.length) || " "}
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              {KEYS.map((key) => (
-                <button
-                  key={key}
-                  data-testid={`pin-key-${key}`}
-                  onClick={() => onKey(key)}
-                  className="h-12 rounded-lg border border-[var(--border)] text-sm font-medium text-[var(--foreground)] hover:bg-[var(--surface-interactive)]"
-                >
-                  {key}
-                </button>
-              ))}
-            </div>
-            {error && (
-              <div className="badge badge-danger mt-4 w-full justify-center" data-testid="pin-error">
-                {error}
-              </div>
-            )}
-            <button
-              data-testid="pin-unlock"
-              onClick={() => void submit()}
-              disabled={pending || !staffChosen || pin.length < 4}
-              className="btn-primary mt-5 w-full"
-            >
-              {pending ? "Unlocking…" : "Unlock"}
-            </button>
-          </>
+          <div className="y-pin__who y-pin__who--manual">
+            <Field
+              label="Staff number"
+              value={staffNumber}
+              onChange={(value) => {
+                setStaffNumber(value);
+                setLocalProblem(null);
+              }}
+              data-testid="staff-number"
+              inputMode="numeric"
+              autoComplete="off"
+              className="y-pin__staff-number"
+            />
+          </div>
         )}
+        <div
+          className="y-pin__dots"
+          data-testid="pin-dots"
+          role="img"
+          aria-label={`${pin.length} of ${PIN_LENGTH} digits entered`}
+        >
+          {Array.from({ length: PIN_LENGTH }, (_, index) => (
+            <span key={index} className={index < pin.length ? "y-pin__dot y-pin__dot--filled" : "y-pin__dot"} />
+          ))}
+        </div>
+        <Keypad label="PIN" variant="pin" onKey={onKey} disabled={pending} testIdPrefix="pin-key" />
+        <p className="y-pin__status" role="status">
+          {pending ? "Checking your PIN…" : ""}
+        </p>
+        {problemLine}
+        {!selected && sortedRoster.length > 0 ? (
+          <Button variant="quiet" data-testid="staff-choose-from-roster" onClick={() => setManual(false)}>
+            Choose your name instead
+          </Button>
+        ) : null}
+        {readiness}
       </div>
-    </div>
+    </AccessLayout>
   );
 }

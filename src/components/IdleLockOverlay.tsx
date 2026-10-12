@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
+import { countdownWords } from "../access/accessWords";
 import {
   idleLockMs,
   idleLockSecondsFromEnv,
@@ -7,8 +8,8 @@ import {
 } from "../lib/idleLock";
 
 /**
- * Full-screen countdown while the till is idle. Any activity cancels it.
- * At zero the provider locks back to the staff roster via `switchStaff`.
+ * The countdown while the till sits unused. Any touch, key or movement keeps
+ * the person signed in; at zero the till locks back to Who's working.
  */
 export function IdleLockOverlay({
   idleSeconds = idleLockSecondsFromEnv(),
@@ -33,6 +34,11 @@ export function IdleLockOverlay({
     return null;
   }
 
+  return <IdleLockView remaining={remaining} />;
+}
+
+export function IdleLockView({ remaining }: { remaining: number }) {
+  const time = countdownWords(remaining);
   return (
     <div
       className="idle-lock-overlay"
@@ -42,11 +48,13 @@ export function IdleLockOverlay({
       aria-label={`Locking in ${remaining} seconds`}
     >
       <div className="idle-lock-card">
-        <p className="idle-lock-label">Locking in</p>
-        <p className="idle-lock-count" data-testid="idle-lock-count">
-          {remaining}
+        <p className="idle-lock-label">
+          Locking in <span className="sr-only">{time}</span>
         </p>
-        <p className="idle-lock-hint">Touch the screen to stay signed in</p>
+        <p className="idle-lock-count" data-testid="idle-lock-count" aria-hidden="true">
+          {time}
+        </p>
+        <p className="idle-lock-hint">Touch anywhere to stay signed in.</p>
       </div>
     </div>
   );
