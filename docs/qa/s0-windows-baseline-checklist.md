@@ -3,9 +3,12 @@
 **Purpose.** Find the real Windows faults in the till as it is today, on the owner's PC with its thermal printer, before any redesign work. Every fault found here is fixed once instead of being rediscovered later.
 
 **Build**
-- GitHub Actions `release` run **38187441201**, a manual run on `main` @ `600e519` with "Create a GitHub Release" **off**.
-- Download the `yetu-pos-windows` artifact from the run page.
+- GitHub Actions `release` run **38188424521** (green on Windows, macOS and Linux; release and download publishing skipped).
+- Built from branch `ci/release-perl-only-on-windows` @ `fc287a9`. Its app code is identical to `main` @ `600e519`; only the release workflow's `PERL` fix (PR #12) differs.
+- The first attempt on `main`, run 38187441201, failed on that CI defect.
+- Download the `yetu-pos-windows` artifact (26 MB, kept until 2027-01-10) from the run page.
 - It is an **unpublished test installer**. It carries the Tauri **updater** signature only and is **not Authenticode-signed**, so Windows SmartScreen will warn ("unknown publisher"). That warning is expected for this test build.
+- **Known at start:** with no release ever published, a banner "Update check failed: Could not fetch a valid release JSON from the remote" appears at the top. Seen on Linux; it is fixed in S2. Note whether it appears on Windows too.
 
 **Against**
 - production `api.yetu.fbcsoftwares.com`, using a **test business** (e.g. Jacaranda), before the pre-launch clear-out;
