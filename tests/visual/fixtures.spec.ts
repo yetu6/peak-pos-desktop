@@ -112,7 +112,19 @@ async function measure(page: Page): Promise<Finding[]> {
           if (other === field || other.contains(field) || field.contains(other) || !rendered(other)) continue;
           // Controls behind an open modal are hidden from use; they are not neighbours.
           if (other.closest('[aria-hidden="true"], [inert]')) continue;
-          const rect = other.getBoundingClientRect();
+          // Only the part of a control its scrolling or clipping containers show can be touched.
+          let { left, top, right, bottom } = other.getBoundingClientRect();
+          for (let parent = other.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+            const style = getComputedStyle(parent);
+            if (style.overflowX === "visible" && style.overflowY === "visible") continue;
+            const clip = parent.getBoundingClientRect();
+            left = Math.max(left, clip.left);
+            top = Math.max(top, clip.top);
+            right = Math.min(right, clip.right);
+            bottom = Math.min(bottom, clip.bottom);
+          }
+          if (right - left < 1 || bottom - top < 1) continue;
+          const rect = { left, top, right, bottom };
           const inside = rect.left >= box.left && rect.right <= box.right && rect.top >= box.top && rect.bottom <= box.bottom;
           if (inside) continue;
           const touches =
