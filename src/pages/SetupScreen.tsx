@@ -55,7 +55,7 @@ export function SetupView({
       lede={<p>Type the address your Yetu support team gave you. You only do this once on this till.</p>}
     >
       <form
-        className="y-field"
+        className="y-form"
         noValidate
         onSubmit={(event) => {
           event.preventDefault();

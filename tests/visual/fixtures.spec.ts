@@ -99,6 +99,26 @@ async function measure(page: Page): Promise<Finding[]> {
         findings.push({ key: "text-size", detail: `${size}px: "${text.slice(0, 40)}" in ${describe(parent)}` });
       }
 
+      // A field's focus ring (3px, 2px out) never touches another control: fields and their
+      // actions keep the system's spacing. Controls drawn inside the field (a clear button) are part of it.
+      const RING = 5;
+      const controls = [...document.querySelectorAll("button, a[href], summary, select, [role=button], [role=tab], [role=radio], [role=option]")];
+      for (const field of document.querySelectorAll("input:not([type=hidden]), textarea, select")) {
+        if (!rendered(field)) continue;
+        const box = field.getBoundingClientRect();
+        for (const other of controls) {
+          if (other === field || other.contains(field) || field.contains(other) || !rendered(other)) continue;
+          // Controls behind an open modal are hidden from use; they are not neighbours.
+          if (other.closest('[aria-hidden="true"], [inert]')) continue;
+          const rect = other.getBoundingClientRect();
+          const inside = rect.left >= box.left && rect.right <= box.right && rect.top >= box.top && rect.bottom <= box.bottom;
+          if (inside) continue;
+          const touches =
+            rect.left < box.right + RING && rect.right > box.left - RING && rect.top < box.bottom + RING && rect.bottom > box.top - RING;
+          if (touches) findings.push({ key: "focus-ring", detail: `${describe(field)} ring touches ${describe(other)}` });
+        }
+      }
+
       // No interactive target under 48px either way.
       const interactive = [
         "button",

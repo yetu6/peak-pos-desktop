@@ -24,7 +24,7 @@ export const MIN_TECHNICAL_TEXT_PX = 13;
 export const MIN_TARGET_PX = 48;
 
 export interface Finding {
-  /** `overflow`, `must-fit`, `text-size`, `target-size` or `axe:<rule>`. */
+  /** `overflow`, `must-fit`, `focus-ring`, `text-size`, `target-size` or `axe:<rule>`. */
   key: string;
   detail: string;
 }

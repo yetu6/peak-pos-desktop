@@ -216,6 +216,14 @@
   text-align: center;
 }
 
+/* ------------------------------------------------------------------- Forms */
+/* Fields and their actions: 16px apart, so a focused field's ring never
+   touches the next control. */
+.y-form {
+  display: grid;
+  gap: var(--space-4);
+}
+
 /* ------------------------------------------------------------------ Fields */
 .y-field {
   display: grid;
