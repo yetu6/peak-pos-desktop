@@ -121,6 +121,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # The PERL expression above yields an empty string off Windows, and
+          # openssl-src trusts PERL whenever it is set: macOS ran `"" ./Configure`
+          # and failed (run 38187441201) once the Rust cache no longer skipped
+          # the OpenSSL build script. Only Windows needs the override.
+          if [ -z "${PERL:-}" ]; then unset PERL; fi
           if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
             echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is required for release builds"
             exit 1
