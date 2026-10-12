@@ -40,9 +40,10 @@
  * Each run needs a freshly seeded restaurant (seed again): a run leaves its
  * till paired and its shift closed.
  */
-import { expect, test, type Locator, type Page, type Response } from "@playwright/test";
+import { expect, test, type Response } from "@playwright/test";
 import { WebSession, ensurePlainDish, loadSeededProperty, tsh, typed } from "./liveApi";
 import { LIVE_API_URL } from "./liveSettings";
+import { body, nextApi, openShift, pairTill, setServerAddress, signInWithPin, tapper, type Shift } from "./liveTill";
 
 /** The cash the cashier counts into the drawer when the shift opens. */
 const OPENING_FLOAT_MINOR = 5_000_000;
@@ -68,65 +69,8 @@ interface Tender {
   paidMinor: number;
   remainingMinor: number;
 }
-interface Shift {
-  id: string;
-  status: string;
-  openingCashMinor: number;
-  expectedCashMinor: number;
-  countedCashMinor?: number;
-  varianceMinor?: number;
-}
 interface Catalog {
   products: Array<{ id: string; name: string; priceMinor: number; modifierGroups?: Array<{ options?: Array<{ id: string; priceDeltaMinor: number }> }> }>;
-}
-
-/** The next response from the live API to `method path`, set up before the action that causes it. */
-function nextApi(page: Page, method: string, path: RegExp): Promise<Response> {
-  return page.waitForResponse(
-    (response) =>
-      response.url().startsWith(LIVE_API_URL) &&
-      response.request().method() === method &&
-      path.test(new URL(response.url()).pathname),
-  );
-}
-
-async function body<T>(pending: Promise<Response>, status?: number): Promise<T> {
-  const response = await pending;
-  if (status !== undefined) expect(response.status(), `${response.request().method()} ${response.url()}`).toBe(status);
-  else expect(response.ok(), `${response.request().method()} ${response.url()} -> ${response.status()}`).toBe(true);
-  return (await response.json()) as T;
-}
-
-/**
- * Taps like a person. While the till is signed in, its idle-lock countdown
- * ("Locking in 0:10 ... Touch anywhere to stay signed in") covers the whole
- * screen from a quarter of a second after the last touch, and takes the next
- * tap for itself. A person then taps again; so does this, and counts the taps
- * the countdown took (reported as a defect, see the end of the test).
- */
-function tapper(page: Page) {
-  let swallowed = 0;
-  async function tap(target: Locator): Promise<void> {
-    await expect(target).toBeVisible();
-    for (let attempt = 0; attempt < 6; attempt++) {
-      try {
-        await target.click({ timeout: 1_000 });
-        return;
-      } catch (error) {
-        // Only when the countdown itself is what took the tap.
-        if (!/idle-lock-overlay[^\n]*intercepts pointer events/.test(String(error))) throw error;
-        const box = await target.boundingBox();
-        if (!box) throw error;
-        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-        swallowed++;
-      }
-    }
-    throw new Error("the idle-lock countdown kept taking the tap");
-  }
-  async function pin(prefix: string, digits: string): Promise<void> {
-    for (const digit of digits) await tap(page.getByTestId(`${prefix}-${digit}`));
-  }
-  return { tap, pin, swallowed: () => swallowed };
 }
 
 test("a cashier's shift on the redesigned till, against the live API", async ({ page }, testInfo) => {
@@ -162,74 +106,23 @@ test("a cashier's shift on the redesigned till, against the live API", async ({ 
   let secondOrder: Order | null = null;
 
   await test.step("1. Set the server address", async () => {
-    await page.goto("/");
-    await expect(page.getByTestId("setup-screen")).toBeVisible();
-    // The browser stand-in for the OS secure store (see the header).
-    await page.evaluate(async (modulePath) => {
-      const { generateDeviceKeyPair } = (await import(/* @vite-ignore */ modulePath)) as {
-        generateDeviceKeyPair: () => Promise<{ privateKeyPkcs8: string; publicKeySpki: string }>;
-      };
-      const keys = await generateDeviceKeyPair();
-      localStorage.setItem("peak-pos-device-identity", JSON.stringify({ ...keys, approved: false }));
-    }, "/src/lib/deviceCrypto.ts");
-    await page.getByTestId("peak-url").fill(LIVE_API_URL);
-    await page.getByTestId("save-peak-url").click();
-    await expect(page.getByTestId("pairing-screen")).toBeVisible();
-    expect(await page.evaluate(() => localStorage.getItem("peak-pos-api-url"))).toBe(LIVE_API_URL);
+    await setServerAddress(page);
   });
 
   await test.step("2. Pair: the till shows a code, the owner approves it in Yetu", async () => {
-    const issued = nextApi(page, "POST", /^\/api\/v1\/pos\/pairing-requests$/);
-    await page.getByRole("button", { name: "Get a code" }).click();
-    const pairing = await body<{ pairingRequestId: string; pairingCode: string }>(issued, 201);
-    const shown = (await page.getByTestId("pairing-code").textContent())?.trim() ?? "";
-    expect(shown.replace(/-/g, "")).toBe(pairing.pairingCode.replace(/-/g, "").toUpperCase());
-
-    // The manager types the code the till shows.
-    const property = `/api/v1/organizations/${seeded.organizationId}/properties/${seeded.propertyId}`;
-    const found = await web.call<{ pairingRequestId: string }>(`${property}/pos/pairing-requests/lookup`, {
-      method: "POST",
-      body: { pairingCode: shown },
-    });
-    expect(found.pairingRequestId).toBe(pairing.pairingRequestId);
-    // Once approved the till asks Yetu who works here (a device challenge); keep that answer.
-    roster = nextApi(page, "POST", /^\/api\/v1\/pos\/device\/challenges$/);
-    const approved = await web.call<{ terminalId: string }>(
-      `${property}/pos/pairing-requests/${pairing.pairingRequestId}/approve`,
-      { method: "POST", body: { outletId: seeded.outletId, terminalName: `Front till ${crypto.randomUUID().slice(0, 6)}` } },
-    );
-    expect(approved.terminalId).toBeTruthy();
-    // The till finds the approval by itself and asks who is working.
-    await expect(page.getByTestId("pin-screen")).toBeVisible({ timeout: 30_000 });
+    ({ roster } = await pairTill(page, web, seeded, { terminalName: `Front till ${crypto.randomUUID().slice(0, 6)}` }));
   });
 
   await test.step("3. The cashier signs in with their PIN", async () => {
-    staff = (await body<{ staff: Array<{ id: string; displayName: string }> }>(roster!, 201)).staff;
+    const signedIn = await signInWithPin(page, roster!, seeded.cashierStaffId, seeded.cashierPin, pin);
+    staff = signedIn.staff;
     expect(staff.map((person) => person.id)).toEqual(expect.arrayContaining([seeded.cashierStaffId, seeded.managerStaffId]));
-    // With the roster known, the PIN screen asks "Who's working?" with names to tap.
-    await expect(page.getByTestId("staff-roster"), "the PIN screen opens on the names once the roster has arrived").toBeVisible({
-      timeout: 5_000,
-    });
-    await page.getByTestId(`roster-entry-${seeded.cashierStaffId}`).click();
-    const signedIn = nextApi(page, "POST", /^\/api\/v1\/pos\/sessions$/);
-    const menu = nextApi(page, "GET", /^\/api\/v1\/pos\/catalog$/);
-    await pin("pin-key", seeded.cashierPin);
-    const session = await body<{ staffId: string; outletId: string }>(signedIn, 201);
-    expect(session.staffId).toBe(seeded.cashierStaffId);
-    expect(session.outletId).toBe(seeded.outletId);
-    catalog = await body<Catalog>(menu);
+    catalog = await body<Catalog>(signedIn.catalogResponse);
     await expect(page.getByTestId("shell-state")).toHaveText("NO_SHIFT");
   });
 
   await test.step("4. Open the shift with a float", async () => {
-    await page.getByTestId("opening-float").fill(typed(OPENING_FLOAT_MINOR));
-    const opened = nextApi(page, "POST", /^\/api\/v1\/pos\/shifts$/);
-    await tap(page.getByTestId("open-shift"));
-    shift = await body<Shift>(opened, 201);
-    expect(shift.status).toBe("OPEN");
-    expect(shift.openingCashMinor).toBe(OPENING_FLOAT_MINOR);
-    await expect(page.getByTestId("pos-register")).toBeVisible();
-    await expect(page.getByTestId("shell-state")).toHaveText("OPERATIONAL");
+    shift = await openShift(page, OPENING_FLOAT_MINOR, tap);
     // Realtime through the dev bridge: the connection pill should reach Live.
     await expect(page.getByTestId("conn-label"), "the till's realtime connection goes Live through the bridge").toHaveText("Live", {
       timeout: 5_000,
