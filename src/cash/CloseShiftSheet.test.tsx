@@ -211,6 +211,22 @@ describe("CloseShiftSheet: check", () => {
     });
   });
 
+  it("asks for a manager when Yetu's figure changes while the Check is on screen", async () => {
+    const client = new QueryClient();
+    const sheet = (shift: POSShift) =>
+      withClient(
+        <CloseShiftSheet open onOpenChange={vi.fn()} shift={shift} currency="TZS" requesterId="staff-amina" roster={ROSTER} />,
+        client,
+      );
+    const view = render(sheet(SHIFT));
+    await count("74000");
+    expect(screen.queryByRole("group", { name: "Supervisor PIN" })).not.toBeInTheDocument();
+    view.rerender(sheet({ ...SHIFT, expectedCashMinor: 7_350_000 }));
+    expect(screen.getByTestId("close-outcome")).toHaveTextContent("Over. You counted more than Yetu expects.");
+    expect(screen.getByRole("group", { name: "Supervisor PIN" })).toBeInTheDocument();
+    expect(screen.getByTestId("close-shift")).toBeDisabled();
+  });
+
   it("says a short drawer in words", async () => {
     renderSheet();
     await count("73500");
