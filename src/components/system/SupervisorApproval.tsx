@@ -116,25 +116,40 @@ export function SupervisorApproval({
           </p>
         ) : null}
         <div role="radiogroup" aria-labelledby="approval-who-heading" className="y-approval__people">
-          {supervisors.map((supervisor) => (
-            <button
-              key={supervisor.id}
-              type="button"
-              role="radio"
-              aria-checked={supervisor.id === selectedId}
-              className="y-approval__person"
-              disabled={settled}
-              onClick={() => onSelect(supervisor.id)}
-            >
-              <span className="y-avatar" aria-hidden="true">
-                {initials(supervisor.name)}
-              </span>
-              <span className="y-approval__person-text">
-                <span className="y-approval__person-name">{supervisor.name}</span>
-                {supervisor.roleName ? <span className="y-approval__person-role">{supervisor.roleName}</span> : null}
-              </span>
-            </button>
-          ))}
+          {supervisors.map((supervisor) => {
+            // The person asking is shown, marked You, and can't be chosen: they can't approve their own request.
+            const isRequester = supervisor.id === requesterId;
+            const reasonId = `approval-self-${supervisor.id}`;
+            return (
+              <button
+                key={supervisor.id}
+                type="button"
+                role="radio"
+                aria-checked={supervisor.id === selectedId}
+                aria-describedby={isRequester ? reasonId : undefined}
+                className={cn("y-approval__person", isRequester && "y-approval__person--self")}
+                disabled={settled || isRequester}
+                onClick={() => onSelect(supervisor.id)}
+              >
+                <span className="y-avatar" aria-hidden="true">
+                  {initials(supervisor.name)}
+                </span>
+                <span className="y-approval__person-text">
+                  <span className="y-approval__person-name">
+                    {supervisor.name}
+                    {isRequester ? <span className="y-approval__you">You</span> : null}
+                  </span>
+                  {isRequester ? (
+                    <span id={reasonId} className="y-approval__person-role">
+                      You can't approve your own request.
+                    </span>
+                  ) : supervisor.roleName ? (
+                    <span className="y-approval__person-role">{supervisor.roleName}</span>
+                  ) : null}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </section>
 

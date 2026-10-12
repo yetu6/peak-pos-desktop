@@ -122,8 +122,10 @@ describe("CloseShiftSheet: check", () => {
     const closeButton = screen.getByTestId("close-shift");
     expect(closeButton).toBeDisabled();
 
-    await userEvent.click(screen.getByRole("radio", { name: /Amina Hassan/ }));
-    expect(screen.getByText("You can't approve your own request. Ask another supervisor.")).toBeInTheDocument();
+    const own = screen.getByRole("radio", { name: /Amina Hassan/ });
+    expect(own).toBeDisabled();
+    expect(own).toHaveAccessibleDescription("You can't approve your own request.");
+    await userEvent.click(own);
     for (const digit of "736251") await userEvent.click(screen.getByTestId(`close-pin-key-${digit}`));
     expect(closeButton).toBeDisabled();
 

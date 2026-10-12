@@ -104,8 +104,10 @@ describe("CashMovementDialog", () => {
     await userEvent.type(screen.getByTestId("movement-amount"), "20000");
     await userEvent.type(screen.getByTestId("movement-reason"), "Gas delivery");
     expect(screen.getByText("Take TSh 20,000 out of the drawer: Gas delivery")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("radio", { name: /Amina Hassan/ }));
-    expect(screen.getByText("You can't approve your own request. Ask another supervisor.")).toBeInTheDocument();
+    const own = screen.getByRole("radio", { name: /Amina Hassan/ });
+    expect(own).toBeDisabled();
+    expect(own).toHaveAccessibleDescription("You can't approve your own request.");
+    await userEvent.click(own);
     await typePin("736251");
     expect(screen.getByTestId("confirm-movement")).toBeDisabled();
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));

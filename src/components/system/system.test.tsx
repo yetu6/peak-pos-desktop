@@ -337,6 +337,17 @@ describe("SupervisorApproval", () => {
     expect(onSelect).toHaveBeenCalledWith("staff-grace");
   });
 
+  it("marks the person asking as You and doesn't offer them, with the reason", async () => {
+    const { onSelect } = renderApproval();
+    const own = screen.getByRole("radio", { name: /Amina Hassan/ });
+    expect(own).toHaveTextContent("You");
+    expect(own).toHaveAccessibleDescription("You can't approve your own request.");
+    expect(own).toBeDisabled();
+    await userEvent.click(own);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole("radio", { name: /Grace Mushi/ })).toBeEnabled();
+  });
+
   it("refuses self-approval in words and keeps the PIN keypad closed", () => {
     renderApproval({ selectedId: "staff-amina" });
     expect(screen.getByRole("alert")).toHaveTextContent("You can't approve your own request. Ask another supervisor.");

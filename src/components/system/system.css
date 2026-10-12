@@ -900,6 +900,18 @@ button.y-ticket-line:hover { background: var(--surface-hover); }
 .y-approval__person-name { font-weight: 600; }
 .y-approval__person-role { color: var(--text-muted); font-size: var(--type-small); }
 
+/* The person asking: shown so the list is complete, marked You, not choosable. */
+.y-approval__person--self { border-style: dashed; background: var(--surface); }
+.y-approval__you {
+  margin-left: var(--space-2);
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-control);
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  font-weight: 600;
+}
+
 .y-approval__pin {
   display: grid;
   max-width: 360px;
