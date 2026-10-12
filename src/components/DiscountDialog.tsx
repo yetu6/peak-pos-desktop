@@ -80,6 +80,8 @@ export function DiscountDialog({
           onApplied(updated);
           onClose();
         },
+        // A refused PIN counts toward the supervisor's lockout: never send it again.
+        onError: () => setPin(""),
       },
     );
   }

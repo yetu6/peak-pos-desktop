@@ -5,7 +5,9 @@ import { DiscountDialog } from "./DiscountDialog";
 import type { POSOrder } from "../lib/posContracts";
 
 const { applyMutate } = vi.hoisted(() => ({
-  applyMutate: vi.fn((_vars: unknown, opts?: { onSuccess?: (order: unknown) => void }) => opts?.onSuccess?.({})),
+  applyMutate: vi.fn(
+    (_vars: unknown, opts?: { onSuccess?: (order: unknown) => void; onError?: (error: Error) => void }) => opts?.onSuccess?.({}),
+  ),
 }));
 
 vi.mock("../hooks/usePosData", () => ({
@@ -67,6 +69,21 @@ describe("DiscountDialog", () => {
       expect.anything(),
     );
     expect(onApplied).toHaveBeenCalled();
+  });
+
+  it("clears a refused PIN (keeping the supervisor), so a wrong PIN isn't sent again", async () => {
+    applyMutate.mockImplementationOnce((_vars: unknown, opts?: { onSuccess?: (order: unknown) => void; onError?: (error: Error) => void }) =>
+      opts?.onError?.(new Error(JSON.stringify({ code: "FORBIDDEN", detail: "POS permission denied" }))),
+    );
+    render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
+    await userEvent.type(screen.getByTestId("discount-value"), "2000");
+    await userEvent.type(screen.getByTestId("discount-reason"), "Regular guest");
+    await approveAsGrace();
+    await userEvent.click(screen.getByTestId("confirm-discount"));
+    expect(screen.getByTestId("pin-dots")).toHaveAccessibleName("0 digits entered");
+    expect(screen.getByRole("radio", { name: /Grace Mushi/ })).toBeChecked();
+    expect(screen.getByTestId("confirm-discount")).toBeDisabled();
+    expect(applyMutate).toHaveBeenCalledTimes(1);
   });
 
   it("sends a percentage as basis points, from 0 up to 100", async () => {

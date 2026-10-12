@@ -5,7 +5,9 @@ import { VoidOrderDialog } from "./VoidOrderDialog";
 import type { POSOrder } from "../lib/posContracts";
 
 const { voidOrderMutate, sessionRef, voidState } = vi.hoisted(() => ({
-  voidOrderMutate: vi.fn((_vars: unknown, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.()),
+  voidOrderMutate: vi.fn(
+    (_vars: unknown, opts?: { onSuccess?: () => void; onError?: (error: Error) => void }) => opts?.onSuccess?.(),
+  ),
   sessionRef: { roster: [] as Array<{ fullName: string; staffNumber: string }> },
   voidState: { error: null as unknown, isPending: false },
 }));
@@ -80,6 +82,21 @@ describe("VoidOrderDialog", () => {
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
     await typePin("123456");
     expect(screen.getByTestId("confirm-void-order")).toBeDisabled();
+  });
+
+  it("clears a refused PIN (keeping the supervisor), so a wrong PIN isn't sent again", async () => {
+    voidOrderMutate.mockImplementationOnce((_vars: unknown, opts?: { onSuccess?: () => void; onError?: (error: Error) => void }) =>
+      opts?.onError?.(new Error(JSON.stringify({ code: "CONFLICT", detail: "supervisor approval failed" }))),
+    );
+    render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    await userEvent.type(screen.getByTestId("void-reason"), "Wrong table");
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+    await typePin("123456");
+    await userEvent.click(screen.getByTestId("confirm-void-order"));
+    expect(screen.getByTestId("pin-dots")).toHaveAccessibleName("0 digits entered");
+    expect(screen.getByRole("radio", { name: /Grace Mushi/ })).toBeChecked();
+    expect(screen.getByTestId("confirm-void-order")).toBeDisabled();
+    expect(voidOrderMutate).toHaveBeenCalledTimes(1);
   });
 
   it("asks again when the reason changes after approval", async () => {

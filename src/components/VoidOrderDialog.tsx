@@ -60,6 +60,8 @@ export function VoidOrderDialog({
           onVoided?.();
           onClose();
         },
+        // A refused PIN counts toward the supervisor's lockout: never send it again.
+        onError: () => setPin(""),
       },
     );
   }
