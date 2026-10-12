@@ -5,6 +5,7 @@ import { cashMovementProblem } from "../cash/cashWords";
 import { useIdempotencyKey, useRecordCashMovement } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
+import { useRateLimitWait } from "../lib/useRateLimitWait";
 import type { RosterEntry } from "../lib/deviceAuth";
 import type { CashMovementType } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
@@ -33,6 +34,8 @@ export function CashMovementDialog({
   const idempotencyKey = useIdempotencyKey();
   // The till doesn't lock itself while the movement is with Yetu.
   useHoldIdleLock(record.isPending);
+  // After "too many attempts" the next one waits for Yetu's Retry-After.
+  const waiting = useRateLimitWait(record.error, record.reset);
   return (
     <CashMovementSheetView
       onClose={onClose}
@@ -41,6 +44,7 @@ export function CashMovementDialog({
       roster={device?.roster ?? []}
       requesterId={device?.session?.staffId ?? ""}
       pending={record.isPending}
+      waiting={waiting}
       error={record.error}
       onRecord={(args) => record.mutate({ ...args, idempotencyKey: idempotencyKey.next() }, { onSuccess: onClose })}
     />
@@ -54,6 +58,8 @@ export interface CashMovementSheetViewProps {
   roster: readonly RosterEntry[];
   requesterId: string;
   pending: boolean;
+  /** Yetu asked the till to wait before the next attempt (too many attempts). */
+  waiting?: boolean;
   error: unknown;
   onRecord: (args: {
     movementType: CashMovementType;
@@ -74,6 +80,7 @@ export function CashMovementSheetView({
   roster,
   requesterId,
   pending,
+  waiting = false,
   error,
   onRecord,
   initialAmount = "",
@@ -91,7 +98,7 @@ export function CashMovementSheetView({
   // so a full PIN always belongs to someone else; the backend refuses self-approval as well.
   const supervisor = supervisorId;
   const supervised = !cashOut || (Boolean(supervisor) && pin.length === PIN_LENGTH);
-  const canSubmit = amountMinor != null && amountMinor > 0 && reason.trim().length > 0 && supervised && !pending;
+  const canSubmit = amountMinor != null && amountMinor > 0 && reason.trim().length > 0 && supervised && !pending && !waiting;
 
   /** A cash-out approval is for one amount, reason and direction: changing any of them asks again. */
   function clearApproval() {

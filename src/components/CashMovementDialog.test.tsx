@@ -1,17 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { idleLockHeld } from "../lib/idleLock";
 import { CashMovementDialog } from "./CashMovementDialog";
 
-const { recordMutate, record, sessionRef } = vi.hoisted(() => ({
+const { recordMutate, record, sessionRef, recordReset } = vi.hoisted(() => ({
+  recordReset: vi.fn(),
   recordMutate: vi.fn((_vars: unknown, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.()),
   record: { error: null as unknown, isPending: false },
   sessionRef: { value: null as null | { session: { staffId: string }; roster: Array<{ fullName: string; staffNumber: string }> } },
 }));
 
 vi.mock("../hooks/usePosData", () => ({
-  useRecordCashMovement: () => ({ mutate: recordMutate, isPending: record.isPending, error: record.error }),
+  useRecordCashMovement: () => ({ mutate: recordMutate, isPending: record.isPending, error: record.error, reset: recordReset }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
 }));
 
@@ -193,5 +194,27 @@ describe("CashMovementDialog", () => {
     expect(screen.getByTestId("movement-error")).toHaveTextContent(
       "A different supervisor must approve taking cash out. Their PIN wasn't accepted, or they can't approve this.",
     );
+  });
+});
+
+describe("CashMovementDialog after too many attempts (429)", () => {
+  it("says so and holds the next cash out until Yetu's wait is over", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    sessionRef.value = { session: { staffId: "staff-amina" }, roster: ROSTER };
+    record.error = new Error(JSON.stringify({ type: "about:blank", title: "Too many requests.", status: 429, code: "RATE_LIMITED", detail: "Too many requests. Try again in 41 seconds.", request_id: "req-9", retryAfterSeconds: 41 }));
+    render(<CashMovementDialog shiftId="shift-1" currency="TZS" onClose={vi.fn()} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Too many attempts. Wait a minute and try again.");
+    await userEvent.click(screen.getByTestId("movement-type-CASH_OUT"));
+    await userEvent.type(screen.getByTestId("movement-amount"), "2000");
+    await userEvent.type(screen.getByTestId("movement-reason"), "Petty cash");
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+    await typePin("736251");
+    expect(screen.getByTestId("confirm-movement")).toBeDisabled();
+    try {
+      act(() => vi.advanceTimersByTime(41_000));
+      expect(recordReset).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

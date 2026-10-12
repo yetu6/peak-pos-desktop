@@ -1,19 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { idleLockHeld } from "../lib/idleLock";
 import { DiscountDialog } from "./DiscountDialog";
 import type { POSOrder } from "../lib/posContracts";
 
-const { applyMutate, applyState } = vi.hoisted(() => ({
-  applyState: { isPending: false },
+const { applyMutate, applyState, applyReset } = vi.hoisted(() => ({
+  applyState: { isPending: false, error: null as unknown },
+  applyReset: vi.fn(),
   applyMutate: vi.fn(
     (_vars: unknown, opts?: { onSuccess?: (order: unknown) => void; onError?: (error: Error) => void }) => opts?.onSuccess?.({}),
   ),
 }));
 
 vi.mock("../hooks/usePosData", () => ({
-  useApplyDiscount: () => ({ mutate: applyMutate, isPending: applyState.isPending, error: null }),
+  useApplyDiscount: () => ({ mutate: applyMutate, isPending: applyState.isPending, error: applyState.error, reset: applyReset }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
 }));
 
@@ -54,7 +55,9 @@ async function approveAsGrace() {
 
 beforeEach(() => {
   applyMutate.mockClear();
+  applyReset.mockClear();
   applyState.isPending = false;
+  applyState.error = null;
 });
 
 describe("DiscountDialog", () => {
@@ -153,5 +156,24 @@ describe("DiscountDialog", () => {
     applyState.isPending = true;
     render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
     expect(idleLockHeld()).toBe(true);
+  });
+});
+
+describe("DiscountDialog after too many attempts (429)", () => {
+  it("says so and holds the next attempt until Yetu's wait is over", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    applyState.error = new Error(JSON.stringify({ type: "about:blank", title: "Too many requests.", status: 429, code: "RATE_LIMITED", detail: "Too many requests. Try again in 41 seconds.", request_id: "req-9", retryAfterSeconds: 41 }));
+    render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Too many attempts. Wait a minute and try again.");
+    await userEvent.type(screen.getByTestId("discount-value"), "2000");
+    await userEvent.type(screen.getByTestId("discount-reason"), "Regular guest");
+    await approveAsGrace();
+    expect(screen.getByTestId("confirm-discount")).toBeDisabled();
+    try {
+      act(() => vi.advanceTimersByTime(41_000));
+      expect(applyReset).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

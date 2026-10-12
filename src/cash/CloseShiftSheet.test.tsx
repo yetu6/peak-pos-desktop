@@ -337,3 +337,22 @@ describe("CloseShiftSheet: check", () => {
     expect(lastClosedShift()).toMatchObject({ shift: closed, currency: "TZS" });
   });
 });
+
+describe("CloseShiftSheet after too many attempts (429)", () => {
+  it("says so and holds the close until Yetu's wait is over", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    closeAsync.mockRejectedValueOnce(new Error(JSON.stringify({ type: "about:blank", title: "Too many requests.", status: 429, code: "RATE_LIMITED", detail: "Too many requests. Try again in 41 seconds.", request_id: "req-9", retryAfterSeconds: 41 })));
+    renderSheet();
+    await count("74000");
+    await userEvent.click(screen.getByTestId("close-shift"));
+    expect(await screen.findByTestId("close-shift-error")).toHaveTextContent("Too many attempts. Wait a minute and try again.");
+    expect(screen.getByTestId("close-shift")).toBeDisabled();
+    try {
+      act(() => vi.advanceTimersByTime(41_000));
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(screen.getByTestId("close-shift")).toBeEnabled();
+    expect(screen.queryByTestId("close-shift-error")).not.toBeInTheDocument();
+  });
+});

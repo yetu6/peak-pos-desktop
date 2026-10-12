@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { idleLockHeld } from "../lib/idleLock";
 import { VoidOrderDialog } from "./VoidOrderDialog";
 import type { POSOrder } from "../lib/posContracts";
 
-const { voidOrderMutate, sessionRef, voidState } = vi.hoisted(() => ({
+const { voidOrderMutate, sessionRef, voidState, voidReset } = vi.hoisted(() => ({
+  voidReset: vi.fn(),
   voidOrderMutate: vi.fn(
     (_vars: unknown, opts?: { onSuccess?: () => void; onError?: (error: Error) => void }) => opts?.onSuccess?.(),
   ),
@@ -14,7 +15,7 @@ const { voidOrderMutate, sessionRef, voidState } = vi.hoisted(() => ({
 }));
 
 vi.mock("../hooks/usePosData", () => ({
-  useVoidOrder: () => ({ mutate: voidOrderMutate, ...voidState }),
+  useVoidOrder: () => ({ mutate: voidOrderMutate, reset: voidReset, ...voidState }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
 }));
 
@@ -155,5 +156,24 @@ describe("VoidOrderDialog", () => {
     voidState.isPending = true;
     render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
     expect(idleLockHeld()).toBe(true);
+  });
+});
+
+describe("VoidOrderDialog after too many attempts (429)", () => {
+  it("says so and holds the next attempt until Yetu's wait is over", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    voidState.error = new Error(JSON.stringify({ type: "about:blank", title: "Too many requests.", status: 429, code: "RATE_LIMITED", detail: "Too many requests. Try again in 41 seconds.", request_id: "req-9", retryAfterSeconds: 41 }));
+    render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Too many attempts. Wait a minute and try again.");
+    await userEvent.type(screen.getByTestId("void-reason"), "Guest left");
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+    await typePin("736251");
+    expect(screen.getByTestId("confirm-void-order")).toBeDisabled();
+    try {
+      act(() => vi.advanceTimersByTime(41_000));
+      expect(voidReset).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -4,6 +4,7 @@ import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { useIdempotencyKey, useVoidOrder } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
+import { useRateLimitWait } from "../lib/useRateLimitWait";
 import type { POSOrder } from "../lib/posContracts";
 import { voidProblem } from "../register/registerWords";
 import { Banner, Button, Field, Sheet, SupervisorApproval, type KeypadKey } from "./system";
@@ -49,7 +50,9 @@ export function VoidOrderDialog({
   const problem = voidProblem(voidOrder.error);
   // The till doesn't lock itself while the void is with Yetu.
   useHoldIdleLock(voidOrder.isPending);
-  const ready = reason.trim().length > 0 && supervisorId !== null && pin.length === PIN_LENGTH && !voidOrder.isPending;
+  // After "too many attempts" the next one waits for Yetu's Retry-After.
+  const waiting = useRateLimitWait(voidOrder.error, voidOrder.reset);
+  const ready = reason.trim().length > 0 && supervisorId !== null && pin.length === PIN_LENGTH && !voidOrder.isPending && !waiting;
 
   function onPinKey(key: KeypadKey) {
     if (key === "delete") setPin((current) => current.slice(0, -1));

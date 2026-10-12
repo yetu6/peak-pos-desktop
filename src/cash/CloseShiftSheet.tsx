@@ -9,6 +9,7 @@ import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import type { POSShift } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
 import { closeShiftProblem, countOutcome } from "./cashWords";
+import { useRateLimitWait } from "../lib/useRateLimitWait";
 import { rememberClosedShift } from "./closedShift";
 import { NoteCounterSheet, denominationsFor, moneyFieldText } from "./NoteCounterSheet";
 
@@ -94,6 +95,12 @@ export function CloseShiftSheetView({
   });
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // The last refusal: after "too many attempts" the next close waits for Yetu's Retry-After.
+  const [refused, setRefused] = useState<unknown>(null);
+  const waiting = useRateLimitWait(refused, () => {
+    setRefused(null);
+    setProblem(null);
+  });
   const [refreshing, setRefreshing] = useState(false);
 
   const countedMinor = toMinor(counted);
@@ -103,7 +110,7 @@ export function CloseShiftSheetView({
   // so a full PIN always belongs to someone else; the backend refuses self-approval as well.
   const supervisor = supervisorId;
   const approved = Boolean(supervisor) && pin.length === PIN_LENGTH;
-  const ready = countedMinor !== null && (!needsSupervisor || approved) && !pending;
+  const ready = countedMinor !== null && (!needsSupervisor || approved) && !pending && !waiting;
 
   /**
    * An approval is for one count, seen on one Check. Leaving the Check clears
@@ -140,6 +147,7 @@ export function CloseShiftSheetView({
     if (!ready || countedMinor === null) return;
     setPending(true);
     setProblem(null);
+    setRefused(null);
     const withSupervisor = needsSupervisor && supervisor !== null;
     try {
       const result = await onClose({
@@ -150,6 +158,7 @@ export function CloseShiftSheetView({
       onOpenChange(false);
     } catch (error) {
       const refusal = closeShiftProblem(error);
+      setRefused(error);
       setPin("");
       if (refusal?.kind === "supervisor") setApprovalRequired("yetu");
       if (refusal?.kind === "supervisor" && !withSupervisor) {

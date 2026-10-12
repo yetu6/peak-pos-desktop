@@ -4,6 +4,7 @@ import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { useApplyDiscount, useIdempotencyKey } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
+import { useRateLimitWait } from "../lib/useRateLimitWait";
 import type { DiscountKind, POSOrder } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
 import { discountProblem } from "../register/registerWords";
@@ -53,12 +54,14 @@ export function DiscountDialog({
   const problem = discountProblem(applyDiscount.error);
   // The till doesn't lock itself while the discount is with Yetu.
   useHoldIdleLock(applyDiscount.isPending);
+  // After "too many attempts" the next one waits for Yetu's Retry-After.
+  const waiting = useRateLimitWait(applyDiscount.error, applyDiscount.reset);
 
   const value = kind === "AMOUNT" ? toMinor(valueText) : percentBasisPoints(valueText);
   const valueWords =
     value != null && value > 0 ? (kind === "AMOUNT" ? formatMoney(value, currency) : `${Number(valueText.trim())}%`) : null;
   const ready =
-    value != null && value > 0 && reason.trim().length > 0 && supervisorId !== null && pin.length === PIN_LENGTH && !applyDiscount.isPending;
+    value != null && value > 0 && reason.trim().length > 0 && supervisorId !== null && pin.length === PIN_LENGTH && !applyDiscount.isPending && !waiting;
 
   function clearApproval() {
     setSupervisorId(null);
