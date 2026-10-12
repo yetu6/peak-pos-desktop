@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { idleLockHeld } from "../lib/idleLock";
 import { VoidOrderDialog } from "./VoidOrderDialog";
 import type { POSOrder } from "../lib/posContracts";
 
@@ -122,5 +123,11 @@ describe("VoidOrderDialog", () => {
     expect(within(screen.getByTestId("void-order-dialog")).getByRole("alert")).toHaveTextContent(
       "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
     );
+  });
+
+  it("keeps the till from locking while the void is with Yetu", () => {
+    voidState.isPending = true;
+    render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    expect(idleLockHeld()).toBe(true);
   });
 });

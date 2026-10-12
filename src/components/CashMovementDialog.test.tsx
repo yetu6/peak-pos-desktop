@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { idleLockHeld } from "../lib/idleLock";
 import { CashMovementDialog } from "./CashMovementDialog";
 
 const { recordMutate, record, sessionRef } = vi.hoisted(() => ({
@@ -176,6 +177,12 @@ describe("CashMovementDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  });
+
+  it("keeps the till from locking while the cash in or out is with Yetu", () => {
+    record.isPending = true;
+    render(<CashMovementDialog shiftId="shift-1" currency="TZS" onClose={vi.fn()} />);
+    expect(idleLockHeld()).toBe(true);
   });
 
   it("says a refused cash out in words", () => {

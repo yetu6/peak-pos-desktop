@@ -1,17 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { idleLockHeld } from "../lib/idleLock";
 import { DiscountDialog } from "./DiscountDialog";
 import type { POSOrder } from "../lib/posContracts";
 
-const { applyMutate } = vi.hoisted(() => ({
+const { applyMutate, applyState } = vi.hoisted(() => ({
+  applyState: { isPending: false },
   applyMutate: vi.fn(
     (_vars: unknown, opts?: { onSuccess?: (order: unknown) => void; onError?: (error: Error) => void }) => opts?.onSuccess?.({}),
   ),
 }));
 
 vi.mock("../hooks/usePosData", () => ({
-  useApplyDiscount: () => ({ mutate: applyMutate, isPending: false, error: null }),
+  useApplyDiscount: () => ({ mutate: applyMutate, isPending: applyState.isPending, error: null }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
 }));
 
@@ -50,7 +52,10 @@ async function approveAsGrace() {
   for (const digit of "736251") await userEvent.click(screen.getByTestId(`discount-pin-key-${digit}`));
 }
 
-beforeEach(() => applyMutate.mockClear());
+beforeEach(() => {
+  applyMutate.mockClear();
+  applyState.isPending = false;
+});
 
 describe("DiscountDialog", () => {
   it("takes an amount off with a reason and a different supervisor's PIN", async () => {
@@ -142,5 +147,11 @@ describe("DiscountDialog", () => {
     await approveAsGrace();
     await userEvent.click(screen.getByRole("radio", { name: "Percent" }));
     expect(screen.getByRole("radio", { name: /Grace Mushi/ })).not.toBeChecked();
+  });
+
+  it("keeps the till from locking while the discount is with Yetu", () => {
+    applyState.isPending = true;
+    render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
+    expect(idleLockHeld()).toBe(true);
   });
 });

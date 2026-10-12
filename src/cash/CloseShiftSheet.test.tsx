@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { POSShift } from "../lib/posContracts";
+import { idleLockHeld } from "../lib/idleLock";
 import { CloseShiftSheet } from "./CloseShiftSheet";
 import { lastClosedShift, forgetClosedShift } from "./closedShift";
 
@@ -303,6 +304,15 @@ describe("CloseShiftSheet: check", () => {
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onOpenChange).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Change the count" })).toBeDisabled();
+  });
+
+  it("keeps the till from locking while the close is with Yetu", async () => {
+    closeAsync.mockReturnValue(new Promise(() => {}));
+    renderSheet();
+    await count("74000");
+    expect(idleLockHeld()).toBe(false);
+    await userEvent.click(screen.getByTestId("close-shift"));
+    expect(idleLockHeld()).toBe(true);
   });
 
   it("says why Yetu would not close it, in words", async () => {

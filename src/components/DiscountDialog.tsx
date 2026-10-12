@@ -3,6 +3,7 @@ import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { useApplyDiscount, useIdempotencyKey } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
+import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import type { DiscountKind, POSOrder } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
 import { discountProblem } from "../register/registerWords";
@@ -50,6 +51,8 @@ export function DiscountDialog({
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const problem = discountProblem(applyDiscount.error);
+  // The till doesn't lock itself while the discount is with Yetu.
+  useHoldIdleLock(applyDiscount.isPending);
 
   const value = kind === "AMOUNT" ? toMinor(valueText) : percentBasisPoints(valueText);
   const valueWords =

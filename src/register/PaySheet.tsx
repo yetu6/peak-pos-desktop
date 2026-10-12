@@ -10,6 +10,7 @@ import {
   useRoomChargeCandidates,
 } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
+import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import type { PaymentMethod, POSOrder, POSRoomChargeCandidate } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
 import { orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
@@ -111,6 +112,8 @@ export function PaySheet({
   }, [roomQuery]);
 
   const problem = tenderProblem(recordTender.error) ?? roomChargeProblem(chargeToRoom.error);
+  // The till doesn't lock itself while a payment is with Yetu.
+  useHoldIdleLock(recordTender.isPending || chargeToRoom.isPending);
 
   return (
     <PaySheetView

@@ -4,6 +4,7 @@ import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { cashMovementProblem } from "../cash/cashWords";
 import { useIdempotencyKey, useRecordCashMovement } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
+import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import type { RosterEntry } from "../lib/deviceAuth";
 import type { CashMovementType } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
@@ -30,6 +31,8 @@ export function CashMovementDialog({
   const device = useDeviceSessionOptional();
   const record = useRecordCashMovement(shiftId);
   const idempotencyKey = useIdempotencyKey();
+  // The till doesn't lock itself while the movement is with Yetu.
+  useHoldIdleLock(record.isPending);
   return (
     <CashMovementSheetView
       onClose={onClose}

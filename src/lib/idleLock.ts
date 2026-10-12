@@ -1,5 +1,29 @@
-/** Default till idle lock. Peak `expiresAt` still locks independently. */
-export const DEFAULT_IDLE_LOCK_SECONDS = 10;
+/**
+ * Named setting: the till locks after this many seconds with no touch, key or
+ * movement (VITE_PEAK_IDLE_LOCK_SECONDS overrides it for a build). The
+ * session's own expiry from Yetu still locks it independently.
+ */
+export const DEFAULT_IDLE_LOCK_SECONDS = 60;
+
+/** Named setting: the countdown shows only for this many seconds before the lock. */
+export const IDLE_LOCK_WARNING_SECONDS = 10;
+
+// While a money request is with Yetu (a payment, closing a shift, cash in or
+// out, a discount, a void) the till never locks: it waits for the answer.
+const holds = new Set<symbol>();
+
+/** Keeps the till from locking until the returned release is called. */
+export function holdIdleLock(): () => void {
+  const hold = Symbol("idle-lock-hold");
+  holds.add(hold);
+  return () => {
+    holds.delete(hold);
+  };
+}
+
+export function idleLockHeld(): boolean {
+  return holds.size > 0;
+}
 
 const ACTIVITY_EVENTS = ["pointerdown", "keydown", "touchstart", "mousemove", "wheel"] as const;
 
@@ -43,6 +67,14 @@ export function watchIdleActivity(
     window.addEventListener(event, mark, { passive: true });
   }
   const timer = window.setInterval(() => {
+    if (holds.size > 0) {
+      // Waiting on Yetu counts as use: each tick while held moves the start, so
+      // a full idle window runs from when it settles.
+      last = now();
+      fired = false;
+      options.onCountdown?.(null);
+      return;
+    }
     const remainingMs = options.idleMs - (now() - last);
     if (remainingMs <= 0) {
       options.onCountdown?.(0);

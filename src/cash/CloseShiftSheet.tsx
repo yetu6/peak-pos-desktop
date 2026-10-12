@@ -5,6 +5,7 @@ import { Banner, Button, Money, MoneyField, Sheet, SupervisorApproval, type Keyp
 import { useIdempotencyKey, usePosShift } from "../hooks/usePosData";
 import type { RosterEntry } from "../lib/deviceAuth";
 import { formatMoney } from "../lib/money";
+import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import type { POSShift } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
 import { closeShiftProblem, countOutcome } from "./cashWords";
@@ -92,6 +93,8 @@ export function CloseShiftSheetView({
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // The till doesn't lock itself while the close is with Yetu.
+  useHoldIdleLock(pending || refreshing);
 
   const countedMinor = toMinor(counted);
   const outcome = countedMinor === null ? null : countOutcome(countedMinor, shift.expectedCashMinor);

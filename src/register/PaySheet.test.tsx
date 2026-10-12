@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { POSOrder, POSRoomChargeCandidate } from "../lib/posContracts";
+import { idleLockHeld } from "../lib/idleLock";
 import { PaySheet } from "./PaySheet";
 
 const ORDER: POSOrder = {
@@ -421,6 +422,12 @@ describe("PaySheet", () => {
     expect(screen.getByTestId("settle-error")).toHaveTextContent(
       "This order changed on another till. The amounts here are Yetu's latest: check them, then try again.",
     );
+  });
+
+  it("keeps the till from locking while the payment is with Yetu", () => {
+    refs.tender = { isPending: true, error: null };
+    renderPay();
+    expect(idleLockHeld()).toBe(true);
   });
 
   it("says why a payment was refused, in words", () => {

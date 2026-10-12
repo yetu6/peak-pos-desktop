@@ -3,6 +3,7 @@ import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { useIdempotencyKey, useVoidOrder } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
+import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import type { POSOrder } from "../lib/posContracts";
 import { voidProblem } from "../register/registerWords";
 import { Banner, Button, Field, Sheet, SupervisorApproval, type KeypadKey } from "./system";
@@ -36,6 +37,8 @@ export function VoidOrderDialog({
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const problem = voidProblem(voidOrder.error);
+  // The till doesn't lock itself while the void is with Yetu.
+  useHoldIdleLock(voidOrder.isPending);
   const ready = reason.trim().length > 0 && supervisorId !== null && pin.length === PIN_LENGTH && !voidOrder.isPending;
 
   function onPinKey(key: KeypadKey) {
