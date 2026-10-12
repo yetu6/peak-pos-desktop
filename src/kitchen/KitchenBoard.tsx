@@ -94,14 +94,14 @@ export function KitchenBoard({
   const whyClosedId = useId();
   // The step a keyboard user was on: a step that moves its ticket to another
   // column (or off the board) takes its button away, and focus with it.
-  const lastStep = useRef<{ id: string; column: string; row: number } | null>(null);
+  const lastStep = useRef<{ step: HTMLElement; id: string; column: string; row: number } | null>(null);
 
   function rememberStep(event: FocusEvent<HTMLDivElement>) {
     const step = event.target as HTMLElement;
     if (!step.hasAttribute("data-kitchen-next")) return;
     const column = step.closest<HTMLElement>("[data-kitchen-column]");
     const steps = column ? Array.from(column.querySelectorAll("[data-kitchen-next]")) : [];
-    lastStep.current = { id: step.dataset.ticketId ?? "", column: column?.dataset.kitchenColumn ?? "", row: steps.indexOf(step) };
+    lastStep.current = { step, id: step.dataset.ticketId ?? "", column: column?.dataset.kitchenColumn ?? "", row: steps.indexOf(step) };
   }
 
   // Focus that goes anywhere else on the page is the person's own choice: let it be.
@@ -122,6 +122,13 @@ export function KitchenBoard({
     const board = columnsRef.current;
     if (!last || !board) return;
     if (document.activeElement && document.activeElement !== document.body) return;
+    // Only the step's own removal took the focus. If it is still there, the
+    // person moved focus away themselves (a click on empty space fires no
+    // focusin): forget it, so no later render pulls focus back.
+    if (last.step.isConnected) {
+      lastStep.current = null;
+      return;
+    }
     const same = Array.from(board.querySelectorAll<HTMLButtonElement>("[data-kitchen-next]")).find((step) => step.dataset.ticketId === last.id);
     const column = board.querySelector<HTMLElement>(`[data-kitchen-column="${last.column}"]`);
     const inColumn = column ? Array.from(column.querySelectorAll<HTMLButtonElement>("[data-kitchen-next]")) : [];

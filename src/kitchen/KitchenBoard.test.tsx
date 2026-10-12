@@ -177,6 +177,25 @@ describe("KitchenBoard", () => {
     expect(screen.getByTestId("kitchen-next-c2")).toHaveFocus();
   });
 
+  it("doesn't pull focus back after a click on empty space, on the next tick or any later render", async () => {
+    const board = (tickets: BoardTicket[], nowMs: number) => (
+      <KitchenBoard title="Kitchen" tickets={tickets} nowMs={nowMs} busyIds={new Set()} canMove onNextStep={vi.fn()} />
+    );
+    const view = render(board([ticket("a1", "SENT", MINUTE), ticket("a2", "SENT", MINUTE)], NOW));
+    // A step pressed from the keyboard moves its ticket on, and focus follows it.
+    screen.getByTestId("kitchen-next-a1").focus();
+    view.rerender(board([ticket("a1", "PREPARING", MINUTE, { version: 3 }), ticket("a2", "SENT", MINUTE)], NOW));
+    expect(within(screen.getByTestId("kitchen-column-PREPARING")).getByTestId("kitchen-next-a1")).toHaveFocus();
+    // The person clicks the board's empty space: nothing there takes focus.
+    await userEvent.click(screen.getByTestId("kitchen-column-READY"));
+    expect(document.body).toHaveFocus();
+    // The clock ticks, and later the board changes: focus stays where the person left it.
+    view.rerender(board([ticket("a1", "PREPARING", MINUTE, { version: 3 }), ticket("a2", "SENT", MINUTE)], NOW + 5_000));
+    expect(document.body).toHaveFocus();
+    view.rerender(board([ticket("a1", "READY", MINUTE, { version: 4 }), ticket("a2", "SENT", MINUTE)], NOW + 10_000));
+    expect(document.body).toHaveFocus();
+  });
+
   it("leaves focus alone when the person was somewhere else", () => {
     const stationFilter = { options: [{ value: "ALL", label: "All stations" }, { value: "GRILL", label: "Grill" }], value: "ALL", onChange: vi.fn() };
     const view = renderBoard({ tickets: [ticket("a1", "SENT", MINUTE)], stationFilter });
