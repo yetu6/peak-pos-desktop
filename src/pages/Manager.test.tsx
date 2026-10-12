@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Manager } from "./Manager";
 import type { POSShift } from "../lib/posContracts";
 
@@ -49,6 +50,14 @@ vi.mock("../components/CashMovementDialog", () => ({
   ),
 }));
 
+function renderCash() {
+  return render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Manager />
+    </QueryClientProvider>,
+  );
+}
+
 const SHIFT: POSShift = {
   id: "shift-1",
   status: "OPEN",
@@ -68,7 +77,7 @@ describe("Manager", () => {
     permissionsRef.permissions = [];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
-    render(<Manager />);
+    renderCash();
 
     expect(screen.getByTestId("cash-movement-unavailable")).toBeInTheDocument();
     expect(screen.queryByTestId("open-cash-movement")).not.toBeInTheDocument();
@@ -79,7 +88,7 @@ describe("Manager", () => {
     permissionsRef.permissions = ["pos.cash_movement.record"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
-    render(<Manager />);
+    renderCash();
 
     const open = screen.getByTestId("open-cash-movement");
     expect(open).not.toBeDisabled();
@@ -93,7 +102,7 @@ describe("Manager", () => {
     shiftRef.shift = SHIFT;
     currencyRef.currency = "KES";
     movementsRef.data = [{ id: "m1", movementType: "CASH_IN", amountMinor: 500_000, reason: "Float top-up" }];
-    render(<Manager />);
+    renderCash();
 
     const list = screen.getByTestId("cash-movement-list");
     expect(list).toHaveTextContent("KES");
@@ -104,7 +113,7 @@ describe("Manager", () => {
     permissionsRef.permissions = ["pos.report.manager"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
-    render(<Manager />);
+    renderCash();
 
     expect(screen.getByTestId("close-business-day")).toBeInTheDocument();
   });
@@ -113,7 +122,7 @@ describe("Manager", () => {
     permissionsRef.permissions = ["pos.report.manager"];
     capabilitiesRef.capabilities = ["LODGING"];
     shiftRef.shift = SHIFT;
-    render(<Manager />);
+    renderCash();
 
     expect(screen.queryByTestId("close-business-day")).not.toBeInTheDocument();
   });
@@ -122,7 +131,7 @@ describe("Manager", () => {
     permissionsRef.permissions = ["pos.cash_movement.record"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = undefined;
-    render(<Manager />);
+    renderCash();
 
     expect(screen.getByTestId("open-cash-movement")).toBeDisabled();
   });
@@ -131,7 +140,7 @@ describe("Manager", () => {
     permissionsRef.permissions = ["pos.cash_movement.record", "pos.shift.close"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
-    render(<Manager />);
+    renderCash();
     const summary = screen.getByTestId("cash-summary");
     expect(summary).toHaveTextContent("Float at the start");
     expect(summary).toHaveTextContent("TSh 500");
@@ -149,7 +158,7 @@ describe("Manager", () => {
       { id: "m1", movementType: "CASH_OUT", amountMinor: 2_000_000, reason: "Gas delivery", recordedBy: "staff-grace", createdAt: new Date(2026, 8, 4, 11, 5).toISOString() },
       { id: "m2", movementType: "CASH_IN", amountMinor: 500_000, reason: "Float top-up", recordedBy: "unknown-id-123", createdAt: new Date(2026, 8, 4, 9, 30).toISOString() },
     ];
-    render(<Manager />);
+    renderCash();
     const list = screen.getByTestId("cash-movement-list");
     expect(list).toHaveTextContent("Cash out");
     expect(list).toHaveTextContent("Gas delivery · Grace Mushi · 11:05");
@@ -161,7 +170,7 @@ describe("Manager", () => {
     permissionsRef.permissions = ["pos.cash_movement.record"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
-    render(<Manager />);
+    renderCash();
     await userEvent.click(screen.getByTestId("open-cash-out"));
     expect(screen.getByTestId("cash-movement-dialog-stub")).toHaveAttribute("data-type", "CASH_OUT");
   });
@@ -170,7 +179,7 @@ describe("Manager", () => {
     permissionsRef.permissions = ["pos.shift.close"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
-    render(<Manager />);
+    renderCash();
     await userEvent.click(screen.getByTestId("open-close-shift"));
     expect(screen.getByRole("dialog", { name: "Close the shift" })).toBeInTheDocument();
   });
@@ -179,7 +188,7 @@ describe("Manager", () => {
     permissionsRef.permissions = [];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
-    render(<Manager />);
+    renderCash();
     expect(screen.getByTestId("close-shift-unavailable")).toHaveTextContent(
       "Only a cashier or manager can close the shift. Ask one to close it.",
     );
@@ -192,7 +201,7 @@ describe("Manager", () => {
     permissionsRef.permissions = ["pos.report.manager"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
-    render(<Manager />);
+    renderCash();
     expect(screen.getByTestId("close-business-day")).toBeDisabled();
     expect(screen.getByTestId("close-day")).toHaveTextContent("Close this till's shift first.");
   });

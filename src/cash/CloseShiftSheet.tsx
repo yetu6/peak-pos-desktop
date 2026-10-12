@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { Banner, Button, Money, MoneyField, Sheet, SupervisorApproval, type KeypadKey } from "../components/system";
@@ -29,13 +30,16 @@ const APPROVAL_REASON = {
  * needs pos.report.manager from someone else). Done: closing takes the till
  * to Open shift, which shows the result Yetu returned.
  */
-export function CloseShiftSheet(props: Omit<CloseShiftSheetViewProps, "onClose">) {
+export function CloseShiftSheet(props: Omit<CloseShiftSheetViewProps, "onClose" | "onRefreshShift">) {
   const { close } = usePosShift();
   const closeKey = useIdempotencyKey();
+  const queryClient = useQueryClient();
   return (
     <CloseShiftSheetView
       {...props}
       onClose={(args) => close.mutateAsync({ ...args, idempotencyKey: closeKey.next() })}
+      // The shift query refetches as usePosData already does after cash in or out ("pos", "shift").
+      onRefreshShift={() => queryClient.invalidateQueries({ queryKey: ["pos", "shift"] })}
     />
   );
 }
@@ -49,6 +53,8 @@ export interface CloseShiftSheetViewProps {
   roster: readonly RosterEntry[];
   /** Closes the shift with Yetu and returns the closed shift it sends back. */
   onClose: (args: { countedCashMinor: number; supervisorStaffId?: string; supervisorPin?: string }) => Promise<POSShift>;
+  /** Gets the shift from Yetu again; its new figures arrive through `shift`. */
+  onRefreshShift?: () => Promise<unknown>;
   /** Fixtures start part-way through. */
   initialCounted?: string;
   initialStep?: "count" | "check";
@@ -62,6 +68,7 @@ export function CloseShiftSheetView({
   requesterId,
   roster,
   onClose,
+  onRefreshShift,
   initialCounted = "",
   initialStep = "count",
 }: CloseShiftSheetViewProps) {
@@ -84,6 +91,7 @@ export function CloseShiftSheetView({
   });
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const countedMinor = toMinor(counted);
   const outcome = countedMinor === null ? null : countOutcome(countedMinor, shift.expectedCashMinor);
@@ -129,18 +137,31 @@ export function CloseShiftSheetView({
     if (!ready || countedMinor === null) return;
     setPending(true);
     setProblem(null);
+    const withSupervisor = needsSupervisor && supervisor !== null;
     try {
       const result = await onClose({
         countedCashMinor: countedMinor,
-        ...(needsSupervisor && supervisor ? { supervisorStaffId: supervisor, supervisorPin: pin } : {}),
+        ...(withSupervisor ? { supervisorStaffId: supervisor, supervisorPin: pin } : {}),
       });
       rememberClosedShift({ shift: result, currency, at: new Date() });
       onOpenChange(false);
     } catch (error) {
       const refusal = closeShiftProblem(error);
-      if (refusal?.kind === "supervisor") setApprovalRequired("yetu");
       setPin("");
-      setProblem(refusal?.words ?? "The shift couldn't be closed. Try again.");
+      if (refusal?.kind === "supervisor") setApprovalRequired("yetu");
+      if (refusal?.kind === "supervisor" && !withSupervisor) {
+        // The till saw a balanced drawer but Yetu's figure differs: get it
+        // again and show the difference before anyone is asked to approve.
+        setProblem("Yetu's figure changed since this screen opened, so a manager must approve the difference.");
+        setRefreshing(true);
+        try {
+          await onRefreshShift?.();
+        } finally {
+          setRefreshing(false);
+        }
+      } else {
+        setProblem(refusal?.words ?? "The shift couldn't be closed. Try again.");
+      }
     } finally {
       setPending(false);
     }
@@ -227,7 +248,11 @@ export function CloseShiftSheetView({
           )}
           {/* Always in the page, so screen readers announce the result when it appears. */}
           <div role="status" aria-live="polite" data-testid="close-outcome">
-            {step === "check" && outcome ? (
+            {step === "check" && refreshing ? (
+              <Banner tone="info" live={false}>
+                Getting Yetu's latest figure…
+              </Banner>
+            ) : step === "check" && outcome ? (
               <Banner tone={OUTCOME[outcome].tone} live={false}>
                 {OUTCOME[outcome].words}
               </Banner>
@@ -235,12 +260,12 @@ export function CloseShiftSheetView({
           </div>
           {step === "check" ? (
             <>
-              {outcome === "balanced" && approvalRequired ? (
+              {outcome === "balanced" && approvalRequired && !refreshing ? (
                 <p className="y-cash__muted" data-testid="close-approval-reason">
                   {APPROVAL_REASON[approvalRequired]}
                 </p>
               ) : null}
-              {needsSupervisor ? (
+              {needsSupervisor && !refreshing ? (
                 <SupervisorApproval
                   request={`Close the shift with ${formatMoney(countedMinor, currency)} counted. Yetu expects ${formatMoney(shift.expectedCashMinor, currency)}.`}
                   supervisors={roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }))}

@@ -1,4 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { POSShift } from "../lib/posContracts";
@@ -26,9 +28,15 @@ const ROSTER = [
   { fullName: "Grace Mushi", staffNumber: "staff-grace" },
 ];
 
+function withClient(ui: ReactNode, client = new QueryClient()) {
+  return <QueryClientProvider client={client}>{ui}</QueryClientProvider>;
+}
+
 function renderSheet() {
   return render(
-    <CloseShiftSheet open onOpenChange={vi.fn()} shift={SHIFT} currency="TZS" requesterId="staff-amina" roster={ROSTER} />,
+    withClient(
+      <CloseShiftSheet open onOpenChange={vi.fn()} shift={SHIFT} currency="TZS" requesterId="staff-amina" roster={ROSTER} />,
+    ),
   );
 }
 
@@ -132,7 +140,11 @@ describe("CloseShiftSheet: check", () => {
   });
 
   it("with no staff list, a difference can't be approved and it says why", async () => {
-    render(<CloseShiftSheet open onOpenChange={vi.fn()} shift={SHIFT} currency="TZS" requesterId="staff-amina" roster={[]} />);
+    render(
+      withClient(
+        <CloseShiftSheet open onOpenChange={vi.fn()} shift={SHIFT} currency="TZS" requesterId="staff-amina" roster={[]} />,
+      ),
+    );
     await count("74500");
     expect(screen.queryByRole("textbox", { name: /staff number/i })).not.toBeInTheDocument();
     expect(screen.getByText(/can't show its staff list right now/)).toBeInTheDocument();
@@ -220,6 +232,43 @@ describe("CloseShiftSheet: check", () => {
     expect(await screen.findByTestId("close-shift-error")).toHaveTextContent(/a manager must approve/);
     expect(screen.getByRole("group", { name: "Supervisor PIN" })).toBeInTheDocument();
     expect(screen.getByTestId("close-shift")).toBeDisabled();
+  });
+
+  it("when Yetu finds a difference in a Balanced count, gets Yetu's figure again and shows it before asking for a manager", async () => {
+    const client = new QueryClient();
+    const sheet = (shift: POSShift) =>
+      withClient(
+        <CloseShiftSheet open onOpenChange={vi.fn()} shift={shift} currency="TZS" requesterId="staff-amina" roster={ROSTER} />,
+        client,
+      );
+    const view = render(sheet(SHIFT));
+    let finishRefresh = () => {};
+    const refresh = vi.spyOn(client, "invalidateQueries").mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRefresh = () => {
+            view.rerender(sheet({ ...SHIFT, expectedCashMinor: 7_350_000 }));
+            resolve();
+          };
+        }),
+    );
+    closeAsync.mockRejectedValueOnce(problem("CONFLICT", "supervisor approval failed"));
+    await count("74000");
+    expect(screen.getByTestId("close-outcome")).toHaveTextContent("Balanced");
+    await userEvent.click(screen.getByTestId("close-shift"));
+
+    expect(refresh).toHaveBeenCalledWith({ queryKey: ["pos", "shift"] });
+    expect(screen.getByTestId("close-outcome")).not.toHaveTextContent("Balanced");
+    expect(screen.getByTestId("close-outcome")).toHaveTextContent("Getting Yetu's latest figure");
+    expect(screen.queryByRole("group", { name: "Supervisor PIN" })).not.toBeInTheDocument();
+
+    await act(async () => finishRefresh());
+    expect(screen.getByTestId("close-expected")).toHaveTextContent("TSh 73,500");
+    expect(screen.getByTestId("close-outcome")).toHaveTextContent("Over. You counted more than Yetu expects.");
+    expect(screen.getByRole("group", { name: "Supervisor PIN" })).toBeInTheDocument();
+    expect(screen.getByTestId("close-shift-error")).toHaveTextContent(
+      "Yetu's figure changed since this screen opened, so a manager must approve the difference.",
+    );
   });
 
   it("says why Yetu would not close it, in words", async () => {
