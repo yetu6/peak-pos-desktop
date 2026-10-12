@@ -84,7 +84,7 @@ function PosShell() {
       banners={<ShellBanners />}
       onSwitchPerson={() => switchStaff()}
       onLock={() => switchStaff()}
-      workspaceVariant={page === "new" || page === "kitchen" ? "full" : "padded"}
+      workspaceVariant={page === "new" || page === "orders" || page === "kitchen" ? "full" : "padded"}
     >
       {page === "orders" ? (
         <ActiveOrders onNewOrder={() => setPage("new")} />

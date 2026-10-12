@@ -1,191 +1,166 @@
-import { useState, type ReactNode } from "react";
-import { Icon } from "../components/Icon";
-import { PaySheet } from "../register/PaySheet";
-import { RemoveItemDialog } from "../components/RemoveItemDialog";
-import { VoidOrderDialog } from "../components/VoidOrderDialog";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ReceiptView } from "../components/ReceiptView";
-import { moneyFormatter } from "../lib/posMoney";
-import { useActiveOrders, useCatalogCurrency, useHasPermission, useIdempotencyKey, useMutationMessage, usePrintAfter, usePropertyId, useSendOrder } from "../hooks/usePosData";
-import type { POSOrder, POSOrderItem } from "../lib/posContracts";
+import { VoidOrderDialog } from "../components/VoidOrderDialog";
+import {
+  useActiveOrders,
+  useCatalogCurrency,
+  useHasPermission,
+  useOrder,
+  usePosShift,
+  usePrintAfter,
+  usePropertyId,
+  useStationTickets,
+} from "../hooks/usePosData";
+import { sentTimesByOrder } from "../kitchen/kitchenTickets";
+import type { POSOrder } from "../lib/posContracts";
+import { OrderDetail } from "../orders/OrderDetail";
+import { OrdersView, type OrdersTab } from "../orders/OrdersView";
+import { usePaidOrders } from "../orders/usePaidOrders";
+import { PaymentDone } from "../register/PaymentDone";
+import { PaySheet, type PaidInfo } from "../register/PaySheet";
 
-const STATUS_BADGE: Record<POSOrder["status"], string> = {
-  OPEN: "badge-brand badge-dot",
-  SENT: "badge-warning badge-dot",
-  PREPARING: "badge-warning badge-dot",
-  READY: "badge-info badge-dot",
-  SERVED: "badge-info badge-dot",
-  CLOSED: "badge-success badge-dot",
-  VOIDED: "badge-muted",
-};
+/** What is open over the list: an order, its Pay or Void sheet, payment done, or a receipt. */
+type Overlay =
+  | { kind: "detail"; orderId: string }
+  | { kind: "pay"; orderId: string }
+  | { kind: "void"; orderId: string }
+  | { kind: "done"; paid: PaidInfo }
+  | { kind: "receipt"; orderId: string }
+  | null;
 
+/**
+ * Orders against the live API: the open orders (GET /pos/orders?active=true,
+ * kept fresh by live updates) and this shift's paid ones (asked for only when
+ * that tab is opened). An order opens in its detail; Pay is Sell's Pay sheet,
+ * Void is the supervisor's void, and a paid order prints a copy of its receipt.
+ */
 export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
-  const propertyId = usePropertyId();
   const orders = useActiveOrders();
-  const sendOrder = useSendOrder();
-  const sendKey = useIdempotencyKey();
-  const sendError = useMutationMessage(sendOrder.error);
-  const printAfter = usePrintAfter(propertyId);
-  const canSettle = useHasPermission("pos.payment.record");
-  const [settling, setSettling] = useState<POSOrder | null>(null);
-  const [removing, setRemoving] = useState<{ order: POSOrder; item: POSOrderItem } | null>(null);
-  const [voiding, setVoiding] = useState<POSOrder | null>(null);
-  const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
-
-  const list = orders.data ?? [];
-  const open = list.filter((o) => o.status === "OPEN");
-  const inKitchen = list.filter((o) => ["SENT", "PREPARING", "READY", "SERVED"].includes(o.status));
-  const closed = list.filter((o) => o.status === "CLOSED");
+  const { shift } = usePosShift();
   const currency = useCatalogCurrency();
-  const money = moneyFormatter(currency);
+  const tickets = useStationTickets(true);
+  const canSend = useHasPermission("pos.order.send");
+  const canPay = useHasPermission("pos.payment.record");
+  const propertyId = usePropertyId();
+  const printAfter = usePrintAfter(propertyId);
+  const [tab, setTab] = useState<OrdersTab>("open");
+  const [query, setQuery] = useState("");
+  const [overlay, setOverlay] = useState<Overlay>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const paid = usePaidOrders(shift?.id, tab === "paid");
+  const voided = useRef(false);
+  // The order whose row gets focus back once nothing is open over the list.
+  const returnFocusTo = useRef<string | null>(null);
 
-  async function sendToKitchen(order: POSOrder): Promise<void> {
-    const key = sendKey.next();
-    const updated = await sendOrder.mutateAsync({ orderId: order.id, version: order.version, idempotencyKey: key });
-    await printAfter(updated.id);
+  // Yetu's active list already leaves out paid and voided orders.
+  const open = useMemo(() => orders.data ?? [], [orders.data]);
+  const sentTimes = useMemo(() => sentTimesByOrder(tickets.data ?? []), [tickets.data]);
+
+  const overlayOrderId = overlay && overlay.kind !== "done" ? overlay.orderId : undefined;
+  // The order as Yetu has it now: from the lists, or asked for on its own when it has left them.
+  const listed = overlayOrderId
+    ? (open.find((order) => order.id === overlayOrderId) ?? paid.data?.find((order) => order.id === overlayOrderId))
+    : undefined;
+  const fetched = useOrder(overlayOrderId && !listed ? overlayOrderId : undefined);
+  // While it is being asked for, the sheet keeps the order as it last was, so it never closes under the person.
+  const lastSeen = useRef<POSOrder | null>(null);
+  const known = listed ?? fetched.data ?? (lastSeen.current?.id === overlayOrderId ? lastSeen.current : null);
+  lastSeen.current = known;
+  const current: POSOrder | undefined = known ?? undefined;
+
+  useEffect(() => {
+    if (overlay !== null || returnFocusTo.current === null) return;
+    const orderId = returnFocusTo.current;
+    returnFocusTo.current = null;
+    // After the sheet has handed focus back, the order's row (or, if it has left the list, the open tab) takes it.
+    const timer = window.setTimeout(() => {
+      const row = document.querySelector<HTMLElement>(`[data-testid="order-row-${orderId}"]`);
+      (row ?? document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]'))?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [overlay]);
+
+  function close() {
+    if (overlayOrderId) returnFocusTo.current = overlayOrderId;
+    setOverlay(null);
   }
 
-  async function afterSettled(orderId: string): Promise<void> {
-    await printAfter(orderId);
-    setSettling(null);
-    setReceiptOrderId(orderId);
+  function openOrder(order: POSOrder) {
+    setNotice(null);
+    setOverlay({ kind: "detail", orderId: order.id });
   }
 
-  function renderOrderCard(order: POSOrder, canSend: boolean): ReactNode {
-    return (
-      <article key={order.id} className="active-order-row" data-testid={`order-${order.id}`}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="font-mono text-sm font-bold text-[var(--foreground)]">{order.orderNumber}</div>
-            <div className="mt-1 text-[11px] uppercase tracking-[0.05em] text-[var(--foreground-muted)]">
-              {order.serviceType.replaceAll("_", " ")} · {order.tableLabel ?? "no table"}
-              {order.initiatedByName ? ` · ${order.initiatedByName}` : ""}
-            </div>
-          </div>
-          <span className={`badge ${STATUS_BADGE[order.status]}`}>{order.status}</span>
-        </div>
-        <ul className="min-w-0 space-y-1 text-[13px]">
-          {order.items.slice(0, 4).map((item) => (
-            <li key={item.id} className="flex items-baseline justify-between gap-2">
-              <span className="min-w-0 truncate text-[var(--foreground)]">{item.name}</span>
-              <span className="flex items-center gap-2">
-                <span className="font-mono text-xs tabular-nums text-[var(--foreground-muted)]">×{item.quantity}</span>
-                {item.status === "ADDED" && (
-                  <button
-                    type="button"
-                    data-testid={`remove-item-${item.id}`}
-                    onClick={() => setRemoving({ order, item })}
-                    className="min-h-11 rounded-md px-2 text-[11px] text-[var(--foreground-muted)] hover:bg-[var(--surface-interactive)] hover:text-[var(--foreground)]"
-                  >
-                    Remove
-                  </button>
-                )}
-              </span>
-            </li>
-          ))}
-          {order.items.length > 4 && <li className="text-[11px] text-[var(--foreground-muted)]">+{order.items.length - 4} more items</li>}
-        </ul>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-          <div className="money-display mr-2 text-base font-bold text-[var(--foreground)]">{money(order.totalMinor)}</div>
-          <div className="flex flex-wrap justify-end gap-2">
-            <button data-testid={`void-order-${order.id}`} onClick={() => setVoiding(order)} className="btn-tertiary btn-sm">
-              Void
-            </button>
-            {canSend && canSettle && (
-              <button data-testid={`settle-${order.id}`} onClick={() => setSettling(order)} disabled={!currency} className="btn-secondary btn-sm">
-                <Icon name="payments" size={14} />
-                Settle
-              </button>
-            )}
-            {canSend && (
-              <button data-testid={`send-${order.id}`} onClick={() => void sendToKitchen(order)} disabled={sendOrder.isPending} className="btn-primary btn-sm">
-                <Icon name="kitchen" size={14} />
-                Send to kitchen
-              </button>
-            )}
-            {!canSend && order.status !== "CLOSED" && canSettle && (
-              <button data-testid={`settle-${order.id}`} onClick={() => setSettling(order)} disabled={!currency} className="btn-primary btn-sm">
-                <Icon name="payments" size={14} />
-                Settle
-              </button>
-            )}
-          </div>
-        </div>
-      </article>
-    );
+  function afterPaid(info: PaidInfo) {
+    returnFocusTo.current = info.order.id;
+    setOverlay({ kind: "done", paid: info });
+    // The receipt Yetu made on closing is printed as before.
+    void printAfter(info.order.id);
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-lg font-bold tracking-[-0.02em] text-[var(--foreground)]">Active orders</h1>
-          <p className="mt-0.5 text-xs text-[var(--foreground-muted)]">Open, preparing, and ready checks.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="badge badge-brand">{open.length + inKitchen.length} open</span>
-        </div>
-      </div>
+    <>
+      <OrdersView
+        tab={tab}
+        onTab={setTab}
+        openOrders={open}
+        paidOrders={paid.data ?? null}
+        query={query}
+        onQuery={setQuery}
+        currency={currency}
+        sentTimes={sentTimes}
+        onOpen={openOrder}
+        onNewSale={onNewOrder}
+        openState={{ loading: orders.isLoading, failed: orders.isError, onRetry: () => void orders.refetch() }}
+        paidState={{ loading: paid.isLoading, failed: paid.isError, onRetry: () => void paid.refetch() }}
+        notice={notice}
+      />
 
-      {sendError && (
-        <div className="badge badge-danger" data-testid="send-error">
-          {sendError}
-        </div>
-      )}
-
-      {list.length === 0 ? (
-        <div className="card">
-          <div className="empty-state">
-            <div className="empty-state-icon">
-              <Icon name="orders" size={40} />
-            </div>
-            <div className="empty-state-title">No open orders</div>
-            <div className="empty-state-desc">Start a sale when the next guest is ready.</div>
-            {onNewOrder && (
-              <button type="button" onClick={onNewOrder} className="btn-primary mt-3">
-                <Icon name="plus" size={17} />
-                New order
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="active-orders-list" data-testid="active-orders-list">
-            {[...open, ...inKitchen].map((order) => renderOrderCard(order, order.status === "OPEN"))}
-          </div>
-
-          {closed.length > 0 && (
-            <div className="space-y-2">
-              <div className="pt-2 text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--foreground-muted)]">Settled this session</div>
-              <div className="flex flex-wrap gap-2">
-                {closed.map((order) => (
-                  <button
-                    key={order.id}
-                    className="badge badge-success"
-                    data-testid={`settled-${order.id}`}
-                    onClick={() => setReceiptOrderId(order.id)}
-                  >
-                    {order.orderNumber}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {settling && currency && (
-        <PaySheet
-          order={settling}
+      {overlay?.kind === "detail" && current ? (
+        <OrderDetail
+          order={current}
           currency={currency}
-          onClose={() => setSettling(null)}
-          onOrderChange={setSettling}
-          onPaid={(paid) => void afterSettled(paid.order.id)}
+          canSend={canSend}
+          canPay={canPay}
+          onPay={() => setOverlay({ kind: "pay", orderId: current.id })}
+          onVoid={() => {
+            voided.current = false;
+            setOverlay({ kind: "void", orderId: current.id });
+          }}
+          onClose={close}
         />
-      )}
-      {removing && <RemoveItemDialog order={removing.order} item={removing.item} onClose={() => setRemoving(null)} />}
-      {voiding && <VoidOrderDialog order={voiding} currency={currency} onClose={() => setVoiding(null)} />}
-      {receiptOrderId && <ReceiptView orderId={receiptOrderId} onClose={() => setReceiptOrderId(null)} />}
-    </div>
+      ) : null}
+      {overlay?.kind === "pay" && current && currency ? (
+        <PaySheet
+          order={current}
+          currency={currency}
+          onClose={() => setOverlay({ kind: "detail", orderId: current.id })}
+          onPaid={afterPaid}
+        />
+      ) : null}
+      {overlay?.kind === "void" && current ? (
+        <VoidOrderDialog
+          order={current}
+          currency={currency}
+          onVoided={() => {
+            voided.current = true;
+            setNotice(`Order ${current.orderNumber} was voided. The kitchen has been told.`);
+          }}
+          onClose={() => {
+            if (voided.current) close();
+            else setOverlay({ kind: "detail", orderId: current.id });
+          }}
+        />
+      ) : null}
+      {overlay?.kind === "done" && currency ? (
+        <PaymentDone
+          paid={overlay.paid}
+          currency={currency}
+          returnTo={{ place: "Orders", action: "Back to orders" }}
+          onNewSale={() => setOverlay(null)}
+          onViewReceipt={() => setOverlay({ kind: "receipt", orderId: overlay.paid.order.id })}
+        />
+      ) : null}
+      {overlay?.kind === "receipt" ? <ReceiptView orderId={overlay.orderId} onClose={close} /> : null}
+    </>
   );
 }

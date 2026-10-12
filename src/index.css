@@ -884,26 +884,6 @@ body.dark-theme .brand-lockup .brand-lockup__on-dark { display: block; }
     overflow: auto;
     padding: 4px 16px;
   }
-
-  .active-orders-list {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-panel);
-    background: var(--surface);
-  }
-
-  .active-order-row {
-    display: grid;
-    grid-template-columns: minmax(170px, 0.8fr) minmax(220px, 1.4fr) auto;
-    align-items: center;
-    gap: 16px;
-    border-bottom: 1px solid var(--border-subtle);
-    padding: 14px 16px;
-  }
-
-  .active-order-row:last-child { border-bottom: 0; }
 }
 
 @keyframes terminal-pulse {
