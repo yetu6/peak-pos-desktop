@@ -47,6 +47,20 @@ describe("PaymentDone", () => {
     expect(screen.getByRole("dialog", { name: "Paid" })).toHaveTextContent("Split payment · Order 0142");
   });
 
+  it("tells a screen reader the change with the dialog itself", () => {
+    renderDone();
+    expect(screen.getByRole("dialog", { name: "Paid" })).toHaveAccessibleDescription(
+      "Change to give TSh 7,500. Cash · Order 0142.",
+    );
+  });
+
+  it("starts with focus on New sale, and still goes back to Sell on its own", () => {
+    const { onNewSale } = renderDone();
+    expect(screen.getByRole("button", { name: /New sale/ })).toHaveFocus();
+    act(() => vi.advanceTimersByTime(REGISTER_AUTO_RETURN_SECONDS * 1000));
+    expect(onNewSale).toHaveBeenCalledTimes(1);
+  });
+
   it("for a room charge, says it went on the room", () => {
     renderDone({ paid: { order: ORDER, method: "ROOM_CHARGE", changeMinor: 0, roomNumber: "12" } });
     expect(screen.getByRole("dialog", { name: "Charged to room 12" })).toHaveTextContent("TSh 42,500");

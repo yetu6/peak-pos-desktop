@@ -1,6 +1,6 @@
 import { CircleCheck, CircleX, Info, TriangleAlert, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { cn } from "../../lib/utils";
 
 type BannerTone = "info" | "success" | "warning" | "danger";
@@ -12,6 +12,13 @@ const BANNER_ICON: Record<BannerTone, typeof Info> = {
   danger: CircleX,
 };
 
+interface OverlayOptions {
+  /** Where focus starts when it opens; otherwise the first thing that takes focus. */
+  initialFocus?: RefObject<HTMLElement | null>;
+  /** The description is read aloud with the title but not shown (the body already shows it). */
+  descriptionHidden?: boolean;
+}
+
 function Overlay({
   open,
   onOpenChange,
@@ -22,7 +29,9 @@ function Overlay({
   contentClassName,
   bodyClassName,
   testId,
-}: {
+  initialFocus,
+  descriptionHidden = false,
+}: OverlayOptions & {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
@@ -41,12 +50,19 @@ function Overlay({
           className={contentClassName}
           data-testid={testId}
           {...(description ? {} : { "aria-describedby": undefined })}
+          onOpenAutoFocus={(event) => {
+            if (!initialFocus?.current) return;
+            event.preventDefault();
+            initialFocus.current.focus();
+          }}
         >
           <header className="y-overlay__header">
             <div className="y-overlay__titles">
               <DialogPrimitive.Title className="y-overlay__title">{title}</DialogPrimitive.Title>
               {description ? (
-                <DialogPrimitive.Description className="y-overlay__description">{description}</DialogPrimitive.Description>
+                <DialogPrimitive.Description className={cn("y-overlay__description", descriptionHidden && "y-visually-hidden")}>
+                  {description}
+                </DialogPrimitive.Description>
               ) : null}
             </div>
             <DialogPrimitive.Close className="y-button y-button--quiet y-button--48 y-icon-button" aria-label="Close" title="Close">
@@ -69,7 +85,7 @@ export function Sheet({
   side = "right",
   className,
   ...props
-}: {
+}: OverlayOptions & {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
@@ -93,7 +109,7 @@ export function Sheet({
 export function Dialog({
   className,
   ...props
-}: {
+}: OverlayOptions & {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;

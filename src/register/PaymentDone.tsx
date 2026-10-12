@@ -28,6 +28,10 @@ export function PaymentDone({
   const [hovered, setHovered] = useState(false);
   const [buttonFocused, setButtonFocused] = useState(false);
   const done = useRef(false);
+  const newSaleButton = useRef<HTMLButtonElement>(null);
+  // Focus starts on New sale; that first focus is the screen's, not the
+  // person's, so it doesn't hold the return to Sell.
+  const startingFocus = useRef(true);
   const paused = hovered || buttonFocused;
 
   function finish() {
@@ -49,6 +53,11 @@ export function PaymentDone({
   const room = paid.method === "ROOM_CHARGE";
   const title = room ? `Charged to room ${paid.roomNumber ?? ""}`.trim() : "Paid";
   const how = paid.split ? "Split payment" : paymentMethodWords(paid.method);
+  const said = room
+    ? `Order ${paid.order.orderNumber} is on the guest's bill.`
+    : [paid.changeMinor > 0 ? `Change to give ${formatMoney(paid.changeMinor, currency)}.` : "", `${how} · Order ${paid.order.orderNumber}.`]
+        .filter(Boolean)
+        .join(" ");
 
   return (
     <Dialog
@@ -57,6 +66,9 @@ export function PaymentDone({
         if (!open) finish();
       }}
       title={title}
+      description={said}
+      descriptionHidden
+      initialFocus={newSaleButton}
       testId="payment-done-dialog"
     >
       <div
@@ -77,13 +89,20 @@ export function PaymentDone({
         ) : null}
         <div
           className="y-done__actions"
-          onFocus={(event) => setButtonFocused(event.target instanceof HTMLButtonElement)}
+          onFocus={(event) => {
+            if (startingFocus.current && (event.target as Element) === newSaleButton.current) {
+              startingFocus.current = false;
+              return;
+            }
+            startingFocus.current = false;
+            setButtonFocused(event.target instanceof HTMLButtonElement);
+          }}
           onBlur={() => setButtonFocused(false)}
         >
           <Button size={56} icon={<Receipt />} onClick={onViewReceipt}>
             View receipt
           </Button>
-          <Button variant="primary" size={64} onClick={finish}>
+          <Button ref={newSaleButton} variant="primary" size={64} onClick={finish}>
             New sale
           </Button>
         </div>

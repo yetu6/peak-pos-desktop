@@ -1043,3 +1043,13 @@ button.y-ticket-line:hover { background: var(--surface-hover); }
     animation: none;
   }
 }
+
+/* Read aloud, not shown. */
+.y-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
