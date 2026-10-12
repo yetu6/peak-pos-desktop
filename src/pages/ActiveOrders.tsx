@@ -80,6 +80,12 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
     return () => window.clearTimeout(timer);
   }, [overlay]);
 
+  /** Ask Yetu again for the open orders (and the open order, if it has left the list). */
+  function reloadOrders() {
+    void orders.refetch();
+    if (fetched.data) void fetched.refetch();
+  }
+
   function close() {
     if (overlayOrderId) returnFocusTo.current = overlayOrderId;
     setOverlay(null);
@@ -127,6 +133,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
             setOverlay({ kind: "void", orderId: current.id });
           }}
           onClose={close}
+          onReload={reloadOrders}
         />
       ) : null}
       {overlay?.kind === "pay" && current && currency ? (

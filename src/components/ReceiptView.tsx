@@ -32,7 +32,7 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
       reprintError={reprintError}
       onReprint={() => {
         if (!receipt.data) return;
-        reprint.mutate({ orderId, idempotencyKey: requestKey([orderId, receipt.data.reprintCount].join("|")) });
+        reprint.mutate({ orderId, idempotencyKey: requestKey.keyFor([orderId, receipt.data.reprintCount].join("|")) });
       }}
       onClose={onClose}
     />

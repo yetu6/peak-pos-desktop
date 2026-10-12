@@ -350,6 +350,22 @@ describe("Orders", () => {
     await waitFor(() => expect(idleLockHeld()).toBe(false));
   });
 
+  it("takes a refused send (a 500 today) to mean the order changed: reloads it, says so, and the next press is a new request", async () => {
+    ordersStore.set("order-1", OPEN_ORDER);
+    spies.sendOrder.mockResolvedValueOnce({ data: undefined, error: { code: "INTERNAL_ERROR", detail: "only a non-empty open order can be sent" } });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    const listedBefore = spies.listOrders.mock.calls.filter(([active]) => active === true).length;
+    await userEvent.click(within(sheet).getByTestId("detail-send"));
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent(
+      "This order changed on another till, or was already sent. It's been reloaded: check it before sending it again.",
+    );
+    await waitFor(() => expect(spies.listOrders.mock.calls.filter(([active]) => active === true).length).toBeGreaterThan(listedBefore));
+    await userEvent.click(within(sheet).getByTestId("detail-send"));
+    await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledTimes(2));
+    expect(spies.sendOrder.mock.calls[1][2]).not.toBe(spies.sendOrder.mock.calls[0][2]);
+  });
+
   it("removes a line not yet sent, with its own key and the order's version", async () => {
     ordersStore.set("order-1", { ...OPEN_ORDER, items: [...OPEN_ORDER.items, { ...OPEN_ORDER.items[0], id: "item-2", name: "Tea" }] });
     renderOrders();

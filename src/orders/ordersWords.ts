@@ -7,7 +7,7 @@
 import { stationWords } from "../kitchen/kitchenWords";
 import { majorDigits } from "../lib/money";
 import type { POSOrder, POSReceipt, POSStationTicket } from "../lib/posContracts";
-import { otherWords, problemOf, UNREACHABLE } from "../lib/problemWords";
+import { otherWords, problemOf, stepRefusal, UNREACHABLE } from "../lib/problemWords";
 import { clockTime, orderPlaceWords, orderStatusWords, paymentMethodWords, ticketStepWords, type SettlementMethod } from "../lib/words";
 
 const AMOUNT_TYPED = /^\d+(\.\d*)?$/;
@@ -96,20 +96,25 @@ export function orderTimeline({
 }
 
 export interface OrderProblem {
-  kind: "stale" | "permission" | "paid" | "missing" | "network" | "other";
+  kind: "stale" | "moved" | "permission" | "session" | "paid" | "missing" | "network" | "other";
   words: string;
 }
 
-/** Sending an open order to the kitchen. */
+/**
+ * Sending an open order to the kitchen. Yetu answers a send of an order that
+ * is no longer open with a plain error (HTTP 500, operations.go SendOrder),
+ * so any refusal that isn't the connection, the person or the till means the
+ * order may have changed: the screen reloads it.
+ */
 export function sendProblem(error: unknown): OrderProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
+  const kind = stepRefusal(problem);
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
-  if (problem.code === "STALE_VERSION") {
-    return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then send it again." };
-  }
-  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only staff who take orders can send them to the kitchen." };
-  return { kind: "other", words: otherWords(problem, "The order wasn't sent. Try again.") };
+  if (kind === "network") return { kind, words: otherWords(problem, UNREACHABLE) };
+  if (kind === "permission") return { kind, words: "Only staff who take orders can send them to the kitchen." };
+  if (kind === "session") return { kind, words: otherWords(problem, "The order wasn't sent. Try again.") };
+  return { kind: "moved", words: "This order changed on another till, or was already sent. It's been reloaded: check it before sending it again." };
 }
 
 /** Printing a copy of a paid order's receipt (needs pos.payment.record). */

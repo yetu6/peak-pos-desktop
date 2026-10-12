@@ -345,6 +345,7 @@ export function OrderDetail({
   onPay,
   onVoid,
   onClose,
+  onReload,
 }: {
   order: POSOrder;
   currency: string | undefined;
@@ -353,6 +354,8 @@ export function OrderDetail({
   onPay: () => void;
   onVoid: () => void;
   onClose: () => void;
+  /** Ask Yetu for the order again (it may have changed on another till). */
+  onReload: () => void;
 }) {
   const propertyId = usePropertyId();
   const printAfter = usePrintAfter(propertyId);
@@ -393,7 +396,7 @@ export function OrderDetail({
     if (pending !== null) return;
     begin();
     sendOrder.mutate(
-      { orderId: order.id, version: order.version, idempotencyKey: sendKey([order.id, order.version].join("|")) },
+      { orderId: order.id, version: order.version, idempotencyKey: sendKey.keyFor([order.id, order.version].join("|")) },
       {
         onSuccess: (updated) => {
           focusAfter.current = true;
@@ -401,7 +404,14 @@ export function OrderDetail({
           // The kitchen tickets Yetu made, printed as before.
           void printAfter(updated.id);
         },
-        onError: (error) => setProblem(sendProblem(error)?.words ?? "The order wasn't sent. Try again."),
+        onError: (error) => {
+          const refusal = sendProblem(error);
+          setProblem(refusal?.words ?? "The order wasn't sent. Try again.");
+          // Only a lost answer is asked again under its key.
+          if (refusal?.kind !== "network") sendKey.forget();
+          // It may have changed on another till: show it as Yetu has it now.
+          if (refusal?.kind === "moved") onReload();
+        },
       },
     );
   }
@@ -414,7 +424,7 @@ export function OrderDetail({
         orderId: order.id,
         itemId: line.id,
         version: order.version,
-        idempotencyKey: removeKey([order.id, line.id, order.version].join("|")),
+        idempotencyKey: removeKey.keyFor([order.id, line.id, order.version].join("|")),
       },
       {
         onSuccess: () => {
@@ -431,7 +441,7 @@ export function OrderDetail({
     if (pending !== null || !receipt.data) return;
     begin();
     reprint.mutate(
-      { orderId: order.id, idempotencyKey: reprintKey([order.id, receipt.data.reprintCount].join("|")) },
+      { orderId: order.id, idempotencyKey: reprintKey.keyFor([order.id, receipt.data.reprintCount].join("|")) },
       {
         onSuccess: () => setResult("A copy of the receipt was sent to the printer."),
         onError: (error) => setProblem(reprintProblem(error)?.words ?? "The copy wasn't printed. Try again."),

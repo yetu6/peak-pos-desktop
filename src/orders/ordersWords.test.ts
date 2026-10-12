@@ -146,12 +146,14 @@ describe("orderTimeline", () => {
 });
 
 describe("refusals", () => {
-  it("send: a changed order, a person who can't send, anything else", () => {
-    expect(sendProblem(refused({ code: "STALE_VERSION" }))?.words).toBe(
-      "This order changed on another till. It's been reloaded: check it, then send it again.",
-    );
-    expect(sendProblem(refused({ code: "FORBIDDEN" }))?.words).toBe("Only staff who take orders can send them to the kitchen.");
-    expect(sendProblem(refused({ code: "INTERNAL_ERROR", detail: "only a non-empty open order can be sent" }))?.kind).toBe("other");
+  it("send: any refusal that isn't the connection, the person or the till means the order may have changed", () => {
+    const changed = "This order changed on another till, or was already sent. It's been reloaded: check it before sending it again.";
+    expect(sendProblem(refused({ code: "STALE_VERSION" }))).toEqual({ kind: "moved", words: changed });
+    // Yetu answers a send of an order that is no longer open with a plain error (HTTP 500 today).
+    expect(sendProblem(refused({ code: "INTERNAL_ERROR", detail: "only a non-empty open order can be sent" }))).toEqual({ kind: "moved", words: changed });
+    expect(sendProblem(refused({ code: "FORBIDDEN" }))).toEqual({ kind: "permission", words: "Only staff who take orders can send them to the kitchen." });
+    expect(sendProblem(new TypeError("Failed to fetch"))?.kind).toBe("network");
+    expect(sendProblem(refused({ code: "SESSION_EXPIRED" }))?.kind).toBe("session");
     expect(sendProblem(null)).toBeNull();
   });
 
