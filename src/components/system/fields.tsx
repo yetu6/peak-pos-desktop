@@ -17,10 +17,11 @@ export interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   hint?: string;
   /** What is wrong and how to fix it, in words. */
   error?: string;
+  errorTestId?: string;
 }
 
 /** A labelled text field. Its hint and its error are read with it. */
-export function Field({ label, value, onChange, hint, error, className, id, ...props }: FieldProps) {
+export function Field({ label, value, onChange, hint, error, errorTestId, className, id, ...props }: FieldProps) {
   const autoId = useId();
   const inputId = id ?? `field-${autoId}`;
   const hintId = hint ? `${inputId}-hint` : undefined;
@@ -45,7 +46,7 @@ export function Field({ label, value, onChange, hint, error, className, id, ...p
         {...props}
       />
       {error ? (
-        <p className="y-field__error" id={errorId}>
+        <p className="y-field__error" id={errorId} data-testid={errorTestId}>
           <CircleAlert aria-hidden="true" />
           {error}
         </p>

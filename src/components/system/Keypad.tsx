@@ -17,14 +17,18 @@ export function Keypad({
   onKey,
   variant = "money",
   disabled = false,
+  testIdPrefix,
   className,
 }: {
   label: string;
   onKey: (key: KeypadKey) => void;
   variant?: "money" | "pin";
   disabled?: boolean;
+  /** Each key gets `${testIdPrefix}-${key}` (e.g. pin-key-7, pin-key-delete). */
+  testIdPrefix?: string;
   className?: string;
 }) {
+  const testId = (key: KeypadKey) => (testIdPrefix ? `${testIdPrefix}-${key}` : undefined);
   const extra: KeypadKey = variant === "pin" ? "clear" : "00";
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -41,25 +45,34 @@ export function Keypad({
   return (
     <div role="group" aria-label={label} className={cn("y-keypad", className)} onKeyDown={onKeyDown}>
       {DIGITS.map((digit) => (
-        <button key={digit} type="button" className="y-keypad__key" disabled={disabled} onClick={() => onKey(digit)}>
+        <button
+          key={digit}
+          type="button"
+          className="y-keypad__key"
+          data-testid={testId(digit)}
+          disabled={disabled}
+          onClick={() => onKey(digit)}
+        >
           {digit}
         </button>
       ))}
       <button
         type="button"
         className={cn("y-keypad__key", extra === "clear" && "y-keypad__key--word")}
+        data-testid={testId(extra)}
         disabled={disabled}
         onClick={() => onKey(extra)}
       >
         {extra === "clear" ? "Clear" : "00"}
       </button>
-      <button type="button" className="y-keypad__key" disabled={disabled} onClick={() => onKey("0")}>
+      <button type="button" className="y-keypad__key" data-testid={testId("0")} disabled={disabled} onClick={() => onKey("0")}>
         0
       </button>
       <button
         type="button"
         className="y-keypad__key"
         aria-label="Delete the last digit"
+        data-testid={testId("delete")}
         disabled={disabled}
         onClick={() => onKey("delete")}
       >
