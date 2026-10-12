@@ -116,3 +116,72 @@
 }
 
 .y-orow__total { justify-self: end; }
+
+/* ------------------------------------------------------------ Order detail */
+.y-detail {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.y-detail__state { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.y-detail__result {
+  margin: 0;
+  font-weight: 600;
+}
+
+.y-detail__result:empty { display: none; }
+
+.y-detail__section { display: grid; gap: var(--space-2); }
+
+.y-detail__heading {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-body);
+  font-weight: 700;
+}
+
+.y-detail__timeline {
+  display: grid;
+  margin: 0;
+  gap: var(--space-1);
+  padding: 0;
+  list-style: none;
+}
+
+.y-detail__event {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.y-detail__time {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.y-detail__line { margin: 0; }
+.y-detail__muted { color: var(--text-muted); }
+
+/* The actions: Void and Send on one row, Pay below them, full width. */
+.y-detail__actions {
+  display: grid;
+  flex: 1;
+  gap: var(--space-3);
+}
+
+.y-detail__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--target-gap);
+}
+
+.y-detail__row > .y-button { white-space: nowrap; }
+.y-detail__row > .y-permission { flex: 1; }
+
+.y-detail__why {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+}
