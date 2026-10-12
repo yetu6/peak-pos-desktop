@@ -2,7 +2,7 @@ import { Printer } from "lucide-react";
 import { useIdempotencyKey, useMutationMessage, useReceipt, useReprintReceipt } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
 import type { POSReceipt } from "../lib/posContracts";
-import { businessDayWords, clockTime, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
+import { businessDayWords, clockTime, orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { Banner, Button, Dialog, Skeleton } from "./system";
 
 /** How the order was settled: one method, or SPLIT when more than one tender paid it. */
@@ -99,8 +99,9 @@ export function ReceiptSheet({
             </div>
             <div className="y-receipt__meta-block">
               <p className="y-receipt__order">
-                Order {doc.orderNumber} · {serviceTypeWords(doc.serviceType)}
-                {doc.tableLabel ? ` · ${doc.tableLabel}` : ""}
+                {[`Order ${doc.orderNumber}`, serviceTypeWords(doc.serviceType), orderPlaceWords(doc.serviceType, doc.tableLabel)]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
               <p className="y-receipt__meta">
                 {businessDayWords(doc.businessDate)} · {clockTime(doc.settledAt)}
@@ -112,7 +113,7 @@ export function ReceiptSheet({
               ) : null}
               {doc.operatorName && doc.operatorName !== doc.initiatedByName ? (
                 <p className="y-receipt__meta" data-testid="receipt-settled-by">
-                  Paid with {doc.operatorName}
+                  Payment taken by {doc.operatorName}
                 </p>
               ) : null}
             </div>

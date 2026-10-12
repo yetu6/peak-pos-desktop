@@ -76,7 +76,7 @@ afterEach(() => {
 describe("PaySheet", () => {
   it("shows the amount still to pay, large, and only the methods Yetu takes", () => {
     renderPay();
-    expect(screen.getByRole("dialog", { name: "Take payment" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Take payment" })).toHaveAccessibleDescription("Order 0142 · Dine in · Table 12");
     expect(screen.getByTestId("amount-due")).toHaveTextContent("TSh 42,500");
     const methods = within(screen.getByRole("radiogroup", { name: "How the guest pays" })).getAllByRole("radio");
     expect(methods.map((method) => method.textContent)).toEqual([

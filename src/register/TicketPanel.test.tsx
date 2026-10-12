@@ -107,8 +107,8 @@ describe("TicketPanel", () => {
     for (const type of within(screen.getByRole("radiogroup", { name: "Order type" })).getAllByRole("radio")) {
       expect(type).toBeDisabled();
     }
-    expect(screen.getByRole("textbox", { name: "Table" })).toBeDisabled();
-    expect(screen.getByText("Saved with the order.")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Table" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("table-label")).toHaveTextContent("Table 12 · Saved with the order.");
   });
 
   it("shows each line with its quantity, options beneath, and Yetu's price", () => {

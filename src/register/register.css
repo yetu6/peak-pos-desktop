@@ -54,7 +54,12 @@
   display: grid;
   align-items: end;
   gap: var(--space-3);
-  grid-template-columns: minmax(0, 1fr) minmax(200px, 280px);
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 240px);
+}
+
+/* A small screen gives the categories the whole row and the search its own. */
+@media (max-width: 1279px) {
+  .y-catalog__bar { grid-template-columns: minmax(0, 1fr); }
 }
 
 .y-catalog__tabs { min-width: 0; }
@@ -133,7 +138,25 @@
   background: var(--surface-selected);
 }
 
-.y-options__tick svg { width: 20px; height: 20px; color: var(--action-text); }
+/* The mark says what kind of choice it is: a circle for one, a box for several. */
+.y-options__tick {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 2px solid var(--line-control);
+  border-radius: 4px;
+}
+
+.y-options__option[role="radio"] .y-options__tick { border-radius: 999px; }
+
+.y-options__option[aria-checked="true"] .y-options__tick {
+  border-color: var(--action);
+  background: var(--action);
+  color: var(--on-action);
+}
+
+.y-options__tick svg { width: 16px; height: 16px; }
 .y-options__price { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
 .y-options__quantity {
@@ -174,6 +197,18 @@
 }
 
 .y-ticket__title { margin: 0; font-size: var(--type-title); font-weight: 700; }
+
+/* The order type spans the ticket; a long word wraps rather than being cut. */
+.y-ticket__head .y-segmented { display: flex; width: 100%; }
+.y-ticket__head .y-segmented__option {
+  min-width: 0;
+  padding: 0 var(--space-2);
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.y-ticket__where { margin: 0; font-size: var(--type-lead); font-weight: 600; }
+.y-ticket__saved { color: var(--text-muted); font-size: var(--type-small); font-weight: 400; }
 .y-ticket__who { color: var(--text-muted); font-size: var(--type-small); }
 
 .y-ticket__lines {
@@ -248,7 +283,8 @@
   gap: var(--target-gap);
 }
 
-.y-actions__row > .y-button:first-child { flex: 1; }
+.y-actions__row > .y-button:first-child { flex: 1; white-space: nowrap; }
+.y-actions__row > .y-button { padding: 0 var(--space-3); }
 .y-actions__more { flex: none; }
 
 .y-more { display: grid; gap: var(--space-2); }

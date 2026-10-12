@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Banner, Button, EmptyState, Field, Money, SegmentedControl, StatusChip, TicketLine } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
-import { clockTime, serviceTypeWords } from "../lib/words";
+import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
 
 /** The order types the backend accepts (posContracts ServiceType), in this order. */
 export const SERVICE_TYPES: readonly ServiceType[] = ["DINE_IN", "TAKEAWAY", "ROOM_SERVICE"];
@@ -84,16 +84,15 @@ export function TicketPanel({
           disabled={locked}
           testIdPrefix="service-type"
         />
-        {labelName ? (
-          <Field
-            label={labelName}
-            value={locked ? (order?.tableLabel ?? "") : label}
-            onChange={onLabel}
-            hint={locked ? "Saved with the order." : undefined}
-            disabled={locked}
-            autoComplete="off"
-            data-testid="table-label"
-          />
+        {locked ? (
+          orderPlaceWords(type, order?.tableLabel) ? (
+            <p className="y-ticket__where" data-testid="table-label">
+              {orderPlaceWords(type, order?.tableLabel)}
+              <span className="y-ticket__saved"> · Saved with the order.</span>
+            </p>
+          ) : null
+        ) : labelName ? (
+          <Field label={labelName} value={label} onChange={onLabel} autoComplete="off" data-testid="table-label" />
         ) : null}
         {sent ? (
           <StatusChip tone="info" icon={<ChefHat aria-hidden="true" />} data-testid="ticket-sent">

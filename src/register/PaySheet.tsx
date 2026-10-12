@@ -11,7 +11,7 @@ import {
 import { formatMoney } from "../lib/money";
 import type { PaymentMethod, POSOrder, POSRoomChargeCandidate } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
-import { paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
+import { orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { roomChargeProblem, tenderProblem } from "./registerWords";
 
 /** Named setting: how long the room search waits after typing before it asks Yetu. */
@@ -234,7 +234,9 @@ export function PaySheetView({
         if (!open && !pending) onClose();
       }}
       title="Take payment"
-      description={`Order ${order.orderNumber} · ${serviceTypeWords(order.serviceType)}${order.tableLabel ? ` · ${order.tableLabel}` : ""}`}
+      description={[`Order ${order.orderNumber}`, serviceTypeWords(order.serviceType), orderPlaceWords(order.serviceType, order.tableLabel)]
+        .filter(Boolean)
+        .join(" · ")}
       testId="settle-dialog"
     >
       <div className="y-pay">

@@ -159,3 +159,14 @@ describe("the business day in words", () => {
     ).toEqual({ full: "Shift waiting for a supervisor · Mon 12 Oct", short: "Waiting for a supervisor · Mon 12 Oct" });
   });
 });
+
+describe("orderPlaceWords", () => {
+  it("names the table or the room, and nothing for takeaway", async () => {
+    const { orderPlaceWords } = await import("./words");
+    expect(orderPlaceWords("DINE_IN", "12")).toBe("Table 12");
+    expect(orderPlaceWords("ROOM_SERVICE", "204")).toBe("Room 204");
+    expect(orderPlaceWords("TAKEAWAY", "12")).toBe("");
+    expect(orderPlaceWords("DINE_IN", "  ")).toBe("");
+    expect(orderPlaceWords("DINE_IN", undefined)).toBe("");
+  });
+});

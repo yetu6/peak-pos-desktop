@@ -95,6 +95,13 @@ export function serviceTypeWords(type: ServiceType): string {
   return lookup(SERVICE_TYPE, type) ?? "Other service";
 }
 
+/** Where the order goes, from the free-text label: Table 12, Room 204; nothing for takeaway. */
+export function orderPlaceWords(type: ServiceType, label: string | null | undefined): string {
+  const place = label?.trim();
+  if (!place || type === "TAKEAWAY") return "";
+  return type === "ROOM_SERVICE" ? `Room ${place}` : `Table ${place}`;
+}
+
 export function shiftStatusWords(status: ShiftStatus): string {
   return lookup(SHIFT_STATUS, status) ?? "Status not known";
 }

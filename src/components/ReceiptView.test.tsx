@@ -69,6 +69,16 @@ describe("ReceiptView", () => {
     expect(screen.queryByTestId("receipt-error")).not.toBeInTheDocument();
   });
 
+  it("says where the order went and who took the payment, when someone else did", () => {
+    receiptRef.data = {
+      ...RECEIPT,
+      document: { ...RECEIPT.document, tableLabel: "12", operatorId: "staff-2", operatorName: "Grace Mushi" },
+    };
+    render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+    expect(screen.getByTestId("receipt-document")).toHaveTextContent("Order POS-1 · Dine in · Table 12");
+    expect(screen.getByTestId("receipt-settled-by")).toHaveTextContent("Payment taken by Grace Mushi");
+  });
+
   it("says a split payment in words", () => {
     receiptRef.data = { ...RECEIPT, document: { ...RECEIPT.document, tenderMethod: "SPLIT" } };
     render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
