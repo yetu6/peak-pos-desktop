@@ -101,7 +101,12 @@ function PosShell() {
   );
 }
 
-function LiveRegister() {
+/**
+ * One realtime connection for each signed-in session: made when a person
+ * signs in, closed when the till locks. It sits above the shift check, so
+ * opening the shift (or the check answering) never reconnects.
+ */
+function RealtimeSession({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const client = useMemo(
     () =>
@@ -115,7 +120,7 @@ function LiveRegister() {
 
   return (
     <RealtimeProvider client={client} queryClient={queryClient}>
-      <PosShell />
+      {children}
     </RealtimeProvider>
   );
 }
@@ -150,7 +155,7 @@ function ReadyGate() {
           <OpenShiftScreen />
         </AccessFrame>
       ) : (
-        <LiveRegister />
+        <PosShell />
       )}
     </>
   );
@@ -161,7 +166,7 @@ function ReadyGate() {
  * enforced in `terminalRoute` / `shellStateOf` and their tests.
  */
 function AuthGate() {
-  const { phase, identity } = useDeviceSession();
+  const { phase, identity, session } = useDeviceSession();
   const mode = identity?.mode;
 
   // A device nobody has chosen a theme for follows its paired mode's default
@@ -199,10 +204,10 @@ function AuthGate() {
       // shift outcome — nothing to render here.
       // Banners render inside the shell (under its top bar) from here on.
       return (
-        <>
+        <RealtimeSession key={session?.token ?? "signed-in"}>
           <IdleLockOverlay />
           <ReadyGate />
-        </>
+        </RealtimeSession>
       );
   }
 
