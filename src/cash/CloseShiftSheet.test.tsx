@@ -65,6 +65,36 @@ describe("CloseShiftSheet: count first, blind", () => {
   });
 });
 
+describe("CloseShiftSheet: from Count to Check", () => {
+  it("a double click on Check the count can't also close the shift", async () => {
+    renderSheet();
+    await userEvent.type(screen.getByTestId("counted-cash"), "74000");
+    await userEvent.dblClick(screen.getByRole("button", { name: "Check the count" }));
+    expect(screen.getByTestId("close-step-check")).toBeInTheDocument();
+    expect(closeAsync).not.toHaveBeenCalled();
+  });
+
+  it("moves focus to the Check heading, so a second Enter can't close the shift", async () => {
+    renderSheet();
+    await userEvent.type(screen.getByTestId("counted-cash"), "74000");
+    screen.getByRole("button", { name: "Check the count" }).focus();
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByRole("heading", { name: "Check the count" })).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+    expect(closeAsync).not.toHaveBeenCalled();
+  });
+
+  it("announces Balanced, Over or Short from a live region that is there before the result", async () => {
+    renderSheet();
+    const live = screen.getByTestId("close-outcome");
+    expect(live).toHaveAttribute("role", "status");
+    expect(live).toBeEmptyDOMElement();
+    await count("73500");
+    expect(screen.getByTestId("close-outcome")).toBe(live);
+    expect(live).toHaveTextContent("Short. You counted less than Yetu expects.");
+  });
+});
+
 describe("CloseShiftSheet: check", () => {
   it("closes a balanced drawer without a supervisor, sending the count in minor units", async () => {
     closeAsync.mockResolvedValue({ ...SHIFT, status: "CLOSED", countedCashMinor: 7_400_000, varianceMinor: 0 });

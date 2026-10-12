@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { Banner, Button, Money, MoneyField, Sheet, SupervisorApproval, type KeypadKey } from "../components/system";
 import { useIdempotencyKey, usePosShift } from "../hooks/usePosData";
@@ -66,6 +66,8 @@ export function CloseShiftSheetView({
   initialStep = "count",
 }: CloseShiftSheetViewProps) {
   const [step, setStep] = useState<"count" | "check">(initialStep);
+  const [checkVisit, setCheckVisit] = useState(0);
+  const checkHeading = useRef<HTMLHeadingElement>(null);
   const [counted, setCounted] = useState(initialCounted);
   const [noteCounter, setNoteCounter] = useState(false);
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
@@ -109,7 +111,13 @@ export function CloseShiftSheetView({
       setApprovalRequired((reason) => reason ?? "revealed");
     }
     setStep("check");
+    setCheckVisit((visit) => visit + 1);
   }
+
+  // Focus follows the step: on the Check, its heading, never the Close shift button.
+  useEffect(() => {
+    if (checkVisit > 0) checkHeading.current?.focus();
+  }, [checkVisit]);
 
   function onPinKey(key: KeypadKey) {
     if (key === "delete") setPin((value) => value.slice(0, -1));
@@ -153,8 +161,10 @@ export function CloseShiftSheetView({
         onOpenChange={onOpenChange}
         title="Close the shift"
         footer={
+          // Separate keys: the button pressed for Check is never reused as Close shift,
+          // so a double click or a second Enter can't close the shift.
           step === "count" ? (
-            <div className="y-cash__footer">
+            <div key="count-actions" className="y-cash__footer">
               <Button variant="quiet" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
@@ -163,7 +173,7 @@ export function CloseShiftSheetView({
               </Button>
             </div>
           ) : (
-            <div className="y-cash__footer">
+            <div key="check-actions" className="y-cash__footer">
               <Button variant="quiet" onClick={backToCount}>
                 Change the count
               </Button>
@@ -175,75 +185,87 @@ export function CloseShiftSheetView({
         }
       >
         {steps}
-        {step === "count" ? (
-          <div className="y-form" data-testid="close-step-count">
-            <h3 className="y-cash__step-title">Count the cash in the drawer</h3>
-            <p className="y-cash__muted">Count every note and coin. Yetu shows its own figure after you count.</p>
-            <MoneyField
-              label="Cash counted"
-              currency={currency}
-              value={counted}
-              onValueChange={(text) => setCounted(text)}
-              inputTestId="counted-cash"
-              autoFocus
-            />
-            {denominationsFor(currency).length > 0 ? (
-              <Button variant="secondary" onClick={() => setNoteCounter(true)}>
-                Count note by note
-              </Button>
-            ) : null}
-          </div>
-        ) : (
-          <div className="y-form" data-testid="close-step-check">
-            <dl className="y-cash__figures">
-              <div>
-                <dt>Expected in the drawer</dt>
-                <dd data-testid="close-expected">
-                  <Money minor={shift.expectedCashMinor} currency={currency} size="heading" />
-                </dd>
-              </div>
-              <div>
-                <dt>You counted</dt>
-                <dd data-testid="close-counted">
-                  <Money minor={countedMinor} currency={currency} size="heading" />
-                </dd>
-              </div>
-            </dl>
-            {outcome ? (
-              <div data-testid="close-outcome">
-                <Banner tone={OUTCOME[outcome].tone}>{OUTCOME[outcome].words}</Banner>
-              </div>
-            ) : null}
-            {outcome === "balanced" && approvalRequired ? (
-              <p className="y-cash__muted" data-testid="close-approval-reason">
-                {APPROVAL_REASON[approvalRequired]}
-              </p>
-            ) : null}
-            {needsSupervisor ? (
-              <SupervisorApproval
-                request={`Close the shift with ${formatMoney(countedMinor, currency)} counted. Yetu expects ${formatMoney(shift.expectedCashMinor, currency)}.`}
-                supervisors={roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }))}
-                requesterId={requesterId}
-                selectedId={supervisorId}
-                onSelect={(id) => {
-                  setSupervisorId(id);
-                  setPin("");
-                }}
-                pinLength={pin.length}
-                onPinKey={onPinKey}
-                status={{ kind: "idle" }}
-                onCancel={() => onOpenChange(false)}
-                actions="none"
-                keyTestIdPrefix="close-pin-key"
+        <div className="y-form">
+          {step === "count" ? (
+            <div className="y-form" data-testid="close-step-count">
+              <h3 className="y-cash__step-title">Count the cash in the drawer</h3>
+              <p className="y-cash__muted">Count every note and coin. Yetu shows its own figure after you count.</p>
+              <MoneyField
+                label="Cash counted"
+                currency={currency}
+                value={counted}
+                onValueChange={(text) => setCounted(text)}
+                inputTestId="counted-cash"
+                autoFocus
               />
-            ) : null}
-            {problem ? (
-              <p key={problem + String(pending)} className="y-pin__message" role="alert" data-testid="close-shift-error">
-                {problem}
-              </p>
+              {denominationsFor(currency).length > 0 ? (
+                <Button variant="secondary" onClick={() => setNoteCounter(true)}>
+                  Count note by note
+                </Button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="y-form" data-testid="close-step-check">
+              <h3 ref={checkHeading} tabIndex={-1} className="y-cash__step-title">
+                Check the count
+              </h3>
+              <dl className="y-cash__figures">
+                <div>
+                  <dt>Expected in the drawer</dt>
+                  <dd data-testid="close-expected">
+                    <Money minor={shift.expectedCashMinor} currency={currency} size="heading" />
+                  </dd>
+                </div>
+                <div>
+                  <dt>You counted</dt>
+                  <dd data-testid="close-counted">
+                    <Money minor={countedMinor} currency={currency} size="heading" />
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          )}
+          {/* Always in the page, so screen readers announce the result when it appears. */}
+          <div role="status" aria-live="polite" data-testid="close-outcome">
+            {step === "check" && outcome ? (
+              <Banner tone={OUTCOME[outcome].tone} live={false}>
+                {OUTCOME[outcome].words}
+              </Banner>
             ) : null}
           </div>
-        )}
+          {step === "check" ? (
+            <>
+              {outcome === "balanced" && approvalRequired ? (
+                <p className="y-cash__muted" data-testid="close-approval-reason">
+                  {APPROVAL_REASON[approvalRequired]}
+                </p>
+              ) : null}
+              {needsSupervisor ? (
+                <SupervisorApproval
+                  request={`Close the shift with ${formatMoney(countedMinor, currency)} counted. Yetu expects ${formatMoney(shift.expectedCashMinor, currency)}.`}
+                  supervisors={roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }))}
+                  requesterId={requesterId}
+                  selectedId={supervisorId}
+                  onSelect={(id) => {
+                    setSupervisorId(id);
+                    setPin("");
+                  }}
+                  pinLength={pin.length}
+                  onPinKey={onPinKey}
+                  status={{ kind: "idle" }}
+                  onCancel={() => onOpenChange(false)}
+                  actions="none"
+                  keyTestIdPrefix="close-pin-key"
+                />
+              ) : null}
+              {problem ? (
+                <p key={problem + String(pending)} className="y-pin__message" role="alert" data-testid="close-shift-error">
+                  {problem}
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </div>
       </Sheet>
       {currency ? (
         <NoteCounterSheet

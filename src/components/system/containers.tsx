@@ -114,12 +114,15 @@ export function Dialog({
 export function Banner({
   tone = "info",
   action,
+  live = true,
   children,
   className,
   ...props
 }: {
   tone?: BannerTone;
   action?: ReactNode;
+  /** False when the banner sits inside a live region that already announces it. */
+  live?: boolean;
   children: ReactNode;
   className?: string;
   "data-testid"?: string;
@@ -128,7 +131,7 @@ export function Banner({
   return (
     <div className={cn("y-banner", `y-banner--${tone}`, className)} {...props}>
       <ToneIcon className="y-banner__icon" aria-hidden="true" />
-      <p className="y-banner__text" role={tone === "danger" ? "alert" : "status"}>
+      <p className="y-banner__text" role={live ? (tone === "danger" ? "alert" : "status") : undefined}>
         {children}
       </p>
       {action ? <div className="y-banner__action">{action}</div> : null}

@@ -285,6 +285,17 @@ describe("containers", () => {
     );
   });
 
+  it("a Banner inside a live region of its own leaves the announcing to it", () => {
+    render(
+      <div role="status" data-testid="region">
+        <Banner tone="success" live={false}>
+          Balanced.
+        </Banner>
+      </div>,
+    );
+    expect(screen.getAllByRole("status")).toEqual([screen.getByTestId("region")]);
+  });
+
   it("EmptyState says what to do next", () => {
     render(<EmptyState title="No orders open" description="New orders appear here when they are started." />);
     expect(screen.getByRole("heading", { name: "No orders open" })).toBeInTheDocument();
