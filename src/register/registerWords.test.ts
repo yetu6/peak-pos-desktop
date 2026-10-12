@@ -31,8 +31,8 @@ describe("discount and void refusals in words", () => {
   });
 
   it("keeps the till's words for a session that ended", () => {
-    expect(discountProblem(problem("SESSION_EXPIRED", "x"))?.words).toBe("Your session expired — enter your PIN again.");
-    expect(voidProblem(problem("SESSION_EXPIRED", "x"))?.words).toBe("Your session expired — enter your PIN again.");
+    expect(discountProblem(problem("SESSION_EXPIRED", "x"))?.words).toBe("Your session ended. Enter your PIN to carry on.");
+    expect(voidProblem(problem("SESSION_EXPIRED", "x"))?.words).toBe("Your session ended. Enter your PIN to carry on.");
   });
 
   it("never shows the backend's own sentence", () => {
@@ -53,7 +53,7 @@ describe("payment and room charge refusals in words", () => {
     );
     expect(tenderProblem(problem("FORBIDDEN", "x"))?.words).toBe("Only a cashier or manager can take payment.");
     expect(tenderProblem(problem("CONFLICT", "pq: new"))?.words).toBe("The payment wasn't recorded. Try again.");
-    expect(tenderProblem(problem("SESSION_EXPIRED", "x"))?.words).toBe("Your session expired — enter your PIN again.");
+    expect(tenderProblem(problem("SESSION_EXPIRED", "x"))?.words).toBe("Your session ended. Enter your PIN to carry on.");
   });
 
   it("names the room charge refusals", async () => {
@@ -67,7 +67,7 @@ describe("payment and room charge refusals in words", () => {
     expect(roomChargeProblem(problem("CONFLICT", "order is not eligible for room charge"))?.words).toBe(
       "This order can't go on a room bill.",
     );
-    expect(roomChargeProblem(problem("CAPABILITY_NOT_ENABLED", "x"))?.words).toBe("This feature isn't enabled for this property.");
+    expect(roomChargeProblem(problem("CAPABILITY_NOT_ENABLED", "x"))?.words).toBe("This isn't switched on for your business. Ask a manager to switch it on in Yetu.");
     expect(roomChargeProblem(problem("CONFLICT", "pq: new"))?.words).toBe("The room charge didn't go through. Try again.");
   });
 });

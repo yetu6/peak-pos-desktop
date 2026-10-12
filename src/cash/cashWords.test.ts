@@ -42,9 +42,9 @@ describe("closing a shift: the backend's refusals in words", () => {
 describe("refusals that aren't about cash keep the till's own words", () => {
   // usePosData / posErrors describePosError: a session, a till or a feature, not this action.
   const cases: Array<[string, string]> = [
-    ["SESSION_EXPIRED", "Your session expired — enter your PIN again."],
-    ["CAPABILITY_NOT_ENABLED", "This feature isn't enabled for this property."],
-    ["DEVICE_REVOKED", "This register has been revoked. Ask a manager to pair this device again."],
+    ["SESSION_EXPIRED", "Your session ended. Enter your PIN to carry on."],
+    ["CAPABILITY_NOT_ENABLED", "This isn't switched on for your business. Ask a manager to switch it on in Yetu."],
+    ["DEVICE_REVOKED", "This till was disconnected from your restaurant. Ask a manager to connect it again."],
   ];
 
   it.each(cases)("%s on closing a shift, cash in or out, and closing the day", (code, words) => {

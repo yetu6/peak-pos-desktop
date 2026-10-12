@@ -117,7 +117,7 @@ describe("kitchenProblem", () => {
   });
 
   it("keeps the till's own words for a session or till that can't act", () => {
-    expect(kitchenProblem(refused({ code: "SESSION_EXPIRED" }))).toEqual({ kind: "session", words: "Your session expired — enter your PIN again." });
+    expect(kitchenProblem(refused({ code: "SESSION_EXPIRED" }))).toEqual({ kind: "session", words: "Your session ended. Enter your PIN to carry on." });
     expect(kitchenProblem(refused({ code: "DEVICE_REVOKED" }))?.kind).toBe("session");
     expect(kitchenProblem(null)).toBeNull();
   });
