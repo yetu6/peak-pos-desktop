@@ -239,6 +239,7 @@ describe("NewOrder", () => {
   });
   afterEach(() => {
     vi.clearAllMocks();
+    getOrderSpy.mockImplementation(async () => ({ data: OPEN_ORDER, error: null }));
     localStorage.clear();
     clearOperationalSession();
   });
@@ -397,10 +398,13 @@ describe("NewOrder", () => {
 
   it("after payment shows Paid with the change, and New sale clears the ticket", async () => {
     await startOrder();
-    getOrderSpy.mockResolvedValueOnce({
-      data: { ...OPEN_ORDER, status: "CLOSED", paidMinor: 1200000, remainingMinor: 0, version: 3 },
+    // The order reads back closed once the payment is recorded (the Pay sheet also reads it on opening).
+    getOrderSpy.mockImplementation(async () => ({
+      data: recordTenderSpy.mock.calls.length
+        ? { ...OPEN_ORDER, status: "CLOSED" as const, paidMinor: 1200000, remainingMinor: 0, version: 3 }
+        : OPEN_ORDER,
       error: null,
-    });
+    }));
     await userEvent.click(screen.getByTestId("pay-order"));
     await userEvent.type(screen.getByTestId("amount-received"), "15000");
     await userEvent.click(screen.getByTestId("confirm-settle"));

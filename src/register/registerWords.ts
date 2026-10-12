@@ -6,7 +6,7 @@
 import { otherWords, problemOf, UNREACHABLE } from "../lib/problemWords";
 
 export interface RegisterProblem {
-  kind: "supervisor" | "paid" | "network" | "other";
+  kind: "supervisor" | "paid" | "stale" | "network" | "other";
   words: string;
 }
 
@@ -50,6 +50,10 @@ export function tenderProblem(error: unknown): RegisterProblem | null {
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
   const detail = problem.detail ?? "";
+  // Another till changed the order first; the sheet gets Yetu's latest figures (PaySheet).
+  if (problem.code === "STALE_VERSION") {
+    return { kind: "stale", words: "This order changed on another till. The amounts here are Yetu's latest: check them, then try again." };
+  }
   if (detail === "tender exceeds remaining balance") {
     return { kind: "other", words: "That's more than is still owed. Check the amount, then try again." };
   }

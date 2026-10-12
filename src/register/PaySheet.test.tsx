@@ -34,6 +34,7 @@ const { recordTenderMutate, chargeToRoomMutate, refs } = vi.hoisted(() => ({
     roomAvailable: false,
     candidates: [] as POSRoomChargeCandidate[],
     tender: { isPending: false, error: null as unknown },
+    refetchOrder: vi.fn(),
   },
 }));
 
@@ -43,6 +44,7 @@ vi.mock("../hooks/usePosData", () => ({
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
   useRoomChargeAvailability: () => ({ data: refs.roomAvailable }),
   useRoomChargeCandidates: (query: string) => ({ data: query ? refs.candidates : [], isFetching: false }),
+  useOrder: () => ({ data: undefined, refetch: refs.refetchOrder }),
 }));
 
 type Paid = (paid: { order: POSOrder; method: string; changeMinor: number }) => void;
@@ -300,6 +302,32 @@ describe("PaySheet", () => {
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("when the order changed on another till, gets Yetu's latest and retries on it", async () => {
+    const latest = { ...ORDER, version: 5, paidMinor: 1_000_000, remainingMinor: 3_250_000 };
+    refs.refetchOrder.mockResolvedValue({ data: latest });
+    const stale = new Error(JSON.stringify({ code: "STALE_VERSION", detail: "resource changed" }));
+    recordTenderMutate.mockImplementationOnce((_vars: unknown, opts?: { onError?: (error: Error) => void }) => opts?.onError?.(stale));
+    const { onOrderChange } = renderPay();
+    await userEvent.click(screen.getByRole("radio", { name: "Card (own machine)" }));
+    await userEvent.click(pay());
+    expect(refs.refetchOrder).toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId("amount-due")).toHaveTextContent("TSh 32,500"));
+    expect(onOrderChange).toHaveBeenCalledWith(latest);
+    await userEvent.click(pay());
+    expect(recordTenderMutate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ amountMinor: 3_250_000, version: 5 }),
+      expect.anything(),
+    );
+  });
+
+  it("says a changed order honestly", () => {
+    refs.tender = { isPending: false, error: new Error(JSON.stringify({ code: "STALE_VERSION", detail: "x" })) };
+    renderPay();
+    expect(screen.getByTestId("settle-error")).toHaveTextContent(
+      "This order changed on another till. The amounts here are Yetu's latest: check them, then try again.",
+    );
   });
 
   it("says why a payment was refused, in words", () => {

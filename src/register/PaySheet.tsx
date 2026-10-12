@@ -4,6 +4,7 @@ import { Banner, Button, Field, Keypad, Money, MoneyField, QuickCash, SearchFiel
 import {
   useChargeToRoom,
   useIdempotencyKey,
+  useOrder,
   useRecordTender,
   useRoomChargeAvailability,
   useRoomChargeCandidates,
@@ -79,6 +80,14 @@ export function PaySheet({
   const roomChargeKey = useIdempotencyKey();
   const roomAvailable = useRoomChargeAvailability().data === true;
   const candidates = useRoomChargeCandidates(needle);
+  // The order as Yetu has it now, fetched again when another till changed it first.
+  const latestOrder = useOrder(order.id);
+
+  function adopt(fresh: POSOrder | undefined) {
+    if (!fresh) return;
+    setLive(fresh);
+    onOrderChange?.(fresh);
+  }
 
   useEffect(() => setLive(order), [order]);
   useEffect(() => {
@@ -120,6 +129,9 @@ export function PaySheet({
               if ((updated.remainingMinor ?? 0) <= 0 || updated.status === "CLOSED") {
                 onPaid({ order: updated, method: request.method, changeMinor: request.changeMinor, split: live.paidMinor > 0 });
               }
+            },
+            onError: (error) => {
+              if (tenderProblem(error)?.kind === "stale") void latestOrder.refetch().then((result) => adopt(result.data));
             },
           },
         )
