@@ -1,5 +1,5 @@
 import { Delete } from "lucide-react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, Ref } from "react";
 import { formatMoney, quickCashAmounts } from "../../lib/money";
 import { cn } from "../../lib/utils";
 
@@ -18,6 +18,7 @@ export function Keypad({
   variant = "money",
   disabled = false,
   testIdPrefix,
+  groupRef,
   className,
 }: {
   label: string;
@@ -26,6 +27,8 @@ export function Keypad({
   disabled?: boolean;
   /** Each key gets `${testIdPrefix}-${key}` (e.g. pin-key-7, pin-key-delete). */
   testIdPrefix?: string;
+  /** The keypad's group, so a screen can return focus to it. */
+  groupRef?: Ref<HTMLDivElement>;
   className?: string;
 }) {
   const testId = (key: KeypadKey) => (testIdPrefix ? `${testIdPrefix}-${key}` : undefined);
@@ -43,7 +46,7 @@ export function Keypad({
   }
 
   return (
-    <div role="group" aria-label={label} className={cn("y-keypad", className)} onKeyDown={onKeyDown}>
+    <div ref={groupRef} role="group" aria-label={label} className={cn("y-keypad", className)} onKeyDown={onKeyDown}>
       {DIGITS.map((digit) => (
         <button
           key={digit}

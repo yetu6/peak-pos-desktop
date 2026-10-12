@@ -228,6 +228,30 @@ describe("PIN entry", () => {
     expect(screen.getByTestId("pin-error")).toHaveTextContent("That PIN didn't match. Try again.");
   });
 
+  it("announces a repeated refusal again and puts focus back on the keypad", async () => {
+    store.set(baseSession({ roster: TWO }));
+    unlock.mockImplementation(async () => {
+      store.set({ ...store.get(), error: REJECTED });
+    });
+    render(<PinUnlock />);
+    await userEvent.click(screen.getByTestId("roster-entry-00001"));
+
+    // Typed on a keyboard with focus on the page: after the refusal focus lands on the keypad.
+    (document.activeElement as HTMLElement | null)?.blur();
+    for (const key of "111111") fireEvent.keyDown(window, { key });
+    await waitFor(() => expect(unlock).toHaveBeenCalledTimes(1));
+    const first = await screen.findByTestId("pin-error");
+    expect(first).toHaveAttribute("role", "alert");
+    expect(screen.getByRole("group", { name: "PIN" })).toContainElement(document.activeElement as HTMLElement);
+
+    await typePin("222222");
+    await waitFor(() => expect(unlock).toHaveBeenCalledTimes(2));
+    const second = await screen.findByTestId("pin-error");
+    expect(second).toHaveTextContent(first.textContent ?? "");
+    expect(second).not.toBe(first);
+    expect(screen.getByRole("group", { name: "PIN" })).toContainElement(document.activeElement as HTMLElement);
+  });
+
   it("says a typed staff number and PIN didn't match", async () => {
     store.set(baseSession({ roster: [] }));
     unlock.mockImplementation(async () => {

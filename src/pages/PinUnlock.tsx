@@ -77,16 +77,19 @@ export function PinUnlockView({
     initialStaff && initialFailures ? { [initialStaff.staffNumber]: initialFailures } : {},
   );
   const [attempt, setAttempt] = useState<{ staff: string; count: number } | null>(null);
+  const keypadRef = useRef<HTMLDivElement>(null);
 
   const choosing = !selected && !manual;
   const currentStaff = selected?.staffNumber ?? staffNumber.trim();
 
-  // After each attempt: a refused PIN counts toward the backend's pause rule.
+  // After each attempt that leaves the screen here: an online refusal counts toward the backend's
+  // pause rule (offline refusals never do), and focus returns to the keypad for the next try.
   useEffect(() => {
     if (!attempt) return;
     if (pinNotice(error, { failures: 0, manual: false })?.kind === "pin-rejected") {
       setFailures((current) => ({ ...current, [attempt.staff]: (current[attempt.staff] ?? 0) + 1 }));
     }
+    keypadRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
     // Only a new attempt counts, not a re-render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempt]);
@@ -183,8 +186,9 @@ export function PinUnlockView({
     </p>
   ) : null;
 
+  // A new element for each attempt, so a refusal worded the same as the last is announced again.
   const problemLine = problem ? (
-    <p className="y-pin__message" data-testid="pin-error" role="alert">
+    <p key={`${attempt?.count ?? 0}-${localProblem ? "here" : "session"}`} className="y-pin__message" data-testid="pin-error" role="alert">
       <CircleAlert aria-hidden="true" />
       {problem}
     </p>
@@ -285,7 +289,7 @@ export function PinUnlockView({
             <span key={index} className={index < pin.length ? "y-pin__dot y-pin__dot--filled" : "y-pin__dot"} />
           ))}
         </div>
-        <Keypad label="PIN" variant="pin" onKey={onKey} disabled={pending} testIdPrefix="pin-key" />
+        <Keypad label="PIN" variant="pin" onKey={onKey} disabled={pending} testIdPrefix="pin-key" groupRef={keypadRef} />
         <p className="y-pin__status" role="status">
           {pending ? "Checking your PIN…" : ""}
         </p>
