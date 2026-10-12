@@ -56,6 +56,7 @@ const spies = vi.hoisted(() => ({
   getCurrentShift: vi.fn(async (): Promise<Result> => ({ data: SHIFT, error: null })),
   getShift: vi.fn(async (): Promise<Result> => ({ data: SHIFT, error: null })),
   getReceipt: vi.fn(async (orderId: string): Promise<Result> => ({ data: receiptsStore.get(orderId), error: null })),
+  voidOrder: vi.fn(async (..._args: unknown[]): Promise<Result> => ({ data: undefined, error: null })),
   reprintReceipt: vi.fn(async (orderId: string, ..._rest: unknown[]): Promise<Result> => {
     const receipt = receiptsStore.get(orderId)!;
     receiptsStore.set(orderId, { ...receipt, reprintCount: receipt.reprintCount + 1 });
@@ -85,6 +86,17 @@ vi.mock("../lib/posApi", () => ({
     getShift: spies.getShift,
     getReceipt: spies.getReceipt,
     reprintReceipt: spies.reprintReceipt,
+    voidOrder: spies.voidOrder,
+  }),
+}));
+
+vi.mock("../auth/DeviceSessionProvider", () => ({
+  useDeviceSessionOptional: () => ({
+    session: { staffId: "staff-1" },
+    roster: [
+      { fullName: "Amina Hassan", staffNumber: "staff-1" },
+      { fullName: "Grace Mushi", staffNumber: "staff-2" },
+    ],
   }),
 }));
 
@@ -438,6 +450,27 @@ describe("Orders", () => {
     const voiding = await screen.findByTestId("void-order-dialog");
     await userEvent.click(within(voiding).getByRole("button", { name: "Cancel" }));
     expect(await screen.findByRole("dialog", { name: "Order 1042" })).toBeInTheDocument();
+  });
+
+  it("a void refused because the order changed reloads it, and the supervisor is asked again for the order as it is now", async () => {
+    ordersStore.set("order-1", { ...OPEN_ORDER, status: "SENT", version: 2 });
+    spies.voidOrder.mockImplementationOnce(async () => {
+      // A kitchen display moved it meanwhile.
+      ordersStore.set("order-1", { ...OPEN_ORDER, status: "PREPARING", version: 3 });
+      return { data: undefined, error: { code: "STALE_VERSION", detail: "resource has changed" } };
+    });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Void order" }));
+    const voiding = await screen.findByTestId("void-order-dialog");
+    await userEvent.type(within(voiding).getByTestId("void-reason"), "Wrong table");
+    await userEvent.click(within(voiding).getByRole("radio", { name: /Grace Mushi/ }));
+    for (const digit of "123456") await userEvent.click(within(voiding).getByTestId(`void-pin-key-${digit}`));
+    await userEvent.click(within(voiding).getByTestId("confirm-void-order"));
+    expect(spies.voidOrder).toHaveBeenCalledWith("order-1", expect.objectContaining({ version: 2 }), expect.any(String));
+    expect(await within(voiding).findByRole("alert")).toHaveTextContent("This order changed on another till. It's been reloaded");
+    await waitFor(() => expect(within(voiding).getByRole("radio", { name: /Grace Mushi/ })).not.toBeChecked());
+    expect(screen.getByTestId("order-row-order-1")).toHaveTextContent("Preparing");
   });
 
   it("prints a copy of a paid order's receipt, reusing the key after a lost answer and a new one for the next copy", async () => {

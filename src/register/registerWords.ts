@@ -31,11 +31,16 @@ export function voidProblem(error: unknown): RegisterProblem | null {
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
   const detail = problem.detail ?? "";
-  if (detail === "supervisor approval failed" || problem.code === "FORBIDDEN") {
+  // A refused supervisor PIN or role: 403 FORBIDDEN since fbc-peak #252 (it was a 409 before).
+  if (problem.code === "FORBIDDEN") {
     return {
       kind: "supervisor",
       words: "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
     };
+  }
+  // Another till changed the order first; the screen asks Yetu for it again (onStale).
+  if (problem.code === "STALE_VERSION") {
+    return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then ask a supervisor again." };
   }
   // A part-paid order: INVALID_STATE (ErrOrderHasPayment); a paid or voided one: CONFLICT.
   if (problem.code === "INVALID_STATE" || /refund workflow/i.test(detail)) {

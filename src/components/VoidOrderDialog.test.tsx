@@ -87,7 +87,7 @@ describe("VoidOrderDialog", () => {
 
   it("clears a refused PIN (keeping the supervisor), so a wrong PIN isn't sent again", async () => {
     voidOrderMutate.mockImplementationOnce((_vars: unknown, opts?: { onSuccess?: () => void; onError?: (error: Error) => void }) =>
-      opts?.onError?.(new Error(JSON.stringify({ code: "CONFLICT", detail: "supervisor approval failed" }))),
+      opts?.onError?.(new Error(JSON.stringify({ code: "FORBIDDEN", detail: "That approval was not accepted. A different person who may approve this, and is active at this property, must enter their own PIN. Several wrong PINs lock it for a while." }))),
     );
     render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
     await userEvent.type(screen.getByTestId("void-reason"), "Wrong table");
@@ -110,6 +110,32 @@ describe("VoidOrderDialog", () => {
     expect(screen.getByTestId("confirm-void-order")).toBeDisabled();
   });
 
+  it("asks again when the order changes (a new version): a PIN typed for one version never voids another", async () => {
+    const view = render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    await userEvent.type(screen.getByTestId("void-reason"), "Wrong table");
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+    await typePin("123456");
+    expect(screen.getByTestId("confirm-void-order")).toBeEnabled();
+    view.rerender(<VoidOrderDialog order={{ ...ORDER, version: 5, status: "PREPARING" }} currency="TZS" onClose={vi.fn()} />);
+    expect(screen.getByRole("radio", { name: /Grace Mushi/ })).not.toBeChecked();
+    expect(screen.getByTestId("pin-dots")).toHaveAccessibleName("0 digits entered");
+    expect(screen.getByTestId("confirm-void-order")).toBeDisabled();
+    expect(screen.getByTestId("void-reason")).toHaveValue("Wrong table");
+  });
+
+  it("asks for the order again when Yetu says it changed on another till", async () => {
+    const onStale = vi.fn();
+    voidOrderMutate.mockImplementationOnce((_vars: unknown, opts?: { onSuccess?: () => void; onError?: (error: Error) => void }) =>
+      opts?.onError?.(new Error(JSON.stringify({ code: "STALE_VERSION", detail: "resource has changed" }))),
+    );
+    render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} onStale={onStale} />);
+    await userEvent.type(screen.getByTestId("void-reason"), "Wrong table");
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+    await typePin("123456");
+    await userEvent.click(screen.getByTestId("confirm-void-order"));
+    expect(onStale).toHaveBeenCalledTimes(1);
+  });
+
   it("with no staff list, the void can't be approved here and it says why", () => {
     sessionRef.roster = [];
     render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
@@ -118,7 +144,7 @@ describe("VoidOrderDialog", () => {
   });
 
   it("says a refused void in words", () => {
-    voidState.error = new Error(JSON.stringify({ code: "CONFLICT", detail: "supervisor approval failed" }));
+    voidState.error = new Error(JSON.stringify({ code: "FORBIDDEN", detail: "That approval was not accepted. A different person who may approve this, and is active at this property, must enter their own PIN. Several wrong PINs lock it for a while." }));
     render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
     expect(within(screen.getByTestId("void-order-dialog")).getByRole("alert")).toHaveTextContent(
       "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",

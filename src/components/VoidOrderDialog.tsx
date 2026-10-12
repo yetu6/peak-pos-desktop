@@ -20,6 +20,7 @@ export function VoidOrderDialog({
   currency,
   onClose,
   onVoided,
+  onStale,
 }: {
   order: POSOrder;
   /** The currency the backend returned; without it the request says no amount. */
@@ -27,6 +28,8 @@ export function VoidOrderDialog({
   onClose: () => void;
   /** Called once Yetu has voided the order, before the sheet closes. */
   onVoided?: () => void;
+  /** Yetu says the order changed on another till: ask for it again. */
+  onStale?: () => void;
 }) {
   const device = useDeviceSessionOptional();
   const roster = device?.roster ?? [];
@@ -36,6 +39,13 @@ export function VoidOrderDialog({
   const [reason, setReason] = useState("");
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
   const [pin, setPin] = useState("");
+  // An approval is for the order as it was: when it changes (a new version) the supervisor is asked again.
+  const [approvedVersion, setApprovedVersion] = useState(order.version);
+  if (order.version !== approvedVersion) {
+    setApprovedVersion(order.version);
+    setSupervisorId(null);
+    setPin("");
+  }
   const problem = voidProblem(voidOrder.error);
   // The till doesn't lock itself while the void is with Yetu.
   useHoldIdleLock(voidOrder.isPending);
@@ -64,7 +74,10 @@ export function VoidOrderDialog({
           onClose();
         },
         // A refused PIN counts toward the supervisor's lockout: never send it again.
-        onError: () => setPin(""),
+        onError: (error) => {
+          setPin("");
+          if (voidProblem(error)?.kind === "stale") onStale?.();
+        },
       },
     );
   }

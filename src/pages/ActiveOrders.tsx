@@ -172,6 +172,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
             if (voided.current) close();
             else setOverlay({ kind: "detail", orderId: current.id });
           }}
+          onStale={reloadOrders}
         />
       ) : null}
       {overlay?.kind === "done" && currency ? (

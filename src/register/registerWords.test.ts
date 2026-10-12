@@ -8,9 +8,17 @@ describe("discount and void refusals in words", () => {
     expect(discountProblem(problem("FORBIDDEN", "POS permission denied"))?.words).toBe(
       "A different supervisor must approve the discount. Their PIN wasn't accepted, or they can't approve discounts.",
     );
-    expect(voidProblem(problem("CONFLICT", "supervisor approval failed"))?.words).toBe(
+    // Yetu's refusal of a supervisor's PIN or role since fbc-peak #252: 403 FORBIDDEN, its own sentence.
+    expect(voidProblem(problem("FORBIDDEN", "That approval was not accepted. A different person who may approve this, and is active at this property, must enter their own PIN. Several wrong PINs lock it for a while."))?.words).toBe(
       "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
     );
+  });
+
+  it("says an order changed on another till has been reloaded", () => {
+    expect(voidProblem(problem("STALE_VERSION", "resource has changed"))).toEqual({
+      kind: "stale",
+      words: "This order changed on another till. It's been reloaded: check it, then ask a supervisor again.",
+    });
   });
 
   it("says a paid order can't take a discount or be voided", () => {
