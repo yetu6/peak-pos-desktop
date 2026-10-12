@@ -86,7 +86,7 @@ function OrdersPreview() {
   );
 }
 
-function FixtureShell({
+export function FixtureShell({
   mode = "POS",
   offlineCash = false,
   initialPage = "orders",

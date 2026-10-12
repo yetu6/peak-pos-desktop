@@ -5,7 +5,6 @@ import {
   LockedPinPausedFixture,
   LockedRosterFixture,
   LockedRosterSearchFixture,
-  NoShiftFixture,
   PairingDeclinedFixture,
   PairingFixture,
   PairingWaitingFixture,
@@ -58,8 +57,4 @@ describe("JourneyFixtures", () => {
     expect(screen.getByTestId("key-storage-warning")).toBeInTheDocument();
   });
 
-  it("keeps the open-shift composition until S3 redesigns it", () => {
-    render(<NoShiftFixture />);
-    expect(screen.getByTestId("open-shift-screen")).toBeInTheDocument();
-  });
 });

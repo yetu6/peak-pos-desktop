@@ -43,6 +43,5 @@ export interface FixtureResult {
  * anywhere, so the list can only shrink: delete the line when a slice fixes it.
  */
 export const KNOWN_DEBT: Partial<Record<VisualFixtureName, { owner: string; keys: string[] }>> = {
-  "no-shift": { owner: "S3 shift and cash", keys: ["text-size", "target-size"] },
   terminal: { owner: "S4 register", keys: ["text-size"] },
 };

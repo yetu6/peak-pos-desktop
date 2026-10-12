@@ -105,6 +105,8 @@ async function measure(page: Page): Promise<Finding[]> {
       const controls = [...document.querySelectorAll("button, a[href], summary, select, [role=button], [role=tab], [role=radio], [role=option]")];
       for (const field of document.querySelectorAll("input:not([type=hidden]), textarea, select")) {
         if (!rendered(field)) continue;
+        // A field behind an open modal can't take focus, so its ring never shows.
+        if (field.closest('[aria-hidden="true"], [inert]')) continue;
         const box = field.getBoundingClientRect();
         for (const other of controls) {
           if (other === field || other.contains(field) || field.contains(other) || !rendered(other)) continue;

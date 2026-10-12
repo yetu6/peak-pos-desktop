@@ -2,7 +2,6 @@ import { useEffect, type ReactNode } from "react";
 import { AccessFrame } from "../access/AccessLayout";
 import { PIN_PAUSE_AFTER_FAILURES } from "../access/accessSettings";
 import { IdleLockView } from "../components/IdleLockOverlay";
-import { Icon } from "../components/Icon";
 import { KeyStorageBannerView } from "../components/KeyStorageBanner";
 import { UpdateBannerView } from "../components/UpdaterBanner";
 import { StaffLoginRejectedError, humanDeviceError, type RosterEntry } from "../lib/deviceAuth";
@@ -222,35 +221,5 @@ export function IdleLockFixture() {
       <ShellFixture />
       <IdleLockView remaining={8} />
     </>
-  );
-}
-
-/** NO_SHIFT -- an authenticated staff member with no open shift on this register. */
-export function NoShiftFixture() {
-  return (
-    <div className="auth-shell flex h-screen items-center justify-center p-6" data-testid="open-shift-screen">
-      <div className="glass-panel w-full max-w-sm p-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-interactive)] text-sm font-semibold text-[var(--foreground)]">
-              AH
-            </span>
-            <div className="leading-tight">
-              <p className="text-sm font-semibold text-[var(--foreground)]">Amina Hassan</p>
-              <p className="text-[12px] text-[var(--foreground-muted)]">Main restaurant</p>
-            </div>
-          </div>
-          <button className="btn-tertiary !h-9 !w-9 !p-0" aria-label="Switch staff">
-            <Icon name="logout" size={16} />
-          </button>
-        </div>
-        <p className="mt-6 text-center text-sm font-medium text-[var(--foreground)]">
-          No shift is open on this register
-        </p>
-        <label className="mt-6 block text-[11px] font-medium text-[var(--foreground-muted)]">Opening float</label>
-        <input className="input mt-1 w-full text-lg" placeholder="0" defaultValue="" readOnly />
-        <button className="btn-primary mt-5 w-full">Open shift</button>
-      </div>
-    </div>
   );
 }

@@ -23,8 +23,20 @@ export const VISUAL_FIXTURE_NAMES = [
   "locked-session-ended",
   "access-banners",
   "idle-lock",
-  // Existing screens, redesigned in S3 (open shift) and S4 (register).
+  // S3 shift and cash.
   "no-shift",
+  "open-shift-manager",
+  "open-shift-no-permission",
+  "day-close-blocked",
+  "note-counter",
+  "cash",
+  "cash-no-permission",
+  "cash-in",
+  "cash-out",
+  "close-count",
+  "close-balanced",
+  "close-over",
+  // The register, redesigned in S4.
   "terminal",
   // S1 design foundation.
   "system",
