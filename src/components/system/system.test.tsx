@@ -259,6 +259,17 @@ describe("containers", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("Sheet with a body label can be scrolled from the keyboard even when nothing in it takes focus", () => {
+    render(
+      <Sheet open onOpenChange={vi.fn()} title="Order 0142" bodyLabel="Order 0142 details">
+        <p>Lines and totals</p>
+      </Sheet>,
+    );
+    const body = screen.getByRole("region", { name: "Order 0142 details" });
+    expect(body).toHaveAttribute("tabindex", "0");
+    expect(body).toHaveTextContent("Lines and totals");
+  });
+
   it("Dialog has a title and a way out", async () => {
     const onOpenChange = vi.fn();
     render(

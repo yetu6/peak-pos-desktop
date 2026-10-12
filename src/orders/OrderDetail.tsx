@@ -121,6 +121,7 @@ export function OrderDetailView({
       }}
       title={`Order ${order.orderNumber}`}
       description={description}
+      bodyLabel={`Order ${order.orderNumber} details`}
       testId="order-detail"
       initialFocus={primaryRef}
       footer={

@@ -17,6 +17,11 @@ interface OverlayOptions {
   initialFocus?: RefObject<HTMLElement | null>;
   /** The description is read aloud with the title but not shown (the body already shows it). */
   descriptionHidden?: boolean;
+  /**
+   * Names the body as a region a keyboard can focus and scroll: for a body that
+   * may hold nothing focusable (an order's details) yet can be longer than the screen.
+   */
+  bodyLabel?: string;
 }
 
 function Overlay({
@@ -31,6 +36,7 @@ function Overlay({
   testId,
   initialFocus,
   descriptionHidden = false,
+  bodyLabel,
 }: OverlayOptions & {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -69,7 +75,13 @@ function Overlay({
               <X aria-hidden="true" />
             </DialogPrimitive.Close>
           </header>
-          <div className={bodyClassName}>{children}</div>
+          {bodyLabel ? (
+            <div className={bodyClassName} role="region" aria-label={bodyLabel} tabIndex={0}>
+              {children}
+            </div>
+          ) : (
+            <div className={bodyClassName}>{children}</div>
+          )}
           {footer ? <footer className="y-overlay__footer">{footer}</footer> : null}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

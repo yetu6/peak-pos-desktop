@@ -698,6 +698,10 @@ button.y-ticket-line:hover { background: var(--surface-hover); }
 .y-sheet:focus-visible,
 .y-dialog:focus-visible { outline: none; }
 
+/* A body that takes focus to scroll shows its ring inside its own edge. */
+.y-sheet__body:focus-visible,
+.y-dialog__body:focus-visible { outline-offset: -3px; }
+
 .y-sheet--right {
   top: 0;
   right: 0;
