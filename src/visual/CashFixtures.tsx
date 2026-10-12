@@ -212,9 +212,10 @@ export function CashOutFixture() {
   );
 }
 
+/** Closing over a cashier's Cash page: the usual closer, and the count stays blind behind the sheet. */
 function Close(props: Partial<Parameters<typeof CloseShiftSheetView>[0]>) {
   return (
-    <Cash>
+    <Cash showExpected={false} closeDay={null}>
       <CloseShiftSheetView
         open
         onOpenChange={nothing}
