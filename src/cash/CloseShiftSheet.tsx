@@ -179,7 +179,11 @@ export function CloseShiftSheetView({
     <>
       <Sheet
         open={open}
-        onOpenChange={onOpenChange}
+        // While the close is with Yetu, Escape, Close and a tap outside do nothing.
+        onOpenChange={(next) => {
+          if (!next && (pending || refreshing)) return;
+          onOpenChange(next);
+        }}
         title="Close the shift"
         footer={
           // Separate keys: the button pressed for Check is never reused as Close shift,
@@ -195,7 +199,7 @@ export function CloseShiftSheetView({
             </div>
           ) : (
             <div key="check-actions" className="y-cash__footer">
-              <Button variant="quiet" onClick={backToCount}>
+              <Button variant="quiet" disabled={pending} onClick={backToCount}>
                 Change the count
               </Button>
               <Button variant="primary" size={64} data-testid="close-shift" disabled={!ready} onClick={() => void submit()}>

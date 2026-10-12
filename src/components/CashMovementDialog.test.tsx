@@ -5,12 +5,12 @@ import { CashMovementDialog } from "./CashMovementDialog";
 
 const { recordMutate, record, sessionRef } = vi.hoisted(() => ({
   recordMutate: vi.fn((_vars: unknown, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.()),
-  record: { error: null as unknown },
+  record: { error: null as unknown, isPending: false },
   sessionRef: { value: null as null | { session: { staffId: string }; roster: Array<{ fullName: string; staffNumber: string }> } },
 }));
 
 vi.mock("../hooks/usePosData", () => ({
-  useRecordCashMovement: () => ({ mutate: recordMutate, isPending: false, error: record.error }),
+  useRecordCashMovement: () => ({ mutate: recordMutate, isPending: record.isPending, error: record.error }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
 }));
 
@@ -30,6 +30,7 @@ async function typePin(digits: string) {
 beforeEach(() => {
   recordMutate.mockClear();
   record.error = null;
+  record.isPending = false;
   sessionRef.value = null;
 });
 
@@ -163,6 +164,16 @@ describe("CashMovementDialog", () => {
       await userEvent.click(screen.getByTestId("movement-type-CASH_OUT"));
       expectApprovalCleared();
     });
+  });
+
+  it("can't be dismissed while the cash in or out is being recorded", async () => {
+    record.isPending = true;
+    const onClose = vi.fn();
+    render(<CashMovementDialog shiftId="shift-1" currency="TZS" onClose={onClose} />);
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
   it("says a refused cash out in words", () => {

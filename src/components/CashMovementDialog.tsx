@@ -119,8 +119,9 @@ export function CashMovementSheetView({
   return (
     <Sheet
       open
+      // While Yetu is recording it, Escape, Close and a tap outside do nothing.
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open && !pending) onClose();
       }}
       title={cashOut ? "Cash out" : "Cash in"}
       description={
@@ -129,7 +130,7 @@ export function CashMovementSheetView({
       testId="cash-movement-dialog"
       footer={
         <div className="y-cash__footer">
-          <Button variant="quiet" onClick={onClose}>
+          <Button variant="quiet" disabled={pending} onClick={onClose}>
             Cancel
           </Button>
           <Button variant="primary" size={56} data-testid="confirm-movement" disabled={!canSubmit} onClick={submit}>

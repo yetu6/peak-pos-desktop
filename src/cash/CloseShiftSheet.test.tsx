@@ -271,6 +271,22 @@ describe("CloseShiftSheet: check", () => {
     );
   });
 
+  it("can't be dismissed while the close is being sent", async () => {
+    closeAsync.mockReturnValue(new Promise(() => {}));
+    const onOpenChange = vi.fn();
+    render(
+      withClient(
+        <CloseShiftSheet open onOpenChange={onOpenChange} shift={SHIFT} currency="TZS" requesterId="staff-amina" roster={ROSTER} />,
+      ),
+    );
+    await count("74000");
+    await userEvent.click(screen.getByTestId("close-shift"));
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Change the count" })).toBeDisabled();
+  });
+
   it("says why Yetu would not close it, in words", async () => {
     closeAsync.mockRejectedValueOnce(problem("CONFLICT", "shift has open orders"));
     renderSheet();
