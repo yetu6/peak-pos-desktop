@@ -135,8 +135,10 @@ async function measure(page: Page): Promise<Finding[]> {
 
       // The register: the ticket keeps its width beside the menu (400px from
       // 1280 wide, 360px below) and the menu shows 3, 4 or 6 columns.
+      // Measured while browsing: under an open sheet the page beneath is out of use
+      // (and the sheet's scroll lock may shift it), so it is not measured then.
       const ticket = document.querySelector('[data-testid="ticket-panel"]');
-      if (ticket && rendered(ticket)) {
+      if (ticket && rendered(ticket) && !ticket.closest('[aria-hidden="true"], [inert]')) {
         const wantWidth = viewportWidth < 1280 ? 360 : 400;
         const wantColumns = viewportWidth < 1280 ? 3 : viewportWidth < 1600 ? 4 : 6;
         const box = ticket.getBoundingClientRect();
@@ -144,7 +146,10 @@ async function measure(page: Page): Promise<Finding[]> {
           findings.push({ key: "register-layout", detail: `the ticket is ${Math.round(box.width)}px wide, not ${wantWidth}px` });
         }
         if (box.right < viewportWidth - 1 || box.top < 0 || box.bottom > window.innerHeight + 1) {
-          findings.push({ key: "register-layout", detail: "the ticket is not fully on screen at the right" });
+          findings.push({
+            key: "register-layout",
+            detail: `the ticket is not fully on screen at the right (right ${Math.round(box.right)}, top ${Math.round(box.top)}, bottom ${Math.round(box.bottom)} in ${viewportWidth}x${window.innerHeight})`,
+          });
         }
         const grid = document.querySelector('[data-testid="menu-grid"]');
         const columns = grid ? getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length : 0;
