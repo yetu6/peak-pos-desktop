@@ -86,6 +86,20 @@ export function Kitchen() {
     [display, orders.data, stationTickets.data],
   );
 
+  // On a selling till the board shows orders, which a kitchen display moves
+  // when it moves their station tickets; Yetu says only that a station ticket
+  // changed. So each time the station tickets come back new, the orders are
+  // asked for again.
+  const ticketsUpdatedAt = stationTickets.dataUpdatedAt;
+  const ticketsSeenAt = useRef(0);
+  const { refetch: refetchOrders } = orders;
+  useEffect(() => {
+    if (!ticketsUpdatedAt) return;
+    const first = ticketsSeenAt.current === 0;
+    ticketsSeenAt.current = ticketsUpdatedAt;
+    if (!first && !display) void refetchOrders();
+  }, [ticketsUpdatedAt, refetchOrders, display]);
+
   // Ask again now and then, besides live updates.
   useEffect(() => {
     const id = window.setInterval(() => void refetch(), KITCHEN_REFRESH_SECONDS * 1000);

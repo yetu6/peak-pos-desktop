@@ -271,6 +271,34 @@ describe("Orders", () => {
     await waitFor(() => expect(spies.listOrders.mock.calls.filter(([active]) => active === true).length).toBeGreaterThan(1));
   });
 
+  it("follows a kitchen display: when a station ticket moves, the open orders reload, row and open detail alike", async () => {
+    ordersStore.set("order-1", { ...OPEN_ORDER, status: "SENT", version: 2 });
+    const { socket } = renderOrders();
+    const sheet = await openDetail("order-1");
+    expect(within(sheet).getByTestId("order-detail-status")).toHaveTextContent("Sent to kitchen");
+    socket.open();
+    await flush();
+    // The display moved the order's only station ticket: Yetu put the order at Preparing, version 3,
+    // and says only that a station ticket changed.
+    ordersStore.set("order-1", { ...OPEN_ORDER, status: "PREPARING", version: 3 });
+    socket.emit(
+      JSON.stringify({
+        sequence_id: 5,
+        id: "evt-5",
+        type: "pos.station_ticket.status_changed",
+        version: 1,
+        resource_type: "pos_station_ticket",
+        resource_id: "ticket-1",
+        occurred_at: new Date().toISOString(),
+        organization_id: "tenant-1",
+        property_id: "property-1",
+        data: { outletId: "outlet-1", orderId: "order-1", station: "GENERAL", status: "PREPARING" },
+      }),
+    );
+    await waitFor(() => expect(within(sheet).getByTestId("order-detail-status")).toHaveTextContent("Preparing"));
+    expect(screen.getByTestId("order-row-order-1")).toHaveTextContent("Preparing");
+  });
+
   it("empties the open list when Yetu says the shift closed", async () => {
     ordersStore.set("order-1", OPEN_ORDER);
     const { socket } = renderOrders();

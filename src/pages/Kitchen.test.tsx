@@ -179,6 +179,19 @@ describe("Kitchen on a selling till (whole orders)", () => {
     await waitFor(() => expect(listOrdersSpy.mock.calls.length).toBeGreaterThan(1));
   });
 
+  it("follows a kitchen display: when a station ticket moves, the orders reload at once", async () => {
+    ordersStore.set("order-1", SENT_ORDER);
+    ticketsStore.set("t-1", stationTicket("t-1", "GENERAL"));
+    const socket = renderKitchen();
+    await screen.findByTestId("kitchen-ticket-order-1");
+    socket.open();
+    await flush();
+    ordersStore.set("order-1", { ...SENT_ORDER, status: "PREPARING", version: 3 });
+    ticketsStore.set("t-1", stationTicket("t-1", "GENERAL", { status: "PREPARING", version: 2 }));
+    socket.emit(announce(7, "pos.station_ticket.status_changed", "order-1"));
+    await waitFor(() => expect(screen.getByTestId("kitchen-column-PREPARING")).toContainElement(screen.getByTestId("kitchen-ticket-order-1")));
+  });
+
   it("takes the time sent from Yetu's station ticket for the order, not from when this screen saw it", async () => {
     ordersStore.set("order-1", SENT_ORDER);
     ticketsStore.set("t-1", stationTicket("t-1", "GENERAL"));

@@ -56,6 +56,22 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
   const open = useMemo(() => orders.data ?? [], [orders.data]);
   const sentTimes = useMemo(() => sentTimesByOrder(tickets.data ?? []), [tickets.data]);
 
+  // A kitchen display moving a station ticket moves its order too (Yetu puts
+  // the order at its slowest station's step, a new version), but Yetu says
+  // only that a station ticket changed, which the open orders don't listen
+  // for. So each time the station tickets come back new, the open orders are
+  // asked for again.
+  const ticketsUpdatedAt = tickets.dataUpdatedAt;
+  const ticketsSeenAt = useRef(0);
+  const { refetch: refetchOrders } = orders;
+  useEffect(() => {
+    if (!ticketsUpdatedAt) return;
+    const first = ticketsSeenAt.current === 0;
+    ticketsSeenAt.current = ticketsUpdatedAt;
+    // The first answer comes with the page, beside the orders' own first answer.
+    if (!first) void refetchOrders();
+  }, [ticketsUpdatedAt, refetchOrders]);
+
   const overlayOrderId = overlay && overlay.kind !== "done" ? overlay.orderId : undefined;
   // The order as Yetu has it now: from the lists, or asked for on its own when it has left them.
   const listed = overlayOrderId
