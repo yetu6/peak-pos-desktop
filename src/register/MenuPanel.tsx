@@ -27,9 +27,14 @@ export interface MenuPanelProps {
   failed?: boolean;
 }
 
-function typingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+/**
+ * A typed key goes to the search only when nothing in particular has the
+ * keys: the page itself, or the menu's background. A focused button, tab,
+ * choice or field keeps its keys (Space presses a button).
+ */
+function searchTakesKeysFrom(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return true;
+  return target === document.body || target === document.documentElement || target.hasAttribute("data-menu-background");
 }
 
 /**
@@ -79,8 +84,8 @@ export function MenuPanel({
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {
       if (event.defaultPrevented || isComposing(event)) return;
-      if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) return;
-      if (typingTarget(event.target) || document.querySelector('[role="dialog"]')) return;
+      if (event.key.length !== 1 || event.key === " " || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (!searchTakesKeysFrom(event.target) || document.querySelector('[role="dialog"]')) return;
       const field = document.getElementById(SEARCH_ID);
       if (!(field instanceof HTMLInputElement)) return;
       event.preventDefault();
@@ -137,7 +142,7 @@ export function MenuPanel({
           {addBlocked}
         </p>
       ) : null}
-      <div className="y-catalog__scroll">
+      <div className="y-catalog__scroll" data-menu-background="">
         {loading ? (
           <div className="y-menu-grid" aria-label="Loading the menu" data-testid="menu-grid">
             {Array.from({ length: 12 }, (_, index) => (

@@ -97,6 +97,26 @@ describe("MenuPanel", () => {
     expect(search).toHaveValue("t");
   });
 
+  it("Space presses a focused item or tab; it never goes into the search", async () => {
+    const onTap = vi.fn();
+    render(<Menu onTap={onTap} />);
+    screen.getByTestId("menu-Soda").focus();
+    await userEvent.keyboard(" ");
+    expect(onTap).toHaveBeenCalledWith(PRODUCTS[3]);
+    screen.getByRole("tab", { name: "Drinks" }).focus();
+    await userEvent.keyboard(" ");
+    expect(screen.getByRole("tab", { name: "Drinks" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("searchbox", { name: "Search the menu" })).toHaveValue("");
+  });
+
+  it("a letter typed while a control has focus stays with that control", async () => {
+    render(<Menu />);
+    screen.getByTestId("menu-Soda").focus();
+    await userEvent.keyboard("t");
+    expect(screen.getByRole("searchbox", { name: "Search the menu" })).toHaveValue("");
+    expect(screen.getByTestId("menu-Soda")).toHaveFocus();
+  });
+
   it("leaves typed keys alone while a sheet is open", () => {
     render(<Menu />);
     const sheet = document.createElement("div");

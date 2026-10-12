@@ -410,4 +410,17 @@ describe("NewOrder", () => {
     expect(screen.queryByRole("dialog", { name: "Paid" })).not.toBeInTheDocument();
     expect(ticket().getByText("Tap an item to start an order.")).toBeInTheDocument();
   });
+
+  it("Space presses a focused Send to kitchen and Pay", async () => {
+    await startOrder();
+    screen.getByTestId("send-order").focus();
+    await userEvent.keyboard(" ");
+    await waitFor(() => expect(sendOrderSpy).toHaveBeenCalled());
+    const pay = screen.getByTestId("pay-order");
+    await waitFor(() => expect(pay).toBeEnabled());
+    pay.focus();
+    await userEvent.keyboard(" ");
+    expect(await screen.findByRole("dialog", { name: "Take payment" })).toBeInTheDocument();
+    expect(screen.getByTestId("catalog-search")).toHaveValue("");
+  });
 });
