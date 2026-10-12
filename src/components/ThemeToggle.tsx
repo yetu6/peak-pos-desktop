@@ -3,7 +3,7 @@ import { useTheme } from "../lib/theme";
 
 /**
  * The per-device theme switch in the top bar. Light and Dark are equal
- * themes; the choice is remembered on this device (`peak-pos-theme`). A
+ * themes; the choice is remembered on this device (`yetu-till-theme`). A
  * device nobody has chosen for follows its mode's default (displayDefaults.ts).
  */
 export function ThemeToggle() {

@@ -229,7 +229,7 @@ describe("TillShell keyboard", () => {
     await userEvent.type(search, "dark");
     await userEvent.keyboard("{Enter}");
     expect(document.body).toHaveClass("dark-theme");
-    expect(localStorage.getItem("peak-pos-theme")).toBe("dark");
+    expect(localStorage.getItem("yetu-till-theme")).toBe("dark");
 
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     await userEvent.type(await screen.findByRole("combobox", { name: /search/i }), "lock");

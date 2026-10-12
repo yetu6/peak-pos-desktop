@@ -25,6 +25,7 @@ export default defineConfig({
     contextOptions: { reducedMotion: "reduce" },
   },
   projects: [
+    { name: "boot", testMatch: /boot\.spec\.ts$/ },
     { name: "fixtures", testMatch: /fixtures\.spec\.ts$/ },
     { name: "known-debt", testMatch: /known-debt\.spec\.ts$/, dependencies: ["fixtures"] },
   ],

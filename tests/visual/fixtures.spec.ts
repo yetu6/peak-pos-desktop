@@ -20,7 +20,7 @@ const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
 async function open(page: Page, fixture: string, theme: string): Promise<void> {
   await page.addInitScript((value) => {
-    window.localStorage.setItem("peak-pos-theme", value);
+    window.localStorage.setItem("yetu-till-theme", value);
   }, theme);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(`/?fixture=${fixture}`);

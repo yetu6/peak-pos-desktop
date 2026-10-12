@@ -22,6 +22,16 @@ export const DEFAULT_THEME_BY_MODE: Readonly<Record<string, Theme>> = {
 /** Before the till is paired (or while its mode is still loading) it starts Light. */
 export const DEFAULT_THEME_BEFORE_PAIRING: Theme = "light";
 
+/**
+ * Each theme's canvas, painted on the page itself so the first frame (before
+ * the stylesheet arrives) is already the right colour. Equal to the tokens'
+ * --canvas (peakTerminalFoundation.test.ts) and to public/theme-boot.js.
+ */
+export const THEME_CANVAS: Readonly<Record<Theme, string>> = {
+  light: "#eef1f6",
+  dark: "#0a1626",
+};
+
 /** Pairing records write the mode as `KITCHEN_DISPLAY` or `kitchen-display`; read both. */
 export function normalizeMode(mode?: string | null): string {
   return (mode ?? "").trim().toUpperCase().replace(/-/g, "_");

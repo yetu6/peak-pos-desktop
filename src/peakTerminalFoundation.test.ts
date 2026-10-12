@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { THEME_CANVAS } from "./lib/displayDefaults";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), "utf8");
@@ -155,6 +156,11 @@ describe("Yetu till tokens", () => {
     // Dark is its own set of values, not the light set reused.
     const differing = SURFACES.filter((name) => colour("light", name) !== colour("dark", name));
     expect(differing).toEqual(SURFACES);
+  });
+
+  it("paints the page before the stylesheet in each theme's own canvas colour", () => {
+    expect(THEME_CANVAS.light).toBe(colour("light", "--canvas"));
+    expect(THEME_CANVAS.dark).toBe(colour("dark", "--canvas"));
   });
 
   it("makes Yetu Blue the action colour and keeps orange off ordinary actions", () => {
