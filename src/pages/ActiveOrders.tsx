@@ -57,29 +57,18 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
   const open = useMemo(() => orders.data ?? [], [orders.data]);
   const sentTimes = useMemo(() => sentTimesByOrder(tickets.data ?? []), [tickets.data]);
 
-  // A kitchen display moving a station ticket moves its order too (Yetu puts
-  // the order at its slowest station's step, a new version), but Yetu says
-  // only that a station ticket changed, which the open orders don't listen
-  // for. So each time the station tickets come back new, the open orders are
-  // asked for again.
-  // Besides live updates, ask again every so often (a missed update still shows).
-  // The station tickets are asked for; the open orders follow them (below).
+  // Live news keeps both lists current (a station ticket's news reloads the
+  // open orders too: useActiveOrders). Besides it, ask again every so often,
+  // so news missed while the connection was down still shows.
   const { refetch: refetchTickets } = tickets;
-  useEffect(() => {
-    const id = window.setInterval(() => void refetchTickets(), ORDERS_REFRESH_SECONDS * 1000);
-    return () => window.clearInterval(id);
-  }, [refetchTickets]);
-
-  const ticketsUpdatedAt = tickets.dataUpdatedAt;
-  const ticketsSeenAt = useRef(0);
   const { refetch: refetchOrders } = orders;
   useEffect(() => {
-    if (!ticketsUpdatedAt) return;
-    const first = ticketsSeenAt.current === 0;
-    ticketsSeenAt.current = ticketsUpdatedAt;
-    // The first answer comes with the page, beside the orders' own first answer.
-    if (!first) void refetchOrders();
-  }, [ticketsUpdatedAt, refetchOrders]);
+    const id = window.setInterval(() => {
+      void refetchTickets();
+      void refetchOrders();
+    }, ORDERS_REFRESH_SECONDS * 1000);
+    return () => window.clearInterval(id);
+  }, [refetchTickets, refetchOrders]);
 
   const overlayOrderId = overlay && overlay.kind !== "done" ? overlay.orderId : undefined;
   // The order as Yetu has it now: from the lists, or asked for on its own when it has left them.

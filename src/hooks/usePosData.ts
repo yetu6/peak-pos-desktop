@@ -292,7 +292,9 @@ export function useActiveOrders() {
       queryClient.setQueryData(["pos", "orders", "active", outletId], []);
       return;
     }
-    if (!isOrderEvent(event.type)) return;
+    // A station ticket's step moves its order too (Yetu syncs the order's
+    // status from its tickets), but Yetu sends only the ticket's news.
+    if (!isOrderEvent(event.type) && !event.type.startsWith("pos.station_ticket.")) return;
     queryClient.invalidateQueries({ queryKey: ["pos", "orders", "active", outletId] });
   });
   return query;
