@@ -9,6 +9,7 @@
 @import "./components/system/system.css";
 @import "./shell/shell.css";
 @import "./access/access.css";
+@import "./cash/cash.css";
 
 @custom-variant dark (&:is(.dark *));
 

@@ -1,0 +1,196 @@
+/* Shift and cash: the Cash page, closing a shift, counting notes, closing the day. */
+
+.y-cash {
+  display: grid;
+  gap: var(--space-4);
+  color: var(--text);
+}
+
+.y-cash__header { display: grid; gap: var(--space-1); }
+
+.y-cash__title {
+  margin: 0;
+  font-size: var(--type-heading);
+  font-weight: 700;
+}
+
+.y-cash__muted {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+}
+
+.y-cash__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.y-cash__column {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+}
+
+.y-cash__card {
+  display: grid;
+  gap: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  padding: var(--space-5);
+}
+
+.y-cash__card-title {
+  margin: 0;
+  font-size: var(--type-lead);
+  font-weight: 700;
+}
+
+.y-cash__summary {
+  display: grid;
+  margin: 0;
+  gap: var(--space-3);
+}
+
+.y-cash__summary > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px var(--space-3);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--space-3);
+}
+
+.y-cash__summary > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.y-cash__summary dt { font-weight: 600; }
+.y-cash__summary dd { margin: 0; text-align: right; }
+.y-cash__summary dd.y-cash__muted { grid-column: 1 / -1; text-align: left; }
+.y-cash__summary--compact > div { padding-bottom: var(--space-2); }
+
+.y-cash__result {
+  margin: 0;
+  font-size: var(--type-lead);
+  font-weight: 700;
+}
+
+.y-cash__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--target-gap);
+}
+
+.y-cash__footer {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+  gap: var(--target-gap);
+}
+
+.y-cash__step-title {
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 700;
+}
+
+.y-cash__figures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  gap: var(--space-3);
+}
+
+.y-cash__figures > div {
+  display: grid;
+  gap: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  padding: var(--space-4);
+}
+
+.y-cash__figures dt { color: var(--text-muted); font-size: var(--type-small); font-weight: 600; }
+.y-cash__figures dd { margin: 0; }
+
+.y-steps-inline {
+  display: flex;
+  margin: 0 0 var(--space-4);
+  gap: var(--space-4);
+  padding: 0;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  font-weight: 600;
+  list-style: none;
+}
+
+.y-steps-inline [aria-current="step"] {
+  color: var(--action-text);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+
+.y-checklist {
+  display: grid;
+  margin: 0;
+  gap: var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.y-checklist li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.y-checklist li svg { width: 20px; height: 20px; flex: none; margin-top: 2px; color: var(--text-muted); }
+.y-checklist__yes svg { color: var(--success) !important; }
+.y-checklist__no svg { color: var(--danger) !important; }
+
+.y-checklist__why {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+}
+
+.y-notes {
+  display: grid;
+  margin: 0;
+  gap: var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.y-notes__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(110px, auto);
+  align-items: center;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--space-2);
+}
+
+.y-notes__label { font-weight: 600; }
+.y-notes__line { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
+
+.y-notes__total {
+  display: flex;
+  margin: var(--space-4) 0 0;
+  justify-content: space-between;
+  font-size: var(--type-title);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.y-open-shift {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-6);
+}
+
+@media (max-width: 1279px) {
+  .y-cash__card { padding: var(--space-4); }
+}
