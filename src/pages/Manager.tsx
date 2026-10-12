@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { CloseDayCard } from "../cash/CloseDayCard";
 import { CloseShiftSheet } from "../cash/CloseShiftSheet";
+import { useExpectedCashVisible } from "../cash/useExpectedCashVisible";
 import { CashMovementDialog } from "../components/CashMovementDialog";
 import { Button, EmptyState, ListRow, Money, PermissionNotice } from "../components/system";
 import {
@@ -18,7 +19,8 @@ import { cashMovementWords, clockTime, shiftChipWords } from "../lib/words";
 
 /**
  * Cash: the drawer for this shift. Every figure is Yetu's own (the float it
- * was opened with and what it expects now); the till adds nothing up. Cash in
+ * was opened with and, for those allowed to see it, what it expects now);
+ * the till adds nothing up. Cash in
  * and out are listed with their reasons and who recorded them. Closing the
  * shift and closing the day start here. The backend checks every action
  * again; the permission notices only say who can do what.
@@ -31,6 +33,7 @@ export function Manager() {
   const canRecordCash = useHasPermission("pos.cash_movement.record");
   const canCloseShift = useHasPermission("pos.shift.close");
   const isManager = useHasPermission("pos.report.manager");
+  const showExpected = useExpectedCashVisible();
   const hotel = useHasCapability("LODGING");
   const [movement, setMovement] = useState<CashMovementType | null>(null);
   const [closing, setClosing] = useState(false);
@@ -45,6 +48,7 @@ export function Manager() {
       roster={roster}
       canRecordCash={canRecordCash}
       canCloseShift={canCloseShift}
+      showExpected={showExpected}
       closeDay={isManager && !hotel ? <CloseDayCard thisTillShiftOpen={Boolean(shift)} /> : null}
       onCashIn={() => setMovement("CASH_IN")}
       onCashOut={() => setMovement("CASH_OUT")}
@@ -74,6 +78,8 @@ export interface CashViewProps {
   roster: readonly RosterEntry[];
   canRecordCash: boolean;
   canCloseShift: boolean;
+  /** Yetu's expected figure, for those allowed to see it before counting (EXPECTED_CASH_VISIBLE_TO). */
+  showExpected: boolean;
   /** The Close the day card, for managers on a restaurant-only property. */
   closeDay: ReactNode;
   onCashIn: () => void;
@@ -90,6 +96,7 @@ export function CashView({
   roster,
   canRecordCash,
   canCloseShift,
+  showExpected,
   closeDay,
   onCashIn,
   onCashOut,
@@ -120,13 +127,15 @@ export function CashView({
                   </dd>
                   <dd className="y-cash__muted">Counted into the drawer when the shift opened.</dd>
                 </div>
-                <div>
-                  <dt>Expected in the drawer now</dt>
-                  <dd>
-                    <Money minor={shift.expectedCashMinor} currency={currency} size="title" />
-                  </dd>
-                  <dd className="y-cash__muted">Float, plus cash sales and cash in, less cash out, worked out by Yetu.</dd>
-                </div>
+                {showExpected ? (
+                  <div>
+                    <dt>Expected in the drawer now</dt>
+                    <dd>
+                      <Money minor={shift.expectedCashMinor} currency={currency} size="title" />
+                    </dd>
+                    <dd className="y-cash__muted">Float, plus cash sales and cash in, less cash out, worked out by Yetu.</dd>
+                  </div>
+                ) : null}
               </dl>
             ) : (
               <p className="y-cash__muted">No shift is open on this till.</p>
@@ -199,7 +208,7 @@ export function CashView({
               Close this shift
             </h2>
             <p className="y-cash__muted">
-              Count the drawer first. Yetu then shows what it expects; if they differ, a manager approves.
+              Count the drawer. Yetu then compares your count with its own figure; if they differ, a manager approves.
             </p>
             {canCloseShift ? (
               <Button

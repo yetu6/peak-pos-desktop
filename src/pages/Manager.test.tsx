@@ -136,8 +136,8 @@ describe("Manager", () => {
     expect(screen.getByTestId("open-cash-movement")).toBeDisabled();
   });
 
-  it("sums up the drawer with only the figures Yetu works out, each explained", () => {
-    permissionsRef.permissions = ["pos.cash_movement.record", "pos.shift.close"];
+  it("sums up the drawer for a manager with only the figures Yetu works out, each explained", () => {
+    permissionsRef.permissions = ["pos.cash_movement.record", "pos.shift.close", "pos.report.manager"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
     renderCash();
@@ -148,6 +148,19 @@ describe("Manager", () => {
     expect(summary).toHaveTextContent("TSh 740");
     expect(summary).toHaveTextContent("Float, plus cash sales and cash in, less cash out, worked out by Yetu.");
     expect(summary.querySelectorAll(".y-money")).toHaveLength(2);
+  });
+
+  it("keeps the count blind for a cashier: the float, never the expected figure", () => {
+    permissionsRef.permissions = ["pos.cash_movement.record", "pos.shift.close"];
+    capabilitiesRef.capabilities = [];
+    shiftRef.shift = SHIFT;
+    renderCash();
+    const summary = screen.getByTestId("cash-summary");
+    expect(summary).toHaveTextContent("Float at the start");
+    expect(summary.querySelectorAll(".y-money")).toHaveLength(1);
+    expect(document.body).not.toHaveTextContent("TSh 740");
+    expect(document.body).not.toHaveTextContent(/expected in the drawer/i);
+    expect(screen.getByText("Count the drawer. Yetu then compares your count with its own figure; if they differ, a manager approves.")).toBeInTheDocument();
   });
 
   it("lists each cash movement with its reason, who and when, never an id", () => {

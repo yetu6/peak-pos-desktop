@@ -133,6 +133,7 @@ function Cash(props: Partial<Parameters<typeof CashView>[0]>) {
         roster={ROSTER}
         canRecordCash
         canCloseShift
+        showExpected
         closeDay={
           <CloseDayCardView thisTillShiftOpen pending={false} error={null} nextBusinessDate={null} onCloseDay={nothing} />
         }
@@ -150,9 +151,9 @@ export function CashFixture() {
   return <Cash />;
 }
 
-/** Cash for someone with none of the cash permissions. */
+/** Cash for someone with none of the cash permissions: no expected figure either. */
 export function CashNoPermissionFixture() {
-  return <Cash canRecordCash={false} canCloseShift={false} closeDay={null} />;
+  return <Cash canRecordCash={false} canCloseShift={false} showExpected={false} closeDay={null} />;
 }
 
 /** Recording cash in. */
