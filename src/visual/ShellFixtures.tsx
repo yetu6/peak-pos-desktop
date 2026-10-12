@@ -91,12 +91,14 @@ export function FixtureShell({
   offlineCash = false,
   initialPage = "orders",
   banners,
+  workspaceVariant = "padded",
   children,
 }: {
   mode?: string;
   offlineCash?: boolean;
   initialPage?: WorkspacePage;
   banners?: ReactNode;
+  workspaceVariant?: "padded" | "full";
   children: ReactNode;
 }) {
   const [page, setPage] = useState<WorkspacePage>(initialPage);
@@ -120,6 +122,7 @@ export function FixtureShell({
       banners={banners}
       onSwitchPerson={() => undefined}
       onLock={() => undefined}
+      workspaceVariant={workspaceVariant}
     >
       {children}
     </TillShell>

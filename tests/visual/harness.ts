@@ -43,5 +43,4 @@ export interface FixtureResult {
  * anywhere, so the list can only shrink: delete the line when a slice fixes it.
  */
 export const KNOWN_DEBT: Partial<Record<VisualFixtureName, { owner: string; keys: string[] }>> = {
-  terminal: { owner: "S4 register", keys: ["text-size"] },
 };

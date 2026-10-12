@@ -35,7 +35,7 @@ import {
   OpenShiftManagerFixture,
   OpenShiftNoPermissionFixture,
 } from "./CashFixtures";
-import { PeakTerminalFixture } from "./PeakTerminalFixture";
+import { RegisterFixture } from "./RegisterFixtures";
 import {
   ApprovalSheetFixture,
   CommandSearchFixture,
@@ -77,7 +77,7 @@ const FIXTURES: Record<VisualFixtureName, ComponentType> = {
   "close-count": CloseCountFixture,
   "close-balanced": CloseBalancedFixture,
   "close-over": CloseOverFixture,
-  terminal: PeakTerminalFixture,
+  register: RegisterFixture,
   system: SystemGalleryFixture,
   shell: ShellFixture,
   "shell-offline": ShellOfflineFixture,

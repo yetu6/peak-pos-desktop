@@ -211,29 +211,41 @@ describe("NewOrder", () => {
     clearOperationalSession();
   });
 
-  it("resumes the server current shift and closes it on demand", async () => {
+  it("resumes the server current shift for selling, and shows no shift money on Sell", async () => {
+    getCurrentShiftSpy.mockResolvedValueOnce({
+      data: {
+        id: "shift-1",
+        status: "OPEN",
+        openingCashMinor: 0,
+        expectedCashMinor: 7_400_000,
+        businessDate: "2026-08-29",
+        openedAt: "2026-08-29T08:00:00Z",
+      },
+      error: null,
+    });
     renderNewOrder();
     await waitFor(() => expect(getCurrentShiftSpy).toHaveBeenCalled());
-    expect(await screen.findByTestId("shift-open")).toBeInTheDocument();
+    const tile = await screen.findByTestId("menu-Nyama Choma");
+    await waitFor(() => expect(tile).toBeEnabled());
+    expect(document.body).not.toHaveTextContent("74,000");
+    expect(document.body).not.toHaveTextContent(/expected/i);
+    expect(screen.queryByTestId("open-close-shift")).not.toBeInTheDocument();
+  });
 
-    await userEvent.click(screen.getByTestId("open-close-shift"));
-    await userEvent.type(screen.getByTestId("counted-cash"), "0");
-    await userEvent.click(screen.getByRole("button", { name: "Check the count" }));
-    await userEvent.click(screen.getByTestId("close-shift"));
-    await waitFor(() =>
-      expect(closeShiftSpy).toHaveBeenCalledWith(
-        "shift-1",
-        { countedCashMinor: 0, supervisorStaffId: undefined, supervisorPin: undefined },
-        expect.any(String),
-      ),
-    );
+  it("keeps the ticket on screen beside the menu while browsing and searching", async () => {
+    renderNewOrder();
+    await screen.findByTestId("menu-Nyama Choma");
+    const ticket = screen.getByTestId("ticket-panel");
+    expect(screen.getByTestId("menu-grid")).toBeInTheDocument();
+    await userEvent.type(screen.getByTestId("catalog-search"), "tusker");
+    expect(screen.queryByTestId("menu-Nyama Choma")).not.toBeInTheDocument();
+    expect(screen.getByTestId("ticket-panel")).toBe(ticket);
   });
 
   it("builds a live ticket through createOrder and addItem", async () => {
     renderNewOrder();
-    await screen.findByTestId("shift-open");
-
     const productTile = await screen.findByTestId("menu-Nyama Choma");
+    await waitFor(() => expect(productTile).toBeEnabled());
     await userEvent.click(productTile);
 
     await waitFor(() => expect(createOrderSpy).toHaveBeenCalled());

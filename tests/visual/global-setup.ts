@@ -4,7 +4,7 @@ import { HARNESS_PORT, RESULTS_DIR, SCREENS_DIR } from "./harness";
 
 const BASE_URL = `http://127.0.0.1:${HARNESS_PORT}`;
 /** Fixtures that between them pull in every module the others need. */
-const WARM_UP = ["system", "terminal", "splash"];
+const WARM_UP = ["system", "register", "splash"];
 
 async function serverReady(deadline: number): Promise<void> {
   while (Date.now() < deadline) {

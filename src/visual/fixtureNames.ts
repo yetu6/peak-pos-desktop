@@ -38,8 +38,8 @@ export const VISUAL_FIXTURE_NAMES = [
   "close-count",
   "close-balanced",
   "close-over",
-  // The register, redesigned in S4.
-  "terminal",
+  // S4 register.
+  "register",
   // S1 design foundation.
   "system",
   "shell",

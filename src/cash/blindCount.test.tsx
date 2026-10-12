@@ -2,15 +2,15 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TillControls } from "../components/TillControls";
 import type { POSCashMovement, POSShift } from "../lib/posContracts";
 import { Manager } from "../pages/Manager";
 
 /**
  * The count is blind: while a shift is open, a cashier never sees Yetu's
  * expected figure anywhere on the till before they have counted. This renders
- * every place that could show it (the Sell header, the Cash page and the
- * close-shift sheet) in one tree and searches all of it.
+ * the places that could show it (the Cash page and the close-shift sheet) in
+ * one tree and searches all of it. Sell shows no shift money at all
+ * (NewOrder.test).
  */
 
 const { grants } = vi.hoisted(() => ({ grants: { permissions: [] as string[] } }));
@@ -64,7 +64,6 @@ vi.mock("../auth/DeviceSessionProvider", () => ({
 function renderTill() {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <TillControls currency="TZS" />
       <Manager />
     </QueryClientProvider>,
   );
@@ -88,8 +87,7 @@ describe("the blind count", () => {
     expect(document.body).not.toHaveTextContent(EXPECTED);
     expect(document.body).not.toHaveTextContent(/expected/i);
 
-    const [, fromCashPage] = screen.getAllByTestId("open-close-shift");
-    await userEvent.click(fromCashPage);
+    await userEvent.click(screen.getByTestId("open-close-shift"));
     const sheet = screen.getByRole("dialog", { name: "Close the shift" });
     expect(within(sheet).getByTestId("close-step-count")).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(EXPECTED);

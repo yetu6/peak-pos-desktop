@@ -1,0 +1,41 @@
+/* Sell: menu | ticket. Sizes come from tokens.css (--ticket-width, --menu-columns). */
+
+.y-register {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) var(--ticket-width);
+  background: var(--canvas);
+  color: var(--text);
+}
+
+.y-register__menu {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.y-register__ticket {
+  display: flex;
+  width: var(--ticket-width);
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+
+/* The ticket's own content fills its column. */
+.y-register__ticket > * {
+  min-height: 0;
+  flex: 1;
+}
+
+.y-menu-grid {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  grid-template-columns: repeat(var(--menu-columns), minmax(0, 1fr));
+}

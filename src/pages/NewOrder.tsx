@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { Icon } from "../components/Icon";
-import { TillControls } from "../components/TillControls";
 import { ItemModifierDialog, type ModifierSelection } from "../components/ItemModifierDialog";
 import { SettleDialog } from "../components/SettleDialog";
 import { DiscountDialog } from "../components/DiscountDialog";
@@ -27,6 +26,7 @@ import {
   useSetProductAvailability,
 } from "../hooks/usePosData";
 import { ReceiptView } from "../components/ReceiptView";
+import { RegisterLayout } from "../register/RegisterLayout";
 import type { POSCatalogProduct, POSOrder, ServiceType } from "../lib/posContracts";
 import { formatMinor, moneyFormatter } from "../lib/posMoney";
 
@@ -238,18 +238,10 @@ export function NewOrder() {
   }
 
   return (
-    <div className="new-order-screen">
-      <div className="new-order-header">
-        <div>
-          <h1 className="text-lg font-bold tracking-[-0.02em] text-[var(--foreground)]">Register</h1>
-          <p className="text-xs text-[var(--foreground-muted)]">
-            Live catalog · ticket settles exactly · prices from the server
-          </p>
-        </div>
-        <TillControls currency={currency} />
-      </div>
-      <div className="new-order-layout">
-        <section className="catalog-workspace" aria-label="Catalog">
+    <>
+      <RegisterLayout
+        menu={
+        <div className="catalog-workspace">
           <div className="catalog-toolbar">
             {SERVICE_TYPES.map((type) => (
               <CategoryTab
@@ -310,7 +302,7 @@ export function NewOrder() {
           {!catalog.isLoading && !catalog.isError && products.length === 0 && (
             <TerminalState state="empty" title="No matching items" description="Try another category or search term." />
           )}
-          <div className="product-grid">
+          <div className="y-menu-grid" data-testid="menu-grid">
             {products.map((product) => (
               <ProductTile
                 key={product.id}
@@ -328,8 +320,9 @@ export function NewOrder() {
               />
             ))}
           </div>
-        </section>
-
+        </div>
+        }
+        ticket={
         <OrderRail
           title="Ticket"
           data-testid="current-order-rail"
@@ -478,7 +471,8 @@ export function NewOrder() {
             ))}
           </ul>
         </OrderRail>
-      </div>
+        }
+      />
 
       {configuring && (
         <ItemModifierDialog
@@ -512,6 +506,6 @@ export function NewOrder() {
       {invoiceOrderId && (
         <ReceiptView orderId={invoiceOrderId} onClose={() => setInvoiceOrderId(null)} />
       )}
-    </div>
+    </>
   );
 }
