@@ -20,6 +20,7 @@ import {
   SplashSlowFixture,
 } from "./JourneyFixtures";
 import {
+  CashCashierFixture,
   CashFixture,
   CashInFixture,
   CashNoPermissionFixture,
@@ -28,6 +29,7 @@ import {
   CloseCountFixture,
   CloseOverFixture,
   DayCloseBlockedFixture,
+  DayClosedFixture,
   NoShiftFixture,
   NoteCounterFixture,
   OpenShiftManagerFixture,
@@ -65,8 +67,10 @@ const FIXTURES: Record<VisualFixtureName, ComponentType> = {
   "open-shift-manager": OpenShiftManagerFixture,
   "open-shift-no-permission": OpenShiftNoPermissionFixture,
   "day-close-blocked": DayCloseBlockedFixture,
+  "day-closed": DayClosedFixture,
   "note-counter": NoteCounterFixture,
   cash: CashFixture,
+  "cash-cashier": CashCashierFixture,
   "cash-no-permission": CashNoPermissionFixture,
   "cash-in": CashInFixture,
   "cash-out": CashOutFixture,

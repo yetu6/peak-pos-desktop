@@ -96,6 +96,17 @@ export function OpenShiftManagerFixture() {
   );
 }
 
+/** NO_SHIFT after a manager closed the day: the new business day, nothing to press again. */
+export function DayClosedFixture() {
+  return (
+    <OpenShift
+      closeDay={
+        <CloseDayCardView thisTillShiftOpen={false} pending={false} error={null} nextBusinessDate="2026-10-13" onCloseDay={nothing} />
+      }
+    />
+  );
+}
+
 /** NO_SHIFT for someone who may not open it. */
 export function OpenShiftNoPermissionFixture() {
   return <OpenShift canOpenShift={false} />;
@@ -149,6 +160,11 @@ function Cash(props: Partial<Parameters<typeof CashView>[0]>) {
 /** Cash for a manager: the drawer, cash in and out, close shift, close the day. */
 export function CashFixture() {
   return <Cash />;
+}
+
+/** Cash for a cashier: cash in and out and Close shift, and no expected figure (the count stays blind). */
+export function CashCashierFixture() {
+  return <Cash showExpected={false} closeDay={null} />;
 }
 
 /** Cash for someone with none of the cash permissions: no expected figure either. */

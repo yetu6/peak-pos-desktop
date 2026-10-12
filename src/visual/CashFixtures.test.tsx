@@ -1,6 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { CashFixture, CloseCountFixture, CloseOverFixture, NoShiftFixture, OpenShiftManagerFixture } from "./CashFixtures";
+import {
+  CashCashierFixture,
+  CashFixture,
+  CloseCountFixture,
+  CloseOverFixture,
+  DayClosedFixture,
+  NoShiftFixture,
+  OpenShiftManagerFixture,
+} from "./CashFixtures";
 
 describe("CashFixtures", () => {
   it("renders opening the shift", () => {
@@ -17,6 +25,18 @@ describe("CashFixtures", () => {
   it("renders the Cash page", () => {
     render(<CashFixture />);
     expect(screen.getByTestId("cash-summary")).toBeInTheDocument();
+  });
+
+  it("renders a cashier's Cash page without the expected figure", () => {
+    render(<CashCashierFixture />);
+    expect(screen.getByTestId("open-close-shift")).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/expected/i);
+  });
+
+  it("renders the day closed, with nothing to press again", () => {
+    render(<DayClosedFixture />);
+    expect(screen.getByTestId("day-close-result")).toBeInTheDocument();
+    expect(screen.queryByTestId("close-business-day")).not.toBeInTheDocument();
   });
 
   it("renders the blind count and the manager approval", () => {
