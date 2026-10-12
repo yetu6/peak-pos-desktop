@@ -1,18 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { idleLockHeld } from "../lib/idleLock";
 import { ReceiptView } from "./ReceiptView";
 import type { POSReceipt } from "../lib/posContracts";
 
-const { reprintMutate, receiptRef, keys } = vi.hoisted(() => ({
+const { reprintMutate, receiptRef, keys, reprintState } = vi.hoisted(() => ({
   reprintMutate: vi.fn(),
   receiptRef: { data: undefined as POSReceipt | undefined, isLoading: false, isError: false },
   keys: { minted: 0 },
+  reprintState: { isPending: false },
 }));
 
 vi.mock("../hooks/usePosData", () => ({
   useReceipt: () => receiptRef,
-  useReprintReceipt: () => ({ mutate: reprintMutate, isPending: false, error: null }),
+  useReprintReceipt: () => ({ mutate: reprintMutate, isPending: reprintState.isPending, error: null }),
   useIdempotencyKey: () => ({ current: "", next: () => `key-${++keys.minted}` }),
   useMutationMessage: () => null,
 }));
@@ -112,6 +114,23 @@ describe("ReceiptView", () => {
     view.rerender(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
     await userEvent.click(screen.getByTestId("reprint-receipt"));
     expect(reprintMutate.mock.calls[2][0].idempotencyKey).not.toBe(first.idempotencyKey);
+  });
+
+  it("stays open, and keeps the till from locking, while a copy is with Yetu", async () => {
+    receiptRef.data = RECEIPT;
+    receiptRef.isLoading = false;
+    receiptRef.isError = false;
+    reprintState.isPending = true;
+    const onClose = vi.fn();
+    try {
+      render(<ReceiptView orderId="order-1" onClose={onClose} />);
+      expect(idleLockHeld()).toBe(true);
+      await userEvent.keyboard("{Escape}");
+      for (const close of screen.getAllByRole("button", { name: "Close" })) await userEvent.click(close);
+      expect(onClose).not.toHaveBeenCalled();
+    } finally {
+      reprintState.isPending = false;
+    }
   });
 
   it("surfaces receipt-unavailable rather than fabricating one", () => {

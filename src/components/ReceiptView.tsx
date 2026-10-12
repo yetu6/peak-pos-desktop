@@ -2,6 +2,7 @@ import { Printer } from "lucide-react";
 import { useMutationMessage, useReceipt, useReprintReceipt } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
 import type { POSReceipt } from "../lib/posContracts";
+import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRequestKey } from "../lib/useRequestKey";
 import { businessDayWords, clockTime, orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { Banner, Button, Dialog, Skeleton } from "./system";
@@ -23,6 +24,8 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
   // A copy asked for again after a lost answer reuses its key; each new copy (a new count) gets a new one.
   const requestKey = useRequestKey();
   const reprintError = useMutationMessage(reprint.error);
+  // The till doesn't lock itself while a copy is with Yetu.
+  useHoldIdleLock(reprint.isPending);
   return (
     <ReceiptSheet
       receipt={receipt.data}
@@ -62,13 +65,14 @@ export function ReceiptSheet({
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open) onClose();
+        // While a copy is with Yetu the receipt stays open, so its answer is seen.
+        if (!open && !reprinting) onClose();
       }}
       title="Receipt"
       testId="receipt-view"
       footer={
         <div className="y-options__footer">
-          <Button variant="quiet" onClick={onClose}>
+          <Button variant="quiet" disabled={reprinting} onClick={onClose}>
             Close
           </Button>
           <Button
