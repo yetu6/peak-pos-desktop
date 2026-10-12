@@ -14,6 +14,7 @@
 #   tests/e2e-live/live-api.sh seed   # cmd/e2e-seed -> Mama Rose + Savannah Crest fixture files
 #   tests/e2e-live/live-api.sh api    # build and run cmd/api on 127.0.0.1:18080 (foreground)
 #   tests/e2e-live/live-api.sh env    # print the variables the suites read (no secrets)
+#   tests/e2e-live/live-api.sh reset-limits  # start this API's per-address rate limits again
 #
 # Why a copy of an empty test database rather than a fresh CREATE DATABASE:
 # a fresh database needs fbc-peak's principals bootstrap replayed against it
@@ -121,6 +122,21 @@ cmd_api() {
     "$work/peak-api"
 }
 
+# The API's per-address limits (dev-login 30 an hour, pairing requests 30 an
+# hour, ...) count every run from this machine. They live in this API's own
+# Redis database, which nothing else uses, so a new run may start them again.
+cmd_reset_limits() {
+  case "$redis_db" in 0|1) echo "refusing: Redis db ${redis_db} is shared (0: the local stack, 1: the integration suite)" >&2; exit 1 ;; esac
+  local keys
+  keys="$(docker exec -e REDISCLI_AUTH="$(value PEAK_LOCAL_REDIS_PASSWORD)" peak-redis \
+    redis-cli -n "$redis_db" --scan --pattern 'peak:ratelimit:*')"
+  if [ -n "$keys" ]; then
+    printf '%s\n' "$keys" | docker exec -i -e REDISCLI_AUTH="$(value PEAK_LOCAL_REDIS_PASSWORD)" peak-redis \
+      sh -c "xargs redis-cli -n $redis_db DEL" >/dev/null
+  fi
+  echo "cleared $(printf '%s' "$keys" | grep -c . || true) rate-limit counters in Redis db ${redis_db}"
+}
+
 cmd_env() {
   cat <<EOF
 PEAK_JOURNEY_BASE_URL=http://127.0.0.1:${port}
@@ -134,5 +150,6 @@ case "${1:-}" in
   seed) cmd_seed ;;
   api) cmd_api ;;
   env) cmd_env ;;
-  *) echo "usage: $0 db|seed|api|env" >&2; exit 2 ;;
+  reset-limits) cmd_reset_limits ;;
+  *) echo "usage: $0 db|seed|api|env|reset-limits" >&2; exit 2 ;;
 esac
