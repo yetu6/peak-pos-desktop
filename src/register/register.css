@@ -398,6 +398,7 @@
 }
 
 .y-pay__pane { display: grid; gap: var(--space-4); }
+.y-pay__pane-wrap { display: grid; }
 
 .y-pay__step {
   margin: 0;

@@ -184,6 +184,10 @@ export function PaySheetView({
   const [reference, setReference] = useState("");
   const [stayId, setStayId] = useState<string | null>(initialStayId ?? null);
   const methodRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const paneRef = useRef<HTMLDivElement>(null);
+  // Focus moves into a method's field when the sheet opens and when a method
+  // is pressed (click or Enter), never when the arrow keys move between methods.
+  const focusPane = useRef(true);
 
   // Each payment Yetu records gives the order a new version: what was typed
   // for it is cleared, so a second tap can't record the same money again.
@@ -210,11 +214,18 @@ export function PaySheetView({
   const over = amount != null && amount > due;
   const chosenStay = candidates.find((candidate) => candidate.stayId === stayId) ?? null;
 
-  function chooseMethod(next: Method) {
+  function chooseMethod(next: Method, pressed: boolean) {
+    focusPane.current = pressed;
     setMethod(next);
     setAmountText("");
     setReference("");
   }
+
+  useEffect(() => {
+    if (!focusPane.current) return;
+    focusPane.current = false;
+    paneRef.current?.querySelector<HTMLInputElement>("input")?.focus();
+  }, [method]);
 
   function onMethodKey(event: KeyboardEvent<HTMLDivElement>) {
     const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
@@ -224,7 +235,7 @@ export function PaySheetView({
     const open = methods.filter(usable);
     const index = open.indexOf(method);
     const next = open[(index + (forward ? 1 : -1) + open.length) % open.length];
-    chooseMethod(next);
+    chooseMethod(next, false);
     methodRefs.current[methods.indexOf(next)]?.focus();
   }
 
@@ -293,7 +304,7 @@ export function PaySheetView({
                 disabled={!usable(candidate) || pending}
                 data-testid={`method-${candidate}`}
                 className="y-pay__method"
-                onClick={() => chooseMethod(candidate)}
+                onClick={() => chooseMethod(candidate, true)}
               >
                 {paymentMethodWords(candidate)}
               </button>
@@ -305,6 +316,7 @@ export function PaySheetView({
         </section>
 
         <section className="y-pay__right" aria-label={paymentMethodWords(method)}>
+          <div ref={paneRef} className="y-pay__pane-wrap">
           {method === "CASH" ? (
             <form
               className="y-pay__pane"
@@ -322,7 +334,6 @@ export function PaySheetView({
                 value={received}
                 onValueChange={(text) => setReceived(text)}
                 inputTestId="amount-received"
-                autoFocus
               />
               <Keypad label="Cash received" variant="money" onKey={onCashKey} testIdPrefix="cash-key" />
               <p className="y-pay__change" data-testid="change-due" aria-live="polite">
@@ -349,7 +360,7 @@ export function PaySheetView({
                   setStayId(null);
                 }}
                 size={56}
-                inputProps={{ "data-testid": "room-query", autoFocus: true } as Record<string, unknown>}
+                inputProps={{ "data-testid": "room-query" } as Record<string, unknown>}
               />
               <div className="y-pay__rooms" aria-label="Guests staying">
                 {!searched ? (
@@ -435,6 +446,7 @@ export function PaySheetView({
               </Button>
             </form>
           )}
+          </div>
           <p className="y-pay__recorded" role="status" data-testid="tender-recorded">
             {recordedMinor != null && due > 0
               ? `Recorded ${formatMoney(recordedMinor, currency)}. ${formatMoney(due, currency)} still to pay.`

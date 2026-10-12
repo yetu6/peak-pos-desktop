@@ -271,6 +271,23 @@ describe("PaySheet", () => {
     expect(screen.getByRole("radio", { name: "Mobile money" })).toHaveFocus();
   });
 
+  it("arrowing onto a method keeps focus on the methods; pressing one moves into its field", async () => {
+    refs.roomAvailable = true;
+    renderPay();
+    screen.getByRole("radio", { name: "Cash" }).focus();
+    await userEvent.keyboard("{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}");
+    expect(screen.getByRole("radio", { name: "Charge to room" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Charge to room" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("radio", { name: "Other" })).toBeChecked();
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("radio", { name: "Bank transfer" })).toHaveFocus();
+    await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
+    expect(screen.getByTestId("room-query")).toHaveFocus();
+    await userEvent.click(screen.getByRole("radio", { name: "Cash" }));
+    expect(screen.getByTestId("amount-received")).toHaveFocus();
+  });
+
   it("Enter in the cash field takes the cash", async () => {
     renderPay();
     await userEvent.type(screen.getByTestId("amount-received"), "42500{Enter}");
