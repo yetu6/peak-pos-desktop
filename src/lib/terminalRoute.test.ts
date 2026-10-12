@@ -24,6 +24,12 @@ describe("terminalRoute", () => {
     expect(terminalRoute("ready", true, true)).toBe("OPERATIONAL");
   });
 
+  it("sends a kitchen or bar display with no shift straight to its board (it takes no cash)", () => {
+    expect(terminalRoute("ready", true, false, { shiftRequired: false })).toBe("OPERATIONAL");
+    // A till still needs its shift.
+    expect(terminalRoute("ready", true, false, { shiftRequired: true })).toBe("NO_SHIFT");
+  });
+
   it("throws on an unrouted phase instead of silently falling through to a screen", () => {
     // @ts-expect-error deliberately invalid phase to exercise the exhaustiveness guard
     expect(() => terminalRoute("bogus", true, true)).toThrow(/unrouted terminal phase/);

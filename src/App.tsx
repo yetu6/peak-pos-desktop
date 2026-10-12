@@ -31,7 +31,7 @@ import { personLabel } from "./lib/staffLabel";
 import { terminalRoute } from "./lib/terminalRoute";
 import { applyModeDefaultTheme } from "./lib/theme";
 import { clockTime, shiftChipWords } from "./lib/words";
-import { defaultWorkspacePage, workspaceNav, type WorkspacePage } from "./lib/workspace";
+import { defaultWorkspacePage, isDisplayMode, workspaceNav, type WorkspacePage } from "./lib/workspace";
 import { TillShell } from "./shell/TillShell";
 
 type Page = WorkspacePage;
@@ -135,15 +135,18 @@ function RealtimeSession({ children }: { children: ReactNode }) {
  * conditionally within one component, honoring the Rules of Hooks.
  */
 function ReadyGate() {
-  const { session } = useDeviceSession();
+  const { session, identity } = useDeviceSession();
   const offlineCash = session?.mode === "offline-cash";
   const { shift, isLoading: shiftLoading } = usePosShift();
   // Offline cash resumes a lease-bound shift locally — never open a new one
-  // while Peak is unreachable (ONLINE REQUIRED for OpenShift).
+  // while Peak is unreachable (ONLINE REQUIRED for OpenShift). A kitchen or
+  // bar display takes no cash, so it needs no shift (owner, 2026-10-12; Yetu's
+  // station-ticket routes check no shift either).
   const route = terminalRoute(
     "ready",
     offlineCash || !shiftLoading,
     offlineCash || Boolean(shift),
+    { shiftRequired: !isDisplayMode(identity?.mode) },
   );
   return (
     <>

@@ -10,8 +10,9 @@
  * Kitchen moves it Start, Ready, Served (whole-order steps, one key each) ->
  * Orders shows it served, with its sent time -> it is paid from its detail ->
  * Paid this shift lists it and prints a copy of its receipt -> order B is sent
- * and a kitchen display, paired as one, moves its station ticket through the
- * same steps -> Orders shows order B served by the kitchen.
+ * and a kitchen display, paired as one and with no shift open (a display takes
+ * no cash), moves its station ticket through the same steps -> Orders shows
+ * order B served by the kitchen.
  *
  * The same stand-ins as till.live.spec.ts: a browser key store, printing
  * claimed and reported as failed ("No printer is configured"), realtime
@@ -260,8 +261,13 @@ test("orders and the kitchen on the redesigned till, against the live API", asyn
       });
       const signedIn = await signInWithPin(display, roster, seeded.cashierStaffId, seeded.cashierPin, kds.pin);
       await body(signedIn.catalogResponse);
-      // The till asks every mode for a shift before its work (an existing rule; reported).
-      await openShift(display, 0, kds.tap);
+      // A display takes no cash, so it opens no shift (owner, 2026-10-12): straight to its board.
+      // Yetu has no shift for it: the display's own check answers 404, and it never asks to open one.
+      await expect(display.getByTestId("shell-state")).toHaveText("OPERATIONAL");
+      await expect(display.getByTestId("open-shift")).toHaveCount(0);
+      await expect
+        .poll(() => kdsEvidence.calls.filter((call) => call.startsWith("GET /api/v1/pos/shifts/current ")).at(-1))
+        .toBe("GET /api/v1/pos/shifts/current -> 404");
       await expect(display.getByTestId("terminal-navigation")).toHaveCount(0);
       await expect(display.getByTestId("kitchen-board")).toBeVisible();
 
@@ -293,6 +299,7 @@ test("orders and the kitchen on the redesigned till, against the live API", asyn
           await expect(card).toHaveCount(0);
         }
       }
+      expect(kdsEvidence.calls.filter((call) => call.startsWith("POST /api/v1/pos/shifts")), "the display opened no shift").toEqual([]);
       expect(kdsEvidence.pageErrors, "uncaught errors on the kitchen display").toEqual([]);
       await testInfo.attach("kitchen-display-api-calls.txt", { body: kdsEvidence.calls.join("\n"), contentType: "text/plain" });
       expect(kds.swallowed(), "taps the idle-lock countdown took on the display").toBe(0);

@@ -24,11 +24,14 @@ export type TerminalRoute =
  * `shift`/`shiftKnown` pair models the shift lifecycle:
  * an authenticated staff member with no open shift gets a dedicated Open
  * Shift workspace, never the operational register in a half-disabled state.
+ * A device that takes no cash (a kitchen or bar display) needs no shift:
+ * `shiftRequired: false` sends it straight to its work.
  */
 export function terminalRoute(
   phase: DevicePhase,
   shiftKnown: boolean,
   hasOpenShift: boolean,
+  { shiftRequired = true }: { shiftRequired?: boolean } = {},
 ): TerminalRoute {
   switch (phase) {
     case "bootstrapping":
@@ -42,7 +45,7 @@ export function terminalRoute(
     case "locked":
       return "LOCKED";
     case "ready":
-      return shiftKnown && !hasOpenShift ? "NO_SHIFT" : "OPERATIONAL";
+      return shiftRequired && shiftKnown && !hasOpenShift ? "NO_SHIFT" : "OPERATIONAL";
     default: {
       // Exhaustiveness guard: a new DevicePhase value fails the build here
       // instead of silently falling through to an arbitrary screen.
