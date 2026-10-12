@@ -30,6 +30,7 @@ const REALTIME_LABEL: Record<string, string> = {
 function updateWords(note: UpdateNote | null): string {
   if (!note) return "No update problems since the till started.";
   if (note.kind === "ready") return "An update is ready. It installs the next time the till is locked.";
+  if (note.kind === "download-failed") return "An update was found but didn't download. It will try again.";
   if (note.kind === "install-failed") {
     return `An update didn't install at ${clockTime(note.at)}. The till keeps working; it will try again later.`;
   }

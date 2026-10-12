@@ -99,6 +99,13 @@ describe("Diagnostics", () => {
     );
   });
 
+  it("says when a found update didn't download", () => {
+    healthy();
+    noteUpdate({ kind: "download-failed", detail: "download interrupted", at: new Date(2026, 9, 12, 14, 5) });
+    render(<Diagnostics />);
+    expect(screen.getByTestId("diag-updates")).toHaveTextContent("An update was found but didn't download. It will try again.");
+  });
+
   it("says when no update problem has been seen", () => {
     healthy();
     render(<Diagnostics />);

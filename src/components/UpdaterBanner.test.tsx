@@ -19,6 +19,12 @@ vi.mock("../hooks/useShiftSafeUpdater", () => ({
   useShiftSafeUpdater: () => ({ status: updater.status, blockedReason: updater.blockedReason, installNow: vi.fn() }),
 }));
 
+const device = vi.hoisted(() => ({ phase: "ready" as string }));
+
+vi.mock("../auth/DeviceSessionProvider", () => ({
+  useDeviceSession: () => ({ phase: device.phase }),
+}));
+
 function show(status: Status, blockedReason: string | null = null) {
   updater.status = status;
   updater.blockedReason = blockedReason;
@@ -27,6 +33,7 @@ function show(status: Status, blockedReason: string | null = null) {
 beforeEach(() => {
   resetUpdateNotes();
   show({ kind: "idle" });
+  device.phase = "ready";
 });
 
 describe("UpdaterBanner", () => {
@@ -49,12 +56,24 @@ describe("UpdaterBanner", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("stays quiet when a download fails", () => {
-    show({ kind: "downloading", version: "0.2.0" });
+  it("stays quiet when a found update fails to download, and records it as that", () => {
+    show({ kind: "available", version: "0.2.0" });
     const { container, rerender } = render(<UpdaterBanner />);
+    show({ kind: "downloading", version: "0.2.0" });
+    rerender(<UpdaterBanner />);
     show({ kind: "error", message: "download interrupted" });
     rerender(<UpdaterBanner />);
     expect(container).toBeEmptyDOMElement();
+    expect(lastUpdateNote()).toMatchObject({ kind: "download-failed", detail: "download interrupted" });
+  });
+
+  it("does not call a later check's failure an install failure while the shift is on", () => {
+    device.phase = "ready";
+    show({ kind: "ready", version: "0.2.0" }, "Finish the shift or switch staff before installing an update.");
+    const { rerender } = render(<UpdaterBanner />);
+    show({ kind: "error", message: "Could not fetch a valid release JSON from the remote" });
+    rerender(<UpdaterBanner />);
+    expect(screen.queryByTestId("updater-failed")).not.toBeInTheDocument();
     expect(lastUpdateNote()?.kind).toBe("check-failed");
   });
 
@@ -75,6 +94,7 @@ describe("UpdaterBanner", () => {
   });
 
   it("says in words when a ready update fails to install", () => {
+    device.phase = "locked";
     show({ kind: "ready", version: "0.2.0" }, null);
     const { rerender } = render(<UpdaterBanner />);
     show({ kind: "error", message: "os error 5: access denied" });

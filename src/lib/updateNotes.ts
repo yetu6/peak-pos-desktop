@@ -6,7 +6,7 @@ import { useSyncExternalStore } from "react";
  * never shown as a banner.
  */
 export interface UpdateNote {
-  kind: "check-failed" | "ready" | "install-failed";
+  kind: "check-failed" | "download-failed" | "ready" | "install-failed";
   /** The updater's own message, for a technician. */
   detail?: string;
   at: Date;
