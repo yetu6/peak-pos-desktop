@@ -18,6 +18,10 @@ export class RealtimeClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private attempt = 0;
   private disposed = false;
+  // Each connect is one attempt; a later connect or a dispose makes the earlier
+  // attempt's late catch-up, socket and close count for nothing.
+  private generation = 0;
+  private starting = false;
   private cursor: number;
   private state: ConnectionState = { phase: "disconnected", attempt: 0, lastError: null, established: false, resyncGeneration: 0 };
   onEvent: (event: RealtimeEnvelope) => void = () => {};
@@ -48,13 +52,27 @@ export class RealtimeClient {
     if (this.socket?.readyState === WebSocket.OPEN) this.command("unsubscribe", topic);
   }
 
+  /**
+   * Opens the connection. Safe to call again after dispose(): React's
+   * StrictMode runs an effect, its cleanup, then the effect again, and the
+   * till must end up with exactly one open socket.
+   */
   connect(): void {
-    if (this.disposed || this.socket) return;
-    void this.runBackfill().finally(() => this.open());
+    if (this.socket || this.starting) return;
+    this.disposed = false;
+    this.starting = true;
+    const generation = ++this.generation;
+    void this.runBackfill().finally(() => {
+      if (generation !== this.generation) return;
+      this.starting = false;
+      this.open(generation);
+    });
   }
 
   dispose(): void {
     this.disposed = true;
+    this.generation += 1;
+    this.starting = false;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     const socket = this.socket;
     this.socket = null;
@@ -67,8 +85,8 @@ export class RealtimeClient {
     try { (await this.options.backfillEvents(this.cursor)).forEach((event) => this.deliver(event)); } catch { /* snapshots recover on connect */ }
   }
 
-  private open(): void {
-    if (this.disposed) return;
+  private open(generation: number): void {
+    if (this.disposed || generation !== this.generation) return;
     this.setState({ phase: this.state.established ? "reconnecting" : "connecting", attempt: this.attempt });
     const socket = this.options.createSocket();
     this.socket = socket;
@@ -86,7 +104,7 @@ export class RealtimeClient {
     socket.onerror = () => this.setState({ lastError: "websocket error" });
     socket.onclose = (event) => {
       if (this.socket === socket) this.socket = null;
-      if (!this.disposed) this.scheduleReconnect(event.reason || "websocket closed");
+      if (!this.disposed && generation === this.generation) this.scheduleReconnect(event.reason || "websocket closed");
     };
   }
 

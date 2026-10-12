@@ -41,3 +41,31 @@ describe("Go POS realtime client", () => {
     expect(parseEnvelope(JSON.stringify({ eventId: "old" }))).toBeNull();
   });
 });
+
+describe("connect after dispose (a StrictMode remount)", () => {
+  it("connects again with one socket: the first attempt's late catch-up opens nothing", async () => {
+    const sockets: FakeSocket[] = [];
+    let finishFirst: () => void = () => {};
+    let calls = 0;
+    const client = new RealtimeClient({
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket as unknown as WebSocket;
+      },
+      backfillEvents: () => {
+        calls += 1;
+        if (calls === 1) return new Promise((resolve) => (finishFirst = () => resolve([])));
+        return Promise.resolve([]);
+      },
+    });
+    client.connect();
+    client.dispose();
+    client.connect();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sockets).toHaveLength(1);
+    finishFirst();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sockets).toHaveLength(1);
+  });
+});
