@@ -94,7 +94,8 @@ export function Kitchen() {
 
   // A step Yetu took is let go once Yetu's list shows the ticket moved on (a
   // new version, or gone from the board). A list from before the step keeps
-  // it held, so the same step can't be sent twice.
+  // it held, so the same step can't be sent twice. It is checked again when
+  // Yetu's answer arrives, as the list may already have shown the move.
   useEffect(() => {
     setHeld((current) => {
       let next: Map<string, Held> | null = null;
@@ -108,7 +109,7 @@ export function Kitchen() {
       }
       return next ?? current;
     });
-  }, [tickets]);
+  }, [tickets, held]);
 
   // A chime for each ticket that arrives while the board is open.
   useEffect(() => {

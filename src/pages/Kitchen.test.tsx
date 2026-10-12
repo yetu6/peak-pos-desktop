@@ -248,9 +248,10 @@ describe("Kitchen on a selling till (whole orders)", () => {
     expect(screen.getByTestId("kitchen-next-order-1")).toBeEnabled();
   });
 
-  it("keeps a step held while it is with Yetu, even if the list changes meanwhile", async () => {
+  it("keeps a step held while it is with Yetu, even if the list changes meanwhile, and lets it go once Yetu answers", async () => {
     ordersStore.set("order-1", SENT_ORDER);
-    transitionStatusSpy.mockImplementationOnce(() => new Promise<Result>(() => undefined));
+    let answer: (value: Result) => void = () => undefined;
+    transitionStatusSpy.mockImplementationOnce(() => new Promise<Result>((resolve) => (answer = resolve)));
     const socket = renderKitchen();
     await userEvent.click(await screen.findByTestId("kitchen-next-order-1"));
     ordersStore.set("order-1", { ...SENT_ORDER, status: "PREPARING", version: 3 });
@@ -259,6 +260,12 @@ describe("Kitchen on a selling till (whole orders)", () => {
     socket.emit(announce(1, "pos.order.preparing", "order-1"));
     await waitFor(() => expect(screen.getByTestId("kitchen-next-order-1")).toHaveTextContent("Marking ready…"));
     expect(screen.getByTestId("kitchen-next-order-1")).toBeDisabled();
+
+    // Yetu answers after its list already showed the move: the list it sends next says
+    // nothing new, yet the step is let go.
+    await act(async () => answer({ data: undefined, error: null }));
+    await waitFor(() => expect(screen.getByTestId("kitchen-next-order-1")).toHaveTextContent("Ready"));
+    expect(screen.getByTestId("kitchen-next-order-1")).toBeEnabled();
   });
 
   it("says why Yetu refused, as an alert, and lets the person try again", async () => {
