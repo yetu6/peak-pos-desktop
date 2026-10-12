@@ -93,7 +93,10 @@ body.dark-theme .brand-lockup .brand-lockup__on-dark { display: block; }
     margin: 0;
   }
 
+  /* The till fills one window and never scrolls as a page; screens scroll
+     inside their own areas. */
   html {
+    overflow: hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }

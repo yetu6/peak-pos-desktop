@@ -4,9 +4,11 @@
  * bar displays have no rail.
  */
 
+/* 100% rather than 100vw: when a dialog locks scrolling and pads the page,
+   the shell still fits inside it. */
 .terminal-shell {
   display: grid;
-  width: 100vw;
+  width: 100%;
   height: 100dvh;
   min-width: 1024px;
   min-height: 768px;
@@ -61,14 +63,15 @@
   white-space: nowrap;
 }
 
-/* The shift (or mode) chip keeps its words whole; the till's name and the
-   connection chip give way first on a compact screen. */
-.y-topbar .y-chip {
-  flex: 0 1 auto;
-  min-width: 0;
-}
+/* Chips keep their words whole (a status cut to "Onli…" says nothing); the
+   till's name and the person's name give way on a compact screen. */
+.y-topbar .y-chip { flex: none; }
 
-.y-topbar .y-topbar__status { flex: none; }
+/* Buttons in the bar keep their words on one line and never shrink. */
+.y-topbar > .y-button {
+  flex: none;
+  white-space: nowrap;
+}
 
 /* The shift chip: full words on regular and wide screens, shorter on compact. */
 .y-shift__short { display: none; }
@@ -111,16 +114,17 @@
 }
 
 /* ------------------------------------------------------------- Person menu */
+/* The person's name gives way before the connection chip; the menu shows it in full. */
 .y-person {
   position: relative;
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 0 4 auto;
 }
 
 .y-person__trigger {
   display: inline-flex;
   min-width: var(--target-min);
-  max-width: 240px;
+  max-width: min(240px, 100%);
   min-height: var(--target-min);
   align-items: center;
   gap: var(--space-2);
@@ -400,7 +404,7 @@
     clip: rect(0 0 0 0);
     white-space: nowrap;
   }
-  .y-person__trigger { max-width: 220px; }
+  .y-person__trigger { max-width: min(220px, 100%); }
   .y-shift__full { display: none; }
   .y-shift__short { display: inline; }
   .y-rail__item { min-height: 76px; }

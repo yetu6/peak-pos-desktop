@@ -57,7 +57,9 @@ async function measure(page: Page): Promise<Finding[]> {
       };
 
       // No horizontal overflow: nothing reaches past the window unless a
-      // container inside the window clips it or scrolls it on purpose.
+      // container inside the window scrolls it on purpose. Content that a
+      // clipping container cuts off (the shell clips at the window's edge)
+      // cannot be reached, so it counts.
       if (document.documentElement.scrollWidth > viewportWidth + 1) {
         findings.push({ key: "overflow", detail: `the page is ${document.documentElement.scrollWidth}px wide in a ${viewportWidth}px window` });
       }
@@ -67,7 +69,8 @@ async function measure(page: Page): Promise<Finding[]> {
         if (rect.right <= viewportWidth + 1 && rect.left >= -1) continue;
         let contained = false;
         for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
-          if (getComputedStyle(parent).overflowX !== "visible") {
+          const overflowX = getComputedStyle(parent).overflowX;
+          if (overflowX === "auto" || overflowX === "scroll") {
             const box = parent.getBoundingClientRect();
             if (box.right <= viewportWidth + 1 && box.left >= -1) {
               contained = true;
