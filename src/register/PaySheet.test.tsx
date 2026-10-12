@@ -38,10 +38,11 @@ const { recordTenderMutate, chargeToRoomMutate, refs } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../hooks/usePosData", () => ({
+vi.mock("../hooks/usePosData", async (importOriginal) => ({
+  // The real key generator: a retry must reuse its key, a new request must not.
+  useIdempotencyKey: (await importOriginal<typeof import("../hooks/usePosData")>()).useIdempotencyKey,
   useRecordTender: () => ({ mutate: recordTenderMutate, ...refs.tender }),
   useChargeToRoom: () => ({ mutate: chargeToRoomMutate, isPending: false, error: null }),
-  useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
   useRoomChargeAvailability: () => ({ data: refs.roomAvailable }),
   useRoomChargeCandidates: (query: string) => ({ data: query ? refs.candidates : [], isFetching: false }),
   useOrder: () => ({ data: undefined, refetch: refs.refetchOrder }),
@@ -320,6 +321,81 @@ describe("PaySheet", () => {
       expect.objectContaining({ amountMinor: 3_250_000, version: 5 }),
       expect.anything(),
     );
+  });
+
+  describe("idempotency keys", () => {
+    const keyOf = (call: number) => (recordTenderMutate.mock.calls[call][0] as { idempotencyKey: string }).idempotencyKey;
+    const lost = (_vars: unknown, opts?: { onError?: (error: Error) => void }) => opts?.onError?.(new TypeError("Failed to fetch"));
+
+    it("a retry after a lost response sends the same key", async () => {
+      recordTenderMutate.mockImplementationOnce(lost);
+      renderPay();
+      await userEvent.click(screen.getByRole("radio", { name: "Card (own machine)" }));
+      await userEvent.click(pay());
+      await userEvent.click(pay());
+      expect(recordTenderMutate).toHaveBeenCalledTimes(2);
+      expect(keyOf(0)).toMatch(/^[0-9a-f-]{36}$/);
+      expect(keyOf(1)).toBe(keyOf(0));
+    });
+
+    it("a changed amount is a new request with a new key", async () => {
+      recordTenderMutate.mockImplementationOnce(lost);
+      renderPay();
+      await userEvent.click(screen.getByRole("radio", { name: "Card (own machine)" }));
+      await userEvent.click(pay());
+      await userEvent.type(screen.getByTestId("tender-amount"), "10000");
+      await userEvent.click(pay());
+      expect(keyOf(1)).not.toBe(keyOf(0));
+    });
+
+    it("after Yetu records a payment, the next payment has a new key", async () => {
+      recordTenderMutate.mockImplementationOnce((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
+        opts?.onSuccess?.({ ...ORDER, paidMinor: 1_000_000, remainingMinor: 3_250_000, version: 3 }),
+      );
+      renderPay();
+      await userEvent.type(screen.getByTestId("amount-received"), "10000");
+      await userEvent.click(pay());
+      await userEvent.type(screen.getByTestId("amount-received"), "10000");
+      await userEvent.click(pay());
+      expect(keyOf(1)).not.toBe(keyOf(0));
+    });
+
+    it("a room charge retried after a lost response keeps its key", async () => {
+      refs.roomAvailable = true;
+      refs.candidates = [
+        { stayId: "stay-12", roomId: "room-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
+      ];
+      chargeToRoomMutate.mockImplementationOnce(lost);
+      renderPay();
+      await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
+      await userEvent.type(screen.getByTestId("room-query"), "12");
+      await userEvent.click(await screen.findByTestId("room-candidate-stay-12"));
+      await userEvent.click(screen.getByTestId("confirm-room-charge"));
+      await userEvent.click(screen.getByTestId("confirm-room-charge"));
+      const keys = chargeToRoomMutate.mock.calls.map(([vars]) => (vars as { idempotencyKey: string }).idempotencyKey);
+      expect(keys).toHaveLength(2);
+      expect(keys[1]).toBe(keys[0]);
+    });
+  });
+
+  it("a room charge to a different guest is a new request with a new key", async () => {
+    refs.roomAvailable = true;
+    refs.candidates = [
+      { stayId: "stay-12", roomId: "room-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
+      { stayId: "stay-14", roomId: "room-14", roomNumber: "14", guestDisplayName: "Daniel Mrema", postingEligible: true },
+    ];
+    chargeToRoomMutate.mockImplementationOnce((_vars: unknown, opts?: { onError?: (error: Error) => void }) =>
+      opts?.onError?.(new TypeError("Failed to fetch")),
+    );
+    renderPay();
+    await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
+    await userEvent.type(screen.getByTestId("room-query"), "1");
+    await userEvent.click(await screen.findByTestId("room-candidate-stay-12"));
+    await userEvent.click(screen.getByTestId("confirm-room-charge"));
+    await userEvent.click(screen.getByTestId("room-candidate-stay-14"));
+    await userEvent.click(screen.getByTestId("confirm-room-charge"));
+    const keys = chargeToRoomMutate.mock.calls.map(([vars]) => (vars as { idempotencyKey: string }).idempotencyKey);
+    expect(keys[1]).not.toBe(keys[0]);
   });
 
   it("says a changed order honestly", () => {

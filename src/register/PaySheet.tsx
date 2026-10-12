@@ -78,6 +78,17 @@ export function PaySheet({
   const chargeToRoom = useChargeToRoom();
   const tenderKey = useIdempotencyKey();
   const roomChargeKey = useIdempotencyKey();
+  // A retry of the same request (after a lost response) reuses its key, so Yetu
+  // records it once; a changed request, or the next one after a success, gets a new key.
+  const lastTender = useRef<{ request: string; key: string } | null>(null);
+  const lastRoomCharge = useRef<{ request: string; key: string } | null>(null);
+
+  function keyFor(last: { current: { request: string; key: string } | null }, request: string, fresh: () => string): string {
+    if (last.current?.request === request) return last.current.key;
+    const key = fresh();
+    last.current = { request, key };
+    return key;
+  }
   const roomAvailable = useRoomChargeAvailability().data === true;
   const candidates = useRoomChargeCandidates(needle);
   // The order as Yetu has it now, fetched again when another till changed it first.
@@ -119,10 +130,15 @@ export function PaySheet({
             amountMinor: request.amountMinor,
             reference: request.reference,
             version: live.version,
-            idempotencyKey: tenderKey.next(),
+            idempotencyKey: keyFor(
+              lastTender,
+              [request.method, request.amountMinor, request.reference ?? "", live.version].join("|"),
+              tenderKey.next,
+            ),
           },
           {
             onSuccess: (updated) => {
+              lastTender.current = null;
               setLive(updated);
               setRecorded(request.amountMinor);
               onOrderChange?.(updated);
@@ -138,10 +154,16 @@ export function PaySheet({
       }
       onChargeRoom={(candidate) =>
         chargeToRoom.mutate(
-          { orderId: live.id, stayId: candidate.stayId, idempotencyKey: roomChargeKey.current },
           {
-            onSuccess: (updated) =>
-              onPaid({ order: updated, method: "ROOM_CHARGE", changeMinor: 0, roomNumber: candidate.roomNumber }),
+            orderId: live.id,
+            stayId: candidate.stayId,
+            idempotencyKey: keyFor(lastRoomCharge, [candidate.stayId, live.version].join("|"), roomChargeKey.next),
+          },
+          {
+            onSuccess: (updated) => {
+              lastRoomCharge.current = null;
+              onPaid({ order: updated, method: "ROOM_CHARGE", changeMinor: 0, roomNumber: candidate.roomNumber });
+            },
           },
         )
       }
