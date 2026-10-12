@@ -59,6 +59,6 @@ describe("a refusal's code reaches the words", () => {
     // The hooks throw `new Error(JSON.stringify(error))` (usePosData unwrap); the screens read it back.
     const thrown = new Error(JSON.stringify(result.error));
     expect(problemOf(thrown)).toMatchObject({ code: "FORBIDDEN" });
-    expect(tenderProblem(thrown)?.words).toBe("Only a cashier or manager can take payment.");
+    expect(tenderProblem(thrown)?.words).toBe("Only a cashier or manager can take payment. Ask one to help.");
   });
 });

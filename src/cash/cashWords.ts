@@ -48,7 +48,7 @@ export function closeShiftProblem(
   // therefore arrives as a CONFLICT we don't name and gets the action's own
   // words. Kept for when the backend answers FORBIDDEN (recorded as a backend
   // follow-up).
-  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a cashier or manager can close the shift." };
+  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a cashier or manager can close the shift. Ask one to close it." };
   return { kind: "other", words: otherWords(problem, "The shift couldn't be closed. Try again.") };
 }
 
@@ -83,7 +83,7 @@ export function dayCloseProblem(
   if (/Night Audit/i.test(detail)) {
     return { kind: "night-audit", words: "This hotel closes the day with the night audit in Yetu, not on the till." };
   }
-  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a manager can close the day." };
+  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a manager can close the day. Ask one to close it." };
   return { kind: "other", words: otherWords(problem, "The day couldn't be closed. Try again.") };
 }
 
@@ -101,7 +101,7 @@ export function cashMovementProblem(error: unknown): CashProblem<"supervisor" | 
   }
   if (detail === "no open shift on this terminal") return { kind: "no-shift", words: "No shift is open on this till." };
   if (problem.code === "FORBIDDEN") {
-    return { kind: "permission", words: "Only a cashier or manager can put cash in or take it out." };
+    return { kind: "permission", words: "Only a cashier or manager can put cash in or take it out. Ask one to help." };
   }
   return { kind: "other", words: otherWords(problem, "That wasn't recorded. Try again.") };
 }
@@ -125,4 +125,13 @@ export function noteCountMinor(counts: Readonly<Record<number, number>>): number
     (total, [denomination, count]) => total + Number(denomination) * MINOR_PER_MAJOR * Math.max(0, Math.floor(count)),
     0,
   );
+}
+
+/** Opening the shift (pos.shift.open): who may, the connection, or the refusal in words. */
+export function openShiftProblem(error: unknown): CashProblem<never> | null {
+  const problem = problemOf(error);
+  if (!problem) return null;
+  if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a cashier or manager can open the shift. Ask one to open it." };
+  return { kind: "other", words: otherWords(problem, "The shift wasn't opened. Try again.") };
 }

@@ -1,11 +1,12 @@
 import { Printer } from "lucide-react";
-import { useMutationMessage, useReceipt, useReprintReceipt } from "../hooks/usePosData";
+import { useReceipt, useReprintReceipt } from "../hooks/usePosData";
+import { reprintProblem } from "../orders/ordersWords";
 import { formatMoney } from "../lib/money";
 import type { POSReceipt } from "../lib/posContracts";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRequestKey } from "../lib/useRequestKey";
 import { businessDayWords, clockTime, orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
-import { Banner, Button, Dialog, Skeleton } from "./system";
+import { Banner, Button, Dialog, RefusalNotice, Skeleton, type Refusal } from "./system";
 
 /** How the order was settled: one method, or SPLIT when more than one tender paid it. */
 function settledWords(method: string): string {
@@ -23,7 +24,7 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
   const reprint = useReprintReceipt();
   // A copy asked for again after a lost answer reuses its key; each new copy (a new count) gets a new one.
   const requestKey = useRequestKey();
-  const reprintError = useMutationMessage(reprint.error);
+  const reprintError = reprintProblem(reprint.error);
   // The till doesn't lock itself while a copy is with Yetu.
   useHoldIdleLock(reprint.isPending);
   return (
@@ -55,7 +56,8 @@ export function ReceiptSheet({
   loading: boolean;
   failed: boolean;
   reprinting: boolean;
-  reprintError: string | null;
+  /** Why Yetu didn't print a copy: a 403 shows as a permission notice. */
+  reprintError: Refusal | string | null;
   onReprint: () => void;
   onClose: () => void;
 }) {
@@ -166,11 +168,7 @@ export function ReceiptSheet({
             </p>
           </div>
         ) : null}
-        {reprintError ? (
-          <Banner inline tone="danger" data-testid="reprint-error">
-            {reprintError}
-          </Banner>
-        ) : null}
+        {reprintError ? <RefusalNotice refusal={reprintError} data-testid="reprint-error" /> : null}
       </div>
     </Dialog>
   );

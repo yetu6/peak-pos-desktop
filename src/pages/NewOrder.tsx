@@ -8,7 +8,6 @@ import {
   useCreateOrder,
   useHasPermission,
   useIdempotencyKey,
-  useMutationMessage,
   usePosShift,
   usePrintAfter,
   usePropertyId,
@@ -26,6 +25,7 @@ import { NoteSheet } from "../register/NoteSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
 import { TicketActions } from "../register/TicketActions";
 import { TicketPanel } from "../register/TicketPanel";
+import { sellProblem } from "../register/registerWords";
 import type { POSCatalogProduct, POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 
 /**
@@ -68,12 +68,15 @@ export function NewOrder() {
   const sendKey = useIdempotencyKey();
   const removeKey = useIdempotencyKey();
 
-  const createError = useMutationMessage(createOrder.error);
-  const addError = useMutationMessage(addItem.error);
-  const removeError = useMutationMessage(removeItem.error);
-  const sendError = useMutationMessage(sendOrder.error);
-  const availabilityError = useMutationMessage(setAvailability.error);
-  const mutationError = createError ?? addError ?? removeError ?? sendError ?? availabilityError ?? actionError;
+  const createProblem = sellProblem(createOrder.error, "create");
+  const addProblem = sellProblem(addItem.error, "add");
+  const removeProblem = sellProblem(removeItem.error, "remove");
+  const sendProblem = sellProblem(sendOrder.error, "send");
+  const availabilityProblem = sellProblem(setAvailability.error, "availability");
+  const createError = createProblem?.words ?? null;
+  const addError = addProblem?.words ?? null;
+  const mutationError = createProblem ?? addProblem ?? removeProblem ?? sendProblem ?? availabilityProblem ?? actionError;
+
 
   const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || sendOrder.isPending;
   const canMutate = Boolean(shift) && !busy;

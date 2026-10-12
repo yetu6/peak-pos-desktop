@@ -356,3 +356,17 @@ describe("CloseShiftSheet after too many attempts (429)", () => {
     expect(screen.queryByTestId("close-shift-error")).not.toBeInTheDocument();
   });
 });
+
+describe("CloseShiftSheet for a role that can't close it (403)", () => {
+  it("says who can, as a permission notice", async () => {
+    closeAsync.mockRejectedValueOnce(
+      new Error(JSON.stringify({ type: "about:blank", title: "Forbidden.", status: 403, code: "FORBIDDEN", detail: "POS permission denied", request_id: "req-3" })),
+    );
+    renderSheet();
+    await count("74000");
+    await userEvent.click(screen.getByTestId("close-shift"));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveClass("y-permission");
+    expect(alert).toHaveTextContent("Only a cashier or manager can close the shift. Ask one to close it.");
+  });
+});

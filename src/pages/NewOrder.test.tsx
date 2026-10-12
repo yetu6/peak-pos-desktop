@@ -503,4 +503,39 @@ describe("NewOrder", () => {
     expect(await screen.findByRole("dialog", { name: "Double burger" })).toBeInTheDocument();
     expect(addItemSpy).not.toHaveBeenCalled();
   });
+
+  describe("refusals and recovery (S6)", () => {
+    /** Yetu's refusal for a role without the permission (internal/pos/errors.go writeDomainError). */
+    const FORBIDDEN = { type: "about:blank", title: "Forbidden.", status: 403, code: "FORBIDDEN", detail: "POS permission denied", request_id: "req-1" };
+
+    async function ticketWithOneLine() {
+      renderNewOrder();
+      const dish = await screen.findByTestId("menu-Nyama Choma");
+      await waitFor(() => expect(dish).not.toHaveAttribute("aria-disabled"));
+      await userEvent.click(dish);
+      await waitFor(() => expect(screen.getByTestId("send-order")).toBeEnabled());
+    }
+
+    it("a refused send says who may send, as a permission notice, never the code", async () => {
+      sendOrderSpy.mockResolvedValueOnce({ data: undefined, error: FORBIDDEN } as never);
+      await ticketWithOneLine();
+      await userEvent.click(screen.getByTestId("send-order"));
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Only staff who take orders can send them to the kitchen. Ask one to help.");
+      expect(alert).toHaveClass("y-permission");
+      expect(document.body).not.toHaveTextContent(/403|FORBIDDEN|permission denied/i);
+    });
+
+    it("a refused add says who may take orders, as a permission notice", async () => {
+      addItemSpy.mockResolvedValueOnce({ data: undefined, error: FORBIDDEN } as never);
+      renderNewOrder();
+      const dish = await screen.findByTestId("menu-Nyama Choma");
+      await waitFor(() => expect(dish).not.toHaveAttribute("aria-disabled"));
+      await userEvent.click(dish);
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Only staff who take orders can add items to an order. Ask one to help.");
+      expect(alert).toHaveClass("y-permission");
+    });
+
+  });
 });

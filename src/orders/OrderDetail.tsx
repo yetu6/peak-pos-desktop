@@ -1,6 +1,6 @@
 import { ChefHat, Printer, Trash2, Wallet } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { Banner, Button, PermissionNotice, Sheet, StatusChip, TicketLine } from "../components/system";
+import { Button, PermissionNotice, RefusalNotice, Sheet, StatusChip, TicketLine, type Refusal } from "../components/system";
 import {
   usePrintAfter,
   usePropertyId,
@@ -32,7 +32,8 @@ export interface OrderDetailViewProps {
   /** pos.payment.record: take payment, and print a copy of a receipt. */
   canPay: boolean;
   pending: DetailPending;
-  problem: string | null;
+  /** Why Yetu refused the last action: a 403 shows as a permission notice. */
+  problem: Refusal | string | null;
   result: string | null;
   selectedLineId: string | null;
   onSelectLine: (lineId: string | null) => void;
@@ -214,11 +215,7 @@ export function OrderDetailView({
             {result ?? ""}
           </p>
         </div>
-        {problem ? (
-          <Banner inline tone="danger" data-testid="order-detail-error">
-            {problem}
-          </Banner>
-        ) : null}
+        {problem ? <RefusalNotice refusal={problem} data-testid="order-detail-error" /> : null}
 
         {order.notes?.trim() ? (
           <p className="y-detail__note" data-testid="order-detail-note">
@@ -369,7 +366,7 @@ export function OrderDetail({
   const reprintKey = useRequestKey();
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<Refusal | null>(null);
   const focusAfter = useRef(false);
 
   const pending: DetailPending = sendOrder.isPending ? "send" : removeItem.isPending ? "remove" : reprint.isPending ? "reprint" : null;
@@ -406,7 +403,7 @@ export function OrderDetail({
         },
         onError: (error) => {
           const refusal = sendProblem(error);
-          setProblem(refusal?.words ?? "The order wasn't sent. Try again.");
+          setProblem(refusal ?? { kind: "other", words: "The order wasn't sent. Try again." });
           // Only a lost answer is asked again under its key.
           if (refusal?.kind !== "network") sendKey.forget();
           // It may have changed on another till: show it as Yetu has it now.
@@ -434,7 +431,7 @@ export function OrderDetail({
         },
         onError: (error) => {
           const refusal = removeProblem(error);
-          setProblem(refusal?.words ?? "The item wasn't removed. Try again.");
+          setProblem(refusal ?? { kind: "other", words: "The item wasn't removed. Try again." });
           if (refusal?.kind !== "network") removeKey.forget();
           if (refusal?.kind === "stale") onReload();
         },
@@ -451,7 +448,7 @@ export function OrderDetail({
         onSuccess: () => setResult("A copy of the receipt was sent to the printer."),
         onError: (error) => {
           const refusal = reprintProblem(error);
-          setProblem(refusal?.words ?? "The copy wasn't printed. Try again.");
+          setProblem(refusal ?? { kind: "other", words: "The copy wasn't printed. Try again." });
           if (refusal?.kind !== "network") reprintKey.forget();
         },
       },

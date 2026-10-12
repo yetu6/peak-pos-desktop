@@ -112,7 +112,7 @@ export function sendProblem(error: unknown): OrderProblem | null {
   const kind = stepRefusal(problem);
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
   if (kind === "network") return { kind, words: otherWords(problem, UNREACHABLE) };
-  if (kind === "permission") return { kind, words: "Only staff who take orders can send them to the kitchen." };
+  if (kind === "permission") return { kind, words: "Only staff who take orders can send them to the kitchen. Ask one to help." };
   if (kind === "session") return { kind, words: otherWords(problem, "The order wasn't sent. Try again.") };
   return { kind: "moved", words: "This order changed on another till, or was already sent. It's been reloaded: check it before sending it again." };
 }
@@ -122,7 +122,7 @@ export function reprintProblem(error: unknown): OrderProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
-  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a cashier or manager can print a copy of the receipt." };
+  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a cashier or manager can print a copy of the receipt. Ask one to help." };
   if (problem.code === "NOT_FOUND") return { kind: "missing", words: "Yetu has no receipt for this order." };
   return { kind: "other", words: otherWords(problem, "The copy wasn't printed. Try again.") };
 }

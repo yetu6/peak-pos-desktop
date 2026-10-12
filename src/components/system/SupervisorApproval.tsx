@@ -1,6 +1,7 @@
 import { CircleCheck, CircleX, LoaderCircle, ShieldCheck } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "./Button";
+import { Banner } from "./containers";
 import { Keypad, type KeypadKey } from "./Keypad";
 
 export interface Supervisor {
@@ -208,22 +209,77 @@ export function PermissionNotice({
   action,
   who,
   next,
+  words,
+  live = false,
   className,
 }: {
   /** What the person tried, as a verb phrase: "void orders". */
-  action: string;
+  action?: string;
   /** Who can: "a supervisor", "a manager". */
-  who: string;
+  who?: string;
   /** What to do now: "Ask one to help." */
-  next: string;
+  next?: string;
+  /** The whole notice in words, when a screen's words module already wrote it. */
+  words?: string;
+  /** Yetu just refused it (a 403): announced at once, as a failure. Otherwise a quiet note. */
+  live?: boolean;
   className?: string;
 }) {
   return (
-    <p role="note" className={cn("y-permission", className)}>
+    <p role={live ? "alert" : "note"} className={cn("y-permission", className)}>
       <ShieldCheck aria-hidden="true" />
-      <span>
-        Only {who} can {action}. {next}
-      </span>
+      <span>{words ?? `Only ${who} can ${action}. ${next}`}</span>
     </p>
+  );
+}
+
+/** A refusal as the screens' words modules give it: what kind, and the words. */
+export interface Refusal {
+  kind: string;
+  words: string;
+}
+
+/**
+ * A refusal on screen: a permission refusal (Yetu's 403) as a PermissionNotice,
+ * anything else as a danger notice, both announced at once. `onRetry` offers
+ * Try again beside it (the same request, after a lost answer).
+ */
+export function RefusalNotice({
+  refusal,
+  onRetry,
+  retrying = false,
+  className,
+  "data-testid": testId,
+}: {
+  refusal: Refusal | string;
+  onRetry?: () => void;
+  retrying?: boolean;
+  className?: string;
+  "data-testid"?: string;
+}) {
+  const { kind, words } = typeof refusal === "string" ? { kind: "other", words: refusal } : refusal;
+  if (kind === "permission") {
+    return (
+      <div className={className} data-testid={testId}>
+        <PermissionNotice live words={words} />
+      </div>
+    );
+  }
+  return (
+    <div className={cn("y-refusal", className)} data-testid={testId}>
+      <Banner
+        inline
+        tone="danger"
+        action={
+          onRetry ? (
+            <Button variant="secondary" disabled={retrying} onClick={onRetry}>
+              {retrying ? "Trying again…" : "Try again"}
+            </Button>
+          ) : undefined
+        }
+      >
+        {words}
+      </Banner>
+    </div>
   );
 }

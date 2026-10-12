@@ -7,6 +7,7 @@ import {
   useTransitionOrderStatus,
   useTransitionStationTicket,
 } from "../hooks/usePosData";
+import type { Refusal } from "../components/system";
 import { KitchenBoard } from "../kitchen/KitchenBoard";
 import { KITCHEN_CLOCK_TICK_SECONDS, KITCHEN_REFRESH_SECONDS } from "../kitchen/kitchenSettings";
 import { ticketsFromOrders, ticketsFromStations, type BoardTicket } from "../kitchen/kitchenTickets";
@@ -73,7 +74,7 @@ export function Kitchen() {
   const [station, setStation] = useState(ALL_STATIONS);
   const [held, setHeld] = useState<ReadonlyMap<string, Held>>(new Map());
   const [result, setResult] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<Refusal | null>(null);
   // One key per request: asking again after a lost answer reuses it; a new step gets a new one.
   const keys = useRef(new Map<string, string>());
   const seenNew = useRef<Set<string>>(new Set());
@@ -172,7 +173,7 @@ export function Kitchen() {
         });
         const refusal = kitchenProblem(error);
         setResult(null);
-        setProblem(refusal?.words ?? "The ticket didn't move. Try again.");
+        setProblem(refusal ?? { kind: "other", words: "The ticket didn't move. Try again." });
         // Only a lost answer is asked again under the same key; a refusal makes the next press a new request.
         if (refusal?.kind !== "network") keys.current.delete(request);
         // It may have moved on another screen: the board shows where it is now.

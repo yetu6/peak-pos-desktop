@@ -1,6 +1,6 @@
 import { ChefHat, Plus, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Banner, Button, EmptyState, Field, Money, SegmentedControl, StatusChip, TicketLine } from "../components/system";
+import { Banner, Button, EmptyState, Field, Money, PermissionNotice, SegmentedControl, StatusChip, TicketLine, type Refusal } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
@@ -30,7 +30,8 @@ export interface TicketPanelProps {
   lineBusy: boolean;
   /** When this till sent the order to the kitchen, if it did. */
   sentAt: Date | null;
-  error: string | null;
+  /** A refusal on the ticket: Yetu's 403 shows as a permission notice. */
+  error: Refusal | string | null;
   /** What just happened, in words (an order voided). */
   notice?: string | null;
   /** Send to kitchen, Pay and More. */
@@ -205,9 +206,15 @@ export function TicketPanel({
           ) : null}
         </dl>
         {error ? (
-          <p className="y-ticket__error" role="alert" data-testid="create-error">
-            {error}
-          </p>
+          typeof error !== "string" && error.kind === "permission" ? (
+            <div data-testid="create-error">
+              <PermissionNotice live words={error.words} />
+            </div>
+          ) : (
+            <p className="y-ticket__error" role="alert" data-testid="create-error">
+              {typeof error === "string" ? error : error.words}
+            </p>
+          )
         ) : null}
         {actions}
       </footer>

@@ -51,7 +51,7 @@ describe("payment and room charge refusals in words", () => {
     expect(tenderProblem(problem("CONFLICT", "tender cannot be recorded on a closed or voided order"))?.words).toBe(
       "This order is closed, so it can't take a payment.",
     );
-    expect(tenderProblem(problem("FORBIDDEN", "x"))?.words).toBe("Only a cashier or manager can take payment.");
+    expect(tenderProblem(problem("FORBIDDEN", "x"))).toEqual({ kind: "permission", words: "Only a cashier or manager can take payment. Ask one to help." });
     expect(tenderProblem(problem("CONFLICT", "pq: new"))?.words).toBe("The payment wasn't recorded. Try again.");
     expect(tenderProblem(problem("SESSION_EXPIRED", "x"))?.words).toBe("Your session ended. Enter your PIN to carry on.");
   });

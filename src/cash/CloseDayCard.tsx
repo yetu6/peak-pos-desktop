@@ -1,5 +1,5 @@
 import { CircleCheck, CircleDot, CircleX } from "lucide-react";
-import { Banner, Button } from "../components/system";
+import { Banner, Button, RefusalNotice } from "../components/system";
 import { useCloseBusinessDay, useIdempotencyKey } from "../hooks/usePosData";
 import { businessDayWords } from "../lib/words";
 import { dayCloseProblem } from "./cashWords";
@@ -89,7 +89,7 @@ export function CloseDayCardView({
       </ul>
       {problem ? (
         <div data-testid="day-close-error">
-          <Banner inline tone="danger">{problem.words}</Banner>
+          <RefusalNotice refusal={problem} />
         </div>
       ) : null}
       <Button

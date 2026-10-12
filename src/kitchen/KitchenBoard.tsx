@@ -1,6 +1,6 @@
 import { ChefHat, Clock } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, type FocusEvent, type KeyboardEvent } from "react";
-import { Banner, Button, EmptyState, PermissionNotice, SegmentedControl, Skeleton, StatusChip, type Choice } from "../components/system";
+import { Banner, Button, EmptyState, PermissionNotice, RefusalNotice, SegmentedControl, Skeleton, StatusChip, type Choice, type Refusal } from "../components/system";
 import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
 import { KITCHEN_REFRESH_SECONDS } from "./kitchenSettings";
 import { boardColumns, type BoardColumn, type BoardTicket } from "./kitchenTickets";
@@ -21,8 +21,8 @@ export interface KitchenBoardProps {
   onNextStep: (ticket: BoardTicket) => void;
   /** What the last step did, in words. */
   result?: string | null;
-  /** Why the last step was refused, in words. */
-  problem?: string | null;
+  /** Why the last step was refused: a 403 shows as a permission notice. */
+  problem?: Refusal | string | null;
   loading?: boolean;
   failed?: boolean;
   stationFilter?: { options: readonly Choice<string>[]; value: string; onChange: (value: string) => void } | null;
@@ -163,11 +163,7 @@ export function KitchenBoard({
             <PermissionNotice who="kitchen and waiting staff" action="move tickets on" next="Ask a manager." />
           </div>
         ) : null}
-        {problem ? (
-          <Banner inline tone="danger" data-testid="kitchen-error">
-            {problem}
-          </Banner>
-        ) : null}
+        {problem ? <RefusalNotice refusal={problem} data-testid="kitchen-error" /> : null}
         {failed ? (
           <Banner inline tone="danger" data-testid="kitchen-load-error">
             {`The tickets couldn't be loaded. Check the connection. The screen tries again every ${KITCHEN_REFRESH_SECONDS} seconds.`}

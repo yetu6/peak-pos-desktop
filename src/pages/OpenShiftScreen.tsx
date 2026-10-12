@@ -1,17 +1,16 @@
 import { useState, type ReactNode } from "react";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
 import { AccessLayout } from "../access/AccessLayout";
-import { differenceWords } from "../cash/cashWords";
+import { differenceWords, openShiftProblem } from "../cash/cashWords";
 import { CloseDayCard } from "../cash/CloseDayCard";
 import { forgetClosedShift, useLastClosedShift, type ClosedShift } from "../cash/closedShift";
 import { NoteCounterSheet, denominationsFor, moneyFieldText } from "../cash/NoteCounterSheet";
-import { Button, Money, MoneyField, PermissionNotice } from "../components/system";
+import { Button, Money, MoneyField, PermissionNotice, type Refusal } from "../components/system";
 import {
   useCatalogCurrency,
   useHasCapability,
   useHasPermission,
   useIdempotencyKey,
-  useMutationMessage,
   usePosShift,
 } from "../hooks/usePosData";
 import { toMinor } from "../lib/posMoney";
@@ -31,7 +30,7 @@ export function OpenShiftScreen() {
   const canOpenShift = useHasPermission("pos.shift.open");
   const isManager = useHasPermission("pos.report.manager");
   const hotel = useHasCapability("LODGING");
-  const openError = useMutationMessage(open.error);
+  const openError = openShiftProblem(open.error);
   const openKey = useIdempotencyKey();
   const closed = useLastClosedShift();
   return (
@@ -64,7 +63,8 @@ export interface OpenShiftViewProps {
   currency: string | undefined;
   canOpenShift: boolean;
   pending: boolean;
-  error: string | null;
+  /** Why Yetu didn't open it: a 403 shows as a permission notice. */
+  error: Refusal | string | null;
   /** The shift this till just closed, as Yetu returned it. */
   closed: ClosedShift | null;
   /** The Close the day card, for managers on a restaurant-only property. */
@@ -145,9 +145,15 @@ export function OpenShiftView({
                 </Button>
               ) : null}
               {openError ? (
-                <p className="y-pin__message" role="alert" data-testid="open-shift-error">
-                  {openError}
-                </p>
+                typeof openError !== "string" && openError.kind === "permission" ? (
+                  <div data-testid="open-shift-error">
+                    <PermissionNotice live words={openError.words} />
+                  </div>
+                ) : (
+                  <p className="y-pin__message" role="alert" data-testid="open-shift-error">
+                    {typeof openError === "string" ? openError : openError.words}
+                  </p>
+                )
               ) : null}
               <Button
                 type="submit"

@@ -151,14 +151,14 @@ describe("refusals", () => {
     expect(sendProblem(refused({ code: "STALE_VERSION" }))).toEqual({ kind: "moved", words: changed });
     // Yetu answers a send of an order that is no longer open with a plain error (HTTP 500 today).
     expect(sendProblem(refused({ code: "INTERNAL_ERROR", detail: "only a non-empty open order can be sent" }))).toEqual({ kind: "moved", words: changed });
-    expect(sendProblem(refused({ code: "FORBIDDEN" }))).toEqual({ kind: "permission", words: "Only staff who take orders can send them to the kitchen." });
+    expect(sendProblem(refused({ code: "FORBIDDEN" }))).toEqual({ kind: "permission", words: "Only staff who take orders can send them to the kitchen. Ask one to help." });
     expect(sendProblem(new TypeError("Failed to fetch"))?.kind).toBe("network");
     expect(sendProblem(refused({ code: "SESSION_EXPIRED" }))?.kind).toBe("session");
     expect(sendProblem(null)).toBeNull();
   });
 
   it("print a copy: a person who can't, no receipt, anything else", () => {
-    expect(reprintProblem(refused({ code: "FORBIDDEN" }))?.words).toBe("Only a cashier or manager can print a copy of the receipt.");
+    expect(reprintProblem(refused({ code: "FORBIDDEN" }))?.words).toBe("Only a cashier or manager can print a copy of the receipt. Ask one to help.");
     expect(reprintProblem(refused({ code: "NOT_FOUND" }))?.words).toBe("Yetu has no receipt for this order.");
     expect(reprintProblem(refused({ code: "CONFLICT" }))?.words).toBe("The copy wasn't printed. Try again.");
   });

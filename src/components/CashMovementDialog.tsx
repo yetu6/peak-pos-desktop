@@ -9,7 +9,7 @@ import { useRateLimitWait } from "../lib/useRateLimitWait";
 import type { RosterEntry } from "../lib/deviceAuth";
 import type { CashMovementType } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
-import { Banner, Button, Field, MoneyField, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
+import { Button, Field, MoneyField, RefusalNotice, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
 
 /** Cash in / Cash out against the open shift. Append-only: there is no edit
  *  or delete on `POSCashMovement` in the certified contract, and none is
@@ -205,7 +205,7 @@ export function CashMovementSheetView({
         ) : null}
         {problem ? (
           <div data-testid="movement-error">
-            <Banner inline tone="danger">{problem.words}</Banner>
+            <RefusalNotice refusal={problem} />
           </div>
         ) : null}
       </div>

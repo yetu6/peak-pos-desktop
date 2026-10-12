@@ -11,9 +11,11 @@ export { Banner, Dialog, Sheet, Toast, ToastRegion } from "./containers";
 export { TechnicalDetails } from "./TechnicalDetails";
 export {
   PermissionNotice,
+  RefusalNotice,
   SupervisorApproval,
   SupervisorApprovalActions,
   type ApprovalStatus,
+  type Refusal,
   type Supervisor,
   type SupervisorApprovalProps,
 } from "./SupervisorApproval";

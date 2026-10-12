@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { PIN_LENGTH } from "../access/accessSettings";
-import { Banner, Button, Money, MoneyField, Sheet, SupervisorApproval, type KeypadKey } from "../components/system";
+import { Banner, Button, Money, MoneyField, PermissionNotice, Sheet, SupervisorApproval, type KeypadKey } from "../components/system";
 import { useIdempotencyKey, usePosShift } from "../hooks/usePosData";
 import type { RosterEntry } from "../lib/deviceAuth";
 import { formatMoney } from "../lib/money";
@@ -97,6 +97,8 @@ export function CloseShiftSheetView({
   const [pending, setPending] = useState(false);
   // The last refusal: after "too many attempts" the next close waits for Yetu's Retry-After.
   const [refused, setRefused] = useState<unknown>(null);
+  // A 403 shows as a permission notice.
+  const refusedKind = closeShiftProblem(refused)?.kind ?? null;
   const waiting = useRateLimitWait(refused, () => {
     setRefused(null);
     setProblem(null);
@@ -299,7 +301,11 @@ export function CloseShiftSheetView({
                   keyTestIdPrefix="close-pin-key"
                 />
               ) : null}
-              {problem ? (
+              {problem && refusedKind === "permission" ? (
+                <div data-testid="close-shift-error">
+                  <PermissionNotice live words={problem} />
+                </div>
+              ) : problem ? (
                 <p key={problem + String(pending)} className="y-pin__message" role="alert" data-testid="close-shift-error">
                   {problem}
                 </p>

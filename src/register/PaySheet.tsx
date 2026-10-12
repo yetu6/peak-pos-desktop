@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { moneyFieldText } from "../cash/NoteCounterSheet";
-import { Banner, Button, Field, Keypad, Money, MoneyField, QuickCash, SearchField, Sheet, type KeypadKey } from "../components/system";
+import { Button, Field, Keypad, Money, MoneyField, QuickCash, RefusalNotice, SearchField, Sheet, type KeypadKey, type Refusal } from "../components/system";
 import {
   useChargeToRoom,
   useIdempotencyKey,
@@ -126,7 +126,7 @@ export function PaySheet({
       searching={Boolean(needle) && candidates.isFetching}
       searched={Boolean(needle)}
       pending={recordTender.isPending || chargeToRoom.isPending}
-      problem={problem?.words ?? null}
+      problem={problem ?? null}
       recordedMinor={recorded}
       onClose={onClose}
       onTender={(request) =>
@@ -186,7 +186,8 @@ export interface PaySheetViewProps {
   searching: boolean;
   searched: boolean;
   pending: boolean;
-  problem: string | null;
+  /** Why Yetu refused the payment: a 403 shows as a permission notice. */
+  problem: Refusal | string | null;
   /** The last part payment Yetu recorded on this order, if any. */
   recordedMinor?: number | null;
   onClose: () => void;
@@ -517,11 +518,7 @@ export function PaySheetView({
               ? `Recorded ${formatMoney(recordedMinor, currency)}. ${formatMoney(due, currency)} still to pay.`
               : ""}
           </p>
-          {problem ? (
-            <Banner inline tone="danger" data-testid="settle-error">
-              {problem}
-            </Banner>
-          ) : null}
+          {problem ? <RefusalNotice refusal={problem} data-testid="settle-error" /> : null}
         </section>
       </div>
     </Sheet>
