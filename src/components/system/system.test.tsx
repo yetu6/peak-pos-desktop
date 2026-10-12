@@ -24,6 +24,7 @@ import {
   StatusChip,
   Stepper,
   SupervisorApproval,
+  SupervisorApprovalActions,
   Tabs,
   TicketLine,
   Tile,
@@ -358,6 +359,18 @@ describe("SupervisorApproval", () => {
     const { onCancel } = renderApproval();
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("leaves Cancel and Approve to a sheet's footer when asked, and the footer approves only when allowed", async () => {
+    renderApproval({ actions: "none", onApprove: vi.fn() });
+    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    const onApprove = vi.fn();
+    const { unmount } = render(<SupervisorApprovalActions onCancel={vi.fn()} onApprove={onApprove} canApprove={false} />);
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+    unmount();
+    render(<SupervisorApprovalActions onCancel={vi.fn()} onApprove={onApprove} canApprove />);
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(onApprove).toHaveBeenCalledTimes(1);
   });
 
   it("types digits from a keyboard into the PIN", () => {

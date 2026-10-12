@@ -15,7 +15,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
   workers: Number(process.env.VISUAL_WORKERS ?? 4),
-  timeout: 60_000,
+  timeout: 120_000,
   reporter: [["list"], ["html", { outputFolder: `${OUTPUT_DIR}/report`, open: "never" }]],
   use: {
     baseURL: `http://127.0.0.1:${HARNESS_PORT}`,

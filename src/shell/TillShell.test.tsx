@@ -186,6 +186,22 @@ describe("TillShell keyboard", () => {
     expect(screen.getByTestId("rail-reason")).toHaveTextContent(/connection/i);
   });
 
+  it("leaves an open dialog (a payment, a void) in place: section keys wait, Ctrl+L still locks", () => {
+    const onLock = vi.fn();
+    render(
+      <>
+        <Harness onLock={onLock} />
+        <div role="dialog" data-state="open" aria-label="Take payment" />
+      </>,
+    );
+    fireEvent.keyDown(window, { key: "F2" });
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(screen.getByTestId("current-page")).toHaveTextContent("new");
+    expect(screen.queryByRole("combobox", { name: /search/i })).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "l", ctrlKey: true });
+    expect(onLock).toHaveBeenCalledTimes(1);
+  });
+
   it("locks with Ctrl+L", () => {
     const onLock = vi.fn();
     render(<Harness onLock={onLock} />);
