@@ -31,18 +31,18 @@ describe("RegisterFixtures", () => {
 
   it("renders cash with change, a split, and a room charge", () => {
     const cash = render(<PayCashFixture />);
-    expect(screen.getByTestId("change-due")).toHaveTextContent("Change to give TSh 7,500");
+    expect(screen.getByTestId("change-due")).toHaveTextContent("Change to give TSh 2,210");
     cash.unmount();
     const split = render(<PaySplitFixture />);
-    expect(screen.getByTestId("amount-paid")).toHaveTextContent("Paid TSh 20,000 of TSh 42,500");
+    expect(screen.getByTestId("amount-paid")).toHaveTextContent("Paid TSh 20,000 of TSh 47,790");
     split.unmount();
     render(<PayRoomFixture />);
-    expect(screen.getByTestId("confirm-room-charge")).toHaveTextContent("Charge TSh 42,500 to room 12");
+    expect(screen.getByTestId("confirm-room-charge")).toHaveTextContent("Charge TSh 47,790 to room 12");
   });
 
   it("renders payment done and the receipt", () => {
     const done = render(<PaymentDoneFixture />);
-    expect(screen.getByTestId("done-change")).toHaveTextContent("Change to give TSh 7,500");
+    expect(screen.getByTestId("done-change")).toHaveTextContent("Change to give TSh 2,210");
     done.unmount();
     render(<ReceiptFixture />);
     expect(screen.getByTestId("receipt-footer")).toBeInTheDocument();
