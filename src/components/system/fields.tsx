@@ -113,15 +113,20 @@ export function MoneyField({
   error,
   className,
   id,
+  inputTestId,
+  autoFocus,
 }: {
   label: string;
-  currency: string;
+  /** The currency the backend returned; until it is known the field shows no unit. */
+  currency: string | null | undefined;
   value: string;
   onValueChange: (value: string, minor: number | null) => void;
   hint?: string;
   error?: string;
   className?: string;
   id?: string;
+  inputTestId?: string;
+  autoFocus?: boolean;
 }) {
   const autoId = useId();
   const inputId = id ?? `money-${autoId}`;
@@ -139,21 +144,25 @@ export function MoneyField({
         </p>
       ) : null}
       <div className="y-money-field__box">
-        <span className="y-money-field__unit" id={unitId}>
-          {currencySymbol(currency)}
-        </span>
+        {currency ? (
+          <span className="y-money-field__unit" id={unitId}>
+            {currencySymbol(currency)}
+          </span>
+        ) : null}
         <input
           id={inputId}
           className="y-input y-money-field__input"
+          data-testid={inputTestId}
           inputMode="decimal"
           autoComplete="off"
+          autoFocus={autoFocus}
           value={value}
           onChange={(event) => {
             const text = event.target.value.replace(/[^\d.]/g, "");
             onValueChange(text, toMinor(text));
           }}
           aria-invalid={error ? true : undefined}
-          aria-describedby={describedBy(unitId, hintId, errorId)}
+          aria-describedby={describedBy(currency ? unitId : undefined, hintId, errorId)}
         />
       </div>
       {error ? (

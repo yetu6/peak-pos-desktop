@@ -1,6 +1,7 @@
 import { CircleCheck, CircleX, LoaderCircle, ShieldCheck } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "./Button";
+import { Field } from "./fields";
 import { Keypad, type KeypadKey } from "./Keypad";
 
 export interface Supervisor {
@@ -35,6 +36,10 @@ export interface SupervisorApprovalProps {
   /** "inline" draws Cancel and Approve here; "none" when a sheet's footer holds them
    *  (SupervisorApprovalActions), so they stay in view while the sheet scrolls. */
   actions?: "inline" | "none";
+  /** When the till has no list of staff, the supervisor's staff number is typed instead. */
+  manualStaffNumber?: { value: string; onChange: (value: string) => void; testId?: string };
+  /** Test ids for the PIN keys: `${keyTestIdPrefix}-${key}`. */
+  keyTestIdPrefix?: string;
   className?: string;
 }
 
@@ -86,9 +91,14 @@ export function SupervisorApproval({
   onApprove,
   canApprove = false,
   actions = "inline",
+  manualStaffNumber,
+  keyTestIdPrefix,
   className,
 }: SupervisorApprovalProps) {
-  const selected = supervisors.find((supervisor) => supervisor.id === selectedId) ?? null;
+  const typed = supervisors.length === 0 && manualStaffNumber ? manualStaffNumber.value.trim() : "";
+  const selected =
+    supervisors.find((supervisor) => supervisor.id === selectedId) ??
+    (typed ? { id: typed, name: "Supervisor" } : null);
   const selfApproval = selected !== null && selected.id === requesterId;
   const settled = status.kind === "checking" || status.kind === "approved";
   const pinOpen = selected !== null && !selfApproval && !settled;
@@ -106,6 +116,16 @@ export function SupervisorApproval({
         <h3 id="approval-who-heading" className="y-approval__label">
           Choose a supervisor
         </h3>
+        {supervisors.length === 0 && manualStaffNumber ? (
+          <Field
+            label="Supervisor's staff number"
+            value={manualStaffNumber.value}
+            onChange={manualStaffNumber.onChange}
+            data-testid={manualStaffNumber.testId}
+            inputMode="numeric"
+            autoComplete="off"
+          />
+        ) : null}
         <div role="radiogroup" aria-labelledby="approval-who-heading" className="y-approval__people">
           {supervisors.map((supervisor) => (
             <button
@@ -150,7 +170,7 @@ export function SupervisorApproval({
             <span key={index} className={cn("y-pin-dots__dot", index < pinLength && "y-pin-dots__dot--filled")} />
           ))}
         </div>
-        <Keypad label="Supervisor PIN" variant="pin" onKey={onPinKey} disabled={!pinOpen} />
+        <Keypad label="Supervisor PIN" variant="pin" onKey={onPinKey} disabled={!pinOpen} testIdPrefix={keyTestIdPrefix} />
       </section>
 
       {status.kind === "checking" ? (

@@ -34,6 +34,7 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   size = 48,
+  testIdPrefix,
   className,
 }: {
   label: string;
@@ -41,6 +42,8 @@ export function SegmentedControl<T extends string>({
   value: T;
   onChange: (value: T) => void;
   size?: 48 | 56;
+  /** Each option gets `${testIdPrefix}-${value}`. */
+  testIdPrefix?: string;
   className?: string;
 }) {
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -59,6 +62,7 @@ export function SegmentedControl<T extends string>({
             role="radio"
             aria-checked={checked}
             tabIndex={checked ? 0 : -1}
+            data-testid={testIdPrefix ? `${testIdPrefix}-${option.value}` : undefined}
             className="y-segmented__option"
             onClick={() => onChange(option.value)}
             onKeyDown={(event) => moveWithArrows(event, values, value, onChange, (next) => refs.current[next]?.focus())}
