@@ -18,6 +18,11 @@ vi.mock("../auth/DeviceSessionProvider", () => ({
   useDeviceSessionOptional: () => sessionRef.value,
 }));
 
+const ROSTER = [
+  { fullName: "Amina Hassan", staffNumber: "staff-amina" },
+  { fullName: "Grace Mushi", staffNumber: "staff-grace" },
+];
+
 async function typePin(digits: string) {
   for (const digit of digits) await userEvent.click(screen.getByTestId(`movement-pin-key-${digit}`));
 }
@@ -50,13 +55,14 @@ describe("CashMovementDialog", () => {
   // Money audit, 2026-10-06: cash leaves the drawer only with a different
   // supervisor's approval, as the server requires.
   it("cash out needs a supervisor and their PIN, and sends them", async () => {
+    sessionRef.value = { session: { staffId: "staff-amina" }, roster: ROSTER };
     render(<CashMovementDialog shiftId="shift-1" currency="TZS" onClose={vi.fn()} />);
     await userEvent.click(screen.getByTestId("movement-type-CASH_OUT"));
     await userEvent.type(screen.getByTestId("movement-amount"), "2000");
     await userEvent.type(screen.getByTestId("movement-reason"), "Petty cash");
     const submit = screen.getByTestId("confirm-movement");
     expect(submit).toBeDisabled();
-    await userEvent.type(screen.getByTestId("movement-supervisor-id"), "sup-7");
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
     expect(submit).toBeDisabled();
     await typePin("736251");
     expect(submit).not.toBeDisabled();
@@ -65,7 +71,8 @@ describe("CashMovementDialog", () => {
       expect.objectContaining({
         movementType: "CASH_OUT",
         amountMinor: 200_000,
-        supervisorStaffId: "sup-7",
+        reason: "Petty cash",
+        supervisorStaffId: "staff-grace",
         supervisorPin: "736251",
       }),
       expect.anything(),
@@ -98,6 +105,7 @@ describe("CashMovementDialog", () => {
     expect(screen.getByText("Take TSh 20,000 out of the drawer: Gas delivery")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("radio", { name: /Amina Hassan/ }));
     expect(screen.getByText("You can't approve your own request. Ask another supervisor.")).toBeInTheDocument();
+    await typePin("736251");
     expect(screen.getByTestId("confirm-movement")).toBeDisabled();
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
     await typePin("736251");
@@ -108,22 +116,14 @@ describe("CashMovementDialog", () => {
     );
   });
 
-  it("refuses the person asking as their own supervisor when the staff number is typed", async () => {
+  it("with no staff list, cash out can't be approved and says why", async () => {
     sessionRef.value = { session: { staffId: "staff-amina" }, roster: [] };
     render(<CashMovementDialog shiftId="shift-1" currency="TZS" initialType="CASH_OUT" onClose={vi.fn()} />);
     await userEvent.type(screen.getByTestId("movement-amount"), "20000");
     await userEvent.type(screen.getByTestId("movement-reason"), "Gas delivery");
-    const staffNumber = screen.getByTestId("movement-supervisor-id");
-    await userEvent.type(staffNumber, "staff-grace");
-    await typePin("736251");
-    expect(screen.getByTestId("confirm-movement")).not.toBeDisabled();
-
-    await userEvent.clear(staffNumber);
-    await userEvent.type(staffNumber, "staff-amina");
-    expect(screen.getByText("You can't approve your own request. Ask another supervisor.")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /staff number/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/can't show its staff list right now/)).toBeInTheDocument();
     expect(screen.getByTestId("confirm-movement")).toBeDisabled();
-    await userEvent.click(screen.getByTestId("confirm-movement"));
-    expect(recordMutate).not.toHaveBeenCalled();
   });
 
   it("says a refused cash out in words", () => {

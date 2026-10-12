@@ -334,6 +334,14 @@ describe("SupervisorApproval", () => {
     }
   });
 
+  it("says so in words when there is no staff list to choose from, with the PIN keypad closed", () => {
+    renderApproval({ supervisors: [] });
+    expect(screen.getByText("This till can't show its staff list right now, so no one can approve here. Check the internet connection, then try again.")).toBeInTheDocument();
+    for (const key of within(screen.getByRole("group", { name: "Supervisor PIN" })).getAllByRole("button")) {
+      expect(key).toBeDisabled();
+    }
+  });
+
   it("takes the chosen supervisor's PIN and shows how many digits are in", async () => {
     const { onPinKey } = renderApproval({ selectedId: "staff-grace", pinLength: 2 });
     expect(screen.getByText("Grace Mushi, enter your PIN")).toBeInTheDocument();

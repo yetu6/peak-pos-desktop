@@ -80,13 +80,14 @@ export function CashMovementSheetView({
   const [amount, setAmount] = useState(initialAmount);
   const [reason, setReason] = useState(initialReason);
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
-  const [typedSupervisor, setTypedSupervisor] = useState("");
   const [pin, setPin] = useState("");
   const problem = cashMovementProblem(error);
   const amountMinor = toMinor(amount);
   const cashOut = movementType === "CASH_OUT";
-  const supervisor = roster.length > 0 ? supervisorId : typedSupervisor.trim() || null;
-  const supervised = !cashOut || (Boolean(supervisor) && supervisor !== requesterId && pin.length === PIN_LENGTH);
+  // Choosing yourself keeps the PIN keypad closed (SupervisorApproval), and choosing anyone clears the PIN,
+  // so a full PIN always belongs to someone else; the backend refuses self-approval as well.
+  const supervisor = supervisorId;
+  const supervised = !cashOut || (Boolean(supervisor) && pin.length === PIN_LENGTH);
   const canSubmit = amountMinor != null && amountMinor > 0 && reason.trim().length > 0 && supervised && !pending;
 
   function onPinKey(key: KeypadKey) {
@@ -176,7 +177,6 @@ export function CashMovementSheetView({
             status={{ kind: "idle" }}
             onCancel={onClose}
             actions="none"
-            manualStaffNumber={{ value: typedSupervisor, onChange: setTypedSupervisor, testId: "movement-supervisor-id" }}
             keyTestIdPrefix="movement-pin-key"
           />
         ) : null}

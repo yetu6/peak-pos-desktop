@@ -64,7 +64,6 @@ export function CloseShiftSheetView({
   const [counted, setCounted] = useState(initialCounted);
   const [noteCounter, setNoteCounter] = useState(false);
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
-  const [typedSupervisor, setTypedSupervisor] = useState("");
   const [pin, setPin] = useState("");
   const [yetuFoundDifference, setYetuFoundDifference] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -73,8 +72,10 @@ export function CloseShiftSheetView({
   const countedMinor = toMinor(counted);
   const outcome = countedMinor === null ? null : countOutcome(countedMinor, shift.expectedCashMinor);
   const needsSupervisor = outcome !== "balanced" || yetuFoundDifference;
-  const supervisor = roster.length > 0 ? supervisorId : typedSupervisor.trim() || null;
-  const approved = Boolean(supervisor) && supervisor !== requesterId && pin.length === PIN_LENGTH;
+  // Choosing yourself keeps the PIN keypad closed (SupervisorApproval), and choosing anyone clears the PIN,
+  // so a full PIN always belongs to someone else; the backend refuses self-approval as well.
+  const supervisor = supervisorId;
+  const approved = Boolean(supervisor) && pin.length === PIN_LENGTH;
   const ready = countedMinor !== null && (!needsSupervisor || approved) && !pending;
 
   function onPinKey(key: KeypadKey) {
@@ -195,7 +196,6 @@ export function CloseShiftSheetView({
                 status={{ kind: "idle" }}
                 onCancel={() => onOpenChange(false)}
                 actions="none"
-                manualStaffNumber={{ value: typedSupervisor, onChange: setTypedSupervisor, testId: "close-supervisor-id" }}
                 keyTestIdPrefix="close-pin-key"
               />
             ) : null}

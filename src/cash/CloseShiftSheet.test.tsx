@@ -86,6 +86,7 @@ describe("CloseShiftSheet: check", () => {
 
     await userEvent.click(screen.getByRole("radio", { name: /Amina Hassan/ }));
     expect(screen.getByText("You can't approve your own request. Ask another supervisor.")).toBeInTheDocument();
+    for (const digit of "736251") await userEvent.click(screen.getByTestId(`close-pin-key-${digit}`));
     expect(closeButton).toBeDisabled();
 
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
@@ -100,20 +101,12 @@ describe("CloseShiftSheet: check", () => {
     });
   });
 
-  it("refuses the person closing as their own approver when the staff number is typed", async () => {
+  it("with no staff list, a difference can't be approved and it says why", async () => {
     render(<CloseShiftSheet open onOpenChange={vi.fn()} shift={SHIFT} currency="TZS" requesterId="staff-amina" roster={[]} />);
     await count("74500");
-    const staffNumber = screen.getByTestId("close-supervisor-id");
-    await userEvent.type(staffNumber, "staff-grace");
-    for (const digit of "736251") await userEvent.click(screen.getByTestId(`close-pin-key-${digit}`));
-    expect(screen.getByTestId("close-shift")).not.toBeDisabled();
-
-    await userEvent.clear(staffNumber);
-    await userEvent.type(staffNumber, "staff-amina");
-    expect(screen.getByText("You can't approve your own request. Ask another supervisor.")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /staff number/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/can't show its staff list right now/)).toBeInTheDocument();
     expect(screen.getByTestId("close-shift")).toBeDisabled();
-    await userEvent.click(screen.getByTestId("close-shift"));
-    expect(closeAsync).not.toHaveBeenCalled();
   });
 
   it("says a short drawer in words", async () => {
