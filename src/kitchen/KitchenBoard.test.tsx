@@ -131,13 +131,63 @@ describe("KitchenBoard", () => {
     expect(onNextStep).toHaveBeenCalledWith(expect.objectContaining({ id: "b1", status: "PREPARING" }));
   });
 
-  it("holds only the ticket on its way to Yetu, saying so, and can't be pressed twice", async () => {
-    const { onNextStep } = renderBoard({ tickets: [ticket("a1", "SENT", MINUTE), ticket("a2", "SENT", MINUTE)], busyIds: new Set(["a1"]) });
-    expect(screen.getByTestId("kitchen-next-a1")).toBeDisabled();
-    expect(screen.getByTestId("kitchen-next-a1")).toHaveTextContent("Starting…");
-    expect(screen.getByTestId("kitchen-next-a2")).toBeEnabled();
-    await userEvent.click(screen.getByTestId("kitchen-next-a1"));
-    expect(onNextStep).not.toHaveBeenCalled();
+  it("holds only the ticket on its way to Yetu, saying so, and can't be pressed twice, keeping focus on it", async () => {
+    const tickets = [ticket("a1", "SENT", MINUTE), ticket("a2", "SENT", MINUTE)];
+    const view = renderBoard({ tickets });
+    screen.getByTestId("kitchen-next-a1").focus();
+    view.rerender(<KitchenBoard title="Kitchen" tickets={tickets} nowMs={NOW} busyIds={new Set(["a1"])} canMove onNextStep={view.onNextStep} />);
+    const held = screen.getByTestId("kitchen-next-a1");
+    expect(held).toHaveAttribute("aria-disabled", "true");
+    expect(held).toHaveTextContent("Starting…");
+    // Not the native disabled: that would drop the focus a keyboard user has on it.
+    expect(held).toHaveFocus();
+    expect(screen.getByTestId("kitchen-next-a2")).not.toHaveAttribute("aria-disabled");
+    await userEvent.click(held);
+    await userEvent.keyboard("{Enter}");
+    expect(view.onNextStep).not.toHaveBeenCalled();
+  });
+
+  it("keeps focus with a ticket when its step moves it to the next column", () => {
+    const view = renderBoard({ tickets: [ticket("a1", "SENT", MINUTE), ticket("a2", "SENT", MINUTE)] });
+    screen.getByTestId("kitchen-next-a1").focus();
+    view.rerender(
+      <KitchenBoard
+        title="Kitchen"
+        tickets={[ticket("a1", "PREPARING", MINUTE, { version: 3 }), ticket("a2", "SENT", MINUTE)]}
+        nowMs={NOW}
+        busyIds={new Set()}
+        canMove
+        onNextStep={view.onNextStep}
+      />,
+    );
+    expect(within(screen.getByTestId("kitchen-column-PREPARING")).getByTestId("kitchen-next-a1")).toHaveFocus();
+  });
+
+  it("gives focus to the next ticket in the column when a served one leaves the board (or the one above, if it was last)", () => {
+    const board = (tickets: BoardTicket[]) => (
+      <KitchenBoard title="Kitchen" tickets={tickets} nowMs={NOW} busyIds={new Set()} canMove onNextStep={vi.fn()} />
+    );
+    const fresh = ticket("a1", "SENT", MINUTE);
+    const view = render(board([fresh, ticket("c1", "READY", MINUTE), ticket("c2", "READY", MINUTE), ticket("c3", "READY", MINUTE)]));
+    screen.getByTestId("kitchen-next-c1").focus();
+    view.rerender(board([fresh, ticket("c2", "READY", MINUTE), ticket("c3", "READY", MINUTE)]));
+    expect(screen.getByTestId("kitchen-next-c2")).toHaveFocus();
+    screen.getByTestId("kitchen-next-c3").focus();
+    view.rerender(board([fresh, ticket("c2", "READY", MINUTE)]));
+    expect(screen.getByTestId("kitchen-next-c2")).toHaveFocus();
+  });
+
+  it("leaves focus alone when the person was somewhere else", () => {
+    const stationFilter = { options: [{ value: "ALL", label: "All stations" }, { value: "GRILL", label: "Grill" }], value: "ALL", onChange: vi.fn() };
+    const view = renderBoard({ tickets: [ticket("a1", "SENT", MINUTE)], stationFilter });
+    screen.getByTestId("kitchen-next-a1").focus();
+    // The person moves to the station choice, then leaves it for nothing in particular.
+    screen.getByRole("radio", { name: "All stations" }).focus();
+    screen.getByRole("radio", { name: "All stations" }).blur();
+    view.rerender(
+      <KitchenBoard title="Kitchen" tickets={[ticket("a1", "PREPARING", MINUTE)]} nowMs={NOW} busyIds={new Set()} canMove onNextStep={vi.fn()} stationFilter={stationFilter} />,
+    );
+    expect(document.body).toHaveFocus();
   });
 
   it("shows the step disabled, with who can, to a person who can't move tickets", () => {

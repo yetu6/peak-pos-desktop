@@ -201,5 +201,13 @@
 
 .y-kticket__next { flex: none; }
 
+/* A step on its way to Yetu looks held, like a disabled button, but keeps its focus. */
+.y-kticket__next[aria-disabled="true"] {
+  border-color: var(--line);
+  background: var(--surface-hover);
+  color: var(--text-muted);
+  cursor: progress;
+}
+
 /* The station choice: each option as wide as its words ("All stations" never cut). */
 .y-kitchen__head .y-segmented__option { flex: 0 0 auto; }

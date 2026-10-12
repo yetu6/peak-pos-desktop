@@ -214,7 +214,7 @@ describe("Kitchen on a selling till (whole orders)", () => {
     renderKitchen();
     await userEvent.click(await screen.findByTestId("kitchen-next-order-1"));
     expect(await screen.findByRole("alert")).toHaveTextContent("Can't reach Yetu. Check the internet connection, then try again.");
-    await waitFor(() => expect(screen.getByTestId("kitchen-next-order-1")).toBeEnabled());
+    await waitFor(() => expect(screen.getByTestId("kitchen-next-order-1")).not.toHaveAttribute("aria-disabled"));
 
     // This time Yetu takes it: the order is Preparing at version 3.
     ordersStore.set("order-1", { ...SENT_ORDER, status: "PREPARING", version: 3 });
@@ -240,7 +240,7 @@ describe("Kitchen on a selling till (whole orders)", () => {
     const step = await screen.findByTestId("kitchen-next-order-1");
     await userEvent.click(step);
     await userEvent.click(step);
-    expect(step).toBeDisabled();
+    expect(step).toHaveAttribute("aria-disabled", "true");
     expect(step).toHaveTextContent("Starting…");
     expect(idleLockHeld()).toBe(true);
 
@@ -249,7 +249,7 @@ describe("Kitchen on a selling till (whole orders)", () => {
     expect(idleLockHeld()).toBe(false);
     await waitFor(() => expect(listOrdersSpy.mock.calls.length).toBeGreaterThan(1));
     await flush();
-    expect(screen.getByTestId("kitchen-next-order-1")).toBeDisabled();
+    expect(screen.getByTestId("kitchen-next-order-1")).toHaveAttribute("aria-disabled", "true");
     expect(transitionStatusSpy).toHaveBeenCalledTimes(1);
 
     // The next list shows it Preparing: its next step is open.
@@ -258,7 +258,7 @@ describe("Kitchen on a selling till (whole orders)", () => {
     await flush();
     socket.emit(announce(1, "pos.order.preparing", "order-1"));
     await waitFor(() => expect(screen.getByTestId("kitchen-next-order-1")).toHaveTextContent("Ready"));
-    expect(screen.getByTestId("kitchen-next-order-1")).toBeEnabled();
+    expect(screen.getByTestId("kitchen-next-order-1")).not.toHaveAttribute("aria-disabled");
   });
 
   it("keeps a step held while it is with Yetu, even if the list changes meanwhile, and lets it go once Yetu answers", async () => {
@@ -272,13 +272,13 @@ describe("Kitchen on a selling till (whole orders)", () => {
     await flush();
     socket.emit(announce(1, "pos.order.preparing", "order-1"));
     await waitFor(() => expect(screen.getByTestId("kitchen-next-order-1")).toHaveTextContent("Marking ready…"));
-    expect(screen.getByTestId("kitchen-next-order-1")).toBeDisabled();
+    expect(screen.getByTestId("kitchen-next-order-1")).toHaveAttribute("aria-disabled", "true");
 
     // Yetu answers after its list already showed the move: the list it sends next says
     // nothing new, yet the step is let go.
     await act(async () => answer({ data: undefined, error: null }));
     await waitFor(() => expect(screen.getByTestId("kitchen-next-order-1")).toHaveTextContent("Ready"));
-    expect(screen.getByTestId("kitchen-next-order-1")).toBeEnabled();
+    expect(screen.getByTestId("kitchen-next-order-1")).not.toHaveAttribute("aria-disabled");
   });
 
   it("takes a wrong-step refusal (a 500 today) to mean the order moved: reloads, says so, and the next press is a new request", async () => {
@@ -302,7 +302,7 @@ describe("Kitchen on a selling till (whole orders)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "This ticket can't be moved from here. Your role or this screen's kitchen stations don't allow it. Ask a manager.",
     );
-    expect(screen.getByTestId("kitchen-next-order-1")).toBeEnabled();
+    expect(screen.getByTestId("kitchen-next-order-1")).not.toHaveAttribute("aria-disabled");
     // A refused request is never sent again under its key.
     await userEvent.click(screen.getByTestId("kitchen-next-order-1"));
     await waitFor(() => expect(transitionStatusSpy).toHaveBeenCalledTimes(2));

@@ -1,5 +1,5 @@
 import { ChefHat, Clock } from "lucide-react";
-import { useId, type KeyboardEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, type FocusEvent, type KeyboardEvent } from "react";
 import { Banner, Button, EmptyState, PermissionNotice, SegmentedControl, Skeleton, StatusChip, type Choice } from "../components/system";
 import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
 import { KITCHEN_REFRESH_SECONDS } from "./kitchenSettings";
@@ -90,6 +90,43 @@ export function KitchenBoard({
 }: KitchenBoardProps) {
   const columns = boardColumns(tickets);
   const empty = tickets.length === 0;
+  const columnsRef = useRef<HTMLDivElement>(null);
+  // The step a keyboard user was on: a step that moves its ticket to another
+  // column (or off the board) takes its button away, and focus with it.
+  const lastStep = useRef<{ id: string; column: string; row: number } | null>(null);
+
+  function rememberStep(event: FocusEvent<HTMLDivElement>) {
+    const step = event.target as HTMLElement;
+    if (!step.hasAttribute("data-kitchen-next")) return;
+    const column = step.closest<HTMLElement>("[data-kitchen-column]");
+    const steps = column ? Array.from(column.querySelectorAll("[data-kitchen-next]")) : [];
+    lastStep.current = { id: step.dataset.ticketId ?? "", column: column?.dataset.kitchenColumn ?? "", row: steps.indexOf(step) };
+  }
+
+  // Focus that goes anywhere else on the page is the person's own choice: let it be.
+  useEffect(() => {
+    function onFocusIn(event: globalThis.FocusEvent) {
+      const target = event.target as HTMLElement | null;
+      if (!target?.hasAttribute?.("data-kitchen-next") || !columnsRef.current?.contains(target)) lastStep.current = null;
+    }
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, []);
+
+  // When the step that had focus is gone, focus goes to the same ticket's new
+  // step, or to the ticket now in its place in that column (the one above if
+  // it was last), so the arrow keys and Enter carry on from there.
+  useLayoutEffect(() => {
+    const last = lastStep.current;
+    const board = columnsRef.current;
+    if (!last || !board) return;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    const same = Array.from(board.querySelectorAll<HTMLButtonElement>("[data-kitchen-next]")).find((step) => step.dataset.ticketId === last.id);
+    const column = board.querySelector<HTMLElement>(`[data-kitchen-column="${last.column}"]`);
+    const inColumn = column ? Array.from(column.querySelectorAll<HTMLButtonElement>("[data-kitchen-next]")) : [];
+    const next = same ?? inColumn[Math.min(last.row, inColumn.length - 1)] ?? board.querySelector<HTMLButtonElement>("[data-kitchen-next]");
+    next?.focus();
+  });
 
   return (
     <div className="y-kitchen" data-testid="kitchen-board">
@@ -138,7 +175,7 @@ export function KitchenBoard({
           ))}
         </div>
       ) : (
-        <div className="y-kitchen__columns" onKeyDown={moveBetweenSteps}>
+        <div ref={columnsRef} className="y-kitchen__columns" onKeyDown={moveBetweenSteps} onFocus={rememberStep}>
           {columns.map((column) => (
             <Column
               key={column.status}
@@ -287,9 +324,12 @@ function TicketCard({
           block
           className="y-kticket__next"
           data-kitchen-next=""
+          data-ticket-id={ticket.id}
           data-testid={`kitchen-next-${ticket.id}`}
           aria-label={`${busy ? next.pendingWords : next.words} order ${ticket.orderNumber}`}
-          disabled={busy || !canMove}
+          // While the step is with Yetu the button keeps its focus (not the native disabled); the click is ignored.
+          aria-disabled={busy || undefined}
+          disabled={!canMove}
           onClick={() => {
             if (!busy && canMove) onNextStep(ticket);
           }}
