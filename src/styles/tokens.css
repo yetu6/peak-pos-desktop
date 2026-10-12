@@ -249,9 +249,16 @@ body.dark-theme {
   }
 }
 
+/* Short windows (768 to 800 high) use the compact keypad too: a PIN pad and
+   its message must fit without scrolling. */
+@media (max-height: 800px) {
+  :root {
+    --keypad-key: 64px;
+  }
+}
+
 @media (min-width: 1600px) {
   :root {
-    --keypad-key: 72px;
     --rail-width: 76px;
   }
 }

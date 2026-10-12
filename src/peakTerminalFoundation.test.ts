@@ -402,6 +402,8 @@ describe("type, spacing and sizes", () => {
     const compact = tokenBlocks.find((block) => block.atRule === "@media (max-width: 1279px)");
     const wide = tokenBlocks.find((block) => block.atRule === "@media (min-width: 1600px)");
     expect(compact?.declarations).toMatchObject({ "--keypad-key": "64px", "--rail-width": "64px" });
+    const short = tokenBlocks.find((block) => block.atRule === "@media (max-height: 800px)");
+    expect(short?.declarations).toMatchObject({ "--keypad-key": "64px" });
     expect(wide).toBeDefined();
   });
 
