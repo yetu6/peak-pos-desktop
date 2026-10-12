@@ -6,6 +6,7 @@ import {
   Clock,
   Info,
   Lock,
+  LogOut,
   Moon,
   ReceiptText,
   Search,
@@ -16,7 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BrandLockup } from "../components/BrandLockup";
-import { KeyHint, StatusChip } from "../components/system";
+import { Button, KeyHint, StatusChip } from "../components/system";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { normalizeMode } from "../lib/displayDefaults";
 import { globalCommandFor, keyHintFor, keyHintForCommand } from "../lib/keyboard";
@@ -269,6 +270,11 @@ export function TillShell({
           {clock}
         </span>
         <ThemeToggle />
+        {display ? (
+          <Button variant="secondary" icon={<LogOut />} data-testid="kds-log-out" onClick={onSwitchPerson}>
+            Log out
+          </Button>
+        ) : null}
         <PersonMenu
           person={person}
           open={personMenuOpen}

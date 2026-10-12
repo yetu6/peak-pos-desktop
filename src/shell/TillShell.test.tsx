@@ -120,6 +120,22 @@ describe("TillShell", () => {
     expect(orders).toHaveAccessibleDescription(/connection/i);
   });
 
+  it("gives a kitchen or bar display a one-tap Log out in the top bar", async () => {
+    const onSwitchPerson = vi.fn();
+    render(<Harness mode="BAR_DISPLAY" initialPage="kitchen" onSwitchPerson={onSwitchPerson} />);
+    const logOut = screen.getByRole("button", { name: "Log out" });
+    expect(logOut).toHaveAttribute("data-testid", "kds-log-out");
+    expect(within(screen.getByRole("banner")).getByRole("button", { name: "Log out" })).toBe(logOut);
+    await userEvent.click(logOut);
+    expect(onSwitchPerson).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("person-menu")).toBeInTheDocument();
+  });
+
+  it("keeps Log out off a selling till's top bar, where the person menu holds it", () => {
+    render(<Harness />);
+    expect(screen.queryByRole("button", { name: "Log out" })).not.toBeInTheDocument();
+  });
+
   it("shortens the shift chip on a compact screen but keeps the full words in its name", () => {
     render(<Harness />);
     const chip = screen.getByTestId("shell-business-date");
