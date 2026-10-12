@@ -60,7 +60,11 @@ export function PinUnlockView({
 }: PinUnlockViewProps) {
   const sortedRoster = useMemo(() => [...roster].sort((a, b) => a.fullName.localeCompare(b.fullName)), [roster]);
   const [selected, setSelected] = useState<RosterEntry | null>(initialStaff);
-  const [manual, setManual] = useState(initialManual || sortedRoster.length === 0);
+  // Typing a staff number is the person's own choice; with no names to show
+  // (the roster still loading, or none) it is the only way in, until the
+  // names arrive.
+  const [manualChosen, setManual] = useState(initialManual);
+  const manual = manualChosen || sortedRoster.length === 0;
   const [staffNumber, setStaffNumber] = useState("");
   const [pin, setPin] = useState("");
   const pinRef = useRef("");
@@ -157,7 +161,7 @@ export function PinUnlockView({
     setStaffNumber("");
     setPinValue("");
     setLocalProblem(null);
-    setManual(sortedRoster.length === 0);
+    setManual(false);
   }
 
   const notice = pinNotice(error, { failures: failures[currentStaff] ?? 0, manual: !selected });
@@ -271,6 +275,8 @@ export function PinUnlockView({
               onChange={(value) => {
                 setStaffNumber(value);
                 setLocalProblem(null);
+                // Started typing before the names arrived: keep the number entry when they do.
+                if (value) setManual(true);
               }}
               data-testid="staff-number"
               inputMode="numeric"

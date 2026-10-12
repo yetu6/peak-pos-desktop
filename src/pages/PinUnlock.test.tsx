@@ -79,6 +79,24 @@ describe("PinUnlock", () => {
     expect(screen.getByTestId("staff-number")).toBeInTheDocument();
   });
 
+  it("opens on the names once the roster arrives (it is still loading when the screen opens)", () => {
+    useDeviceSessionMock.mockReturnValue(baseSession({ roster: [] }));
+    render(<PinUnlock />);
+    expect(screen.getByTestId("staff-number")).toBeInTheDocument();
+    act(() => useDeviceSessionMock.mockReturnValue(baseSession({ roster: TWO })));
+    expect(screen.getByTestId("staff-roster")).toBeInTheDocument();
+    expect(screen.queryByTestId("staff-number")).not.toBeInTheDocument();
+  });
+
+  it("keeps the staff number entry for a person who started typing before the names arrived", async () => {
+    useDeviceSessionMock.mockReturnValue(baseSession({ roster: [] }));
+    render(<PinUnlock />);
+    await userEvent.type(screen.getByTestId("staff-number"), "000");
+    act(() => useDeviceSessionMock.mockReturnValue(baseSession({ roster: TWO })));
+    expect(screen.getByTestId("staff-number")).toHaveValue("000");
+    expect(screen.queryByTestId("staff-roster")).not.toBeInTheDocument();
+  });
+
   it("shows a tap-to-select roster and unlocks with the tapped staff member's number", async () => {
     useDeviceSessionMock.mockReturnValue(baseSession({ roster: TWO }));
     render(<PinUnlock />);
