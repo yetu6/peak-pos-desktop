@@ -432,7 +432,12 @@ export function OrderDetail({
           setSelectedLineId(null);
           setResult(`${line.name} removed.`);
         },
-        onError: (error) => setProblem(removeProblem(error)?.words ?? "The item wasn't removed. Try again."),
+        onError: (error) => {
+          const refusal = removeProblem(error);
+          setProblem(refusal?.words ?? "The item wasn't removed. Try again.");
+          if (refusal?.kind !== "network") removeKey.forget();
+          if (refusal?.kind === "stale") onReload();
+        },
       },
     );
   }
@@ -444,7 +449,11 @@ export function OrderDetail({
       { orderId: order.id, idempotencyKey: reprintKey.keyFor([order.id, receipt.data.reprintCount].join("|")) },
       {
         onSuccess: () => setResult("A copy of the receipt was sent to the printer."),
-        onError: (error) => setProblem(reprintProblem(error)?.words ?? "The copy wasn't printed. Try again."),
+        onError: (error) => {
+          const refusal = reprintProblem(error);
+          setProblem(refusal?.words ?? "The copy wasn't printed. Try again.");
+          if (refusal?.kind !== "network") reprintKey.forget();
+        },
       },
     );
   }

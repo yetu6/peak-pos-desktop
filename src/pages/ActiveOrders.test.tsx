@@ -376,6 +376,21 @@ describe("Orders", () => {
     expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("Tea removed.");
   });
 
+  it("a refused remove reloads the order when it changed, and the next press is a new request", async () => {
+    ordersStore.set("order-1", { ...OPEN_ORDER, items: [...OPEN_ORDER.items, { ...OPEN_ORDER.items[0], id: "item-2", name: "Tea" }] });
+    spies.removeItem.mockResolvedValueOnce({ data: undefined, error: { code: "STALE_VERSION" } });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    const listedBefore = spies.listOrders.mock.calls.filter(([active]) => active === true).length;
+    await userEvent.click(within(sheet).getByRole("button", { name: /1 × Tea/ }));
+    await userEvent.click(within(sheet).getByRole("button", { name: "Remove Tea" }));
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent("It's been reloaded");
+    await waitFor(() => expect(spies.listOrders.mock.calls.filter(([active]) => active === true).length).toBeGreaterThan(listedBefore));
+    await userEvent.click(within(sheet).getByRole("button", { name: "Remove Tea" }));
+    await waitFor(() => expect(spies.removeItem).toHaveBeenCalledTimes(2));
+    expect(spies.removeItem.mock.calls[1][3]).not.toBe(spies.removeItem.mock.calls[0][3]);
+  });
+
   it("opens Pay over the order and comes back to it on Cancel", async () => {
     ordersStore.set("order-1", { ...OPEN_ORDER, status: "SENT", version: 2 });
     renderOrders();
@@ -432,6 +447,23 @@ describe("Orders", () => {
     await waitFor(() => expect(within(sheet).getByTestId("order-detail-status")).toHaveTextContent("Paid"));
     expect(screen.getByRole("dialog", { name: "Order 1042" })).toBe(sheet);
     expect(await within(sheet).findByTestId("detail-reprint")).toBeInTheDocument();
+  });
+
+  it("a refused copy is never asked for again under its key", async () => {
+    ordersStore.set("order-0", PAID_ORDER);
+    receiptsStore.set("order-0", receiptFor(PAID_ORDER));
+    spies.reprintReceipt.mockResolvedValueOnce({ data: undefined, error: { code: "FORBIDDEN" } });
+    renderOrders();
+    await screen.findByText("No open orders");
+    await userEvent.click(screen.getByRole("tab", { name: /Paid this shift/ }));
+    const sheet = await openDetail("order-0");
+    const print = within(sheet).getByTestId("detail-reprint");
+    await waitFor(() => expect(print).toBeEnabled());
+    await userEvent.click(print);
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent("Only a cashier or manager can print a copy of the receipt.");
+    await userEvent.click(print);
+    await waitFor(() => expect(spies.reprintReceipt).toHaveBeenCalledTimes(2));
+    expect(spies.reprintReceipt.mock.calls[1][1]).not.toBe(spies.reprintReceipt.mock.calls[0][1]);
   });
 
   it("gives focus back to the order's row when its detail closes", async () => {
