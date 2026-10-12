@@ -1,0 +1,118 @@
+/* Orders: the open and paid lists, and an order's detail sheet. The list
+   scrolls on its own; the title, tabs and search stay where they are. */
+
+.y-orders {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  color: var(--text);
+}
+
+.y-orders__head {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+}
+
+.y-orders__title {
+  margin: 0;
+  font-size: var(--type-heading);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.y-orders__search {
+  min-width: 260px;
+  max-width: 440px;
+  flex: 1 1 320px;
+  margin-left: auto;
+}
+
+.y-orders__status {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.y-orders__status:empty { display: none; }
+
+.y-orders__list {
+  display: grid;
+  min-height: 0;
+  align-content: start;
+  gap: var(--space-3);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+}
+
+.y-orders__list > .y-banner { margin: var(--space-3) var(--space-3) 0; }
+
+.y-orders__loading {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.y-orders__rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ------------------------------------------------------------------- A row */
+.y-orow {
+  display: grid;
+  width: 100%;
+  min-height: 72px;
+  grid-template-columns: 88px minmax(0, 1fr) auto minmax(132px, auto);
+  align-items: center;
+  gap: var(--space-4);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  padding: var(--space-3) var(--space-4);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.y-orders__rows > li:last-child .y-orow { border-bottom: 0; }
+.y-orow:hover { background: var(--surface-hover); }
+
+/* Inside the scrolling list the ring is drawn within the row, so none of it is cut off. */
+.y-orow:focus-visible { outline-offset: -3px; }
+
+.y-orow__number {
+  font-family: var(--font-display);
+  font-size: var(--type-heading);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.y-orow__main { display: grid; min-width: 0; gap: 2px; }
+
+.y-orow__place {
+  overflow: hidden;
+  font-size: var(--type-lead);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.y-orow__meta {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.y-orow__total { justify-self: end; }

@@ -12,6 +12,7 @@
 @import "./cash/cash.css";
 @import "./register/register.css";
 @import "./kitchen/kitchen.css";
+@import "./orders/orders.css";
 
 @custom-variant dark (&:is(.dark *));
 
