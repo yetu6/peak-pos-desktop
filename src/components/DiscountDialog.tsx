@@ -8,10 +8,16 @@ import { toMinor } from "../lib/posMoney";
 import { discountProblem } from "../register/registerWords";
 import { Banner, Button, Field, MoneyField, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
 
-/** A percentage as Yetu takes it: basis points (12.5% → 1250), from more than 0 up to 100%. */
+/**
+ * A percentage as Yetu takes it: basis points (12.5% → 1250), from more than
+ * 0 up to 100%, to two decimals at most so what is sent is exactly what was
+ * typed (no rounding).
+ */
 function percentBasisPoints(text: string): number | null {
-  const value = Number(text.trim());
-  if (!text.trim() || !Number.isFinite(value) || value <= 0 || value > 100) return null;
+  const typed = text.trim();
+  if (!/^\d{1,3}(\.\d{1,2})?$/.test(typed)) return null;
+  const value = Number(typed);
+  if (value <= 0 || value > 100) return null;
   return Math.round(value * 100);
 }
 
@@ -134,7 +140,7 @@ export function DiscountDialog({
         ) : (
           <Field
             label="Percent off"
-            hint="From more than 0 up to 100."
+            hint="Up to two decimals, for example 12.5."
             value={valueText}
             onChange={(text) => {
               setValueText(text);

@@ -106,6 +106,21 @@ describe("DiscountDialog", () => {
     expect(screen.getByTestId("confirm-discount")).toBeDisabled();
   });
 
+  it("takes a percentage to two decimals at most, sending exactly what was typed", async () => {
+    render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
+    await userEvent.click(screen.getByRole("radio", { name: "Percent" }));
+    await userEvent.type(screen.getByTestId("discount-value"), "12.345");
+    await userEvent.type(screen.getByTestId("discount-reason"), "Staff meal");
+    await approveAsGrace();
+    expect(screen.getByTestId("confirm-discount")).toBeDisabled();
+    expect(screen.getByText("Up to two decimals, for example 12.5.")).toBeInTheDocument();
+    await userEvent.clear(screen.getByTestId("discount-value"));
+    await userEvent.type(screen.getByTestId("discount-value"), "12.34");
+    await approveAsGrace();
+    await userEvent.click(screen.getByTestId("confirm-discount"));
+    expect(applyMutate).toHaveBeenCalledWith(expect.objectContaining({ kind: "PERCENT", value: 1234 }), expect.anything());
+  });
+
   it("needs a reason, even with an amount and an approval", async () => {
     render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
     await userEvent.type(screen.getByTestId("discount-value"), "2000");
