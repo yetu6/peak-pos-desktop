@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Icon } from "../components/Icon";
-import { ItemModifierDialog, type ModifierSelection } from "../components/ItemModifierDialog";
 import { SettleDialog } from "../components/SettleDialog";
 import { DiscountDialog } from "../components/DiscountDialog";
 import {
@@ -8,9 +7,7 @@ import {
   MoneyDisplay,
   OrderLine,
   OrderRail,
-  ProductTile,
   QuantityStepper,
-  TerminalState,
 } from "../components/terminal/TerminalPrimitives";
 import {
   useAddOrderItem,
@@ -26,23 +23,16 @@ import {
   useSetProductAvailability,
 } from "../hooks/usePosData";
 import { ReceiptView } from "../components/ReceiptView";
+import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
+import { OptionsSheet } from "../register/OptionsSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
 import type { POSCatalogProduct, POSOrder, ServiceType } from "../lib/posContracts";
-import { formatMinor, moneyFormatter } from "../lib/posMoney";
+import { moneyFormatter } from "../lib/posMoney";
 
 const SERVICE_TYPES: Array<{ id: ServiceType; label: string }> = [
   { id: "DINE_IN", label: "Dine in" },
   { id: "TAKEAWAY", label: "Takeaway" },
   { id: "ROOM_SERVICE", label: "Room service" },
-];
-
-const CATEGORY_COLORS = [
-  "#3D7EA6",
-  "#5B8C5A",
-  "#C9A227",
-  "#8B6BB5",
-  "#C23B22",
-  "#2A9D8F",
 ];
 
 /**
@@ -53,7 +43,7 @@ const CATEGORY_COLORS = [
 export function NewOrder() {
   const { shift } = usePosShift();
   const catalog = useCatalog();
-  const [activeCategory, setActiveCategory] = useState<string | undefined>();
+  const [activeCategory, setActiveCategory] = useState<string>(ALL_CATEGORIES);
   const [search, setSearch] = useState("");
   const [serviceType, setServiceType] = useState<ServiceType>("DINE_IN");
   const [tableLabel, setTableLabel] = useState("");
@@ -84,21 +74,6 @@ export function NewOrder() {
   const availabilityError = useMutationMessage(setAvailability.error);
   const mutationError = createError ?? addError ?? removeError ?? sendError ?? availabilityError ?? actionError;
 
-  const products = useMemo(() => {
-    const all = catalog.data?.products ?? [];
-    const q = search.trim().toLowerCase();
-    return all.filter((product) => {
-      if (activeCategory && product.categoryId !== activeCategory) return false;
-      if (!q) return true;
-      return product.name.toLowerCase().includes(q) || product.code.toLowerCase().includes(q);
-    });
-  }, [catalog.data?.products, activeCategory, search]);
-
-  const categories = useMemo(
-    () => (catalog.data?.categories ?? []).filter((c) => c.isActive).sort((a, b) => a.sortOrder - b.sortOrder),
-    [catalog.data?.categories],
-  );
-
   const currency = catalog.data?.products[0]?.currency ?? "TZS";
   const money = moneyFormatter(currency);
   const busy =
@@ -108,6 +83,12 @@ export function NewOrder() {
     sendOrder.isPending;
   const totalItems = order?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
   const canMutate = Boolean(shift) && !busy;
+  // Yetu adds items only to an order that is still open (not yet sent).
+  const addBlocked = !shift
+    ? "Open a shift before taking orders."
+    : order && order.status !== "OPEN"
+      ? "This order has gone to the kitchen. Start a new sale to add more."
+      : null;
 
   async function ensureOrder(): Promise<POSOrder | null> {
     if (order) return order;
@@ -132,7 +113,7 @@ export function NewOrder() {
   }
 
   async function tapProduct(product: POSCatalogProduct) {
-    if (!canMutate) return;
+    if (!canMutate || addBlocked) return;
     if (product.isAvailable === false) return;
     if ((product.modifierGroups?.length ?? 0) > 0) {
       setConfiguring(product);
@@ -141,15 +122,11 @@ export function NewOrder() {
     await addProduct(product, 1, []);
   }
 
-  async function toggleEightySix(product: POSCatalogProduct) {
+  async function setSoldOut(product: POSCatalogProduct, available: boolean) {
     if (!shift || busy) return;
-    const currentlyAvailable = product.isAvailable !== false;
-    const next = !currentlyAvailable;
-    const label = next ? `Restore ${product.name}?` : `86 ${product.name}? Sold out until restored.`;
-    if (!window.confirm(label)) return;
     setActionError(null);
     try {
-      await setAvailability.mutateAsync({ productId: product.id, isAvailable: next });
+      await setAvailability.mutateAsync({ productId: product.id, isAvailable: available });
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not update availability.");
     }
@@ -241,86 +218,20 @@ export function NewOrder() {
     <>
       <RegisterLayout
         menu={
-        <div className="catalog-workspace">
-          <div className="catalog-toolbar">
-            {SERVICE_TYPES.map((type) => (
-              <CategoryTab
-                key={type.id}
-                data-testid={`service-type-${type.id}`}
-                active={serviceType === type.id}
-                disabled={busy || Boolean(order)}
-                onClick={() => setServiceType(type.id)}
-              >
-                {type.label}
-              </CategoryTab>
-            ))}
-            <label className="relative ml-auto min-w-44">
-              <span className="sr-only">Search menu</span>
-              <input
-                data-testid="catalog-search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search menu"
-                className="input w-full"
-              />
-            </label>
-            <input
-              data-testid="table-label"
-              value={tableLabel}
-              onChange={(event) => setTableLabel(event.target.value)}
-              placeholder="Table"
-              className="input w-28"
-              disabled={Boolean(order)}
-            />
-          </div>
-          {categories.length > 0 && (
-            <div className="category-tabs" aria-label="Menu categories">
-              <CategoryTab data-testid="category-all" active={!activeCategory} onClick={() => setActiveCategory(undefined)}>
-                All
-              </CategoryTab>
-              {categories.map((category, index) => (
-                <CategoryTab
-                  key={category.id}
-                  data-testid={`category-${category.id}`}
-                  active={activeCategory === category.id}
-                  onClick={() => setActiveCategory(category.id)}
-                  style={{ ["--chip-accent" as string]: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }}
-                >
-                  {category.name}
-                </CategoryTab>
-              ))}
-            </div>
-          )}
-          {catalog.isLoading && <div className="skeleton h-40 w-full rounded-xl" />}
-          {catalog.isError && (
-            <TerminalState
-              state="offline"
-              title="Menu unavailable"
-              description="Could not load the outlet catalog. Check the connection and try again."
-            />
-          )}
-          {!catalog.isLoading && !catalog.isError && products.length === 0 && (
-            <TerminalState state="empty" title="No matching items" description="Try another category or search term." />
-          )}
-          <div className="y-menu-grid" data-testid="menu-grid">
-            {products.map((product) => (
-              <ProductTile
-                key={product.id}
-                data-testid={`menu-${product.name}`}
-                disabled={!shift || busy || setAvailability.isPending}
-                soldOut={product.isAvailable === false}
-                onClick={() => void tapProduct(product)}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  void toggleEightySix(product);
-                }}
-                title={product.isAvailable === false ? "Right-click to restore" : "Right-click to 86 (sold out)"}
-                name={product.name}
-                price={formatMinor(product.priceMinor, product.currency)}
-              />
-            ))}
-          </div>
-        </div>
+          <MenuPanel
+            categories={catalog.data?.categories ?? []}
+            products={catalog.data?.products ?? []}
+            currency={catalog.data?.products[0]?.currency}
+            activeCategory={activeCategory}
+            onCategory={setActiveCategory}
+            search={search}
+            onSearch={setSearch}
+            addBlocked={addBlocked}
+            onTap={(product) => void tapProduct(product)}
+            onSoldOutToggle={(product, available) => void setSoldOut(product, available)}
+            loading={catalog.isLoading}
+            failed={catalog.isError}
+          />
         }
         ticket={
         <OrderRail
@@ -328,12 +239,35 @@ export function NewOrder() {
           data-testid="current-order-rail"
           className="receipt-ticket"
           headerMeta={
+            <>
+            <div className="catalog-toolbar">
+              {SERVICE_TYPES.map((type) => (
+                <CategoryTab
+                  key={type.id}
+                  data-testid={`service-type-${type.id}`}
+                  active={serviceType === type.id}
+                  disabled={busy || Boolean(order)}
+                  onClick={() => setServiceType(type.id)}
+                >
+                  {type.label}
+                </CategoryTab>
+              ))}
+              <input
+                data-testid="table-label"
+                value={tableLabel}
+                onChange={(event) => setTableLabel(event.target.value)}
+                placeholder="Table"
+                className="input w-28"
+                disabled={Boolean(order)}
+              />
+            </div>
             <p className="mt-1 text-xs text-[var(--foreground-muted)]">
               {totalItems} {totalItems === 1 ? "item" : "items"}
               {order ? ` · ${order.orderNumber}` : " · new"}
               {order ? ` · ${order.status.replaceAll("_", " ").toLowerCase()}` : ""}
               {order?.initiatedByName ? ` · ${order.initiatedByName}` : ""}
             </p>
+            </>
           }
           footer={
             <>
@@ -475,13 +409,12 @@ export function NewOrder() {
       />
 
       {configuring && (
-        <ItemModifierDialog
+        <OptionsSheet
           product={configuring}
           currency={configuring.currency}
+          pending={busy}
           onCancel={() => setConfiguring(null)}
-          onConfirm={(selection: ModifierSelection) =>
-            void addProduct(configuring, selection.quantity, selection.modifierOptionIds)
-          }
+          onAdd={(choice) => void addProduct(configuring, choice.quantity, choice.modifierOptionIds)}
         />
       )}
       {settleOpen && order && (

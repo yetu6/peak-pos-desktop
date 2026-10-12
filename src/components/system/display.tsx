@@ -1,5 +1,5 @@
 import { Ban, Bell, CircleCheck, CircleDot, CircleX, Info, TriangleAlert } from "lucide-react";
-import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
+import type { CSSProperties, HTMLAttributes, MouseEvent, ReactNode } from "react";
 import { formatMoney } from "../../lib/money";
 import { cn } from "../../lib/utils";
 import type { Tone } from "../../lib/words";
@@ -59,26 +59,37 @@ export function Tile({
   name,
   price,
   soldOut = false,
+  disabled = false,
   mark,
   onClick,
+  onContextMenu,
   className,
+  "data-testid": testId,
 }: {
   name: string;
   price: string;
   soldOut?: boolean;
+  /** Can't be added just now; the screen says why. It stays focusable and keeps its place. */
+  disabled?: boolean;
   /** One of the four category marks (decoration only). */
   mark?: 1 | 2 | 3 | 4;
   onClick?: () => void;
+  /** A right-click or long press (marking sold out). */
+  onContextMenu?: (event: MouseEvent<HTMLButtonElement>) => void;
   className?: string;
+  "data-testid"?: string;
 }) {
   const style = mark ? ({ ["--tile-mark" as string]: `var(--mark-${mark})` } as CSSProperties) : undefined;
+  const inactive = soldOut || disabled;
   return (
     <button
       type="button"
       className={cn("y-tile", soldOut && "y-tile--sold-out", mark && "y-tile--marked", className)}
       style={style}
-      aria-disabled={soldOut || undefined}
-      onClick={soldOut ? undefined : onClick}
+      aria-disabled={inactive || undefined}
+      data-testid={testId}
+      onClick={inactive ? undefined : onClick}
+      onContextMenu={onContextMenu}
     >
       <span className="y-tile__name">{name}</span>
       {soldOut ? (
