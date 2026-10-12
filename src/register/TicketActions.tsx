@@ -23,6 +23,8 @@ export interface TicketActionsProps {
   onVoid: () => void;
   onNote: () => void;
   onNewSale: () => void;
+  /** Fixtures start with More open. */
+  initialMoreOpen?: boolean;
 }
 
 /**
@@ -44,8 +46,9 @@ export function TicketActions({
   onVoid,
   onNote,
   onNewSale,
+  initialMoreOpen = false,
 }: TicketActionsProps) {
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(initialMoreOpen);
   const lines = (order?.items ?? []).filter((line) => line.status !== "VOIDED");
   const settled = order !== null && (order.status === "CLOSED" || order.status === "VOIDED");
   const sendable = Boolean(order && order.status === "OPEN" && lines.some((line) => line.status === "ADDED")) && !busy;

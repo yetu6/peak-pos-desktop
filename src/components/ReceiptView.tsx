@@ -1,6 +1,7 @@
 import { Printer } from "lucide-react";
 import { useIdempotencyKey, useMutationMessage, useReceipt, useReprintReceipt } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
+import type { POSReceipt } from "../lib/posContracts";
 import { businessDayWords, clockTime, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { Banner, Button, Dialog, Skeleton } from "./system";
 
@@ -20,7 +21,37 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
   const reprint = useReprintReceipt();
   const idempotencyKey = useIdempotencyKey();
   const reprintError = useMutationMessage(reprint.error);
-  const doc = receipt.data?.document;
+  return (
+    <ReceiptSheet
+      receipt={receipt.data}
+      loading={receipt.isLoading}
+      failed={receipt.isError}
+      reprinting={reprint.isPending}
+      reprintError={reprintError}
+      onReprint={() => reprint.mutate({ orderId, idempotencyKey: idempotencyKey.next() })}
+      onClose={onClose}
+    />
+  );
+}
+
+export function ReceiptSheet({
+  receipt,
+  loading,
+  failed,
+  reprinting,
+  reprintError,
+  onReprint,
+  onClose,
+}: {
+  receipt: POSReceipt | undefined;
+  loading: boolean;
+  failed: boolean;
+  reprinting: boolean;
+  reprintError: string | null;
+  onReprint: () => void;
+  onClose: () => void;
+}) {
+  const doc = receipt?.document;
 
   return (
     <Dialog
@@ -38,22 +69,22 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
           <Button
             icon={<Printer />}
             data-testid="reprint-receipt"
-            onClick={() => reprint.mutate({ orderId, idempotencyKey: idempotencyKey.next() })}
-            disabled={!receipt.data || reprint.isPending}
+            onClick={onReprint}
+            disabled={!receipt || reprinting}
           >
-            {reprint.isPending ? "Sending to the printer…" : "Print again"}
+            {reprinting ? "Sending to the printer…" : "Print again"}
           </Button>
         </div>
       }
     >
       <div className="y-receipt">
-        {receipt.isLoading ? (
+        {loading ? (
           <div className="y-receipt__loading" aria-label="Loading the receipt">
             <Skeleton height={24} width="60%" />
             <Skeleton height={120} />
           </div>
         ) : null}
-        {receipt.isError ? (
+        {failed ? (
           <Banner inline tone="danger" data-testid="receipt-error">
             The receipt couldn't be loaded. Check the connection, then try again.
           </Banner>
@@ -115,9 +146,9 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
               </div>
             </dl>
             <p className="y-receipt__meta">Paid by {settledWords(doc.tenderMethod)}</p>
-            {receipt.data && receipt.data.reprintCount > 0 ? (
+            {receipt && receipt.reprintCount > 0 ? (
               <p className="y-receipt__meta">
-                Printed again {receipt.data.reprintCount} {receipt.data.reprintCount === 1 ? "time" : "times"}
+                Printed again {receipt.reprintCount} {receipt.reprintCount === 1 ? "time" : "times"}
               </p>
             ) : null}
             <p className="y-receipt__footer" data-testid="receipt-footer">
