@@ -1,6 +1,6 @@
 import { ChefHat, Plus, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Button, EmptyState, Field, Money, SegmentedControl, StatusChip, TicketLine } from "../components/system";
+import { Banner, Button, EmptyState, Field, Money, SegmentedControl, StatusChip, TicketLine } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 import { clockTime, serviceTypeWords } from "../lib/words";
@@ -31,6 +31,8 @@ export interface TicketPanelProps {
   /** When this till sent the order to the kitchen, if it did. */
   sentAt: Date | null;
   error: string | null;
+  /** What just happened, in words (an order voided). */
+  notice?: string | null;
   /** Send to kitchen, Pay and More. */
   actions: ReactNode;
 }
@@ -58,6 +60,7 @@ export function TicketPanel({
   lineBusy,
   sentAt,
   error,
+  notice = null,
   actions,
 }: TicketPanelProps) {
   const locked = order !== null;
@@ -100,6 +103,11 @@ export function TicketPanel({
       </header>
 
       <div className="y-ticket__lines" aria-label="Lines">
+        {notice ? (
+          <Banner inline tone="info" data-testid="ticket-notice">
+            {notice}
+          </Banner>
+        ) : null}
         {lines.length === 0 ? (
           <EmptyState title="Tap an item to start an order." />
         ) : (

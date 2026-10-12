@@ -1,78 +1,102 @@
-import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VoidOrderDialog } from "./VoidOrderDialog";
 import type { POSOrder } from "../lib/posContracts";
 
-const { voidOrderMutate, rosterRef } = vi.hoisted(() => ({
+const { voidOrderMutate, sessionRef, voidState } = vi.hoisted(() => ({
   voidOrderMutate: vi.fn((_vars: unknown, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.()),
-  rosterRef: { roster: [] as Array<{ fullName: string; staffNumber: string }> },
+  sessionRef: { roster: [] as Array<{ fullName: string; staffNumber: string }> },
+  voidState: { error: null as unknown, isPending: false },
 }));
 
 vi.mock("../hooks/usePosData", () => ({
-  useVoidOrder: () => ({ mutate: voidOrderMutate, isPending: false, error: null }),
+  useVoidOrder: () => ({ mutate: voidOrderMutate, ...voidState }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
-  useMutationMessage: () => null,
 }));
 
 vi.mock("../auth/DeviceSessionProvider", () => ({
-  useDeviceSessionOptional: () => ({ roster: rosterRef.roster }),
+  useDeviceSessionOptional: () => ({ session: { staffId: "staff-amina" }, roster: sessionRef.roster }),
 }));
 
 const ORDER: POSOrder = {
   id: "order-1",
   shiftId: "shift-1",
-  orderNumber: "POS-1",
+  orderNumber: "0142",
   status: "SENT",
   serviceType: "DINE_IN",
-  initiatedById: "staff-1",
+  initiatedById: "staff-amina",
   initiatedByName: "Amina Hassan",
   subtotalMinor: 20_000,
   discountMinor: 0,
   discountKind: "NONE",
   discountInput: 0,
   taxMinor: 4_000,
-  totalMinor: 24_000,
+  totalMinor: 2_400_000,
   paidMinor: 0,
-  remainingMinor: 24_000,
+  remainingMinor: 2_400_000,
   version: 4,
   items: [],
 };
 
-describe("VoidOrderDialog", () => {
-  it("requires a different supervisor's own 6-digit PIN and a reason before voiding", async () => {
-    rosterRef.roster = [];
-    render(<VoidOrderDialog order={ORDER} onClose={vi.fn()} />);
+const ROSTER = [
+  { fullName: "Amina Hassan", staffNumber: "staff-amina" },
+  { fullName: "Grace Mushi", staffNumber: "staff-grace" },
+];
 
+async function typePin(digits: string) {
+  for (const digit of digits) await userEvent.click(screen.getByTestId(`void-pin-key-${digit}`));
+}
+
+beforeEach(() => {
+  voidOrderMutate.mockClear();
+  sessionRef.roster = ROSTER;
+  voidState.error = null;
+  voidState.isPending = false;
+});
+
+describe("VoidOrderDialog", () => {
+  it("needs a reason and a different supervisor's 6-digit PIN before voiding", async () => {
+    render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
     const submit = screen.getByTestId("confirm-void-order");
     expect(submit).toBeDisabled();
-
-    await userEvent.type(screen.getByTestId("void-supervisor-id"), "00099");
-    await userEvent.type(screen.getByTestId("void-supervisor-pin"), "12345"); // 5 digits, too short
     await userEvent.type(screen.getByTestId("void-reason"), "Wrong table");
+    expect(screen.getByText("Void order 0142 (TSh 24,000): Wrong table")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Amina Hassan/ })).toBeDisabled();
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+    await typePin("12345");
     expect(submit).toBeDisabled();
-
-    await userEvent.type(screen.getByTestId("void-supervisor-pin"), "6");
-    expect(submit).not.toBeDisabled();
-
+    await typePin("6");
+    expect(submit).toBeEnabled();
     await userEvent.click(submit);
     expect(voidOrderMutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderId: "order-1",
-        supervisorStaffId: "00099",
-        supervisorPin: "123456",
-        reason: "Wrong table",
-        version: 4,
-      }),
+      expect.objectContaining({ orderId: "order-1", supervisorStaffId: "staff-grace", supervisorPin: "123456", reason: "Wrong table", version: 4 }),
       expect.anything(),
     );
   });
 
-  it("offers a roster picker instead of free text when the device roster is known", () => {
-    rosterRef.roster = [{ fullName: "Grace Mushi", staffNumber: "00002" }];
-    render(<VoidOrderDialog order={ORDER} onClose={vi.fn()} />);
+  it("asks again when the reason changes after approval", async () => {
+    render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    await userEvent.type(screen.getByTestId("void-reason"), "Wrong table");
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+    await typePin("123456");
+    await userEvent.type(screen.getByTestId("void-reason"), " 4");
+    expect(screen.getByRole("radio", { name: /Grace Mushi/ })).not.toBeChecked();
+    expect(screen.getByTestId("confirm-void-order")).toBeDisabled();
+  });
 
-    expect(screen.getByTestId("void-supervisor-select")).toBeInTheDocument();
-    expect(screen.queryByTestId("void-supervisor-id")).not.toBeInTheDocument();
+  it("with no staff list, the void can't be approved here and it says why", () => {
+    sessionRef.roster = [];
+    render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    expect(screen.queryByRole("textbox", { name: /staff number/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/can't show its staff list right now/)).toBeInTheDocument();
+  });
+
+  it("says a refused void in words", () => {
+    voidState.error = new Error(JSON.stringify({ code: "CONFLICT", detail: "supervisor approval failed" }));
+    render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    expect(within(screen.getByTestId("void-order-dialog")).getByRole("alert")).toHaveTextContent(
+      "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
+    );
   });
 });

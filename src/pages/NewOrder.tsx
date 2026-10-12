@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { SettleDialog } from "../components/SettleDialog";
 import { DiscountDialog } from "../components/DiscountDialog";
-import { Button } from "../components/system";
+import { VoidOrderDialog } from "../components/VoidOrderDialog";
 import {
   useAddOrderItem,
   useCatalog,
   useCatalogCurrency,
   useCreateOrder,
+  useHasPermission,
   useIdempotencyKey,
   useMutationMessage,
   usePosShift,
@@ -19,7 +20,9 @@ import {
 import { ReceiptView } from "../components/ReceiptView";
 import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OptionsSheet } from "../register/OptionsSheet";
+import { NoteSheet } from "../register/NoteSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
+import { TicketActions } from "../register/TicketActions";
 import { TicketPanel } from "../register/TicketPanel";
 import type { POSCatalogProduct, POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 
@@ -58,9 +61,14 @@ export function NewOrder() {
   const [configuring, setConfiguring] = useState<POSCatalogProduct | null>(null);
   const [settleOpen, setSettleOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [invoiceOrderId, setInvoiceOrderId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const canSend = useHasPermission("pos.order.send");
+  const canPay = useHasPermission("pos.payment.record");
   const propertyId = usePropertyId();
   const printAfter = usePrintAfter(propertyId);
   const createOrder = useCreateOrder();
@@ -115,6 +123,7 @@ export function NewOrder() {
   async function tapProduct(product: POSCatalogProduct) {
     if (!canMutate || addBlocked) return;
     if (product.isAvailable === false) return;
+    setNotice(null);
     if ((product.modifierGroups?.length ?? 0) > 0) {
       setConfiguring(product);
       return;
@@ -231,8 +240,6 @@ export function NewOrder() {
     clearTicket();
   }
 
-  const hasLines = Boolean(order && order.items.some((item) => item.status !== "VOIDED"));
-
   return (
     <>
       <RegisterLayout
@@ -267,34 +274,22 @@ export function NewOrder() {
             lineBusy={busy}
             sentAt={sentAt}
             error={mutationError}
+            notice={notice}
             actions={
-              <div className="y-ticket__actions">
-                <Button
-                  data-testid="send-order"
-                  onClick={() => void sendToKitchen()}
-                  disabled={!order || !hasLines || order.status !== "OPEN" || busy}
-                >
-                  {sendOrder.isPending ? "Sending…" : "Send to kitchen"}
-                </Button>
-                <Button
-                  variant="primary"
-                  data-testid="pay-order"
-                  onClick={() => setSettleOpen(true)}
-                  disabled={!order || !hasLines || order.status === "CLOSED" || order.status === "VOIDED" || busy}
-                >
-                  Pay
-                </Button>
-                {order && hasLines && order.paidMinor === 0 && order.status !== "CLOSED" && order.status !== "VOIDED" ? (
-                  <Button variant="quiet" data-testid="discount-order" onClick={() => setDiscountOpen(true)} disabled={busy}>
-                    Apply discount
-                  </Button>
-                ) : null}
-                {order ? (
-                  <Button variant="quiet" data-testid="new-ticket" onClick={clearTicket} disabled={busy}>
-                    New ticket
-                  </Button>
-                ) : null}
-              </div>
+              <TicketActions
+                order={order}
+                currency={currency}
+                busy={busy}
+                sending={sendOrder.isPending}
+                canSend={canSend}
+                canPay={canPay}
+                onSend={() => void sendToKitchen()}
+                onPay={() => setSettleOpen(true)}
+                onDiscount={() => setDiscountOpen(true)}
+                onVoid={() => setVoidOpen(true)}
+                onNote={() => setNoteOpen(true)}
+                onNewSale={clearTicket}
+              />
             }
           />
         }
@@ -326,6 +321,26 @@ export function NewOrder() {
           currency={currency}
           onClose={() => setDiscountOpen(false)}
           onApplied={(updated) => setOrder(updated)}
+        />
+      )}
+      {voidOpen && order && (
+        <VoidOrderDialog
+          order={order}
+          currency={currency}
+          onClose={() => setVoidOpen(false)}
+          onVoided={() => {
+            const number = order.orderNumber;
+            clearTicket();
+            setNotice(`Order ${number} was voided. The kitchen has been told.`);
+          }}
+        />
+      )}
+      {noteOpen && (
+        <NoteSheet
+          note={order ? (order.notes ?? "") : notes}
+          locked={order !== null}
+          onSave={setNotes}
+          onClose={() => setNoteOpen(false)}
         />
       )}
       {invoiceOrderId && <ReceiptView orderId={invoiceOrderId} onClose={() => setInvoiceOrderId(null)} />}

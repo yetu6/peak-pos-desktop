@@ -1,14 +1,26 @@
 import { useState } from "react";
-import { Icon } from "./Icon";
+import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
-import { useApplyDiscount, useIdempotencyKey, useMutationMessage } from "../hooks/usePosData";
-import { formatMinor, toMinor } from "../lib/posMoney";
+import { useApplyDiscount, useIdempotencyKey } from "../hooks/usePosData";
+import { formatMoney } from "../lib/money";
 import type { DiscountKind, POSOrder } from "../lib/posContracts";
+import { toMinor } from "../lib/posMoney";
+import { discountProblem } from "../register/registerWords";
+import { Banner, Button, Field, MoneyField, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
+
+/** A percentage as Yetu takes it: basis points (12.5% → 1250), from more than 0 up to 100%. */
+function percentBasisPoints(text: string): number | null {
+  const value = Number(text.trim());
+  if (!text.trim() || !Number.isFinite(value) || value <= 0 || value > 100) return null;
+  return Math.round(value * 100);
+}
 
 /**
- * Supervisor-gated order-level discount. Peak applies it to the pre-tax
- * subtotal and recomputes tax proportionally. Cleared on the next line
- * add/remove; refused after any tender.
+ * A discount on the order, approved by a different supervisor with their
+ * PIN. Yetu applies it to the subtotal before VAT and works out the new
+ * figures; it clears it when a line is added or removed, and refuses it
+ * once part of the bill is paid. The approval is for one amount, kind and
+ * reason: changing any of them asks again.
  */
 export function DiscountDialog({
   order,
@@ -21,156 +33,153 @@ export function DiscountDialog({
   onClose: () => void;
   onApplied: (order: POSOrder) => void;
 }) {
-  const roster = useDeviceSessionOptional()?.roster ?? [];
+  const device = useDeviceSessionOptional();
+  const roster = device?.roster ?? [];
+  const requesterId = device?.session?.staffId ?? "";
   const applyDiscount = useApplyDiscount();
   const idempotencyKey = useIdempotencyKey();
-  const error = useMutationMessage(applyDiscount.error);
   const [kind, setKind] = useState<DiscountKind>("AMOUNT");
   const [valueText, setValueText] = useState("");
   const [reason, setReason] = useState("");
-  const [supervisorStaffId, setSupervisorStaffId] = useState("");
-  const [supervisorPin, setSupervisorPin] = useState("");
+  const [supervisorId, setSupervisorId] = useState<string | null>(null);
+  const [pin, setPin] = useState("");
+  const problem = discountProblem(applyDiscount.error);
 
-  const valueMinorOrBp =
-    kind === "AMOUNT" ? toMinor(valueText) : (() => {
-      const n = Number(valueText);
-      if (!Number.isFinite(n) || n <= 0 || n > 100) return null;
-      return Math.round(n * 100); // percent → basis points
-    })();
+  const value = kind === "AMOUNT" ? toMinor(valueText) : percentBasisPoints(valueText);
+  const valueWords =
+    value != null && value > 0 ? (kind === "AMOUNT" ? formatMoney(value, currency) : `${Number(valueText.trim())}%`) : null;
+  const ready =
+    value != null && value > 0 && reason.trim().length > 0 && supervisorId !== null && pin.length === PIN_LENGTH && !applyDiscount.isPending;
 
-  const canSubmit =
-    supervisorStaffId.trim().length > 0 &&
-    /^\d{6}$/.test(supervisorPin) &&
-    reason.trim().length > 0 &&
-    valueMinorOrBp != null &&
-    valueMinorOrBp > 0 &&
-    !applyDiscount.isPending;
+  function clearApproval() {
+    setSupervisorId(null);
+    setPin("");
+  }
 
-  function submit(): void {
-    if (valueMinorOrBp == null) return;
+  function onPinKey(key: KeypadKey) {
+    if (key === "delete") setPin((current) => current.slice(0, -1));
+    else if (key === "clear") setPin("");
+    else if (/^\d$/.test(key)) setPin((current) => (current.length < PIN_LENGTH ? current + key : current));
+  }
+
+  function submit() {
+    if (!ready || value == null || supervisorId === null) return;
     applyDiscount.mutate(
       {
         orderId: order.id,
         kind,
-        value: valueMinorOrBp,
+        value,
         reason: reason.trim(),
-        supervisorStaffId: supervisorStaffId.trim(),
-        supervisorPin,
+        supervisorStaffId: supervisorId,
+        supervisorPin: pin,
         version: order.version,
         idempotencyKey: idempotencyKey.next(),
       },
-      { onSuccess: (updated) => { onApplied(updated); onClose(); } },
+      {
+        onSuccess: (updated) => {
+          onApplied(updated);
+          onClose();
+        },
+      },
     );
   }
 
   return (
-    <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="discount-dialog">
-      <div className="glass-dialog w-full max-w-sm p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-[var(--foreground)]">Discount {order.orderNumber}</div>
-            <div className="mt-0.5 text-[11px] text-[var(--foreground-muted)]">
-              Subtotal {formatMinor(order.subtotalMinor, currency)}. Requires a different supervisor&apos;s PIN.
-            </div>
-          </div>
-          <button onClick={onClose} className="rounded-md p-1 text-[var(--foreground-muted)] hover:bg-[var(--border-subtle)]" aria-label="Close">
-            <Icon name="x" size={16} />
-          </button>
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open && !applyDiscount.isPending) onClose();
+      }}
+      title="Discount"
+      description={`On order ${order.orderNumber}, before VAT. A different supervisor approves with their PIN.`}
+      testId="discount-dialog"
+      footer={
+        <div className="y-options__footer">
+          <Button variant="quiet" disabled={applyDiscount.isPending} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" size={56} data-testid="confirm-discount" disabled={!ready} onClick={submit}>
+            {applyDiscount.isPending ? "Applying…" : "Apply discount"}
+          </Button>
         </div>
-
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            data-testid="discount-kind-amount"
-            aria-pressed={kind === "AMOUNT"}
-            onClick={() => { setKind("AMOUNT"); setValueText(""); }}
-            className={`pill-filter-btn ${kind === "AMOUNT" ? "active" : ""}`}
-          >
-            Amount
-          </button>
-          <button
-            type="button"
-            data-testid="discount-kind-percent"
-            aria-pressed={kind === "PERCENT"}
-            onClick={() => { setKind("PERCENT"); setValueText(""); }}
-            className={`pill-filter-btn ${kind === "PERCENT" ? "active" : ""}`}
-          >
-            Percent
-          </button>
-        </div>
-
-        <label className="mt-3 block text-[12px] font-medium text-[var(--foreground-muted)]">
-          {kind === "AMOUNT" ? "Discount amount" : "Discount percent"}
-        </label>
-        <input
-          data-testid="discount-value"
-          type="number"
-          inputMode="decimal"
-          value={valueText}
-          onChange={(event) => setValueText(event.target.value)}
-          placeholder={kind === "AMOUNT" ? "0.00" : "10"}
-          className="input mt-1 w-full"
+      }
+    >
+      <div className="y-form">
+        <SegmentedControl
+          label="Discount by"
+          value={kind}
+          onChange={(next) => {
+            setKind(next);
+            setValueText("");
+            clearApproval();
+          }}
+          options={[
+            { value: "AMOUNT", label: "Amount" },
+            { value: "PERCENT", label: "Percent" },
+          ]}
         />
-
-        <label className="mt-3 block text-[12px] font-medium text-[var(--foreground-muted)]">Supervisor</label>
-        {roster.length > 0 ? (
-          <select
-            data-testid="discount-supervisor-select"
-            value={supervisorStaffId}
-            onChange={(event) => setSupervisorStaffId(event.target.value)}
-            className="input mt-1 w-full"
-          >
-            <option value="">Select supervisor…</option>
-            {roster.map((entry) => (
-              <option key={entry.staffNumber} value={entry.staffNumber}>
-                {entry.fullName}
-              </option>
-            ))}
-          </select>
+        {kind === "AMOUNT" ? (
+          <MoneyField
+            label="Amount off"
+            currency={currency}
+            value={valueText}
+            onValueChange={(text) => {
+              setValueText(text);
+              clearApproval();
+            }}
+            inputTestId="discount-value"
+          />
         ) : (
-          <input
-            data-testid="discount-supervisor-id"
-            value={supervisorStaffId}
-            onChange={(event) => setSupervisorStaffId(event.target.value)}
-            placeholder="Supervisor staff id"
-            className="input mt-1 w-full"
+          <Field
+            label="Percent off"
+            hint="From more than 0 up to 100."
+            value={valueText}
+            onChange={(text) => {
+              setValueText(text);
+              clearApproval();
+            }}
+            inputMode="decimal"
+            autoComplete="off"
+            data-testid="discount-value"
           />
         )}
-
-        <label className="mt-3 block text-[12px] font-medium text-[var(--foreground-muted)]">Supervisor PIN</label>
-        <input
-          data-testid="discount-supervisor-pin"
-          type="password"
-          inputMode="numeric"
-          maxLength={6}
-          value={supervisorPin}
-          onChange={(event) => setSupervisorPin(event.target.value.replace(/\D/g, ""))}
-          className="input mt-1 w-full"
-        />
-
-        <label className="mt-3 block text-[12px] font-medium text-[var(--foreground-muted)]">Reason</label>
-        <input
-          data-testid="discount-reason"
+        <Field
+          label="Reason"
+          hint="For example, a regular guest or a staff meal."
           value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          className="input mt-1 w-full"
+          onChange={(text) => {
+            setReason(text);
+            clearApproval();
+          }}
+          autoComplete="off"
+          data-testid="discount-reason"
         />
-
-        {error && (
-          <div className="badge badge-danger mt-4" data-testid="discount-error">
-            {error}
-          </div>
-        )}
-
-        <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="btn-tertiary btn-sm">
-            Cancel
-          </button>
-          <button data-testid="confirm-discount" onClick={submit} disabled={!canSubmit} className="btn-primary btn-sm">
-            {applyDiscount.isPending ? "Applying…" : "Apply discount"}
-          </button>
-        </div>
+        <SupervisorApproval
+          request={
+            valueWords && reason.trim()
+              ? `Take ${valueWords} off order ${order.orderNumber}: ${reason.trim()}`
+              : `A discount on order ${order.orderNumber}`
+          }
+          supervisors={roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }))}
+          requesterId={requesterId}
+          selectedId={supervisorId}
+          onSelect={(id) => {
+            setSupervisorId(id);
+            setPin("");
+          }}
+          pinLength={pin.length}
+          onPinKey={onPinKey}
+          status={{ kind: "idle" }}
+          onCancel={onClose}
+          actions="none"
+          keyTestIdPrefix="discount-pin-key"
+        />
+        {problem ? (
+          <Banner inline tone="danger" data-testid="discount-error">
+            {problem.words}
+          </Banner>
+        ) : null}
       </div>
-    </div>
+    </Sheet>
   );
 }

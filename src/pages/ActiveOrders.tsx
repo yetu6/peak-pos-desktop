@@ -184,7 +184,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
         />
       )}
       {removing && <RemoveItemDialog order={removing.order} item={removing.item} onClose={() => setRemoving(null)} />}
-      {voiding && <VoidOrderDialog order={voiding} onClose={() => setVoiding(null)} />}
+      {voiding && <VoidOrderDialog order={voiding} currency={currency} onClose={() => setVoiding(null)} />}
       {receiptOrderId && <ReceiptView orderId={receiptOrderId} onClose={() => setReceiptOrderId(null)} />}
     </div>
   );

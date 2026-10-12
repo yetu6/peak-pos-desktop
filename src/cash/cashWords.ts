@@ -5,45 +5,7 @@
  * own count, which is input.
  */
 import { formatMoney, MINOR_PER_MAJOR } from "../lib/money";
-import { describePosError, type PosErrorKind } from "../lib/posErrors";
-
-interface ProblemLike {
-  code?: string;
-  detail?: string;
-}
-
-/** The backend problem inside a rejected hook call (usePosData `unwrap` puts it in the message as JSON). */
-function problemOf(error: unknown): ProblemLike | "network" | null {
-  if (!error) return null;
-  if (error instanceof TypeError || /Failed to fetch|NetworkError|ECONNREFUSED/i.test(String(error))) return "network";
-  const text = error instanceof Error ? error.message : typeof error === "string" ? error : null;
-  if (text) {
-    try {
-      const parsed = JSON.parse(text) as unknown;
-      if (parsed && typeof parsed === "object") return parsed as ProblemLike;
-    } catch {
-      return {};
-    }
-  }
-  return typeof error === "object" ? (error as ProblemLike) : {};
-}
-
-const UNREACHABLE = "Can't reach Yetu. Check the internet connection, then try again.";
-
-/**
- * Refusals about this action (a conflict whose detail isn't one we name, a
- * validation message, or nothing recognisable) get the action's own words;
- * the backend's sentence never reaches the screen. Everything else is about
- * the session, the till or the property (session expired, till revoked,
- * feature not enabled, Yetu unavailable) and keeps the words the rest of the
- * till uses for it.
- */
-const ACTION_WORDS_FOR: ReadonlySet<PosErrorKind> = new Set(["BUSINESS_CONFLICT", "VALIDATION_ERROR", "UNKNOWN"]);
-
-function otherWords(problem: ProblemLike, actionWords: string): string {
-  const described = describePosError(problem);
-  return ACTION_WORDS_FOR.has(described.kind) ? actionWords : described.message;
-}
+import { otherWords, problemOf, UNREACHABLE } from "../lib/problemWords";
 
 export interface CashProblem<K extends string> {
   kind: K | "network" | "permission" | "other";

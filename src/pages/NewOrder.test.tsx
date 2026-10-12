@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NewOrder } from "./NewOrder";
@@ -367,5 +367,25 @@ describe("NewOrder", () => {
         expect.any(String),
       ),
     );
+  });
+
+  it("an order note written before the first item goes with the order", async () => {
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Nyama Choma");
+    await waitFor(() => expect(tile).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    await userEvent.click(screen.getByRole("button", { name: /Order note/ }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Order note" }), "No chilli");
+    await userEvent.click(screen.getByRole("button", { name: "Save note" }));
+    await userEvent.click(tile);
+    await waitFor(() =>
+      expect(createOrderSpy).toHaveBeenCalledWith(expect.objectContaining({ notes: "No chilli" }), expect.any(String)),
+    );
+  });
+
+  it("F9 opens Pay for the order on the ticket", async () => {
+    await startOrder();
+    fireEvent.keyDown(document.body, { key: "F9" });
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 });
