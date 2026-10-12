@@ -141,6 +141,34 @@ describe("CloseShiftSheet: check", () => {
     });
   });
 
+  it("keeps asking for a manager once the check has shown a difference, even if the count is changed to match", async () => {
+    closeAsync.mockResolvedValue({ ...SHIFT, status: "CLOSED", countedCashMinor: 7_400_000, varianceMinor: 0 });
+    renderSheet();
+    await count("70000");
+    expect(screen.getByTestId("close-expected")).toHaveTextContent("TSh 74,000");
+    await userEvent.click(screen.getByRole("button", { name: "Change the count" }));
+    await userEvent.clear(screen.getByTestId("counted-cash"));
+    await count("74000");
+    expect(screen.getByTestId("close-outcome")).toHaveTextContent("Balanced");
+    expect(screen.getByTestId("close-approval-reason")).toHaveTextContent(
+      "The count changed after Yetu showed its figure, so a manager must approve this close.",
+    );
+    expect(screen.getByRole("group", { name: "Supervisor PIN" })).toBeInTheDocument();
+    expect(screen.getByTestId("close-shift")).toBeDisabled();
+    await userEvent.click(screen.getByTestId("close-shift"));
+    expect(closeAsync).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+    for (const digit of "736251") await userEvent.click(screen.getByTestId(`close-pin-key-${digit}`));
+    await userEvent.click(screen.getByTestId("close-shift"));
+    expect(closeAsync).toHaveBeenCalledWith({
+      countedCashMinor: 7_400_000,
+      supervisorStaffId: "staff-grace",
+      supervisorPin: "736251",
+      idempotencyKey: "key-1",
+    });
+  });
+
   it("says a short drawer in words", async () => {
     renderSheet();
     await count("73500");

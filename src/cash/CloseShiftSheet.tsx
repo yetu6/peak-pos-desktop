@@ -16,6 +16,11 @@ const OUTCOME = {
   short: { tone: "warning", words: "Short. You counted less than Yetu expects." },
 } as const;
 
+const APPROVAL_REASON = {
+  revealed: "The count changed after Yetu showed its figure, so a manager must approve this close.",
+  yetu: "Yetu found a difference the till didn't see, so a manager must approve this close.",
+} as const;
+
 /**
  * Close the shift in three steps. Count: blind, the expected figure is not on
  * screen until a count is entered. Check: Yetu's expected figure against the
@@ -65,13 +70,22 @@ export function CloseShiftSheetView({
   const [noteCounter, setNoteCounter] = useState(false);
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
   const [pin, setPin] = useState("");
-  const [yetuFoundDifference, setYetuFoundDifference] = useState(false);
+  // Why this close needs a manager even when the count now matches: the Check
+  // already showed a difference (so the count could be matched to the figure
+  // on screen), or Yetu found one the till didn't see. It holds for the rest
+  // of this close.
+  const [approvalRequired, setApprovalRequired] = useState<"revealed" | "yetu" | null>(() => {
+    const initialMinor = toMinor(initialCounted);
+    return initialStep === "check" && initialMinor !== null && countOutcome(initialMinor, shift.expectedCashMinor) !== "balanced"
+      ? "revealed"
+      : null;
+  });
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   const countedMinor = toMinor(counted);
   const outcome = countedMinor === null ? null : countOutcome(countedMinor, shift.expectedCashMinor);
-  const needsSupervisor = outcome !== "balanced" || yetuFoundDifference;
+  const needsSupervisor = outcome !== "balanced" || approvalRequired !== null;
   // Choosing yourself keeps the PIN keypad closed (SupervisorApproval), and choosing anyone clears the PIN,
   // so a full PIN always belongs to someone else; the backend refuses self-approval as well.
   const supervisor = supervisorId;
@@ -87,6 +101,14 @@ export function CloseShiftSheetView({
     setSupervisorId(null);
     setPin("");
     setStep("count");
+  }
+
+  function showCheck() {
+    if (countedMinor === null) return;
+    if (countOutcome(countedMinor, shift.expectedCashMinor) !== "balanced") {
+      setApprovalRequired((reason) => reason ?? "revealed");
+    }
+    setStep("check");
   }
 
   function onPinKey(key: KeypadKey) {
@@ -108,7 +130,7 @@ export function CloseShiftSheetView({
       onOpenChange(false);
     } catch (error) {
       const refusal = closeShiftProblem(error);
-      if (refusal?.kind === "supervisor") setYetuFoundDifference(true);
+      if (refusal?.kind === "supervisor") setApprovalRequired("yetu");
       setPin("");
       setProblem(refusal?.words ?? "The shift couldn't be closed. Try again.");
     } finally {
@@ -136,7 +158,7 @@ export function CloseShiftSheetView({
               <Button variant="quiet" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button variant="primary" size={56} disabled={countedMinor === null} onClick={() => setStep("check")}>
+              <Button variant="primary" size={56} disabled={countedMinor === null} onClick={showCheck}>
                 Check the count
               </Button>
             </div>
@@ -191,6 +213,11 @@ export function CloseShiftSheetView({
               <div data-testid="close-outcome">
                 <Banner tone={OUTCOME[outcome].tone}>{OUTCOME[outcome].words}</Banner>
               </div>
+            ) : null}
+            {outcome === "balanced" && approvalRequired ? (
+              <p className="y-cash__muted" data-testid="close-approval-reason">
+                {APPROVAL_REASON[approvalRequired]}
+              </p>
             ) : null}
             {needsSupervisor ? (
               <SupervisorApproval
