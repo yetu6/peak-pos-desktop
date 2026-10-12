@@ -122,6 +122,13 @@ describe("orderTimeline", () => {
     ]);
   });
 
+  it("trusts the order's own step when its stations weren't moved with it (a selling till moved the whole order)", () => {
+    expect(orderTimeline({ order: order({ status: "SERVED" }), tickets: [ticket("GENERAL", "SENT")] })).toEqual([
+      { time: clockTime(sentAt), words: "Sent to the kitchen" },
+      { time: null, words: "Now: Served" },
+    ]);
+  });
+
   it("ends a paid order with when and how it was paid, from its receipt", () => {
     const receipt = { document: { settledAt, tenderMethod: "SPLIT" } } as unknown as POSReceipt;
     expect(orderTimeline({ order: order({ status: "CLOSED" }), tickets: [], receipt })).toEqual([

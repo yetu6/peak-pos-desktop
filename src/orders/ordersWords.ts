@@ -39,6 +39,8 @@ export function paidThisShift(orders: readonly POSOrder[], shiftId: string | und
   return orders.filter((order) => order.status === "CLOSED" && order.shiftId === shiftId).reverse();
 }
 
+const STEP_RANK: Record<POSStationTicket["status"], number> = { SENT: 0, PREPARING: 1, READY: 2, SERVED: 3 };
+
 export interface TimelineEntry {
   /** A clock time from Yetu, or null where Yetu keeps none. */
   time: string | null;
@@ -79,7 +81,11 @@ export function orderTimeline({
   const entries: TimelineEntry[] = [
     sent ? { time: clockTime(sent), words: "Sent to the kitchen" } : { time: null, words: "Sent to the kitchen (time not known)" },
   ];
-  if (tickets.length > 0) {
+  // Yetu puts an order at its slowest station's step when a display moves a
+  // station; a selling till moves the whole order and leaves its stations as
+  // they were. The stations are told only while they agree with the order.
+  const slowest = Math.min(...tickets.map((ticket) => STEP_RANK[ticket.status]));
+  if (tickets.length > 0 && slowest === STEP_RANK[order.status as POSStationTicket["status"]]) {
     for (const ticket of tickets) {
       entries.push({ time: null, words: `Now: ${stationWords(ticket.station)} ${ticketStepWords(ticket.status).toLowerCase()}` });
     }
