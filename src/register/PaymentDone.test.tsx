@@ -42,6 +42,11 @@ describe("PaymentDone", () => {
     expect(screen.getByTestId("done-change")).toHaveTextContent("Change to give TSh 7,500");
   });
 
+  it("says Split payment when more than one tender paid it", () => {
+    renderDone({ paid: { order: ORDER, method: "EXTERNAL_CARD", changeMinor: 0, split: true } });
+    expect(screen.getByRole("dialog", { name: "Paid" })).toHaveTextContent("Split payment · Order 0142");
+  });
+
   it("for a room charge, says it went on the room", () => {
     renderDone({ paid: { order: ORDER, method: "ROOM_CHARGE", changeMinor: 0, roomNumber: "12" } });
     expect(screen.getByRole("dialog", { name: "Charged to room 12" })).toHaveTextContent("TSh 42,500");

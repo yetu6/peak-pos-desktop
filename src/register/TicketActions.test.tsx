@@ -115,6 +115,7 @@ describe("TicketActions", () => {
 
   it("Discount and Void wait until there is an order not yet paid, and say why", async () => {
     renderActions({ order: { ...ORDER, paidMinor: 1_000_000, remainingMinor: 3_012_000 } });
+    expect(screen.getByRole("button", { name: /Pay TSh 30,120/ })).toBeEnabled();
     await userEvent.click(screen.getByRole("button", { name: "More" }));
     const more = screen.getByRole("dialog", { name: "More for this order" });
     expect(within(more).getByRole("button", { name: /Discount/ })).toBeDisabled();

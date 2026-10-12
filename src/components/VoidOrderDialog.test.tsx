@@ -75,6 +75,13 @@ describe("VoidOrderDialog", () => {
     );
   });
 
+  it("needs a reason, even with an approval", async () => {
+    render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+    await typePin("123456");
+    expect(screen.getByTestId("confirm-void-order")).toBeDisabled();
+  });
+
   it("asks again when the reason changes after approval", async () => {
     render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
     await userEvent.type(screen.getByTestId("void-reason"), "Wrong table");

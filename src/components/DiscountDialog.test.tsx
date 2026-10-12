@@ -80,10 +80,18 @@ describe("DiscountDialog", () => {
     expect(applyMutate).toHaveBeenCalledWith(expect.objectContaining({ kind: "PERCENT", value: 1250 }), expect.anything());
   });
 
-  it("refuses more than 100 percent and needs a reason", async () => {
+  it("refuses more than 100 percent, even with a reason and an approval", async () => {
     render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
     await userEvent.click(screen.getByRole("radio", { name: "Percent" }));
     await userEvent.type(screen.getByTestId("discount-value"), "120");
+    await userEvent.type(screen.getByTestId("discount-reason"), "Staff meal");
+    await approveAsGrace();
+    expect(screen.getByTestId("confirm-discount")).toBeDisabled();
+  });
+
+  it("needs a reason, even with an amount and an approval", async () => {
+    render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
+    await userEvent.type(screen.getByTestId("discount-value"), "2000");
     await approveAsGrace();
     expect(screen.getByTestId("confirm-discount")).toBeDisabled();
   });

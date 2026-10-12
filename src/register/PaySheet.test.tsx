@@ -131,6 +131,12 @@ describe("PaySheet", () => {
     expect(onOrderChange).toHaveBeenCalledWith(expect.objectContaining({ paidMinor: 2_000_000 }));
     expect(screen.getByTestId("amount-due")).toHaveTextContent("TSh 22,500");
     expect(screen.getByRole("progressbar")).toHaveAccessibleName("Paid TSh 20,000 of TSh 42,500");
+    recordTenderMutate.mockImplementation((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
+      opts?.onSuccess?.(CLOSED),
+    );
+    await userEvent.click(screen.getByRole("radio", { name: "Mobile money" }));
+    await userEvent.click(pay());
+    expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ method: "MOBILE_MONEY", split: true }));
   });
 
   it("card: take it on your own machine, then confirm here; the reference is optional", async () => {

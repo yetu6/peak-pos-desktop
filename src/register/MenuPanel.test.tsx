@@ -97,6 +97,16 @@ describe("MenuPanel", () => {
     expect(search).toHaveValue("t");
   });
 
+  it("leaves typed keys alone while a sheet is open", () => {
+    render(<Menu />);
+    const sheet = document.createElement("div");
+    sheet.setAttribute("role", "dialog");
+    document.body.append(sheet);
+    fireEvent.keyDown(document.body, { key: "t" });
+    expect(screen.getByRole("searchbox", { name: "Search the menu" })).toHaveValue("");
+    sheet.remove();
+  });
+
   it("moves between items with the arrow keys", async () => {
     render(<Menu />);
     screen.getByTestId("menu-Tusker Lager").focus();
