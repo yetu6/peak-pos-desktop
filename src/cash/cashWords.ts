@@ -5,6 +5,7 @@
  * own count, which is input.
  */
 import { formatMoney, MINOR_PER_MAJOR } from "../lib/money";
+import { describePosError, type PosErrorKind } from "../lib/posErrors";
 
 interface ProblemLike {
   code?: string;
@@ -28,6 +29,21 @@ function problemOf(error: unknown): ProblemLike | "network" | null {
 }
 
 const UNREACHABLE = "Can't reach Yetu. Check the internet connection, then try again.";
+
+/**
+ * Refusals about this action (a conflict whose detail isn't one we name, a
+ * validation message, or nothing recognisable) get the action's own words;
+ * the backend's sentence never reaches the screen. Everything else is about
+ * the session, the till or the property (session expired, till revoked,
+ * feature not enabled, Yetu unavailable) and keeps the words the rest of the
+ * till uses for it.
+ */
+const ACTION_WORDS_FOR: ReadonlySet<PosErrorKind> = new Set(["BUSINESS_CONFLICT", "VALIDATION_ERROR", "UNKNOWN"]);
+
+function otherWords(problem: ProblemLike, actionWords: string): string {
+  const described = describePosError(problem);
+  return ACTION_WORDS_FOR.has(described.kind) ? actionWords : described.message;
+}
 
 export interface CashProblem<K extends string> {
   kind: K | "network" | "permission" | "other";
@@ -65,7 +81,7 @@ export function closeShiftProblem(
   }
   if (detail === "shift is not open") return { kind: "not-open", words: "This shift is already closed." };
   if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a cashier or manager can close the shift." };
-  return { kind: "other", words: "The shift couldn't be closed. Try again." };
+  return { kind: "other", words: otherWords(problem, "The shift couldn't be closed. Try again.") };
 }
 
 /**
@@ -100,7 +116,7 @@ export function dayCloseProblem(
     return { kind: "night-audit", words: "This hotel closes the day with the night audit in Yetu, not on the till." };
   }
   if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a manager can close the day." };
-  return { kind: "other", words: "The day couldn't be closed. Try again." };
+  return { kind: "other", words: otherWords(problem, "The day couldn't be closed. Try again.") };
 }
 
 /** Cash in and out. fbc-peak internal/pos/cash.go. */
@@ -119,7 +135,7 @@ export function cashMovementProblem(error: unknown): CashProblem<"supervisor" | 
   if (problem.code === "FORBIDDEN") {
     return { kind: "permission", words: "Only a cashier or manager can put cash in or take it out." };
   }
-  return { kind: "other", words: "That wasn't recorded. Try again." };
+  return { kind: "other", words: otherWords(problem, "That wasn't recorded. Try again.") };
 }
 
 /** The count against Yetu's expected figure: a comparison, not a sum. */

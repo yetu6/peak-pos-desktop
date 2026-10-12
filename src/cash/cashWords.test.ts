@@ -39,6 +39,22 @@ describe("closing a shift: the backend's refusals in words", () => {
   });
 });
 
+describe("refusals that aren't about cash keep the till's own words", () => {
+  // usePosData / posErrors describePosError: a session, a till or a feature, not this action.
+  const cases: Array<[string, string]> = [
+    ["SESSION_EXPIRED", "Your session expired — enter your PIN again."],
+    ["CAPABILITY_NOT_ENABLED", "This feature isn't enabled for this property."],
+    ["DEVICE_REVOKED", "This register has been revoked. Ask a manager to pair this device again."],
+  ];
+
+  it.each(cases)("%s on closing a shift, cash in or out, and closing the day", (code, words) => {
+    const refusal = problem(code, "detail from the backend");
+    expect(closeShiftProblem(refusal)?.words).toBe(words);
+    expect(cashMovementProblem(refusal)?.words).toBe(words);
+    expect(dayCloseProblem(refusal)?.words).toBe(words);
+  });
+});
+
 describe("closing the day: what blocks it, in words", () => {
   // fbc-peak internal/pos/business_day.go, returned as INVALID_STATE.
   it("counts the shifts still open", () => {
