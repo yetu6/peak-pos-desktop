@@ -18,11 +18,15 @@ export function PaymentDone({
   currency,
   onNewSale,
   onViewReceipt,
+  returnTo = { place: "Sell", action: "New sale" },
 }: {
   paid: PaidInfo;
   currency: string;
+  /** Leaves this screen: its main button, and on its own after the named setting's seconds. */
   onNewSale: () => void;
   onViewReceipt: () => void;
+  /** Where it goes back to, and its main button's words: Sell and New sale, or Orders when paid from there. */
+  returnTo?: { place: string; action: string };
 }) {
   const [left, setLeft] = useState(REGISTER_AUTO_RETURN_SECONDS);
   const [hovered, setHovered] = useState(false);
@@ -103,11 +107,11 @@ export function PaymentDone({
             View receipt
           </Button>
           <Button ref={newSaleButton} variant="primary" size={64} onClick={finish}>
-            New sale
+            {returnTo.action}
           </Button>
         </div>
         <p className="y-done__countdown" data-testid="done-countdown">
-          {paused ? "Waiting while you look" : `Back to Sell in ${left} ${left === 1 ? "second" : "seconds"}`}
+          {paused ? "Waiting while you look" : `Back to ${returnTo.place} in ${left} ${left === 1 ? "second" : "seconds"}`}
         </p>
       </div>
     </Dialog>

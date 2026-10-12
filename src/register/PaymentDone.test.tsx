@@ -90,6 +90,16 @@ describe("PaymentDone", () => {
     expect(onNewSale).toHaveBeenCalledTimes(1);
   });
 
+  it("paid from Orders: goes back to Orders, saying so, on its own or with its button", () => {
+    const { onNewSale } = renderDone({ returnTo: { place: "Orders", action: "Back to orders" } });
+    expect(screen.getByRole("button", { name: "Back to orders" })).toHaveFocus();
+    expect(screen.queryByRole("button", { name: /New sale/ })).toBeNull();
+    act(() => vi.advanceTimersByTime(REGISTER_AUTO_RETURN_SECONDS * 1000 - 1000));
+    expect(screen.getByTestId("done-countdown")).toHaveTextContent("Back to Orders in 1 second");
+    act(() => vi.advanceTimersByTime(1000));
+    expect(onNewSale).toHaveBeenCalledTimes(1);
+  });
+
   it("waits while the pointer is over it, and while one of its buttons has focus", () => {
     const { onNewSale } = renderDone();
     const done = screen.getByTestId("payment-done");
