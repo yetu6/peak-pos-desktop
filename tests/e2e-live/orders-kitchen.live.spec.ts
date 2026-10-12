@@ -21,6 +21,7 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
 import { WebSession, ensurePlainDish, loadSeededProperty, tsh, typed } from "./liveApi";
 import { LIVE_API_URL } from "./liveSettings";
+import { ORDERS_REFRESH_SECONDS } from "../../src/orders/ordersSettings";
 import { body, nextApi, openShift, pairTill, setServerAddress, signInWithPin, tapper } from "./liveTill";
 
 /** The cash counted into the selling till's drawer. */
@@ -235,8 +236,13 @@ test("orders and the kitchen on the redesigned till, against the live API", asyn
     await expect(detail).toHaveCount(0);
   });
 
-  await test.step("7. Order B is sold and sent", async () => {
+  await test.step("7. Order B is sold and sent; Orders is left open on it", async () => {
     orderB = await sellAndSend(1);
+    const order = orderB;
+    await tap(page.getByTestId("nav-orders"));
+    await expect(page.getByTestId(`order-row-${order.id}`)).toContainText("Sent to kitchen");
+    await tap(page.getByTestId(`order-row-${order.id}`));
+    await expect(page.getByRole("dialog", { name: `Order ${order.orderNumber}` }).getByTestId("order-detail-status")).toHaveText("Sent to kitchen");
   });
 
   await test.step("8. A kitchen display moves order B's station ticket: Start, Ready, Served", async () => {
@@ -295,12 +301,15 @@ test("orders and the kitchen on the redesigned till, against the live API", asyn
     }
   });
 
-  await test.step("9. Orders shows order B served by the kitchen", async () => {
+  await test.step("9. Orders, left open on the selling till, shows order B served by the kitchen", async () => {
     const order = orderB!;
-    const listed = nextApi(page, "GET", /^\/api\/v1\/pos\/orders$/, (response) => new URL(response.url()).searchParams.get("active") === "true");
-    await tap(page.getByTestId("nav-orders"));
-    const list = await body<Order[]>(listed);
-    expect(list.find((entry) => entry.id === order.id)?.status, "the order follows its station ticket").toBe("SERVED");
+    // Nothing on the selling till was touched. Orders comes up to date by itself: from Yetu's live
+    // station-ticket news where a worker relays it, and otherwise (this suite's API runs no outbox
+    // worker, so no live update reaches a till) within orders.refreshSeconds.
+    const detail = page.getByRole("dialog", { name: `Order ${order.orderNumber}` });
+    await expect(detail.getByTestId("order-detail-status")).toHaveText("Served", { timeout: ORDERS_REFRESH_SECONDS * 1000 + 10_000 });
+    expect(told.orders.at(-1)?.find((entry) => entry.id === order.id)?.status, "the order follows its station ticket").toBe("SERVED");
+    await tap(detail.getByRole("button", { name: "Close" }).first());
     await expect(page.getByTestId(`order-row-${order.id}`)).toContainText("Served");
   });
 
