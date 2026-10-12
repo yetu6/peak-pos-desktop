@@ -1,148 +1,191 @@
 import { useState } from "react";
-import { Icon } from "./Icon";
+import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
-import { toMinor } from "../lib/posMoney";
-import { useIdempotencyKey, useMutationMessage, useRecordCashMovement } from "../hooks/usePosData";
+import { cashMovementProblem } from "../cash/cashWords";
+import { useIdempotencyKey, useRecordCashMovement } from "../hooks/usePosData";
+import { formatMoney } from "../lib/money";
+import type { RosterEntry } from "../lib/deviceAuth";
 import type { CashMovementType } from "../lib/posContracts";
+import { toMinor } from "../lib/posMoney";
+import { Banner, Button, Field, MoneyField, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
 
-/** Cash In / Cash Out against the open shift. Append-only: there is no edit
+/** Cash in / Cash out against the open shift. Append-only: there is no edit
  *  or delete on `POSCashMovement` in the certified contract, and none is
  *  offered here — a mistake is corrected with an offsetting movement.
  *
  *  Cash out needs a DIFFERENT supervisor's own PIN, as the server requires:
  *  without it, whoever held the till could take cash out "for petty cash" and
  *  the drawer would still balance at close (money audit, 2026-10-06). */
-export function CashMovementDialog({ shiftId, onClose }: { shiftId: string; onClose: () => void }) {
-  const [movementType, setMovementType] = useState<CashMovementType>("CASH_IN");
-  const [amount, setAmount] = useState("");
-  const [reason, setReason] = useState("");
-  const [supervisorStaffId, setSupervisorStaffId] = useState("");
-  const [supervisorPin, setSupervisorPin] = useState("");
-  const roster = useDeviceSessionOptional()?.roster ?? [];
+export function CashMovementDialog({
+  shiftId,
+  onClose,
+  currency,
+  initialType = "CASH_IN",
+}: {
+  shiftId: string;
+  onClose: () => void;
+  currency?: string;
+  initialType?: CashMovementType;
+}) {
+  const device = useDeviceSessionOptional();
   const record = useRecordCashMovement(shiftId);
   const idempotencyKey = useIdempotencyKey();
-  const error = useMutationMessage(record.error);
+  return (
+    <CashMovementSheetView
+      onClose={onClose}
+      currency={currency}
+      initialType={initialType}
+      roster={device?.roster ?? []}
+      requesterId={device?.session?.staffId ?? ""}
+      pending={record.isPending}
+      error={record.error}
+      onRecord={(args) => record.mutate({ ...args, idempotencyKey: idempotencyKey.next() }, { onSuccess: onClose })}
+    />
+  );
+}
+
+export interface CashMovementSheetViewProps {
+  onClose: () => void;
+  currency?: string;
+  initialType?: CashMovementType;
+  roster: readonly RosterEntry[];
+  requesterId: string;
+  pending: boolean;
+  error: unknown;
+  onRecord: (args: {
+    movementType: CashMovementType;
+    amountMinor: number;
+    reason: string;
+    supervisorStaffId?: string;
+    supervisorPin?: string;
+  }) => void;
+  /** Fixtures start part-way through. */
+  initialAmount?: string;
+  initialReason?: string;
+}
+
+export function CashMovementSheetView({
+  onClose,
+  currency,
+  initialType = "CASH_IN",
+  roster,
+  requesterId,
+  pending,
+  error,
+  onRecord,
+  initialAmount = "",
+  initialReason = "",
+}: CashMovementSheetViewProps) {
+  const [movementType, setMovementType] = useState<CashMovementType>(initialType);
+  const [amount, setAmount] = useState(initialAmount);
+  const [reason, setReason] = useState(initialReason);
+  const [supervisorId, setSupervisorId] = useState<string | null>(null);
+  const [typedSupervisor, setTypedSupervisor] = useState("");
+  const [pin, setPin] = useState("");
+  const problem = cashMovementProblem(error);
   const amountMinor = toMinor(amount);
   const cashOut = movementType === "CASH_OUT";
-  const supervised = !cashOut || (supervisorStaffId.trim().length > 0 && /^\d{6}$/.test(supervisorPin));
-  const canSubmit = amountMinor != null && amountMinor > 0 && reason.trim().length > 0 && supervised && !record.isPending;
+  const supervisor = roster.length > 0 ? supervisorId : typedSupervisor.trim() || null;
+  const supervised = !cashOut || (Boolean(supervisor) && supervisor !== requesterId && pin.length === PIN_LENGTH);
+  const canSubmit = amountMinor != null && amountMinor > 0 && reason.trim().length > 0 && supervised && !pending;
 
-  function submit(): void {
-    if (amountMinor == null) return;
-    record.mutate(
-      {
-        movementType,
-        amountMinor,
-        reason: reason.trim(),
-        ...(cashOut ? { supervisorStaffId: supervisorStaffId.trim(), supervisorPin } : {}),
-        idempotencyKey: idempotencyKey.next(),
-      },
-      { onSuccess: onClose },
-    );
+  function onPinKey(key: KeypadKey) {
+    if (key === "delete") setPin((value) => value.slice(0, -1));
+    else if (key === "clear") setPin("");
+    else if (/^\d$/.test(key)) setPin((value) => (value.length < PIN_LENGTH ? value + key : value));
   }
 
+  function submit(): void {
+    if (amountMinor == null || !canSubmit) return;
+    onRecord({
+      movementType,
+      amountMinor,
+      reason: reason.trim(),
+      ...(cashOut && supervisor ? { supervisorStaffId: supervisor, supervisorPin: pin } : {}),
+    });
+  }
+
+  const amountWords = amountMinor && amountMinor > 0 ? formatMoney(amountMinor, currency) : null;
+  const request =
+    amountWords && reason.trim() ? `Take ${amountWords} out of the drawer: ${reason.trim()}` : "Take cash out of the drawer";
+
   return (
-    <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="cash-movement-dialog">
-      <div className="glass-dialog w-full max-w-sm p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="text-sm font-semibold text-[var(--foreground)]">Cash movement</div>
-          <button onClick={onClose} className="rounded-md p-1 text-[var(--foreground-muted)] hover:bg-[var(--border-subtle)]" aria-label="Close">
-            <Icon name="x" size={16} />
-          </button>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          {(["CASH_IN", "CASH_OUT"] as const).map((type) => (
-            <button
-              key={type}
-              data-testid={`movement-type-${type}`}
-              onClick={() => setMovementType(type)}
-              className={`rounded-lg border px-2 py-2 text-[12px] font-medium ${
-                movementType === type
-                  ? "border-[var(--gold-accent)] bg-[var(--gold-accent)]/10 text-[var(--foreground)]"
-                  : "border-[var(--border-subtle)] text-[var(--foreground-muted)]"
-              }`}
-            >
-              {type === "CASH_IN" ? "Cash in" : "Cash out"}
-            </button>
-          ))}
-        </div>
-
-        <label className="mt-4 block text-[12px] font-medium text-[var(--foreground-muted)]">Amount</label>
-        <input
-          data-testid="movement-amount"
-          type="number"
-          value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-          className="input mt-1 w-full"
-        />
-
-        <label className="mt-3 block text-[12px] font-medium text-[var(--foreground-muted)]">Reason</label>
-        <input
-          data-testid="movement-reason"
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          placeholder="e.g. Change float top-up"
-          className="input mt-1 w-full"
-        />
-
-        {cashOut && (
-          <>
-            <p className="mt-3 text-[11px] text-[var(--foreground-muted)]">
-              Taking cash out needs a different supervisor's approval.
-            </p>
-            <label className="mt-2 block text-[12px] font-medium text-[var(--foreground-muted)]">Supervisor</label>
-            {roster.length > 0 ? (
-              <select
-                data-testid="movement-supervisor-select"
-                value={supervisorStaffId}
-                onChange={(event) => setSupervisorStaffId(event.target.value)}
-                className="input mt-1 w-full"
-              >
-                <option value="">Select supervisor…</option>
-                {roster.map((entry) => (
-                  <option key={entry.staffNumber} value={entry.staffNumber}>
-                    {entry.fullName}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                data-testid="movement-supervisor-id"
-                value={supervisorStaffId}
-                onChange={(event) => setSupervisorStaffId(event.target.value)}
-                placeholder="Supervisor staff id"
-                className="input mt-1 w-full"
-              />
-            )}
-            <label className="mt-3 block text-[12px] font-medium text-[var(--foreground-muted)]">Supervisor PIN</label>
-            <input
-              data-testid="movement-supervisor-pin"
-              type="password"
-              inputMode="numeric"
-              maxLength={6}
-              value={supervisorPin}
-              onChange={(event) => setSupervisorPin(event.target.value.replace(/\D/g, ""))}
-              className="input mt-1 w-full"
-            />
-          </>
-        )}
-
-        {error && (
-          <div className="badge badge-danger mt-4" data-testid="movement-error">
-            {error}
-          </div>
-        )}
-
-        <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="btn-tertiary btn-sm">
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title={cashOut ? "Cash out" : "Cash in"}
+      description={
+        cashOut ? "Cash leaves the drawer. A different supervisor approves with their PIN." : "Cash goes into the drawer."
+      }
+      testId="cash-movement-dialog"
+      footer={
+        <div className="y-cash__footer">
+          <Button variant="quiet" onClick={onClose}>
             Cancel
-          </button>
-          <button data-testid="confirm-movement" onClick={submit} disabled={!canSubmit} className="btn-primary btn-sm">
-            {record.isPending ? "Recording…" : "Record"}
-          </button>
+          </Button>
+          <Button variant="primary" size={56} data-testid="confirm-movement" disabled={!canSubmit} onClick={submit}>
+            {pending ? "Recording…" : cashOut ? "Take cash out" : "Record cash in"}
+          </Button>
         </div>
+      }
+    >
+      <div className="y-form">
+        <SegmentedControl
+          label="Cash in or cash out"
+          value={movementType}
+          onChange={(type) => {
+            setMovementType(type);
+            setPin("");
+          }}
+          options={[
+            { value: "CASH_IN", label: "Cash in" },
+            { value: "CASH_OUT", label: "Cash out" },
+          ]}
+          testIdPrefix="movement-type"
+        />
+        <MoneyField
+          label="Amount"
+          currency={currency}
+          value={amount}
+          onValueChange={(text) => setAmount(text)}
+          inputTestId="movement-amount"
+          autoFocus
+        />
+        <Field
+          label="Reason"
+          hint={cashOut ? "What the cash is for, for example the gas delivery." : "Where the cash came from, for example a float top-up."}
+          value={reason}
+          onChange={setReason}
+          data-testid="movement-reason"
+          autoComplete="off"
+        />
+        {cashOut ? (
+          <SupervisorApproval
+            request={request}
+            supervisors={roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }))}
+            requesterId={requesterId}
+            selectedId={supervisorId}
+            onSelect={(id) => {
+              setSupervisorId(id);
+              setPin("");
+            }}
+            pinLength={pin.length}
+            onPinKey={onPinKey}
+            status={{ kind: "idle" }}
+            onCancel={onClose}
+            actions="none"
+            manualStaffNumber={{ value: typedSupervisor, onChange: setTypedSupervisor, testId: "movement-supervisor-id" }}
+            keyTestIdPrefix="movement-pin-key"
+          />
+        ) : null}
+        {problem ? (
+          <div data-testid="movement-error">
+            <Banner tone="danger">{problem.words}</Banner>
+          </div>
+        ) : null}
       </div>
-    </div>
+    </Sheet>
   );
 }
