@@ -24,10 +24,9 @@ import { REALTIME_BRIDGE_URL } from "./lib/env";
 import { createRealtimeSocket } from "./lib/peakSocket";
 import { getApiBaseUrl } from "./lib/peakConfig";
 import {
-  createRealtimeBackfill,
   createRealtimeCursorStorage,
+  noPosCatchUp,
 } from "./lib/realtimeBackfill";
-import { SessionExpiredError } from "./lib/operationalSession";
 import { personLabel } from "./lib/staffLabel";
 import { terminalRoute } from "./lib/terminalRoute";
 import { applyModeDefaultTheme } from "./lib/theme";
@@ -103,25 +102,15 @@ function PosShell() {
 }
 
 function LiveRegister() {
-  const { switchStaff } = useDeviceSession();
   const queryClient = useQueryClient();
   const client = useMemo(
     () =>
       new RealtimeClient({
         createSocket: () => createRealtimeSocket({ peakApiUrl: getApiBaseUrl(), bridgeUrl: REALTIME_BRIDGE_URL }),
-        backfillEvents: async (after) => {
-          try {
-            return await createRealtimeBackfill().fetchEvents(after);
-          } catch (error) {
-            if (error instanceof SessionExpiredError) {
-              switchStaff("Session expired — enter your PIN again");
-            }
-            throw error;
-          }
-        },
+        backfillEvents: noPosCatchUp,
         cursorStorage: createRealtimeCursorStorage(),
       }),
-    [switchStaff],
+    [],
   );
 
   return (
