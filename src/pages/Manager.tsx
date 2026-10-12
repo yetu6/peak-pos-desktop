@@ -1,116 +1,229 @@
-import { useState } from "react";
-import { Icon } from "../components/Icon";
+import { ArrowDownToLine, ArrowUpFromLine, Banknote } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
+import { CloseDayCard } from "../cash/CloseDayCard";
+import { CloseShiftSheet } from "../cash/CloseShiftSheet";
 import { CashMovementDialog } from "../components/CashMovementDialog";
-import { moneyFormatter } from "../lib/posMoney";
+import { Button, EmptyState, ListRow, Money, PermissionNotice } from "../components/system";
 import {
   useCashMovements,
   useCatalogCurrency,
-  useCloseBusinessDay,
   useHasCapability,
   useHasPermission,
-  useIdempotencyKey,
-  useMutationMessage,
   usePosShift,
 } from "../hooks/usePosData";
+import type { RosterEntry } from "../lib/deviceAuth";
+import type { CashMovementType, POSCashMovement, POSShift } from "../lib/posContracts";
+import { cashMovementWords, clockTime, shiftChipWords } from "../lib/words";
 
 /**
- * Deliberately out of the main selling workspace. Cash movements and POS
- * Day Close are periodic/administrative, not per-transaction. R6A-C: the
- * session now carries this staff member's own authoritative permission set
- * and this property's authoritative capabilities, so both actions are
- * composed from that real signal rather than shown to everyone and left to
- * fail — the backend remains the final authority either way; hiding here is
- * convenience, not a security boundary.
+ * Cash: the drawer for this shift. Every figure is Yetu's own (the float it
+ * was opened with and what it expects now); the till adds nothing up. Cash in
+ * and out are listed with their reasons and who recorded them. Closing the
+ * shift and closing the day start here. The backend checks every action
+ * again; the permission notices only say who can do what.
  */
 export function Manager() {
   const { shift } = usePosShift();
   const movements = useCashMovements(shift?.id);
-  const [recordingMovement, setRecordingMovement] = useState(false);
-  const closeBusinessDay = useCloseBusinessDay();
-  const dayCloseKey = useIdempotencyKey();
-  const dayCloseError = useMutationMessage(closeBusinessDay.error);
   const currency = useCatalogCurrency();
-  const money = moneyFormatter(currency);
-
+  const device = useDeviceSessionOptional();
   const canRecordCash = useHasPermission("pos.cash_movement.record");
-  const canRunDayClose = useHasPermission("pos.report.manager") && !useHasCapability("LODGING");
+  const canCloseShift = useHasPermission("pos.shift.close");
+  const isManager = useHasPermission("pos.report.manager");
+  const hotel = useHasCapability("LODGING");
+  const [movement, setMovement] = useState<CashMovementType | null>(null);
+  const [closing, setClosing] = useState(false);
+  const roster = device?.roster ?? [];
+  const requesterId = device?.session?.staffId ?? "";
 
   return (
-    <div className="space-y-5">
-      <h2 className="text-lg font-semibold text-[var(--foreground)]">Manager</h2>
+    <CashView
+      shift={shift}
+      currency={currency}
+      movements={movements.data ?? []}
+      roster={roster}
+      canRecordCash={canRecordCash}
+      canCloseShift={canCloseShift}
+      closeDay={isManager && !hotel ? <CloseDayCard thisTillShiftOpen={Boolean(shift)} /> : null}
+      onCashIn={() => setMovement("CASH_IN")}
+      onCashOut={() => setMovement("CASH_OUT")}
+      onCloseShift={() => setClosing(true)}
+    >
+      {movement && shift ? (
+        <CashMovementDialog shiftId={shift.id} currency={currency} initialType={movement} onClose={() => setMovement(null)} />
+      ) : null}
+      {closing && shift ? (
+        <CloseShiftSheet
+          open
+          onOpenChange={setClosing}
+          shift={shift}
+          currency={currency}
+          requesterId={requesterId}
+          roster={roster}
+        />
+      ) : null}
+    </CashView>
+  );
+}
 
-      {canRecordCash ? (
-        <div className="glass-panel p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-[var(--foreground)]">Cash movements</div>
-            <button
-              data-testid="open-cash-movement"
-              onClick={() => setRecordingMovement(true)}
-              disabled={!shift}
-              className="btn-secondary btn-sm"
-            >
-              <Icon name="payments" size={14} />
-              Cash in / out
-            </button>
-          </div>
-          {!shift && <p className="mt-2 text-[12px] text-[var(--foreground-muted)]">Open a shift to record cash movements.</p>}
-          {shift && (
-            <ul className="mt-3 space-y-1 text-[13px]" data-testid="cash-movement-list">
-              {(movements.data ?? []).length === 0 ? (
-                <li className="text-[12px] text-[var(--foreground-muted)]">No cash movements this shift.</li>
-              ) : (
-                (movements.data ?? []).map((movement) => (
-                  <li key={movement.id} className="flex items-baseline justify-between gap-2">
-                    <span>
-                      {movement.movementType === "CASH_IN" ? "Cash in" : "Cash out"} · {movement.reason}
-                    </span>
-                    <span className="font-mono text-xs tabular-nums">{money(movement.amountMinor)}</span>
-                  </li>
-                ))
-              )}
-            </ul>
-          )}
-        </div>
-      ) : (
-        <div className="glass-panel p-4">
-          <p className="text-[12px] text-[var(--foreground-muted)]" data-testid="cash-movement-unavailable">
-            Cash movements aren't available to this staff account. Ask a manager.
-          </p>
-        </div>
-      )}
+export interface CashViewProps {
+  shift: POSShift | null | undefined;
+  currency: string | undefined;
+  movements: readonly POSCashMovement[];
+  roster: readonly RosterEntry[];
+  canRecordCash: boolean;
+  canCloseShift: boolean;
+  /** The Close the day card, for managers on a restaurant-only property. */
+  closeDay: ReactNode;
+  onCashIn: () => void;
+  onCashOut: () => void;
+  onCloseShift: () => void;
+  /** Open sheets. */
+  children?: ReactNode;
+}
 
-      {canRunDayClose && (
-        <div className="glass-panel p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold text-[var(--foreground)]">POS day close</div>
-              <p className="mt-0.5 text-[11px] text-[var(--foreground-muted)]">
-                Advances the property's business date once every shift is closed.
-              </p>
-            </div>
-            <button
-              data-testid="close-business-day"
-              onClick={() => closeBusinessDay.mutate(dayCloseKey.next())}
-              disabled={closeBusinessDay.isPending}
-              className="btn-primary btn-sm"
-            >
-              {closeBusinessDay.isPending ? "Closing…" : "Close business day"}
-            </button>
-          </div>
-          {dayCloseError && (
-            <div className="badge badge-danger mt-3" data-testid="day-close-error">
-              {dayCloseError}
-            </div>
-          )}
-          {closeBusinessDay.data && (
-            <div className="badge badge-success mt-3" data-testid="day-close-result">
-              Business date advanced to {closeBusinessDay.data.nextBusinessDate}
-            </div>
-          )}
-        </div>
-      )}
+export function CashView({
+  shift,
+  currency,
+  movements,
+  roster,
+  canRecordCash,
+  canCloseShift,
+  closeDay,
+  onCashIn,
+  onCashOut,
+  onCloseShift,
+  children,
+}: CashViewProps) {
+  const nameOf = (staffId: string | undefined) => roster.find((entry) => entry.staffNumber === staffId)?.fullName;
 
-      {recordingMovement && shift && <CashMovementDialog shiftId={shift.id} onClose={() => setRecordingMovement(false)} />}
+  return (
+    <div className="y-cash">
+      <header className="y-cash__header">
+        <h1 className="y-cash__title">Cash</h1>
+        {shift ? <p className="y-cash__muted">{shiftChipWords(shift).full}</p> : null}
+      </header>
+
+      <div className="y-cash__grid">
+        <div className="y-cash__column">
+          <section className="y-cash__card" aria-labelledby="drawer-title">
+            <h2 id="drawer-title" className="y-cash__card-title">
+              In the drawer
+            </h2>
+            {shift ? (
+              <dl className="y-cash__summary" data-testid="cash-summary">
+                <div>
+                  <dt>Float at the start</dt>
+                  <dd>
+                    <Money minor={shift.openingCashMinor} currency={currency} size="title" />
+                  </dd>
+                  <dd className="y-cash__muted">Counted into the drawer when the shift opened.</dd>
+                </div>
+                <div>
+                  <dt>Expected in the drawer now</dt>
+                  <dd>
+                    <Money minor={shift.expectedCashMinor} currency={currency} size="title" />
+                  </dd>
+                  <dd className="y-cash__muted">Float, plus cash sales and cash in, less cash out, worked out by Yetu.</dd>
+                </div>
+              </dl>
+            ) : (
+              <p className="y-cash__muted">No shift is open on this till.</p>
+            )}
+
+            {canRecordCash ? (
+              <div className="y-cash__actions">
+                <Button
+                  variant="secondary"
+                  size={56}
+                  icon={<ArrowDownToLine />}
+                  data-testid="open-cash-movement"
+                  disabled={!shift}
+                  onClick={onCashIn}
+                >
+                  Cash in
+                </Button>
+                <Button
+                  variant="secondary"
+                  size={56}
+                  icon={<ArrowUpFromLine />}
+                  data-testid="open-cash-out"
+                  disabled={!shift}
+                  onClick={onCashOut}
+                >
+                  Cash out
+                </Button>
+              </div>
+            ) : (
+              <div data-testid="cash-movement-unavailable">
+                <PermissionNotice who="a cashier or manager" action="put cash in or take it out" next="Ask one to help." />
+              </div>
+            )}
+          </section>
+
+          <section className="y-cash__card" aria-labelledby="movements-title">
+            <h2 id="movements-title" className="y-cash__card-title">
+              Cash in and out this shift
+            </h2>
+            {shift ? (
+              <div data-testid="cash-movement-list">
+                {movements.length === 0 ? (
+                  <EmptyState
+                    icon={<Banknote />}
+                    title="No cash in or out yet"
+                    description="Cash put in or taken out during this shift is listed here."
+                  />
+                ) : (
+                  movements.map((entry) => {
+                    const who = nameOf(entry.recordedBy);
+                    const when = entry.createdAt ? clockTime(entry.createdAt) : "";
+                    return (
+                      <ListRow
+                        key={entry.id}
+                        title={cashMovementWords(entry.movementType)}
+                        meta={[entry.reason, who, when].filter(Boolean).join(" · ")}
+                        trailing={<Money minor={entry.amountMinor} currency={currency} size="lead" />}
+                      />
+                    );
+                  })
+                )}
+              </div>
+            ) : null}
+          </section>
+        </div>
+
+        <div className="y-cash__column">
+          <section className="y-cash__card" aria-labelledby="close-shift-title">
+            <h2 id="close-shift-title" className="y-cash__card-title">
+              Close this shift
+            </h2>
+            <p className="y-cash__muted">
+              Count the drawer first. Yetu then shows what it expects; if they differ, a manager approves.
+            </p>
+            {canCloseShift ? (
+              <Button
+                variant="primary"
+                size={64}
+                block
+                data-testid="open-close-shift"
+                disabled={!shift}
+                onClick={onCloseShift}
+              >
+                Close shift
+              </Button>
+            ) : (
+              <div data-testid="close-shift-unavailable">
+                <PermissionNotice who="a cashier or manager" action="close the shift" next="Ask one to close it." />
+              </div>
+            )}
+          </section>
+
+          {closeDay}
+        </div>
+      </div>
+
+      {children}
     </div>
   );
 }

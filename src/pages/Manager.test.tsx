@@ -10,11 +10,30 @@ const { closeBusinessDayMutate, permissionsRef, capabilitiesRef, shiftRef, curre
   capabilitiesRef: { capabilities: [] as string[] },
   shiftRef: { shift: undefined as POSShift | undefined },
   currencyRef: { currency: "TZS" as string | undefined },
-  movementsRef: { data: [] as Array<{ id: string; movementType: "CASH_IN" | "CASH_OUT"; amountMinor: number; reason: string }> },
+  movementsRef: {
+    data: [] as Array<{
+      id: string;
+      movementType: "CASH_IN" | "CASH_OUT";
+      amountMinor: number;
+      reason: string;
+      recordedBy?: string;
+      createdAt?: string;
+    }>,
+  },
+}));
+
+vi.mock("../auth/DeviceSessionProvider", () => ({
+  useDeviceSessionOptional: () => ({
+    session: { staffId: "staff-amina" },
+    roster: [
+      { fullName: "Amina Hassan", staffNumber: "staff-amina" },
+      { fullName: "Grace Mushi", staffNumber: "staff-grace" },
+    ],
+  }),
 }));
 
 vi.mock("../hooks/usePosData", () => ({
-  usePosShift: () => ({ shift: shiftRef.shift }),
+  usePosShift: () => ({ shift: shiftRef.shift, close: { mutateAsync: vi.fn(), isPending: false } }),
   useCashMovements: () => movementsRef,
   useCatalogCurrency: () => currencyRef.currency,
   useCloseBusinessDay: () => ({ mutate: closeBusinessDayMutate, isPending: false, error: null, data: undefined }),
@@ -25,7 +44,9 @@ vi.mock("../hooks/usePosData", () => ({
 }));
 
 vi.mock("../components/CashMovementDialog", () => ({
-  CashMovementDialog: () => <div data-testid="cash-movement-dialog-stub" />,
+  CashMovementDialog: ({ initialType }: { initialType?: string }) => (
+    <div data-testid="cash-movement-dialog-stub" data-type={initialType} />
+  ),
 }));
 
 const SHIFT: POSShift = {
@@ -105,4 +126,75 @@ describe("Manager", () => {
 
     expect(screen.getByTestId("open-cash-movement")).toBeDisabled();
   });
+
+  it("sums up the drawer with only the figures Yetu works out, each explained", () => {
+    permissionsRef.permissions = ["pos.cash_movement.record", "pos.shift.close"];
+    capabilitiesRef.capabilities = [];
+    shiftRef.shift = SHIFT;
+    render(<Manager />);
+    const summary = screen.getByTestId("cash-summary");
+    expect(summary).toHaveTextContent("Float at the start");
+    expect(summary).toHaveTextContent("TSh 500");
+    expect(summary).toHaveTextContent("Expected in the drawer now");
+    expect(summary).toHaveTextContent("TSh 740");
+    expect(summary).toHaveTextContent("Float, plus cash sales and cash in, less cash out, worked out by Yetu.");
+    expect(summary.querySelectorAll(".y-money")).toHaveLength(2);
+  });
+
+  it("lists each cash movement with its reason, who and when, never an id", () => {
+    permissionsRef.permissions = ["pos.cash_movement.record"];
+    capabilitiesRef.capabilities = [];
+    shiftRef.shift = SHIFT;
+    movementsRef.data = [
+      { id: "m1", movementType: "CASH_OUT", amountMinor: 2_000_000, reason: "Gas delivery", recordedBy: "staff-grace", createdAt: new Date(2026, 8, 4, 11, 5).toISOString() },
+      { id: "m2", movementType: "CASH_IN", amountMinor: 500_000, reason: "Float top-up", recordedBy: "unknown-id-123", createdAt: new Date(2026, 8, 4, 9, 30).toISOString() },
+    ];
+    render(<Manager />);
+    const list = screen.getByTestId("cash-movement-list");
+    expect(list).toHaveTextContent("Cash out");
+    expect(list).toHaveTextContent("Gas delivery · Grace Mushi · 11:05");
+    expect(list).toHaveTextContent("Float top-up · 09:30");
+    expect(list).not.toHaveTextContent("unknown-id-123");
+  });
+
+  it("opens Cash out straight onto cash out", async () => {
+    permissionsRef.permissions = ["pos.cash_movement.record"];
+    capabilitiesRef.capabilities = [];
+    shiftRef.shift = SHIFT;
+    render(<Manager />);
+    await userEvent.click(screen.getByTestId("open-cash-out"));
+    expect(screen.getByTestId("cash-movement-dialog-stub")).toHaveAttribute("data-type", "CASH_OUT");
+  });
+
+  it("starts closing the shift from Cash", async () => {
+    permissionsRef.permissions = ["pos.shift.close"];
+    capabilitiesRef.capabilities = [];
+    shiftRef.shift = SHIFT;
+    render(<Manager />);
+    await userEvent.click(screen.getByTestId("open-close-shift"));
+    expect(screen.getByRole("dialog", { name: "Close the shift" })).toBeInTheDocument();
+  });
+
+  it("says in words who can close the shift and record cash, instead of hiding it", () => {
+    permissionsRef.permissions = [];
+    capabilitiesRef.capabilities = [];
+    shiftRef.shift = SHIFT;
+    render(<Manager />);
+    expect(screen.getByTestId("close-shift-unavailable")).toHaveTextContent(
+      "Only a cashier or manager can close the shift. Ask one to close it.",
+    );
+    expect(screen.getByTestId("cash-movement-unavailable")).toHaveTextContent(
+      "Only a cashier or manager can put cash in or take it out. Ask one to help.",
+    );
+  });
+
+  it("shows Close the day but holds it until this till's shift is closed", () => {
+    permissionsRef.permissions = ["pos.report.manager"];
+    capabilitiesRef.capabilities = [];
+    shiftRef.shift = SHIFT;
+    render(<Manager />);
+    expect(screen.getByTestId("close-business-day")).toBeDisabled();
+    expect(screen.getByTestId("close-day")).toHaveTextContent("Close this till's shift first.");
+  });
 });
+
