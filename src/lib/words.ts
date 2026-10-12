@@ -109,6 +109,48 @@ export function clockTime(value: Date | string | null | undefined): string {
   return new Intl.DateTimeFormat(CLOCK_LOCALE, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
 }
 
+const CIVIL_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * A business day ("2026-10-12", a calendar day, not a moment) as people say
+ * it: "Mon 12 Oct". Read as that day, never shifted by the time zone; anything
+ * else gives nothing rather than a machine date.
+ */
+export function businessDayWords(day: string | null | undefined): string {
+  const match = day ? CIVIL_DAY.exec(day) : null;
+  if (!match) return "";
+  const [year, month, date] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const moment = new Date(Date.UTC(year, month - 1, date));
+  if (moment.getUTCFullYear() !== year || moment.getUTCMonth() !== month - 1 || moment.getUTCDate() !== date) return "";
+  const parts = new Intl.DateTimeFormat(CLOCK_LOCALE, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).formatToParts(moment);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((piece) => piece.type === type)?.value ?? "";
+  return `${part("weekday")} ${part("day")} ${part("month")}`;
+}
+
+/**
+ * The top bar's shift chip: the shift and its business day, in full
+ * ("Shift open since 07:02 · Mon 12 Oct") and shorter for compact screens
+ * ("Since 07:02 · Mon 12 Oct").
+ */
+export function shiftChipWords(
+  shift: Pick<POSShift, "status" | "openedAt" | "businessDate"> | null | undefined,
+): { full: string; short: string } {
+  if (!shift) return { full: "No shift open", short: "No shift open" };
+  const full = shiftWords(shift);
+  const short = full.startsWith("Shift open since ")
+    ? `Since ${full.slice("Shift open since ".length)}`
+    : full.startsWith("Shift ")
+      ? full.charAt(6).toUpperCase() + full.slice(7)
+      : full;
+  const day = businessDayWords(shift.businessDate);
+  return day ? { full: `${full} · ${day}`, short: `${short} · ${day}` } : { full, short };
+}
+
 /** The shift as the top bar says it: "Shift open since 07:02". */
 export function shiftWords(shift: Pick<POSShift, "status" | "openedAt"> | null | undefined): string {
   if (!shift) return "No shift open";

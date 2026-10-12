@@ -70,6 +70,9 @@
 
 .y-topbar .y-topbar__status { flex: none; }
 
+/* The shift chip: full words on regular and wide screens, shorter on compact. */
+.y-shift__short { display: none; }
+
 .y-topbar__spacer { flex: 1 1 0; min-width: 0; }
 
 .y-topbar__search {
@@ -398,6 +401,8 @@
     white-space: nowrap;
   }
   .y-person__trigger { max-width: 220px; }
+  .y-shift__full { display: none; }
+  .y-shift__short { display: inline; }
   .y-rail__item { min-height: 76px; }
 }
 

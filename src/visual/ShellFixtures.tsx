@@ -13,7 +13,7 @@ import {
 } from "../components/system";
 import type { KeypadKey } from "../components/system";
 import type { POSOrder } from "../lib/posContracts";
-import { orderStatusTone, orderStatusWords, serviceTypeWords } from "../lib/words";
+import { orderStatusTone, orderStatusWords, serviceTypeWords, shiftChipWords } from "../lib/words";
 import type { WorkspacePage } from "../lib/workspace";
 import { TillShell } from "../shell/TillShell";
 import "./gallery.css";
@@ -23,6 +23,10 @@ import "./gallery.css";
  * real TillShell with static data in the backend's own shapes
  * (posContracts.ts): no network, no device session.
  */
+
+/** A shift as the backend sends it: opened 07:02 on business day 2026-10-12. */
+const BUSINESS_DATE = "2026-10-12";
+const OPENED_AT = new Date(2026, 9, 12, 7, 2).toISOString();
 
 const CURRENCY = "TZS";
 
@@ -104,7 +108,7 @@ function FixtureShell({
       onNavigate={setPage}
       tillName="Main Restaurant"
       person={{ name: "Amina Hassan", initials: "AH" }}
-      shiftText="Shift open since 07:02"
+      shift={shiftChipWords({ status: "OPEN", openedAt: OPENED_AT, businessDate: BUSINESS_DATE })}
       clock="14:32"
       connection={
         offlineCash ? (

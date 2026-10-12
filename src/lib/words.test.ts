@@ -8,12 +8,14 @@ import type {
   ShiftStatus,
 } from "./posContracts";
 import {
+  businessDayWords,
   cashMovementWords,
   clockTime,
   orderStatusTone,
   orderStatusWords,
   paymentMethodWords,
   serviceTypeWords,
+  shiftChipWords,
   shiftStatusWords,
   shiftWords,
   ticketNextStepWords,
@@ -120,5 +122,40 @@ describe("time in words", () => {
       "Shift waiting for a supervisor",
     );
     expect(shiftWords({ status: "OPEN", openedAt: "not a time" })).toBe("Shift open");
+  });
+});
+
+describe("the business day in words", () => {
+  it("writes the business day as people say it, never as a machine date", () => {
+    expect(businessDayWords("2026-10-12")).toBe("Mon 12 Oct");
+    expect(businessDayWords("2026-01-01")).toBe("Thu 1 Jan");
+    expect(businessDayWords("2026-12-31")).toBe("Thu 31 Dec");
+  });
+
+  it("reads the day as that calendar day, not a moment shifted by the time zone", () => {
+    expect(businessDayWords("2026-10-12")).toBe("Mon 12 Oct");
+  });
+
+  it("shows nothing rather than a date it cannot read", () => {
+    expect(businessDayWords(undefined)).toBe("");
+    expect(businessDayWords("")).toBe("");
+    expect(businessDayWords("12/10/2026")).toBe("");
+    expect(businessDayWords("2026-13-40")).toBe("");
+  });
+
+  it("puts the shift and its business day in the top bar chip, with a shorter form", () => {
+    const opened = new Date(2026, 9, 12, 7, 2).toISOString();
+    expect(shiftChipWords({ status: "OPEN", openedAt: opened, businessDate: "2026-10-12" })).toEqual({
+      full: "Shift open since 07:02 · Mon 12 Oct",
+      short: "Since 07:02 · Mon 12 Oct",
+    });
+    expect(shiftChipWords({ status: "OPEN", openedAt: opened, businessDate: "not a day" })).toEqual({
+      full: "Shift open since 07:02",
+      short: "Since 07:02",
+    });
+    expect(shiftChipWords(null)).toEqual({ full: "No shift open", short: "No shift open" });
+    expect(
+      shiftChipWords({ status: "PENDING_VARIANCE_APPROVAL", openedAt: opened, businessDate: "2026-10-12" }),
+    ).toEqual({ full: "Shift waiting for a supervisor · Mon 12 Oct", short: "Waiting for a supervisor · Mon 12 Oct" });
   });
 });

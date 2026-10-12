@@ -24,7 +24,7 @@ function Harness({ initialPage = "new", onNavigate, ...props }: Overrides & { on
       mode="POS"
       tillName="Main Bar"
       person={{ name: "Amina Hassan", initials: "AH" }}
-      shiftText="Shift open since 07:02"
+      shift={{ full: "Shift open since 07:02 · Mon 12 Oct", short: "Since 07:02 · Mon 12 Oct" }}
       clock="14:32"
       connection={<span data-testid="connectivity">Online</span>}
       onSwitchPerson={vi.fn()}
@@ -51,7 +51,8 @@ describe("TillShell", () => {
     expect(screen.getByTestId("pos-register")).toHaveClass("terminal-shell");
     expect(screen.getByTestId("till-label")).toHaveTextContent("Main Bar");
     expect(screen.getByTestId("staff-name")).toHaveTextContent("Amina Hassan");
-    expect(screen.getByTestId("shell-business-date")).toHaveTextContent("Shift open since 07:02");
+    expect(screen.getByTestId("shell-business-date")).toHaveTextContent("Shift open since 07:02 · Mon 12 Oct");
+    expect(screen.getByTestId("shell-business-date")).toHaveAccessibleName("Shift open since 07:02 · Mon 12 Oct");
     expect(screen.getByTestId("connectivity")).toHaveTextContent("Online");
     expect(screen.getByTestId("shell-clock")).toHaveTextContent("14:32");
     expect(screen.getByTestId("theme-toggle")).toBeInTheDocument();
@@ -117,6 +118,15 @@ describe("TillShell", () => {
     expect(screen.getByTestId("current-page")).toHaveTextContent("new");
     expect(screen.getByTestId("rail-reason")).toHaveTextContent(/connection/i);
     expect(orders).toHaveAccessibleDescription(/connection/i);
+  });
+
+  it("shortens the shift chip on a compact screen but keeps the full words in its name", () => {
+    render(<Harness />);
+    const chip = screen.getByTestId("shell-business-date");
+    expect(chip.querySelector(".y-shift__full")).toHaveTextContent("Shift open since 07:02 · Mon 12 Oct");
+    expect(chip.querySelector(".y-shift__short")).toHaveTextContent("Since 07:02 · Mon 12 Oct");
+    expect(chip).toHaveAccessibleName("Shift open since 07:02 · Mon 12 Oct");
+    expect(chip.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 
   it("gives a kitchen display no rail", () => {

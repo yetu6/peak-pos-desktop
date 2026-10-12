@@ -30,7 +30,7 @@ import { SessionExpiredError } from "./lib/operationalSession";
 import { personLabel } from "./lib/staffLabel";
 import { terminalRoute } from "./lib/terminalRoute";
 import { applyModeDefaultTheme } from "./lib/theme";
-import { clockTime, shiftWords } from "./lib/words";
+import { clockTime, shiftChipWords } from "./lib/words";
 import { defaultWorkspacePage, workspaceNav, type WorkspacePage } from "./lib/workspace";
 import { TillShell } from "./shell/TillShell";
 
@@ -78,7 +78,7 @@ function PosShell() {
       onNavigate={setPage}
       tillName={identity?.terminalName}
       person={person}
-      shiftText={shiftWords(shift)}
+      shift={shiftChipWords(shift)}
       clock={clock}
       connection={<ConnectivityIndicator />}
       banners={<ShellBanners />}

@@ -62,8 +62,8 @@ export interface TillShellProps {
   /** The till's name, as the manager wrote it at pairing. */
   tillName?: string | null;
   person: { name: string; initials: string };
-  /** The shift in words: "Shift open since 07:02". */
-  shiftText?: string | null;
+  /** The shift and its business day in words, in full and shorter for compact screens. */
+  shift?: { full: string; short: string } | null;
   clock: string;
   /** The connection and sync chip. */
   connection: ReactNode;
@@ -95,7 +95,7 @@ export function TillShell({
   onNavigate,
   tillName,
   person,
-  shiftText,
+  shift,
   clock,
   connection,
   banners,
@@ -243,11 +243,14 @@ export function TillShell({
         ) : (
           <StatusChip
             tone="neutral"
-            className="y-topbar__status"
+            className="y-topbar__status y-shift"
             icon={<Clock aria-hidden="true" />}
             data-testid="shell-business-date"
+            role="status"
+            aria-label={shift?.full || "No shift open"}
           >
-            {shiftText || "No shift open"}
+            <span className="y-shift__full">{shift?.full || "No shift open"}</span>
+            <span className="y-shift__short">{shift?.short || shift?.full || "No shift open"}</span>
           </StatusChip>
         )}
         <span className="y-topbar__spacer" />

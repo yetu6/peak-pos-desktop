@@ -9,8 +9,13 @@ import {
   ProductTile,
   QuantityStepper,
 } from "../components/terminal/TerminalPrimitives";
+import { shiftChipWords } from "../lib/words";
 import type { WorkspacePage } from "../lib/workspace";
 import { TillShell } from "../shell/TillShell";
+
+/** A shift as the backend sends it: opened 07:02 on business day 2026-10-12. */
+const BUSINESS_DATE = "2026-10-12";
+const OPENED_AT = new Date(2026, 9, 12, 7, 2).toISOString();
 
 const PRODUCTS = [
   ["Cappuccino", "TZS 6,500"],
@@ -41,7 +46,7 @@ export function PeakTerminalFixture() {
       onNavigate={setPage}
       tillName="Main Restaurant"
       person={{ name: "Amina Hassan", initials: "AH" }}
-      shiftText="Shift open since 07:02"
+      shift={shiftChipWords({ status: "OPEN", openedAt: OPENED_AT, businessDate: BUSINESS_DATE })}
       clock="14:32"
       connection={<OperationalStatus tone="success" announce>Live</OperationalStatus>}
       onSwitchPerson={() => undefined}
