@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { POSOrder, POSRoomChargeCandidate } from "../lib/posContracts";
 import { idleLockHeld } from "../lib/idleLock";
-import { PaySheet } from "./PaySheet";
+import { PAY_CHECK_EVERY_SECONDS, PaySheet } from "./PaySheet";
 
 const ORDER: POSOrder = {
   id: "order-1",
@@ -42,8 +42,8 @@ const { recordTenderMutate, chargeToRoomMutate, refs } = vi.hoisted(() => ({
 vi.mock("../hooks/usePosData", async (importOriginal) => ({
   // The real key generator: a retry must reuse its key, a new request must not.
   useIdempotencyKey: (await importOriginal<typeof import("../hooks/usePosData")>()).useIdempotencyKey,
-  useRecordTender: () => ({ mutate: recordTenderMutate, ...refs.tender }),
-  useChargeToRoom: () => ({ mutate: chargeToRoomMutate, isPending: false, error: null }),
+  useRecordTender: () => ({ mutate: recordTenderMutate, reset: () => undefined, ...refs.tender }),
+  useChargeToRoom: () => ({ mutate: chargeToRoomMutate, reset: () => undefined, isPending: false, error: null }),
   useRoomChargeAvailability: () => ({ data: refs.roomAvailable }),
   useRoomChargeCandidates: (query: string) => ({ data: query ? refs.candidates : [], isFetching: false }),
   useOrder: () => ({ data: undefined, refetch: refs.refetchOrder }),
@@ -347,9 +347,11 @@ describe("PaySheet", () => {
 
     it("a retry after a lost response sends the same key", async () => {
       recordTenderMutate.mockImplementationOnce(lost);
+      refs.refetchOrder.mockResolvedValue({ status: "success", data: ORDER });
       renderPay();
       await userEvent.click(screen.getByRole("radio", { name: "Card (own machine)" }));
       await userEvent.click(pay());
+      await screen.findByText(/Yetu didn't record that payment/);
       await userEvent.click(pay());
       expect(recordTenderMutate).toHaveBeenCalledTimes(2);
       expect(keyOf(0)).toMatch(/^[0-9a-f-]{36}$/);
@@ -358,9 +360,11 @@ describe("PaySheet", () => {
 
     it("a changed amount is a new request with a new key", async () => {
       recordTenderMutate.mockImplementationOnce(lost);
+      refs.refetchOrder.mockResolvedValue({ status: "success", data: ORDER });
       renderPay();
       await userEvent.click(screen.getByRole("radio", { name: "Card (own machine)" }));
       await userEvent.click(pay());
+      await screen.findByText(/Yetu didn't record that payment/);
       await userEvent.type(screen.getByTestId("tender-amount"), "10000");
       await userEvent.click(pay());
       expect(keyOf(1)).not.toBe(keyOf(0));
@@ -384,11 +388,13 @@ describe("PaySheet", () => {
         { stayId: "stay-12", roomId: "room-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
       ];
       chargeToRoomMutate.mockImplementationOnce(lost);
+      refs.refetchOrder.mockResolvedValue({ status: "success", data: ORDER });
       renderPay();
       await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
       await userEvent.type(screen.getByTestId("room-query"), "12");
       await userEvent.click(await screen.findByTestId("room-candidate-stay-12"));
       await userEvent.click(screen.getByTestId("confirm-room-charge"));
+      await screen.findByText(/Yetu didn't record that charge/);
       await userEvent.click(screen.getByTestId("confirm-room-charge"));
       const keys = chargeToRoomMutate.mock.calls.map(([vars]) => (vars as { idempotencyKey: string }).idempotencyKey);
       expect(keys).toHaveLength(2);
@@ -405,11 +411,13 @@ describe("PaySheet", () => {
     chargeToRoomMutate.mockImplementationOnce((_vars: unknown, opts?: { onError?: (error: Error) => void }) =>
       opts?.onError?.(new TypeError("Failed to fetch")),
     );
+    refs.refetchOrder.mockResolvedValue({ status: "success", data: ORDER });
     renderPay();
     await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
     await userEvent.type(screen.getByTestId("room-query"), "1");
     await userEvent.click(await screen.findByTestId("room-candidate-stay-12"));
     await userEvent.click(screen.getByTestId("confirm-room-charge"));
+    await screen.findByText(/Yetu didn't record that charge/);
     await userEvent.click(screen.getByTestId("room-candidate-stay-14"));
     await userEvent.click(screen.getByTestId("confirm-room-charge"));
     const keys = chargeToRoomMutate.mock.calls.map(([vars]) => (vars as { idempotencyKey: string }).idempotencyKey);
@@ -441,5 +449,86 @@ describe("PaySheet", () => {
     await userEvent.click(screen.getByRole("button", { name: /^Exact/ }));
     await userEvent.click(pay());
     await waitFor(() => expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ order: CLOSED })));
+  });
+
+  describe("the connection drops while the payment is with Yetu (S6)", () => {
+    const lost = (_vars: unknown, opts?: { onError?: (error: Error) => void }) => opts?.onError?.(new TypeError("Failed to fetch"));
+
+    it("asks Yetu, and when Yetu recorded it, shows the payment done without taking it again", async () => {
+      recordTenderMutate.mockImplementationOnce(lost);
+      refs.refetchOrder.mockResolvedValue({ status: "success", data: CLOSED });
+      const { onPaid } = renderPay();
+      await userEvent.click(screen.getByRole("button", { name: /^Exact/ }));
+      await userEvent.click(pay());
+      await waitFor(() => expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ order: CLOSED, method: "CASH" })));
+      expect(recordTenderMutate).toHaveBeenCalledTimes(1);
+    });
+
+    it("never assumes: while Yetu can't be reached it says so, offers no payment, and keeps asking", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        recordTenderMutate.mockImplementationOnce(lost);
+        refs.refetchOrder.mockResolvedValueOnce({ status: "error", data: ORDER });
+        refs.refetchOrder.mockResolvedValueOnce({ status: "success", data: CLOSED });
+        const { onPaid, onClose } = renderPay();
+        await userEvent.click(screen.getByRole("button", { name: /^Exact/ }));
+        await userEvent.click(pay());
+        const alert = await screen.findByTestId("pay-unsure");
+        expect(alert).toHaveTextContent("The connection dropped while Yetu was recording this payment. We don't know yet if it went through.");
+        await waitFor(() => expect(alert).toHaveTextContent("Still can't reach Yetu. Don't take the money again until Yetu answers."));
+        expect(screen.queryByTestId("confirm-settle")).not.toBeInTheDocument();
+        expect(screen.getByTestId("pay-check")).toBeEnabled();
+        // A question about money is open: the till doesn't lock early and the sheet stays.
+        expect(idleLockHeld()).toBe(true);
+        fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+        expect(onClose).not.toHaveBeenCalled();
+        expect(onPaid).not.toHaveBeenCalled();
+        await act(async () => vi.advanceTimersByTime(PAY_CHECK_EVERY_SECONDS * 1000));
+        await waitFor(() => expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ order: CLOSED })));
+        expect(refs.refetchOrder).toHaveBeenCalledTimes(2);
+        expect(recordTenderMutate).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("when Yetu recorded part of it, shows what is recorded and what is still to pay", async () => {
+      recordTenderMutate.mockImplementationOnce(lost);
+      const part = { ...ORDER, paidMinor: 1_000_000, remainingMinor: 3_250_000, version: 3 };
+      refs.refetchOrder.mockResolvedValue({ status: "success", data: part });
+      const { onOrderChange } = renderPay();
+      await userEvent.type(screen.getByTestId("amount-received"), "10000");
+      await userEvent.click(pay());
+      expect(await screen.findByTestId("tender-recorded")).toHaveTextContent("Recorded TSh 10,000. TSh 32,500 still to pay.");
+      expect(screen.getByTestId("amount-due")).toHaveTextContent("TSh 32,500");
+      expect(onOrderChange).toHaveBeenCalledWith(part);
+      expect(screen.queryByTestId("pay-unsure")).not.toBeInTheDocument();
+    });
+
+    it("when Yetu recorded nothing, says so: nothing was taken", async () => {
+      recordTenderMutate.mockImplementationOnce(lost);
+      refs.refetchOrder.mockResolvedValue({ status: "success", data: ORDER });
+      renderPay();
+      await userEvent.click(screen.getByRole("button", { name: /^Exact/ }));
+      await userEvent.click(pay());
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Yetu didn't record that payment, so nothing was taken. Take it again when the guest is ready.",
+      );
+      expect(pay()).toBeEnabled();
+    });
+
+    it("a room charge whose answer was lost: Yetu's answer decides", async () => {
+      refs.roomAvailable = true;
+      refs.candidates = [{ stayId: "stay-12", roomId: "room-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true }];
+      chargeToRoomMutate.mockImplementationOnce(lost);
+      refs.refetchOrder.mockResolvedValue({ status: "success", data: CLOSED });
+      const { onPaid } = renderPay();
+      await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
+      await userEvent.type(screen.getByTestId("room-query"), "12");
+      await userEvent.click(await screen.findByTestId("room-candidate-stay-12"));
+      await userEvent.click(screen.getByTestId("confirm-room-charge"));
+      await waitFor(() => expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ order: CLOSED, method: "ROOM_CHARGE", roomNumber: "12" })));
+      expect(chargeToRoomMutate).toHaveBeenCalledTimes(1);
+    });
   });
 });

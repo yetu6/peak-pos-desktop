@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { moneyFieldText } from "../cash/NoteCounterSheet";
-import { Button, Field, Keypad, Money, MoneyField, QuickCash, RefusalNotice, SearchField, Sheet, type KeypadKey, type Refusal } from "../components/system";
+import { Banner, Button, Field, Keypad, Money, MoneyField, QuickCash, RefusalNotice, SearchField, Sheet, type KeypadKey, type Refusal } from "../components/system";
 import {
   useChargeToRoom,
   useIdempotencyKey,
@@ -21,6 +21,23 @@ const RECORDED_FORM = "pay-recorded";
 
 /** Named setting: how long the room search waits after typing before it asks Yetu. */
 export const ROOM_SEARCH_WAIT_MS = 250;
+
+/**
+ * Named setting: while a payment's answer was lost, how often the sheet asks
+ * Yetu again for the order (it asks at once, then this often) until Yetu
+ * answers.
+ */
+export const PAY_CHECK_EVERY_SECONDS = 5;
+
+/** A payment or room charge whose answer was lost: what was asked, and the order as it was before. */
+interface Unsure {
+  before: POSOrder;
+  method: SettlementMethod;
+  changeMinor: number;
+  roomNumber?: string;
+  /** The last time the sheet asked, Yetu couldn't be reached. */
+  failed: boolean;
+}
 
 /** The tenders Yetu takes (posContracts PaymentMethod), in this order. */
 export const TENDER_METHODS: readonly PaymentMethod[] = ["CASH", "MOBILE_MONEY", "EXTERNAL_CARD", "BANK_TRANSFER", "OTHER"];
@@ -111,9 +128,97 @@ export function PaySheet({
     return () => clearTimeout(wait);
   }, [roomQuery]);
 
-  const problem = tenderProblem(recordTender.error) ?? roomChargeProblem(chargeToRoom.error);
-  // The till doesn't lock itself while a payment is with Yetu.
-  useHoldIdleLock(recordTender.isPending || chargeToRoom.isPending);
+  // A payment whose answer was lost: nothing is assumed until Yetu says what it recorded.
+  const [unsure, setUnsureState] = useState<Unsure | null>(null);
+  const unsureRef = useRef<Unsure | null>(null);
+  const setUnsure = (next: Unsure | null) => {
+    unsureRef.current = next;
+    setUnsureState(next);
+  };
+  const [checking, setChecking] = useState(false);
+  const checkingRef = useRef(false);
+  // What Yetu said after a lost answer, when it isn't a payment done.
+  const [answer, setAnswer] = useState<string | null>(null);
+
+  /** Ask Yetu for the order and act only on its answer. */
+  async function check() {
+    const current = unsureRef.current;
+    if (!current || checkingRef.current) return;
+    checkingRef.current = true;
+    setChecking(true);
+    let result: Awaited<ReturnType<typeof latestOrder.refetch>> | undefined;
+    try {
+      result = await latestOrder.refetch();
+    } catch {
+      result = undefined;
+    }
+    checkingRef.current = false;
+    setChecking(false);
+    if (unsureRef.current !== current) return;
+    if (!result || result.status !== "success" || !result.data) {
+      setUnsure({ ...current, failed: true });
+      return;
+    }
+    settle(current, result.data);
+  }
+
+  function settle(current: Unsure, fresh: POSOrder) {
+    setUnsure(null);
+    recordTender.reset();
+    chargeToRoom.reset();
+    const room = current.method === "ROOM_CHARGE";
+    if (fresh.status === "CLOSED" || fresh.remainingMinor <= 0) {
+      // Yetu recorded it: the order is paid.
+      onOrderChange?.(fresh);
+      onPaid({
+        order: fresh,
+        method: current.method,
+        changeMinor: current.changeMinor,
+        roomNumber: current.roomNumber,
+        split: current.before.paidMinor > 0,
+      });
+      return;
+    }
+    if (fresh.paidMinor > current.before.paidMinor) {
+      // Yetu recorded a part payment.
+      setLive(fresh);
+      setRecorded(fresh.paidMinor - current.before.paidMinor);
+      onOrderChange?.(fresh);
+      return;
+    }
+    if (fresh.version === current.before.version) {
+      // Yetu recorded nothing. Asking again is the same request (the same key).
+      setAnswer(
+        room
+          ? "Yetu didn't record that charge, so nothing went on the room bill. Charge it again when you're ready."
+          : "Yetu didn't record that payment, so nothing was taken. Take it again when the guest is ready.",
+      );
+      return;
+    }
+    // The order changed on another till meanwhile: Yetu's latest, and any next payment is a new request.
+    lastTender.current = null;
+    lastRoomCharge.current = null;
+    adopt(fresh);
+    setAnswer("This order changed on another till. The amounts here are Yetu's latest: check them, then try again.");
+  }
+
+  const isUnsure = unsure !== null;
+  useEffect(() => {
+    if (!isUnsure) return;
+    void check();
+    const id = setInterval(() => void check(), PAY_CHECK_EVERY_SECONDS * 1000);
+    return () => clearInterval(id);
+    // Starts when an answer is lost and stops when Yetu has answered.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isUnsure]);
+
+  const problem = isUnsure
+    ? null
+    : answer
+      ? { kind: "other", words: answer }
+      : (tenderProblem(recordTender.error) ?? roomChargeProblem(chargeToRoom.error));
+  // The till doesn't lock itself while a payment is with Yetu, or while what Yetu recorded is unknown.
+  useHoldIdleLock(recordTender.isPending || chargeToRoom.isPending || isUnsure);
 
   return (
     <PaySheetView
@@ -126,10 +231,14 @@ export function PaySheet({
       searching={Boolean(needle) && candidates.isFetching}
       searched={Boolean(needle)}
       pending={recordTender.isPending || chargeToRoom.isPending}
+      unsure={unsure ? { failed: unsure.failed, checking, room: unsure.method === "ROOM_CHARGE" } : null}
+      onCheck={() => void check()}
       problem={problem ?? null}
       recordedMinor={recorded}
       onClose={onClose}
-      onTender={(request) =>
+      onTender={(request) => {
+        setAnswer(null);
+        const before = live;
         recordTender.mutate(
           {
             orderId: live.id,
@@ -153,12 +262,17 @@ export function PaySheet({
               }
             },
             onError: (error) => {
-              if (tenderProblem(error)?.kind === "stale") void latestOrder.refetch().then((result) => adopt(result.data));
+              const kind = tenderProblem(error)?.kind;
+              if (kind === "stale") void latestOrder.refetch().then((result) => adopt(result.data));
+              // The answer was lost: Yetu may or may not have recorded it. Ask before anything else.
+              if (kind === "network") setUnsure({ before, method: request.method, changeMinor: request.changeMinor, failed: false });
             },
           },
-        )
-      }
-      onChargeRoom={(candidate) =>
+        );
+      }}
+      onChargeRoom={(candidate) => {
+        setAnswer(null);
+        const before = live;
         chargeToRoom.mutate(
           {
             orderId: live.id,
@@ -169,9 +283,14 @@ export function PaySheet({
             onSuccess: (updated) => {
               onPaid({ order: updated, method: "ROOM_CHARGE", changeMinor: 0, roomNumber: candidate.roomNumber });
             },
+            onError: (error) => {
+              if (roomChargeProblem(error)?.kind === "network") {
+                setUnsure({ before, method: "ROOM_CHARGE", changeMinor: 0, roomNumber: candidate.roomNumber, failed: false });
+              }
+            },
           },
-        )
-      }
+        );
+      }}
     />
   );
 }
@@ -186,6 +305,9 @@ export interface PaySheetViewProps {
   searching: boolean;
   searched: boolean;
   pending: boolean;
+  /** A payment whose answer was lost, while Yetu is asked what it recorded. */
+  unsure?: { failed: boolean; checking: boolean; room: boolean } | null;
+  onCheck?: () => void;
   /** Why Yetu refused the payment: a 403 shows as a permission notice. */
   problem: Refusal | string | null;
   /** The last part payment Yetu recorded on this order, if any. */
@@ -208,7 +330,9 @@ export function PaySheetView({
   candidates,
   searching,
   searched,
-  pending,
+  pending: requestPending,
+  unsure = null,
+  onCheck,
   problem,
   recordedMinor = null,
   onClose,
@@ -219,6 +343,8 @@ export function PaySheetView({
   initialStayId,
 }: PaySheetViewProps) {
   const [method, setMethod] = useState<Method>(initialMethod);
+  // While what Yetu recorded is unknown, nothing new is taken and the sheet stays.
+  const pending = requestPending || unsure !== null;
   const [received, setReceived] = useState(initialReceived);
   const [amountText, setAmountText] = useState("");
   const [reference, setReference] = useState("");
@@ -321,7 +447,11 @@ export function PaySheetView({
           <Button variant="quiet" disabled={pending} onClick={onClose}>
             Cancel
           </Button>
-          {method === "CASH" ? (
+          {unsure ? (
+            <Button variant="primary" size={64} data-testid="pay-check" disabled={unsure.checking} onClick={onCheck}>
+              {unsure.checking ? "Checking with Yetu…" : "Check with Yetu"}
+            </Button>
+          ) : method === "CASH" ? (
             <Button
               type="submit"
               form={CASH_FORM}
@@ -518,6 +648,16 @@ export function PaySheetView({
               ? `Recorded ${formatMoney(recordedMinor, currency)}. ${formatMoney(due, currency)} still to pay.`
               : ""}
           </p>
+          {unsure ? (
+            <Banner inline tone="danger" data-testid="pay-unsure">
+              {`The connection dropped while Yetu was recording this ${unsure.room ? "charge" : "payment"}. We don't know yet if it went through. `}
+              {unsure.checking
+                ? "Checking with Yetu…"
+                : unsure.failed
+                  ? `Still can't reach Yetu. Don't ${unsure.room ? "charge the room" : "take the money"} again until Yetu answers.`
+                  : ""}
+            </Banner>
+          ) : null}
           {problem ? <RefusalNotice refusal={problem} data-testid="settle-error" /> : null}
         </section>
       </div>
