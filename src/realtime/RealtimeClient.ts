@@ -9,7 +9,18 @@ export interface RealtimeClientOptions {
   /** Retained for caller compatibility; protocol ping/pong is handled natively. */
   livenessWindowMs?: number;
   backoff?: Backoff;
+  /**
+   * How long a connection must stay up before a later drop counts as a fresh
+   * one (the backoff starts again). A connection Yetu or the bridge closes
+   * straight after it opens keeps backing off instead of retrying at once.
+   */
+  stableAfterMs?: number;
+  /** The clock, for tests. */
+  now?: () => number;
 }
+
+/** Named setting: a connection that stayed up this long has recovered (see stableAfterMs). */
+export const REALTIME_STABLE_AFTER_MS = 10_000;
 
 export class RealtimeClient {
   private socket: WebSocket | null = null;
@@ -17,6 +28,7 @@ export class RealtimeClient {
   private readonly targets = new Map<string, number>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private attempt = 0;
+  private openedAt: number | null = null;
   private disposed = false;
   // Each connect is one attempt; a later connect or a dispose makes the earlier
   // attempt's late catch-up, socket and close count for nothing.
@@ -92,11 +104,17 @@ export class RealtimeClient {
     const socket = this.options.createSocket();
     this.socket = socket;
     socket.onopen = () => {
-      this.attempt = 0;
+      // The backoff is not reset here: only a connection that stays up
+      // (stableAfterMs) counts as recovered, so one closed straight after it
+      // opens keeps backing off.
+      this.openedAt = this.now();
       this.targets.forEach((_count, topic) => this.command("subscribe", topic));
+      const reconnect = this.state.established;
       const generation = this.state.resyncGeneration + 1;
       this.setState({ phase: "connected", attempt: 0, lastError: null, established: true, resyncGeneration: generation });
-      this.onResync(generation);
+      // The screens loaded their snapshot just before the first connect; only a
+      // reconnect may have missed news, so only a reconnect asks for it again.
+      if (reconnect) this.onResync(generation);
     };
     socket.onmessage = (message) => {
       const event = parseEnvelope(String(message.data));
@@ -116,7 +134,11 @@ export class RealtimeClient {
     this.options.cursorStorage?.set(this.cursor);
     this.onEvent(event);
   }
+  private now(): number { return this.options.now?.() ?? Date.now(); }
   private scheduleReconnect(reason: string): void {
+    const stable = this.options.stableAfterMs ?? REALTIME_STABLE_AFTER_MS;
+    if (this.openedAt !== null && this.now() - this.openedAt >= stable) this.attempt = 0;
+    this.openedAt = null;
     this.attempt += 1;
     this.setState({ phase: "reconnecting", attempt: this.attempt, lastError: reason });
     this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.connect(); }, this.backoff.delayMs(this.attempt));

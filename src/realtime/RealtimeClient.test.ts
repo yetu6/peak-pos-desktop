@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RealtimeClient, parseEnvelope } from "./RealtimeClient";
 
 class FakeSocket {
@@ -90,6 +90,83 @@ describe("a socket from before a dispose", () => {
     expect(client.connectionState.phase).toBe("connected");
     sockets[0].onclose?.({ reason: "closed late" });
     expect(client.connectionState.phase).toBe("connected");
+    client.dispose();
+  });
+});
+
+describe("after a drop (the reconnect storm)", () => {
+  /** A client whose sockets the test opens and drops, on a clock the test moves. */
+  function dropping(options: { stableAfterMs?: number } = {}) {
+    vi.useFakeTimers();
+    let now = 0;
+    const sockets: FakeSocket[] = [];
+    const attempts: number[] = [];
+    const resyncs: number[] = [];
+    const client = new RealtimeClient({
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket as unknown as WebSocket;
+      },
+      backoff: {
+        delayMs: (attempt) => {
+          attempts.push(attempt);
+          return 1_000;
+        },
+      },
+      now: () => now,
+      ...options,
+    });
+    client.onResync = (generation) => resyncs.push(generation);
+    const advance = async (ms: number) => {
+      now += ms;
+      await vi.advanceTimersByTimeAsync(ms);
+    };
+    return { client, sockets, attempts, resyncs, advance };
+  }
+
+  afterEach(() => vi.useRealTimers());
+
+  it("keeps backing off while each new connection drops straight after it opens", async () => {
+    const { client, sockets, attempts, advance } = dropping({ stableAfterMs: 10_000 });
+    client.connect();
+    await advance(0);
+    for (let round = 0; round < 4; round++) {
+      sockets.at(-1)!.open();
+      await advance(50);
+      sockets.at(-1)!.onclose?.({ reason: "text messages required" });
+      await advance(1_000);
+    }
+    expect(attempts).toEqual([1, 2, 3, 4]);
+    client.dispose();
+  });
+
+  it("starts the backoff again once a connection has stayed up", async () => {
+    const { client, sockets, attempts, advance } = dropping({ stableAfterMs: 10_000 });
+    client.connect();
+    await advance(0);
+    sockets[0].open();
+    await advance(50);
+    sockets[0].onclose?.({ reason: "dropped" });
+    await advance(1_000);
+    sockets[1].open();
+    await advance(10_000);
+    sockets[1].onclose?.({ reason: "dropped" });
+    await advance(1_000);
+    expect(attempts).toEqual([1, 1]);
+    client.dispose();
+  });
+
+  it("asks for a snapshot once per real reconnect, never on the first connect", async () => {
+    const { client, sockets, resyncs, advance } = dropping();
+    client.connect();
+    await advance(0);
+    sockets[0].open();
+    expect(resyncs).toEqual([]);
+    sockets[0].onclose?.({ reason: "dropped" });
+    await advance(1_000);
+    sockets[1].open();
+    expect(resyncs).toHaveLength(1);
     client.dispose();
   });
 });
