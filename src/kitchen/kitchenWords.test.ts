@@ -94,27 +94,31 @@ describe("stationWords", () => {
 
 describe("kitchenProblem", () => {
   const refused = (problem: Record<string, unknown>) => new Error(JSON.stringify(problem));
+  const MOVED = "This ticket was moved on another screen. The board shows where it is now.";
 
-  it("says a ticket someone else moved first has been reloaded", () => {
-    expect(kitchenProblem(refused({ code: "STALE_VERSION" }))).toEqual({
-      kind: "stale",
-      words: "Someone moved this ticket on another screen. The board shows the latest now.",
-    });
+  it("takes any refusal that isn't about the connection, the person or the till to mean the ticket may have moved", () => {
+    // A stale version, a wrong step (Yetu answers that with a 500 today), or anything it doesn't name.
+    for (const code of ["STALE_VERSION", "INTERNAL_ERROR", "CONFLICT", "INVALID_STATE", "NOT_FOUND", "SOMETHING_NEW"]) {
+      expect(kitchenProblem(refused({ code, detail: "order is not in the required prior state" })), code).toEqual({ kind: "moved", words: MOVED });
+    }
+    expect(kitchenProblem(refused({}))).toEqual({ kind: "moved", words: MOVED });
   });
 
   it("says who can move tickets when the role or this screen's stations don't allow it", () => {
-    expect(kitchenProblem(refused({ code: "FORBIDDEN" }))?.words).toBe(
-      "This ticket can't be moved from here. Your role or this screen's kitchen stations don't allow it. Ask a manager.",
-    );
+    expect(kitchenProblem(refused({ code: "FORBIDDEN" }))).toEqual({
+      kind: "permission",
+      words: "This ticket can't be moved from here. Your role or this screen's kitchen stations don't allow it. Ask a manager.",
+    });
   });
 
-  it("says the connection is down in the till's own words", () => {
+  it("says the connection is down, or Yetu is busy, as something to try again", () => {
     expect(kitchenProblem(new TypeError("Failed to fetch"))?.kind).toBe("network");
+    expect(kitchenProblem(refused({ code: "SERVICE_UNAVAILABLE" }))?.kind).toBe("network");
   });
 
-  it("keeps the backend's sentence off the screen", () => {
-    const problem = kitchenProblem(refused({ code: "CONFLICT", detail: "order is not in the required prior state" }));
-    expect(problem?.words).toBe("The ticket didn't move. Try again.");
+  it("keeps the till's own words for a session or till that can't act", () => {
+    expect(kitchenProblem(refused({ code: "SESSION_EXPIRED" }))).toEqual({ kind: "session", words: "Your session expired — enter your PIN again." });
+    expect(kitchenProblem(refused({ code: "DEVICE_REVOKED" }))?.kind).toBe("session");
     expect(kitchenProblem(null)).toBeNull();
   });
 });

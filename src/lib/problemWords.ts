@@ -43,3 +43,31 @@ export function otherWords(problem: ProblemLike, actionWords: string): string {
   const described = describePosError(problem);
   return ACTION_WORDS_FOR.has(described.kind) ? actionWords : described.message;
 }
+
+/**
+ * A refused step on an order or a ticket (send it, move it on), read for
+ * what to do next. Yetu answers a step from the wrong state with a plain
+ * error today (fbc-peak operations.go TransitionOrder and SendOrder: HTTP 500),
+ * so anything that isn't the connection, the person or the till is taken to
+ * mean the order or ticket may have moved: the screen reloads it and the next
+ * press is a new request.
+ */
+export type StepRefusal = "network" | "permission" | "session" | "moved";
+
+export function stepRefusal(problem: ProblemLike | "network"): StepRefusal {
+  if (problem === "network") return "network";
+  switch (describePosError(problem).kind) {
+    case "NETWORK_ERROR":
+    case "SERVER_UNAVAILABLE":
+      return "network";
+    case "PERMISSION_DENIED":
+      return "permission";
+    case "AUTHENTICATION_REQUIRED":
+    case "SESSION_EXPIRED":
+    case "DEVICE_REVOKED":
+    case "CAPABILITY_NOT_ENABLED":
+      return "session";
+    default:
+      return "moved";
+  }
+}

@@ -268,6 +268,19 @@ describe("Kitchen on a selling till (whole orders)", () => {
     expect(screen.getByTestId("kitchen-next-order-1")).toBeEnabled();
   });
 
+  it("takes a wrong-step refusal (a 500 today) to mean the order moved: reloads, says so, and the next press is a new request", async () => {
+    ordersStore.set("order-1", SENT_ORDER);
+    transitionStatusSpy.mockResolvedValueOnce(refused({ code: "INTERNAL_ERROR", detail: "order is not in the required prior state" }));
+    renderKitchen();
+    await userEvent.click(await screen.findByTestId("kitchen-next-order-1"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This ticket was moved on another screen. The board shows where it is now.");
+    expect(screen.getByRole("alert")).not.toHaveTextContent(/Peak|went wrong/);
+    await waitFor(() => expect(listOrdersSpy.mock.calls.length).toBeGreaterThan(1));
+    await userEvent.click(screen.getByTestId("kitchen-next-order-1"));
+    await waitFor(() => expect(transitionStatusSpy).toHaveBeenCalledTimes(2));
+    expect(transitionStatusSpy.mock.calls[1][3]).not.toBe(transitionStatusSpy.mock.calls[0][3]);
+  });
+
   it("says why Yetu refused, as an alert, and lets the person try again", async () => {
     ordersStore.set("order-1", SENT_ORDER);
     transitionStatusSpy.mockResolvedValueOnce(refused({ code: "FORBIDDEN" }));
@@ -277,6 +290,10 @@ describe("Kitchen on a selling till (whole orders)", () => {
       "This ticket can't be moved from here. Your role or this screen's kitchen stations don't allow it. Ask a manager.",
     );
     expect(screen.getByTestId("kitchen-next-order-1")).toBeEnabled();
+    // A refused request is never sent again under its key.
+    await userEvent.click(screen.getByTestId("kitchen-next-order-1"));
+    await waitFor(() => expect(transitionStatusSpy).toHaveBeenCalledTimes(2));
+    expect(transitionStatusSpy.mock.calls[1][3]).not.toBe(transitionStatusSpy.mock.calls[0][3]);
   });
 
   it("shows the step closed, with who can, to a person without pos.order.send", async () => {
@@ -318,7 +335,7 @@ describe("Kitchen on a kitchen or bar display (station tickets)", () => {
     transitionStationTicketSpy.mockResolvedValueOnce(refused({ code: "STALE_VERSION" }));
     renderKitchen();
     await userEvent.click(await screen.findByTestId("kitchen-next-t-1"));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Someone moved this ticket on another screen.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This ticket was moved on another screen. The board shows where it is now.");
     await waitFor(() => expect(listStationTicketsSpy.mock.calls.length).toBeGreaterThan(1));
   });
 

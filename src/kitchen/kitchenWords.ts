@@ -5,7 +5,7 @@
  * TransitionStationTicket).
  */
 import type { POSStationTicket, PrepStation } from "../lib/posContracts";
-import { otherWords, problemOf, UNREACHABLE } from "../lib/problemWords";
+import { otherWords, problemOf, stepRefusal, UNREACHABLE, type StepRefusal } from "../lib/problemWords";
 import type { Tone } from "../lib/words";
 import { KITCHEN_LATE_AFTER_MINUTES, KITCHEN_NEW_MARKER_SECONDS, KITCHEN_WARN_AFTER_MINUTES } from "./kitchenSettings";
 
@@ -91,7 +91,8 @@ export function stepDoneWords(target: NextStatus, orderNumber: string, station?:
 }
 
 export interface KitchenProblem {
-  kind: "stale" | "permission" | "network" | "other";
+  /** network: try again (same request); the rest: the next press is a new request. */
+  kind: StepRefusal;
   words: string;
 }
 
@@ -99,17 +100,17 @@ export interface KitchenProblem {
 export function kitchenProblem(error: unknown): KitchenProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
-  if (problem === "network") return { kind: "network", words: UNREACHABLE };
-  // Another screen moved it first: the version or the step no longer matches.
-  if (problem.code === "STALE_VERSION") {
-    return { kind: "stale", words: "Someone moved this ticket on another screen. The board shows the latest now." };
+  const kind = stepRefusal(problem);
+  if (problem === "network" || kind === "network") {
+    return { kind: "network", words: problem === "network" ? UNREACHABLE : otherWords(problem, UNREACHABLE) };
   }
   // The role lacks pos.order.send, or the ticket belongs to a station this screen isn't set to show.
-  if (problem.code === "FORBIDDEN") {
+  if (kind === "permission") {
     return {
-      kind: "permission",
+      kind,
       words: "This ticket can't be moved from here. Your role or this screen's kitchen stations don't allow it. Ask a manager.",
     };
   }
-  return { kind: "other", words: otherWords(problem, "The ticket didn't move. Try again.") };
+  if (kind === "session") return { kind, words: otherWords(problem, "The ticket didn't move. Try again.") };
+  return { kind, words: "This ticket was moved on another screen. The board shows where it is now." };
 }

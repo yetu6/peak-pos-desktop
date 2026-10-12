@@ -159,7 +159,10 @@ export function Kitchen() {
         const refusal = kitchenProblem(error);
         setResult(null);
         setProblem(refusal?.words ?? "The ticket didn't move. Try again.");
-        if (refusal?.kind === "stale") void refetch();
+        // Only a lost answer is asked again under the same key; a refusal makes the next press a new request.
+        if (refusal?.kind !== "network") keys.current.delete(request);
+        // It may have moved on another screen: the board shows where it is now.
+        if (refusal?.kind === "moved") void refetch();
       }
     },
     [transitionOrder, transitionTicket, refetch],
