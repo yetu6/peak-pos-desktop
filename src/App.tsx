@@ -157,10 +157,9 @@ function ReadyGate() {
         {route}
       </span>
       {route === "NO_SHIFT" ? (
-        <>
-          <ShellBanners />
+        <AccessFrame banners={<ShellBanners />}>
           <OpenShiftScreen />
-        </>
+        </AccessFrame>
       ) : (
         <LiveRegister />
       )}
