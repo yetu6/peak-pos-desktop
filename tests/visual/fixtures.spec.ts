@@ -216,6 +216,17 @@ async function measure(page: Page): Promise<Finding[]> {
         }
       }
 
+      // A control's words are never cut: nothing written in a button, tab or
+      // choice runs past its own edges.
+      for (const control of document.querySelectorAll("button, [role=tab], [role=radio]")) {
+        if (!rendered(control) || control.closest('[aria-hidden="true"], [inert]')) continue;
+        const style = getComputedStyle(control);
+        if (style.overflowX !== "visible" && style.textOverflow === "ellipsis") continue;
+        if (control.scrollWidth > control.clientWidth + 1) {
+          findings.push({ key: "clipped-words", detail: `${describe(control)} needs ${control.scrollWidth}px, has ${control.clientWidth}px` });
+        }
+      }
+
       // No interactive target under 48px either way.
       const interactive = [
         "button",

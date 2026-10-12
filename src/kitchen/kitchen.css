@@ -200,3 +200,6 @@
 }
 
 .y-kticket__next { flex: none; }
+
+/* The station choice: each option as wide as its words ("All stations" never cut). */
+.y-kitchen__head .y-segmented__option { flex: 0 0 auto; }
