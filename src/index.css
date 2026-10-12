@@ -936,19 +936,6 @@ body.dark-theme .brand-lockup .brand-lockup__on-dark { display: block; }
   }
 }
 
-/* --- Guest invoice paper --- */
-.invoice-sheet {
-  background: var(--receipt-paper);
-}
-.invoice-yetu-footer {
-  margin-top: 16px;
-  border-top: 1px dashed var(--line-strong);
-  padding-top: 12px;
-  text-align: center;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
 /* --- Kitchen display (wall) --- */
 .terminal-shell--kds .terminal-workspace {
   padding: 12px 16px 16px;

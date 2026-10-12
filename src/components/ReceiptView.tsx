@@ -1,10 +1,19 @@
-import { Icon } from "./Icon";
-import { formatMinor } from "../lib/posMoney";
+import { Printer } from "lucide-react";
 import { useIdempotencyKey, useMutationMessage, useReceipt, useReprintReceipt } from "../hooks/usePosData";
+import { formatMoney } from "../lib/money";
+import { businessDayWords, clockTime, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
+import { Banner, Button, Dialog, Skeleton } from "./system";
+
+/** How the order was settled: one method, or SPLIT when more than one tender paid it. */
+function settledWords(method: string): string {
+  return method === "SPLIT" ? "Split payment" : paymentMethodWords(method as SettlementMethod);
+}
 
 /**
- * Guest invoice from Peak settlement (`GET /pos/orders/{orderId}/receipt`).
- * Property brand at top, Yetu at bottom — never a TRA EFD fiscal receipt.
+ * The receipt Yetu kept when the order was settled
+ * (`GET /pos/orders/{orderId}/receipt`), shown as it is: never rebuilt from
+ * the live menu. It is not a tax receipt: those come from the outlet's EFD
+ * machine. Print again uses the existing reprint.
  */
 export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: () => void }) {
   const receipt = useReceipt(orderId);
@@ -14,103 +23,114 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
   const doc = receipt.data?.document;
 
   return (
-    <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="receipt-view">
-      <div className="glass-dialog w-full max-w-sm overflow-hidden p-0">
-        <div className="invoice-sheet px-5 py-5" data-testid="invoice-sheet">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-base font-bold tracking-tight text-[var(--slate-ink)]" data-testid="invoice-property">
-                {doc?.propertyName ?? "Invoice"}
-              </div>
-              {doc?.outletName && (
-                <div className="mt-0.5 text-[12px] text-[var(--slate-ink)]/70">{doc.outletName}</div>
-              )}
-            </div>
-            <button
-              onClick={onClose}
-              className="rounded-md p-1 text-[var(--slate-ink)]/50 hover:bg-black/5"
-              aria-label="Close"
-            >
-              <Icon name="x" size={16} />
-            </button>
-          </div>
-
-          {receipt.isLoading && <p className="mt-4 text-[12px] text-[var(--slate-ink)]/60">Loading invoice…</p>}
-          {receipt.isError && (
-            <p className="mt-4 text-[12px] text-[var(--slate-ink)]/60" data-testid="receipt-error">
-              Invoice unavailable.
-            </p>
-          )}
-          {doc && (
-            <div className="mt-4 space-y-3" data-testid="receipt-document">
-              <div className="text-[12px] text-[var(--slate-ink)]/70">
-                <div className="font-semibold text-[var(--slate-ink)]">{doc.orderNumber}</div>
-                <div>{new Date(doc.settledAt).toLocaleString()}</div>
-                <div>{doc.tenderMethod.replaceAll("_", " ")}</div>
-                {doc.tableLabel && <div>Table {doc.tableLabel}</div>}
-                {doc.initiatedByName && <div data-testid="invoice-taken-by">Taken by {doc.initiatedByName}</div>}
-                {doc.operatorName && doc.operatorName !== doc.initiatedByName && (
-                  <div data-testid="invoice-settled-by">Settled by {doc.operatorName}</div>
-                )}
-              </div>
-              <ul className="space-y-1 border-y border-[var(--slate-ink)]/15 py-2 text-[13px] text-[var(--slate-ink)]">
-                {doc.items.map((line, index) => (
-                  <li key={index} className="flex items-baseline justify-between gap-2">
-                    <span className="min-w-0 truncate">
-                      {line.quantity}× {line.name}
-                    </span>
-                    <span className="font-mono text-xs tabular-nums">
-                      {formatMinor(line.totalMinor, doc.currency)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <div className="space-y-1 text-[12px] text-[var(--slate-ink)]">
-                <div className="flex justify-between">
-                  <span>Subtotal</span>
-                  <span>{formatMinor(doc.subtotalMinor, doc.currency)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tax</span>
-                  <span>{formatMinor(doc.taxMinor, doc.currency)}</span>
-                </div>
-                <div className="flex justify-between text-sm font-semibold">
-                  <span>Total</span>
-                  <span>{formatMinor(doc.totalMinor, doc.currency)}</span>
-                </div>
-              </div>
-              {receipt.data && receipt.data.reprintCount > 0 && (
-                <p className="text-[11px] text-[var(--slate-ink)]/60">Reprinted {receipt.data.reprintCount}×</p>
-              )}
-              <div className="invoice-yetu-footer" data-testid="invoice-yetu-footer">
-                <div className="font-semibold tracking-wide">Yetu · by FBC</div>
-                <div>Not a TRA fiscal receipt — use EFD for tax invoices.</div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {reprintError && (
-          <div className="badge badge-danger mx-5 mt-3" data-testid="reprint-error">
-            {reprintError}
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 border-t border-[var(--border)] bg-[var(--surface)] px-5 py-4">
-          <button onClick={onClose} className="btn-tertiary btn-sm">
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title="Receipt"
+      testId="receipt-view"
+      footer={
+        <div className="y-options__footer">
+          <Button variant="quiet" onClick={onClose}>
             Close
-          </button>
-          <button
+          </Button>
+          <Button
+            icon={<Printer />}
             data-testid="reprint-receipt"
             onClick={() => reprint.mutate({ orderId, idempotencyKey: idempotencyKey.next() })}
             disabled={!receipt.data || reprint.isPending}
-            className="btn-primary btn-sm"
           >
-            <Icon name="orders" size={14} />
-            {reprint.isPending ? "Printing…" : "Reprint invoice"}
-          </button>
+            {reprint.isPending ? "Sending to the printer…" : "Print again"}
+          </Button>
         </div>
+      }
+    >
+      <div className="y-receipt">
+        {receipt.isLoading ? (
+          <div className="y-receipt__loading" aria-label="Loading the receipt">
+            <Skeleton height={24} width="60%" />
+            <Skeleton height={120} />
+          </div>
+        ) : null}
+        {receipt.isError ? (
+          <Banner inline tone="danger" data-testid="receipt-error">
+            The receipt couldn't be loaded. Check the connection, then try again.
+          </Banner>
+        ) : null}
+        {doc ? (
+          <div className="y-receipt__paper" data-testid="receipt-document">
+            <div className="y-receipt__head">
+              <p className="y-receipt__property" data-testid="receipt-property">
+                {doc.propertyName}
+              </p>
+              {doc.outletName ? <p className="y-receipt__meta">{doc.outletName}</p> : null}
+            </div>
+            <div className="y-receipt__meta-block">
+              <p className="y-receipt__order">
+                Order {doc.orderNumber} · {serviceTypeWords(doc.serviceType)}
+                {doc.tableLabel ? ` · ${doc.tableLabel}` : ""}
+              </p>
+              <p className="y-receipt__meta">
+                {businessDayWords(doc.businessDate)} · {clockTime(doc.settledAt)}
+              </p>
+              {doc.initiatedByName ? (
+                <p className="y-receipt__meta" data-testid="receipt-taken-by">
+                  Taken by {doc.initiatedByName}
+                </p>
+              ) : null}
+              {doc.operatorName && doc.operatorName !== doc.initiatedByName ? (
+                <p className="y-receipt__meta" data-testid="receipt-settled-by">
+                  Paid with {doc.operatorName}
+                </p>
+              ) : null}
+            </div>
+            <ul className="y-receipt__lines">
+              {doc.items.map((line, index) => (
+                <li key={index} className="y-receipt__line">
+                  <span className="y-receipt__line-name">
+                    {line.quantity} × {line.name}
+                    {(line.modifiers ?? []).map((modifier) => (
+                      <span key={modifier.id} className="y-receipt__option">
+                        {modifier.optionName}
+                      </span>
+                    ))}
+                  </span>
+                  <span className="y-receipt__amount">{formatMoney(line.totalMinor, doc.currency)}</span>
+                </li>
+              ))}
+            </ul>
+            <dl className="y-receipt__totals">
+              <div>
+                <dt>Subtotal</dt>
+                <dd>{formatMoney(doc.subtotalMinor, doc.currency)}</dd>
+              </div>
+              <div>
+                <dt>VAT</dt>
+                <dd>{formatMoney(doc.taxMinor, doc.currency)}</dd>
+              </div>
+              <div className="y-receipt__total">
+                <dt>Total</dt>
+                <dd>{formatMoney(doc.totalMinor, doc.currency)}</dd>
+              </div>
+            </dl>
+            <p className="y-receipt__meta">Paid by {settledWords(doc.tenderMethod)}</p>
+            {receipt.data && receipt.data.reprintCount > 0 ? (
+              <p className="y-receipt__meta">
+                Printed again {receipt.data.reprintCount} {receipt.data.reprintCount === 1 ? "time" : "times"}
+              </p>
+            ) : null}
+            <p className="y-receipt__footer" data-testid="receipt-footer">
+              This is not a tax receipt. Use your EFD machine for tax receipts.
+            </p>
+          </div>
+        ) : null}
+        {reprintError ? (
+          <Banner inline tone="danger" data-testid="reprint-error">
+            {reprintError}
+          </Banner>
+        ) : null}
       </div>
-    </div>
+    </Dialog>
   );
 }

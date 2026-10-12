@@ -46,20 +46,33 @@ const RECEIPT: POSReceipt = {
 };
 
 describe("ReceiptView", () => {
-  it("shows the immutable settled document, never a reconstruction from a live menu", () => {
+  it("shows the settled document as Yetu kept it, in words, called a receipt", () => {
     receiptRef.data = RECEIPT;
     receiptRef.isLoading = false;
     receiptRef.isError = false;
     render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
 
+    const sheet = screen.getByRole("dialog", { name: "Receipt" });
     const doc = screen.getByTestId("receipt-document");
-    expect(screen.getByTestId("invoice-property")).toHaveTextContent("Mama Rose Hotel");
-    expect(doc).toHaveTextContent("POS-1");
-    expect(doc).toHaveTextContent("CASH");
-    expect(doc).toHaveTextContent("Cappuccino");
-    expect(screen.getByTestId("invoice-taken-by")).toHaveTextContent("Amina Hassan");
-    expect(screen.getByTestId("invoice-yetu-footer")).toHaveTextContent("Yetu");
+    expect(screen.getByTestId("receipt-property")).toHaveTextContent("Mama Rose Hotel");
+    expect(doc).toHaveTextContent("Order POS-1");
+    expect(doc).toHaveTextContent("Paid by Cash");
+    expect(doc).not.toHaveTextContent("CASH");
+    expect(doc).toHaveTextContent("2 × Cappuccino");
+    expect(doc).toHaveTextContent("TSh 141.70");
+    expect(doc).toHaveTextContent("VAT");
+    expect(screen.getByTestId("receipt-taken-by")).toHaveTextContent("Taken by Amina Hassan");
+    expect(screen.getByTestId("receipt-footer")).toHaveTextContent(
+      "This is not a tax receipt. Use your EFD machine for tax receipts.",
+    );
+    expect(sheet).not.toHaveTextContent(/invoice/i);
     expect(screen.queryByTestId("receipt-error")).not.toBeInTheDocument();
+  });
+
+  it("says a split payment in words", () => {
+    receiptRef.data = { ...RECEIPT, document: { ...RECEIPT.document, tenderMethod: "SPLIT" } };
+    render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+    expect(screen.getByTestId("receipt-document")).toHaveTextContent("Paid by Split payment");
   });
 
   it("disables reprint until the real settled document has loaded", () => {
@@ -87,7 +100,7 @@ describe("ReceiptView", () => {
     receiptRef.isError = true;
     render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
 
-    expect(screen.getByTestId("receipt-error")).toBeInTheDocument();
+    expect(screen.getByTestId("receipt-error")).toHaveTextContent("The receipt couldn't be loaded. Check the connection, then try again.");
     expect(screen.getByTestId("reprint-receipt")).toBeDisabled();
   });
 });
