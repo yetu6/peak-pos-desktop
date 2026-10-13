@@ -61,10 +61,13 @@ test("S6: one realtime connection, lost payment answers resolved by Yetu, refusa
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(String(error)));
 
+  let staff: Array<{ id: string; displayName: string }> = [];
+
   await test.step("1. Signed in with the shift open: one realtime connection, kept across every section", async () => {
     await setServerAddress(page);
     const { roster } = await pairTill(page, web, seeded, { terminalName: `S6 till ${crypto.randomUUID().slice(0, 6)}` });
     const signedIn = await signInWithPin(page, roster, seeded.cashierStaffId, seeded.cashierPin, pin);
+    staff = signedIn.staff;
     await body(signedIn.catalogResponse);
     await openShift(page, 5_000_000, tap);
     for (const section of ["orders", "kitchen", "manager", "status", "new", "orders", "new"]) {
@@ -149,6 +152,52 @@ test("S6: one realtime connection, lost payment answers resolved by Yetu, refusa
     await expect(page.getByTestId("pay-unsure")).toBeVisible();
     await startLiveApi();
     await paidOnce(order);
+  });
+
+  await test.step("5. Status and Sync in the browser: checks in words, no print path, the live connection", async () => {
+    await tap(page.getByTestId("nav-status"));
+    await expect(page.getByTestId("diag-check-yetu")).toContainText("Yetu answers.");
+    await expect(page.getByTestId("diag-check-live")).toContainText("On. New orders and changes show at once.");
+    await expect(page.getByTestId("diag-check-receipt-printer")).toContainText("Printing works only in the till app on the counter computer.");
+    await expect(page.getByRole("button", { name: "Print test page" })).toHaveCount(0);
+    await tap(page.getByTestId("connectivity"));
+    const sync = page.getByRole("dialog", { name: "Sync" });
+    await expect(sync).toContainText("Sales go to Yetu as they happen. Nothing is kept on this till for later.");
+    await tap(sync.getByRole("button", { name: "Close" }).first());
+    await expect(sync).toHaveCount(0);
+  });
+
+  /** An open sale of one plain dish, with the void sheet open on it. */
+  async function voidSheet(): Promise<Order> {
+    await tap(page.getByTestId("nav-new"));
+    const added = nextApi(page, "POST", /^\/api\/v1\/pos\/orders\/[^/]+\/items$/);
+    await tap(page.getByTestId(`menu-${plainDish.name}`));
+    const order = await body<Order>(added);
+    await tap(page.getByRole("button", { name: "More" }));
+    await tap(page.getByRole("button", { name: /Void the order/ }));
+    const sheet = page.getByTestId("void-order-dialog");
+    await sheet.getByTestId("void-reason").fill("Guest left before ordering");
+    const manager = staff.find((person) => person.id === seeded.managerStaffId)!;
+    await tap(sheet.getByRole("radio", { name: new RegExp(manager.displayName) }));
+    return order;
+  }
+
+  await test.step("6. A supervisor PIN that doesn't match: Yetu's 403 in words, never a code", async () => {
+    await voidSheet();
+    const sheet = page.getByTestId("void-order-dialog");
+    // The manager's PIN with every digit moved on by one: six digits, and not theirs.
+    const wrong = seeded.managerPin.split("").map((digit) => String((Number(digit) + 1) % 10)).join("");
+    await pin("void-pin-key", wrong);
+    const refused = nextApi(page, "POST", /^\/api\/v1\/pos\/orders\/[^/]+\/void$/);
+    await tap(sheet.getByTestId("confirm-void-order"));
+    const answer = await refused;
+    expect(answer.status()).toBe(403);
+    expect((await answer.json()).code).toBe("FORBIDDEN");
+    await expect(sheet.getByRole("alert")).toHaveText(
+      "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
+    );
+    await expect(sheet).not.toContainText(/403|FORBIDDEN|permission denied/i);
+    await tap(sheet.getByRole("button", { name: "Cancel" }));
   });
 
   await testInfo.attach("payment-requests.json", { body: JSON.stringify(payments, null, 2), contentType: "application/json" });
