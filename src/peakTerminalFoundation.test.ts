@@ -335,7 +335,10 @@ describe("nothing the screens read is left undefined", () => {
         }
       }
     }
-    expect(solid.size).toBeGreaterThan(3);
+    // Since S6 no screen colours itself with a utility class (the last ones, on the old Status
+    // and offline screens, went with their redesign): every colour comes from the system's style
+    // sheets, resolved below in both themes. A utility colour coming back is a finding.
+    expect([...solid]).toEqual([]);
     expect(styled.size).toBeGreaterThan(20);
     for (const theme of ["light", "dark"] as const) {
       for (const name of solid) {
