@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPosApi } from "../lib/posApi";
 import { describePosError } from "../lib/posErrors";
+import { READ_AFTER_RECORD_FAILED } from "../lib/problemWords";
 import { devIdentityFromEnv } from "../lib/env";
 import { useRealtimeEvents } from "../realtime/RealtimeProvider";
 import { isOrderEvent } from "../realtime/subscriptions";
@@ -493,6 +494,20 @@ export function useTransitionStationTicket() {
   });
 }
 
+/**
+ * The order read back after Yetu recorded a payment or a room charge. If only
+ * this read fails, the error says so (READ_AFTER_RECORD_FAILED), so the Pay
+ * sheet treats it as a lost answer and asks again with the same key, never
+ * as Yetu refusing the payment.
+ */
+async function readAfterRecorded(orderId: string): Promise<POSOrder> {
+  try {
+    return await unwrap(createPosApi().getOrder(orderId));
+  } catch {
+    throw new Error(JSON.stringify({ code: READ_AFTER_RECORD_FAILED }));
+  }
+}
+
 export function useRecordTender() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -511,7 +526,7 @@ export function useRecordTender() {
           args.idempotencyKey,
         ),
       );
-      return unwrap(createPosApi().getOrder(args.orderId));
+      return readAfterRecorded(args.orderId);
     },
     onSuccess: (order: POSOrder) => {
       queryClient.setQueryData(["pos", "order", order.id], order);
@@ -559,7 +574,7 @@ export function useChargeToRoom() {
   return useMutation({
     mutationFn: async (args: { orderId: string; stayId: string; idempotencyKey: string }) => {
       await unwrap(createPosApi().chargeToRoom(args.orderId, args.stayId, args.idempotencyKey));
-      return unwrap(createPosApi().getOrder(args.orderId));
+      return readAfterRecorded(args.orderId);
     },
     onSuccess: (order: POSOrder) => {
       queryClient.setQueryData(["pos", "order", order.id], order);

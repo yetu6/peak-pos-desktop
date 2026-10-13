@@ -14,7 +14,7 @@ import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import type { PaymentMethod, POSOrder, POSRoomChargeCandidate } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
 import { orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
-import { afterLostAnswer, lostAnswerRefusalWords, roomChargeProblem, tenderProblem } from "./registerWords";
+import { afterLostAnswer, firstAnswerLost, lostAnswerRefusalWords, roomChargeProblem, tenderProblem } from "./registerWords";
 import { PAY_CHECK_EVERY_SECONDS } from "./registerSettings";
 
 const CASH_FORM = "pay-cash";
@@ -145,6 +145,9 @@ export function PaySheet({
   /** Yetu refused the request after its answer was lost: show its latest, claim nothing for this till. */
   function refusedAfterLost(error: unknown, room: boolean) {
     setLost(null);
+    // Whatever Yetu's latest turns out to be (or if it can't be read), the next payment is a new request.
+    lastTender.current = null;
+    lastRoomCharge.current = null;
     const final = afterLostAnswer(error) === "cannot-tell";
     setAnswer({ words: lostAnswerRefusalWords(error, room), final });
     if (!final) void latestOrder.refetch().then((result) => result.status === "success" && adopt(result.data));
@@ -171,8 +174,8 @@ export function PaySheet({
       onError: (error) => {
         inFlight.current = false;
         const wasLost = lostRef.current !== null;
-        const outcome = afterLostAnswer(error);
-        if (outcome === "unsure") {
+        // The first answer: lost only when it is no answer; a replay: unsure unless it proves "not recorded".
+        if (wasLost ? afterLostAnswer(error) === "unsure" : firstAnswerLost(error)) {
           setLost({ kind: "tender", vars, request, before, failed: wasLost });
           return;
         }
@@ -197,7 +200,7 @@ export function PaySheet({
       onError: (error) => {
         inFlight.current = false;
         const wasLost = lostRef.current !== null;
-        if (afterLostAnswer(error) === "unsure") {
+        if (wasLost ? afterLostAnswer(error) === "unsure" : firstAnswerLost(error)) {
           setLost({ kind: "room", vars, candidate, failed: wasLost });
           return;
         }
@@ -412,12 +415,13 @@ export function PaySheetView({
   }
 
   function takeCash() {
-    if (receivedMinor == null || cashTaken == null || pending) return;
+    // Enter in the cash field submits too: nothing new while an answer is lost or Yetu can't tell.
+    if (receivedMinor == null || cashTaken == null || pending || blocked) return;
     onTender({ method: "CASH", amountMinor: cashTaken, changeMinor: Math.max(0, receivedMinor - due) });
   }
 
   function confirmRecorded() {
-    if (method === "CASH" || method === "ROOM_CHARGE" || nothingDue || amount == null || amount <= 0 || over || pending) return;
+    if (method === "CASH" || method === "ROOM_CHARGE" || nothingDue || amount == null || amount <= 0 || over || pending || blocked) return;
     onTender({ method, amountMinor: amount, reference: reference.trim() || undefined, changeMinor: 0 });
   }
 

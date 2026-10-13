@@ -476,7 +476,7 @@ describe("PaySheet", () => {
       expect(await screen.findByTestId("settle-error")).toHaveTextContent(CHANGED_ELSEWHERE);
       await waitFor(() => expect(screen.getByTestId("amount-due")).toHaveTextContent("TSh 0"));
       expect(onPaid).not.toHaveBeenCalled();
-      expect(document.body).not.toHaveTextContent(/Change to give TSh 7,500/);
+      // Nothing is put down to this till: no part payment recorded for it either.
       expect(screen.getByTestId("tender-recorded")).toHaveTextContent("");
     });
 
@@ -534,22 +534,123 @@ describe("PaySheet", () => {
       }
     });
 
-    it("(d) a stale refusal shows the changed-elsewhere words, and the next payment is a new request", async () => {
-      const latest = { ...ORDER, paidMinor: 1_000_000, remainingMinor: 3_250_000, version: 5 };
+    it("(d) a stale refusal: the next payment, same method and amount, is a new request because the version changed", async () => {
+      // Another till changed the order (a note, say) without changing what is owed.
+      const latest = { ...ORDER, version: 5 };
       refs.refetchOrder.mockResolvedValue({ status: "success", data: latest });
       recordTenderMutate
-        .mockImplementationOnce(lost)
         .mockImplementationOnce(refused({ status: 409, code: "STALE_VERSION", detail: "resource changed" }))
         .mockImplementationOnce(recorded({ ...CLOSED, version: 6 }));
       renderPay();
       await userEvent.click(screen.getByRole("radio", { name: "Card (own machine)" }));
       await userEvent.click(pay());
+      await waitFor(() => expect(refs.refetchOrder).toHaveBeenCalled());
+      await userEvent.click(pay());
+      expect(recordTenderMutate).toHaveBeenCalledTimes(2);
+      const [first, second] = recordTenderMutate.mock.calls.map((call) => call[0] as { amountMinor: number; paymentMethod: string; version: number });
+      expect(second).toEqual(expect.objectContaining({ amountMinor: first.amountMinor, paymentMethod: first.paymentMethod, version: 5 }));
+      expect(keyOf(1)).not.toBe(keyOf(0));
+    });
+
+    it("refused after a lost answer while Yetu's latest can't be read: the next payment is still a new request", async () => {
+      refs.refetchOrder.mockResolvedValue({ status: "error", data: ORDER });
+      recordTenderMutate
+        .mockImplementationOnce(lost)
+        .mockImplementationOnce(refused({ status: 409, code: "STALE_VERSION", detail: "resource changed" }))
+        .mockImplementationOnce(recorded(CLOSED));
+      renderPay();
+      await userEvent.click(screen.getByRole("radio", { name: "Card (own machine)" }));
+      await userEvent.click(pay());
       expect(await screen.findByTestId("settle-error")).toHaveTextContent(CHANGED_ELSEWHERE);
-      await waitFor(() => expect(screen.getByTestId("amount-due")).toHaveTextContent("TSh 32,500"));
       await userEvent.click(pay());
       expect(recordTenderMutate).toHaveBeenCalledTimes(3);
       expect(keyOf(2)).not.toBe(keyOf(0));
-      expect(recordTenderMutate.mock.calls[2][0]).toEqual(expect.objectContaining({ amountMinor: 3_250_000, version: 5 }));
+    });
+
+    it("a proxy's plain-text 504 on the replay is no answer: the till stays unsure and asks again with the same key", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        // What a gateway sends: text, no problem, no code.
+        const gateway = (_vars: unknown, opts?: { onError?: (error: Error) => void }) =>
+          opts?.onError?.(new Error(JSON.stringify("<html><body>504 Gateway Time-out</body></html>")));
+        recordTenderMutate.mockImplementationOnce(lost).mockImplementationOnce(gateway).mockImplementationOnce(recorded(CLOSED));
+        const { onPaid } = renderPay();
+        await userEvent.click(screen.getByRole("button", { name: /^Exact/ }));
+        await userEvent.click(pay());
+        await waitFor(() => expect(recordTenderMutate).toHaveBeenCalledTimes(2));
+        expect(screen.getByTestId("pay-unsure")).toBeInTheDocument();
+        expect(screen.queryByTestId("settle-error")).not.toBeInTheDocument();
+        await act(async () => vi.advanceTimersByTime(PAY_CHECK_EVERY_SECONDS * 1000));
+        await waitFor(() => expect(onPaid).toHaveBeenCalledTimes(1));
+        expect(new Set(recordTenderMutate.mock.calls.map((call) => (call[0] as { idempotencyKey: string }).idempotencyKey)).size).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it.each([
+      ["NOT_FOUND", 404],
+      ["FORBIDDEN", 403],
+      ["INTERNAL_ERROR", 500],
+    ])("a %s on the replay (it could be the order read after a recorded payment) is no answer: still unsure", async (code, status) => {
+      recordTenderMutate.mockImplementationOnce(lost).mockImplementationOnce(refused({ status, code, detail: "x" }));
+      renderPay();
+      await userEvent.click(screen.getByRole("button", { name: /^Exact/ }));
+      await userEvent.click(pay());
+      await waitFor(() => expect(recordTenderMutate).toHaveBeenCalledTimes(2));
+      expect(screen.getByTestId("pay-unsure")).toBeInTheDocument();
+      expect(screen.queryByTestId("settle-error")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("confirm-settle")).not.toBeInTheDocument();
+    });
+
+    it("recorded, but the order read after it failed: a lost answer, asked again with the same key", async () => {
+      const readFailed = (_vars: unknown, opts?: { onError?: (error: Error) => void }) =>
+        opts?.onError?.(new Error(JSON.stringify({ code: "ORDER_READ_AFTER_RECORD_FAILED" })));
+      recordTenderMutate.mockImplementationOnce(readFailed).mockImplementationOnce(recorded(CLOSED));
+      const { onPaid } = renderPay();
+      await userEvent.click(screen.getByRole("button", { name: /^Exact/ }));
+      await userEvent.click(pay());
+      await waitFor(() => expect(onPaid).toHaveBeenCalledTimes(1));
+      expect(recordTenderMutate.mock.calls[1][0]).toEqual(recordTenderMutate.mock.calls[0][0]);
+    });
+
+    it("a first answer that is Yetu's refusal (a 403) is an answer: not unsure, not asked again", async () => {
+      // Its words (who can take payment) are the view's: permissionRefusals.test.tsx.
+      recordTenderMutate.mockImplementationOnce(refused({ status: 403, code: "FORBIDDEN", detail: "POS permission denied" }));
+      renderPay();
+      await userEvent.click(screen.getByRole("button", { name: /^Exact/ }));
+      await userEvent.click(pay());
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(recordTenderMutate).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId("pay-unsure")).not.toBeInTheDocument();
+      expect(pay()).toBeEnabled();
+    });
+
+    it("Enter in the cash field takes no new payment while the answer is lost", async () => {
+      recordTenderMutate.mockImplementation(lost);
+      try {
+        renderPay();
+        await userEvent.type(screen.getByTestId("amount-received"), "50000");
+        await userEvent.click(pay());
+        await waitFor(() => expect(recordTenderMutate).toHaveBeenCalledTimes(2));
+        await userEvent.clear(screen.getByTestId("amount-received"));
+        await userEvent.type(screen.getByTestId("amount-received"), "60000{Enter}");
+        // Only the lost request itself, sent again: never a payment of the new amount.
+        for (const call of recordTenderMutate.mock.calls) expect(call[0]).toEqual(recordTenderMutate.mock.calls[0][0]);
+      } finally {
+        recordTenderMutate.mockReset();
+      }
+    });
+
+    it("Enter in the cash field takes no new payment once Yetu can't tell (session ended)", async () => {
+      recordTenderMutate.mockImplementationOnce(lost).mockImplementationOnce(refused({ status: 401, code: "SESSION_EXPIRED", detail: "Sign in again" }));
+      renderPay();
+      await userEvent.type(screen.getByTestId("amount-received"), "50000");
+      await userEvent.click(pay());
+      await screen.findByTestId("settle-error");
+      await userEvent.clear(screen.getByTestId("amount-received"));
+      await userEvent.type(screen.getByTestId("amount-received"), "60000{Enter}");
+      expect(recordTenderMutate).toHaveBeenCalledTimes(2);
     });
 
     it("(e) while Yetu can't be reached: no payment offered, the same key each time, the sheet stays, and the idle hold is bounded", async () => {

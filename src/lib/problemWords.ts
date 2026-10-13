@@ -13,6 +13,13 @@ export interface ProblemLike {
 
 export const UNREACHABLE = "Can't reach Yetu. Check the internet connection, then try again.";
 
+/**
+ * A payment or room charge Yetu answered as recorded, whose order read back
+ * afterwards failed: the till's own code for it (never a Yetu code), so it is
+ * never taken for Yetu refusing the payment.
+ */
+export const READ_AFTER_RECORD_FAILED = "ORDER_READ_AFTER_RECORD_FAILED";
+
 /** The backend problem inside a rejected hook call (usePosData `unwrap` puts it in the message as JSON). */
 export function problemOf(error: unknown): ProblemLike | "network" | null {
   if (!error) return null;

@@ -4,7 +4,7 @@
  * refusals that aren't about the action come from the till's own (otherWords).
  */
 import { describePosError } from "../lib/posErrors";
-import { otherWords, problemOf, UNREACHABLE } from "../lib/problemWords";
+import { otherWords, problemOf, READ_AFTER_RECORD_FAILED, UNREACHABLE } from "../lib/problemWords";
 
 export interface RegisterProblem {
   kind: "supervisor" | "paid" | "stale" | "network" | "permission" | "other";
@@ -112,34 +112,50 @@ export function sellProblem(error: unknown, step: keyof typeof SELL_STEPS): Regi
 }
 
 /**
- * What Yetu's answer to a request means for one whose earlier answer was lost.
- * Yetu replays a key that succeeded before any other check (fbc-peak
- * idempotency.Begin, inside the same transaction as the payment), so:
- * - "unsure": no answer about the request yet (the connection, Yetu busy or
- *   down, or the first request still running: IDEMPOTENT_REQUEST_IN_PROGRESS);
+ * The refusals that prove a payment or room charge was not recorded: Yetu
+ * replays a key that succeeded before any other check (fbc-peak
+ * idempotency.Begin, inside the same transaction as the payment), so one of
+ * these can only come from Yetu looking at the request and refusing it (the
+ * order moved on, it is paid or closed, or the request itself is invalid).
+ */
+const NOT_RECORDED_CODES: ReadonlySet<string> = new Set(["STALE_VERSION", "CONFLICT", "INVALID_STATE", "VALIDATION_FAILED"]);
+
+/**
+ * What Yetu's answer to a request means for one whose earlier answer was lost:
+ * - "refused": only for a code that proves it was not recorded (above);
  * - "cannot-tell": refused before Yetu looked at the request (the session, the
- *   till or the property), so its fate is still unknown and can't be asked here;
- * - "refused": Yetu looked and refused it, so it was not recorded.
+ *   till or the property), so its fate can't be asked from here;
+ * - "unsure": everything else, a missing code, a proxy's text page, a 404 or
+ *   403 (the order read after a recorded payment can fail too) included: the
+ *   same request is sent again until Yetu answers for it.
  */
 export function afterLostAnswer(error: unknown): "unsure" | "cannot-tell" | "refused" {
   const problem = problemOf(error);
-  if (problem === "network") return "unsure";
-  if (!problem) return "refused";
-  if (problem.code === "IDEMPOTENT_REQUEST_IN_PROGRESS") return "unsure";
+  if (!problem || problem === "network") return "unsure";
+  if (problem.code && NOT_RECORDED_CODES.has(problem.code)) return "refused";
   switch (describePosError(problem).kind) {
-    case "NETWORK_ERROR":
-    case "SERVER_UNAVAILABLE":
-    case "RETRYABLE_INFRASTRUCTURE_ERROR":
-    case "RATE_LIMITED":
-      return "unsure";
     case "AUTHENTICATION_REQUIRED":
     case "SESSION_EXPIRED":
     case "DEVICE_REVOKED":
     case "CAPABILITY_NOT_ENABLED":
       return "cannot-tell";
     default:
-      return "refused";
+      return "unsure";
   }
+}
+
+/**
+ * A first answer to a payment or room charge that is no answer at all: the
+ * connection, Yetu busy or down, a page that isn't Yetu's (no code), the
+ * request still running, or the order read after a recorded payment failing.
+ * Anything else with a code is Yetu's answer to the request (a refusal).
+ */
+export function firstAnswerLost(error: unknown): boolean {
+  const problem = problemOf(error);
+  if (!problem || problem === "network" || !problem.code) return true;
+  if (problem.code === "IDEMPOTENT_REQUEST_IN_PROGRESS" || problem.code === READ_AFTER_RECORD_FAILED) return true;
+  const kind = describePosError(problem).kind;
+  return kind === "NETWORK_ERROR" || kind === "SERVER_UNAVAILABLE" || kind === "RETRYABLE_INFRASTRUCTURE_ERROR";
 }
 
 /** A payment or room charge Yetu refused after its first answer was lost: what to say. */
