@@ -1,119 +1,218 @@
-import { useState } from "react";
-import { Icon } from "../components/Icon";
+import { useState, type ReactNode } from "react";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
+import { AccessLayout } from "../access/AccessLayout";
+import { differenceWords, openShiftProblem } from "../cash/cashWords";
+import { CloseDayCard } from "../cash/CloseDayCard";
+import { forgetClosedShift, useLastClosedShift, type ClosedShift } from "../cash/closedShift";
+import { NoteCounterSheet, denominationsFor, moneyFieldText } from "../cash/NoteCounterSheet";
+import { Button, Money, MoneyField, PermissionNotice, type Refusal } from "../components/system";
 import {
+  useCatalogCurrency,
+  useHasCapability,
   useHasPermission,
   useIdempotencyKey,
-  useMutationMessage,
   usePosShift,
 } from "../hooks/usePosData";
-import { staffLabel } from "../lib/staffLabel";
 import { toMinor } from "../lib/posMoney";
+import { personLabel } from "../lib/staffLabel";
+import { clockTime } from "../lib/words";
 
 /**
- * The focused Open Shift workspace the shift lifecycle
- * requires: an authenticated staff member with no open shift gets one
- * dominant job here, never a disabled register. Reuses the same
- * usePosShift() mutation TillControls uses so shift-open stays one contract.
+ * No shift is open on this till: count the drawer and open one. Reuses the
+ * same usePosShift() mutation as before so opening stays one contract. After
+ * a close, the result Yetu returned is shown here (the Done step), and a
+ * manager can close the business day.
  */
 export function OpenShiftScreen() {
-  const { session, identity, switchStaff } = useDeviceSession();
+  const { session, identity, switchStaff, roster } = useDeviceSession();
   const { open } = usePosShift();
-  const [openingFloat, setOpeningFloat] = useState("");
+  const currency = useCatalogCurrency();
   const canOpenShift = useHasPermission("pos.shift.open");
-  const openError = useMutationMessage(open.error);
+  const isManager = useHasPermission("pos.report.manager");
+  const hotel = useHasCapability("LODGING");
+  const openError = openShiftProblem(open.error);
   const openKey = useIdempotencyKey();
-  const staff = staffLabel(session?.staffId);
+  const closed = useLastClosedShift();
+  return (
+    <OpenShiftView
+      person={personLabel(session?.staffId, roster)}
+      tillName={identity?.terminalName?.trim() || null}
+      currency={currency}
+      canOpenShift={canOpenShift}
+      pending={open.isPending}
+      error={openError}
+      closed={closed}
+      closeDay={isManager && !hotel ? <CloseDayCard thisTillShiftOpen={false} /> : null}
+      onSwitchPerson={() => {
+        // The last shift's result is for the person who closed it.
+        forgetClosedShift();
+        switchStaff();
+      }}
+      onOpen={(openingCashMinor) => {
+        // The summary goes only once the new shift is open. A refusal keeps it
+        // on screen; its words come from open.error above.
+        open.mutateAsync({ openingCashMinor, idempotencyKey: openKey.next() }).then(forgetClosedShift, () => undefined);
+      }}
+    />
+  );
+}
+
+export interface OpenShiftViewProps {
+  person: { name: string; initials: string };
+  tillName: string | null;
+  currency: string | undefined;
+  canOpenShift: boolean;
+  pending: boolean;
+  /** Why Yetu didn't open it: a 403 shows as a permission notice. */
+  error: Refusal | string | null;
+  /** The shift this till just closed, as Yetu returned it. */
+  closed: ClosedShift | null;
+  /** The Close the day card, for managers on a restaurant-only property. */
+  closeDay: ReactNode;
+  onSwitchPerson: () => void;
+  onOpen: (openingCashMinor: number) => void;
+  /** Fixtures start part-way through. */
+  initialNoteCounter?: boolean;
+}
+
+export function OpenShiftView({
+  person,
+  tillName,
+  currency,
+  canOpenShift,
+  pending,
+  error: openError,
+  closed,
+  closeDay,
+  onSwitchPerson,
+  onOpen,
+  initialNoteCounter = false,
+}: OpenShiftViewProps) {
+  const [openingFloat, setOpeningFloat] = useState("");
+  const [noteCounter, setNoteCounter] = useState(initialNoteCounter);
   const openingMinor = toMinor(openingFloat);
+  // A second column only when there is something to put in it.
+  const aside = closed !== null || Boolean(closeDay);
 
   function submit(): void {
-    if (openingMinor == null || open.isPending) return;
-    open.mutate({ openingCashMinor: openingMinor, idempotencyKey: openKey.next() });
+    if (openingMinor == null || pending) return;
+    onOpen(openingMinor);
   }
 
   return (
-    <div
-      className="auth-shell flex h-screen items-center justify-center p-6"
-      data-testid="open-shift-screen"
+    <AccessLayout
+      testId="open-shift-screen"
+      title="Open the shift"
+      tillName={tillName}
+      width={aside ? "wide" : "regular"}
     >
-      <div className="glass-panel w-full max-w-sm p-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-interactive)] text-sm font-semibold text-[var(--foreground)]"
-              aria-hidden="true"
-            >
-              {staff.initials}
+      <div className={aside ? "y-open-shift" : undefined}>
+        <div className="y-access__column">
+          <div className="y-pin__who">
+            <span className="y-pin__person">
+              <span className="y-avatar" aria-hidden="true">
+                {person.initials}
+              </span>
+              <span className="y-pin__who-name" data-testid="shift-staff-name">
+                {person.name}
+              </span>
             </span>
-            <div className="leading-tight">
-              <p className="text-sm font-semibold text-[var(--foreground)]" data-testid="shift-staff-name">
-                {staff.name}
-              </p>
-              <p className="text-[12px] text-[var(--foreground-muted)]">
-                {identity?.terminalName?.trim() || "This register"}
-              </p>
-            </div>
+            <Button variant="quiet" data-testid="open-shift-switch-staff" onClick={onSwitchPerson}>
+              Switch person
+            </Button>
           </div>
-          <button
-            data-testid="open-shift-switch-staff"
-            onClick={() => switchStaff()}
-            className="btn-tertiary !h-9 !w-9 !p-0"
-            aria-label="Switch staff"
-            title="Switch staff"
-          >
-            <Icon name="logout" size={16} />
-          </button>
+
+          {canOpenShift ? (
+            <form
+              className="y-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                submit();
+              }}
+            >
+              <MoneyField
+                label="Count the cash in the drawer"
+                hint="This is the float the shift starts with."
+                currency={currency}
+                value={openingFloat}
+                onValueChange={(text) => setOpeningFloat(text)}
+                inputTestId="opening-float"
+                autoFocus
+              />
+              {denominationsFor(currency).length > 0 ? (
+                <Button variant="secondary" onClick={() => setNoteCounter(true)}>
+                  Count note by note
+                </Button>
+              ) : null}
+              {openError ? (
+                typeof openError !== "string" && openError.kind === "permission" ? (
+                  <div data-testid="open-shift-error">
+                    <PermissionNotice live words={openError.words} />
+                  </div>
+                ) : (
+                  <p className="y-pin__message" role="alert" data-testid="open-shift-error">
+                    {typeof openError === "string" ? openError : openError.words}
+                  </p>
+                )
+              ) : null}
+              <Button
+                type="submit"
+                variant="primary"
+                size={64}
+                block
+                data-testid="open-shift"
+                disabled={pending || openingMinor == null}
+              >
+                {pending ? "Opening the shift…" : "Open shift"}
+              </Button>
+            </form>
+          ) : (
+            <div data-testid="open-shift-unavailable">
+              <PermissionNotice who="a cashier or manager" action="open the shift" next="Ask one to open it." />
+            </div>
+          )}
         </div>
 
-        <p className="mt-6 text-center text-sm font-medium text-[var(--foreground)]">
-          No shift is open on this register
-        </p>
-
-        {canOpenShift ? (
-          <>
-            <label
-              htmlFor="opening-float"
-              className="mt-6 block text-[11px] font-medium text-[var(--foreground-muted)]"
-            >
-              Opening float
-            </label>
-            <input
-              id="opening-float"
-              data-testid="opening-float"
-              type="number"
-              inputMode="decimal"
-              value={openingFloat}
-              onChange={(event) => setOpeningFloat(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") submit();
-              }}
-              placeholder="0"
-              autoFocus
-              className="input mt-1 w-full text-lg"
-            />
-            {openError && (
-              <div className="badge badge-danger mt-4 w-full justify-center" data-testid="open-shift-error">
-                {openError}
-              </div>
-            )}
-            <button
-              data-testid="open-shift"
-              onClick={submit}
-              disabled={open.isPending || openingMinor == null}
-              className="btn-primary mt-5 w-full"
-            >
-              {open.isPending ? "Opening shift…" : "Open shift"}
-            </button>
-          </>
-        ) : (
-          <p
-            className="mt-4 text-center text-[13px] text-[var(--foreground-muted)]"
-            data-testid="open-shift-unavailable"
-          >
-            Ask a cashier or manager to open a shift on this register.
-          </p>
-        )}
+        {aside ? (
+          <div className="y-access__column">
+            {closed ? (
+              <section className="y-cash__card" data-testid="closed-shift-summary" aria-labelledby="closed-title">
+                <h2 id="closed-title" className="y-cash__card-title">
+                  Shift closed at {clockTime(closed.at)}
+                </h2>
+                <dl className="y-cash__summary y-cash__summary--compact">
+                  <div>
+                    <dt>Expected</dt>{" "}
+                    <dd>
+                      <Money minor={closed.shift.expectedCashMinor} currency={closed.currency} size="lead" />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Counted</dt>{" "}
+                    <dd>
+                      <Money minor={closed.shift.countedCashMinor} currency={closed.currency} size="lead" />
+                    </dd>
+                  </div>
+                </dl>
+                <p className="y-cash__result">
+                  {closed.shift.varianceMinor != null && closed.currency
+                    ? differenceWords(closed.shift.varianceMinor, closed.currency)
+                    : "Closed"}
+                </p>
+              </section>
+            ) : null}
+            {closeDay}
+          </div>
+        ) : null}
       </div>
-    </div>
+      {currency ? (
+        <NoteCounterSheet
+          open={noteCounter}
+          onOpenChange={setNoteCounter}
+          currency={currency}
+          onUse={(minor) => setOpeningFloat(moneyFieldText(minor))}
+        />
+      ) : null}
+    </AccessLayout>
   );
 }

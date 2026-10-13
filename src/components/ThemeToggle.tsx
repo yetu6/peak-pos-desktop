@@ -1,39 +1,25 @@
-import { useEffect, useState } from "react";
-import { Icon } from "./Icon";
+import { Moon, Sun } from "lucide-react";
+import { useTheme } from "../lib/theme";
 
-const STORAGE_KEY = "peak-pos-theme";
-
-function initialTheme(): "light" | "dark" {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored === "dark" || stored === "light") return stored;
-  return "dark";
-}
-
-/** Peak Terminal is dark-first while retaining a per-device light option. */
+/**
+ * The per-device theme switch in the top bar. Light and Dark are equal
+ * themes; the choice is remembered on this device (`yetu-till-theme`). A
+ * device nobody has chosen for follows its mode's default (displayDefaults.ts).
+ */
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark">(initialTheme);
-
-  useEffect(() => {
-    document.body.classList.toggle("dark-theme", theme === "dark");
-    document.body.classList.toggle("dark", theme === "dark");
-    document.body.classList.toggle("light-theme", theme === "light");
-    localStorage.setItem(STORAGE_KEY, theme);
-  }, [theme]);
-
+  const { theme, toggle } = useTheme();
+  const next = theme === "dark" ? "light" : "dark";
   return (
     <button
+      type="button"
       data-testid="theme-toggle"
-      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-      onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-      className="flex h-11 w-16 items-center rounded-full border border-[var(--border-strong)] bg-[var(--surface-interactive)] p-1 transition-colors"
+      aria-label={`Switch to ${next} theme`}
+      title={`Switch to ${next} theme`}
+      onClick={toggle}
+      className="y-button y-button--quiet y-button--48 y-theme-toggle"
     >
-      <span
-        className={`flex size-8 items-center justify-center rounded-full transition-transform duration-150 ${
-          theme === "dark" ? "translate-x-6 bg-[var(--primary)] text-white" : "bg-[var(--gold-accent)] text-[#17120a]"
-        }`}
-      >
-        <Icon name={theme === "dark" ? "bolt" : "clock"} size={14} />
-      </span>
+      {next === "dark" ? <Moon aria-hidden="true" /> : <Sun aria-hidden="true" />}
+      <span className="y-theme-toggle__label">{next === "dark" ? "Dark" : "Light"}</span>
     </button>
   );
 }

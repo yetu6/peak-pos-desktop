@@ -16,6 +16,32 @@ export class StaffLoginRejectedError extends Error {
   }
 }
 
+/** Named setting: the wait after a 429 that came with no time at all (Yetu's limiter always sends one). */
+export const SIGN_IN_FALLBACK_WAIT_SECONDS = 60;
+
+/**
+ * Yetu limits sign-in attempts from one address (429 on /pos/sessions). The
+ * till waits as long as Yetu asked (Retry-After, else Yetu's own sentence)
+ * before the next attempt, and never treats it as being offline.
+ */
+export class StaffLoginRateLimitedError extends Error {
+  constructor(
+    readonly retryAfterSeconds: number,
+    message = "Too many sign-in attempts. Wait before trying again.",
+  ) {
+    super(message);
+    this.name = "StaffLoginRateLimitedError";
+  }
+}
+
+async function retryAfterSecondsOf(response: Response): Promise<number> {
+  const header = response.headers.get("Retry-After")?.trim() ?? "";
+  if (/^\d+$/.test(header)) return Number(header);
+  const body = (await readJson(response)) as { detail?: unknown } | null;
+  const said = typeof body?.detail === "string" ? /in (\d+) seconds?/i.exec(body.detail) : null;
+  return said ? Number(said[1]) : SIGN_IN_FALLBACK_WAIT_SECONDS;
+}
+
 /**
  * Peak refused a challenge for a till that was already paired. HTTP is 401
  * for unpaired and revoked alike; the till knows it used to be trusted.
@@ -87,6 +113,9 @@ export function humanDeviceError(error: unknown): string {
   }
   if (error instanceof StaffLoginRejectedError) {
     return "That staff number or PIN was not accepted.";
+  }
+  if (error instanceof StaffLoginRateLimitedError) {
+    return error.message;
   }
   const msg = error instanceof Error ? error.message : String(error);
   if (/fetch|network|Failed to fetch|ECONNREFUSED|NetworkError/i.test(msg)) {
@@ -323,6 +352,7 @@ export async function createStaffSession(args: {
     }),
   });
   if (response.status === 401) throw new StaffLoginRejectedError();
+  if (response.status === 429) throw new StaffLoginRateLimitedError(await retryAfterSecondsOf(response));
   if (!response.ok) {
     throw new Error(`Staff session failed with HTTP ${response.status}`);
   }

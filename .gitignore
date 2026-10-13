@@ -5,3 +5,8 @@ dist/
 .env.local
 src-tauri/target/
 src-tauri/gen/
+# Pixel harness output (screenshots, findings, report); no golden images yet.
+/visual-output/
+# Live end-to-end run state: seeded fixture ids, the built API binary, reports.
+/tests/e2e-live/.work/
+/tests/e2e-live/output/

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateDeviceKeyPair } from "./deviceCrypto";
-import { createStaffSession, fetchStaffRoster, issueChallenge, StaffLoginRejectedError } from "./deviceAuth";
+import { createStaffSession, fetchStaffRoster, humanDeviceError, issueChallenge, StaffLoginRateLimitedError, StaffLoginRejectedError } from "./deviceAuth";
 
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const nonce = "bm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm4";
@@ -90,5 +90,20 @@ describe("Go POS device authentication", () => {
     const keys = await generateDeviceKeyPair();
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/challenges") ? response({ challengeId: "c1", nonce, expiresAt: "soon", staff: [] }, 201) : response({}, 401)));
     await expect(createStaffSession({ baseUrl: "https://api.peak.localhost", terminalId: "t1", deviceCredential: "secret", privateKeyPkcs8: keys.privateKeyPkcs8, staffNumber: "s1", pin: "000000" })).rejects.toBeInstanceOf(StaffLoginRejectedError);
+  });
+
+  it("says when Yetu limits sign-in attempts (429), with how long it asked the till to wait", async () => {
+    const keys = await generateDeviceKeyPair();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/challenges")
+      ? response({ challengeId: "c1", nonce, expiresAt: "soon", staff: [] }, 201)
+      : new Response(JSON.stringify({ status: 429, code: "RATE_LIMITED", detail: "Too many requests. Try again in 1795 seconds." }), {
+          status: 429,
+          headers: { "Content-Type": "application/problem+json", "Retry-After": "1795" },
+        })));
+    const refused = await createStaffSession({ baseUrl: "https://api.peak.localhost", terminalId: "t1", deviceCredential: "secret", privateKeyPkcs8: keys.privateKeyPkcs8, staffNumber: "s1", pin: "418205" }).catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(StaffLoginRateLimitedError);
+    expect((refused as StaffLoginRateLimitedError).retryAfterSeconds).toBe(1795);
+    // Not a network failure: the till must not fall back to signing in offline.
+    expect(humanDeviceError(refused)).toBe("Too many sign-in attempts. Wait before trying again.");
   });
 });

@@ -1,67 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Icon } from "../components/Icon";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
 import {
   useActiveOrders,
-  useIdempotencyKey,
-  useMutationMessage,
+  useHasPermission,
   useStationTickets,
   useTransitionOrderStatus,
   useTransitionStationTicket,
 } from "../hooks/usePosData";
-import type { POSOrder, OrderStatus, POSStationTicket } from "../lib/posContracts";
+import type { Refusal } from "../components/system";
+import { KitchenBoard } from "../kitchen/KitchenBoard";
+import { KITCHEN_CLOCK_TICK_SECONDS, KITCHEN_REFRESH_SECONDS } from "../kitchen/kitchenSettings";
+import { ticketsFromOrders, ticketsFromStations, type BoardTicket } from "../kitchen/kitchenTickets";
+import { kitchenProblem, nextStepFor, stationWords, stepDoneWords } from "../kitchen/kitchenWords";
+import { normalizeMode } from "../lib/displayDefaults";
+import { useHoldIdleLock } from "../lib/useHoldIdleLock";
+import { isDisplayMode } from "../lib/workspace";
 
-/**
- * Kitchen production: order-level bump on the compact peek, station-ticket
- * bump on KITCHEN_DISPLAY / BAR_DISPLAY (Pass 4 multi-station routing).
- */
-const NEXT_STATUS: Partial<Record<OrderStatus, "PREPARING" | "READY" | "SERVED">> = {
-  SENT: "PREPARING",
-  PREPARING: "READY",
-  READY: "SERVED",
-};
-
-const NEXT_TICKET: Partial<Record<POSStationTicket["status"], "PREPARING" | "READY" | "SERVED">> = {
-  SENT: "PREPARING",
-  PREPARING: "READY",
-  READY: "SERVED",
-};
-
-const ACTION_LABEL: Record<string, string> = {
-  PREPARING: "Start",
-  READY: "Ready",
-  SERVED: "Served",
-};
-
-const COLUMNS: Array<{ status: OrderStatus; title: string }> = [
-  { status: "SENT", title: "New" },
-  { status: "PREPARING", title: "Preparing" },
-  { status: "READY", title: "Ready" },
-];
-
-function isDisplayMode(mode?: string | null): boolean {
-  const normalized = (mode ?? "").trim().toUpperCase().replace(/-/g, "_");
-  return normalized === "KITCHEN_DISPLAY" || normalized === "BAR_DISPLAY";
-}
-
-function elapsedLabel(fromIso: string | undefined, nowMs: number): string {
-  if (!fromIso) return "—";
-  const started = Date.parse(fromIso);
-  if (!Number.isFinite(started)) return "—";
-  const minutes = Math.max(0, Math.floor((nowMs - started) / 60_000));
-  if (minutes < 1) return "<1m";
-  return `${minutes}m`;
-}
-
-function urgencyClass(fromIso: string | undefined, nowMs: number): string {
-  if (!fromIso) return "";
-  const started = Date.parse(fromIso);
-  if (!Number.isFinite(started)) return "";
-  const minutes = (nowMs - started) / 60_000;
-  if (minutes >= 20) return "kds-card--critical";
-  if (minutes >= 10) return "kds-card--urgent";
-  return "";
-}
+const ALL_STATIONS = "ALL";
 
 function playNewTicketChime(): void {
   try {
@@ -83,404 +38,177 @@ function playNewTicketChime(): void {
   }
 }
 
-function StationCard({
-  ticket,
-  ageLabel,
-  urgency,
-  pending,
-  onBump,
-}: {
-  ticket: POSStationTicket;
-  ageLabel: string;
-  urgency: string;
-  pending: boolean;
-  onBump: (ticket: POSStationTicket) => void;
-}) {
-  const next = NEXT_TICKET[ticket.status];
-  return (
-    <article
-      className={`kds-card kds-card--wall ${urgency}`}
-      data-testid={`kitchen-ticket-${ticket.id}`}
-    >
-      <header className="kds-card__header">
-        <div>
-          <div className="kds-card__number">{ticket.orderNumber}</div>
-          <div className="kds-card__meta">
-            {(ticket.tableLabel ? `Table ${ticket.tableLabel}` : "No table") +
-              " · " +
-              ticket.serviceType.replaceAll("_", " ") +
-              " · " +
-              ticket.station}
-          </div>
-          {ticket.waiterName && (
-            <div className="kds-card__waiter" data-testid={`waiter-${ticket.id}`}>
-              {ticket.waiterName}
-            </div>
-          )}
-        </div>
-        <span className="kds-card__timer" data-testid={`timer-${ticket.id}`}>
-          {ageLabel}
-        </span>
-      </header>
-      <ul className="kds-card__lines">
-        {ticket.items.map((item) => (
-          <li key={item.id}>
-            <span className="kds-card__qty">{item.quantity}×</span>
-            <span className="kds-card__name">
-              {item.name}
-              {item.modifiers?.length ? (
-                <span className="kds-card__mods">
-                  {item.modifiers.map((mod) => mod.optionName).filter(Boolean).join(", ")}
-                </span>
-              ) : null}
-            </span>
-          </li>
-        ))}
-      </ul>
-      {ticket.notes?.trim() && <p className="kds-card__notes">{ticket.notes}</p>}
-      {next && (
-        <button
-          type="button"
-          className="kds-bump"
-          data-testid={`bump-ticket-${ticket.id}`}
-          disabled={pending}
-          onClick={() => onBump(ticket)}
-        >
-          {ACTION_LABEL[next] ?? next}
-        </button>
-      )}
-    </article>
-  );
+function useNow(everyMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), everyMs);
+    return () => window.clearInterval(id);
+  }, [everyMs]);
+  return now;
 }
 
-function KitchenCard({
-  order,
-  ageLabel,
-  urgency,
-  display,
-  pending,
-  onBump,
-}: {
-  order: POSOrder;
-  ageLabel: string;
-  urgency: string;
-  display: boolean;
-  pending: boolean;
-  onBump: (order: POSOrder) => void;
-}) {
-  const next = NEXT_STATUS[order.status];
-  return (
-    <article
-      className={`kds-card ${display ? "kds-card--wall" : ""} ${urgency}`}
-      data-testid={`kitchen-order-${order.id}`}
-    >
-      <header className="kds-card__header">
-        <div>
-          <div className="kds-card__number">{order.orderNumber}</div>
-          <div className="kds-card__meta">
-            {(order.tableLabel ? `Table ${order.tableLabel}` : "No table") +
-              " · " +
-              order.serviceType.replaceAll("_", " ")}
-          </div>
-          {order.initiatedByName && (
-            <div className="kds-card__waiter" data-testid={`waiter-${order.id}`}>
-              {order.initiatedByName}
-            </div>
-          )}
-        </div>
-        <span className="kds-card__timer" data-testid={`timer-${order.id}`}>
-          {ageLabel}
-        </span>
-      </header>
-      <ul className="kds-card__lines">
-        {order.items.map((item) => (
-          <li key={item.id}>
-            <span className="kds-card__qty">{item.quantity}×</span>
-            <span className="kds-card__name">
-              {item.name}
-              {item.modifiers?.length ? (
-                <span className="kds-card__mods">
-                  {item.modifiers.map((mod) => mod.optionName).filter(Boolean).join(", ")}
-                </span>
-              ) : null}
-            </span>
-          </li>
-        ))}
-      </ul>
-      {order.notes?.trim() && <p className="kds-card__notes">{order.notes}</p>}
-      {next && (
-        <button
-          type="button"
-          className={display ? "kds-bump" : "btn-primary w-full"}
-          data-testid={`bump-${order.id}`}
-          disabled={pending}
-          onClick={() => onBump(order)}
-        >
-          {ACTION_LABEL[next] ?? next}
-        </button>
-      )}
-    </article>
-  );
+/** A step on its way to Yetu, held until Yetu's list shows the ticket moved. */
+interface Held {
+  /** The version the step was sent for. */
+  version: number;
+  /** Yetu took the step; false while the request is out. */
+  taken: boolean;
 }
 
+/**
+ * The kitchen and bar board against the live API. A kitchen or bar display
+ * moves its station's tickets; a selling till moves whole orders, with the
+ * time sent taken from the order's station tickets. Steps go only forwards,
+ * one at a time (Yetu has no step back, so there is no Undo or Recall).
+ */
 export function Kitchen() {
   const { identity } = useDeviceSession();
   const display = isDisplayMode(identity?.mode);
   const orders = useActiveOrders();
-  const tickets = useStationTickets(display);
-  const transition = useTransitionOrderStatus();
+  // The display's own tickets; on a selling till, where each order's sent time comes from.
+  const stationTickets = useStationTickets(true);
+  const transitionOrder = useTransitionOrderStatus();
   const transitionTicket = useTransitionStationTicket();
-  const transitionKey = useIdempotencyKey();
-  const transitionError = useMutationMessage(transition.error) ?? useMutationMessage(transitionTicket.error);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const seenSent = useRef<Set<string>>(new Set());
-  const firstSeen = useRef<Map<string, number>>(new Map());
+  const canMove = useHasPermission("pos.order.send");
+  const nowMs = useNow(KITCHEN_CLOCK_TICK_SECONDS * 1000);
+  const [station, setStation] = useState(ALL_STATIONS);
+  const [held, setHeld] = useState<ReadonlyMap<string, Held>>(new Map());
+  const [result, setResult] = useState<string | null>(null);
+  const [problem, setProblem] = useState<Refusal | null>(null);
+  // One key per request: asking again after a lost answer reuses it; a new step gets a new one.
+  const keys = useRef(new Map<string, string>());
+  const seenNew = useRef<Set<string>>(new Set());
   const primed = useRef(false);
 
-  useEffect(() => {
-    const id = window.setInterval(() => setNowMs(Date.now()), 15_000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      if (display) void tickets.refetch();
-      else void orders.refetch();
-    }, 15_000);
-    return () => window.clearInterval(id);
-  }, [display, orders, tickets]);
-
-  const activeTickets = useMemo(
-    () => (tickets.data ?? []).filter((t) => t.status === "SENT" || t.status === "PREPARING" || t.status === "READY"),
-    [tickets.data],
+  const source = display ? stationTickets : orders;
+  const { refetch } = source;
+  const tickets = useMemo<BoardTicket[]>(
+    () => (display ? ticketsFromStations(stationTickets.data ?? []) : ticketsFromOrders(orders.data ?? [], stationTickets.data ?? [])),
+    [display, orders.data, stationTickets.data],
   );
 
-  const active = useMemo(
-    () =>
-      (orders.data ?? []).filter(
-        (order) => order.status === "SENT" || order.status === "PREPARING" || order.status === "READY",
-      ),
-    [orders.data],
-  );
-
+  // On a selling till the board shows orders, which a kitchen display moves
+  // when it moves their station tickets; Yetu says only that a station ticket
+  // changed. So each time the station tickets come back new, the orders are
+  // asked for again.
+  const ticketsUpdatedAt = stationTickets.dataUpdatedAt;
+  const ticketsSeenAt = useRef(0);
+  const { refetch: refetchOrders } = orders;
   useEffect(() => {
-    const source = display ? activeTickets.map((t) => ({ id: t.id, status: t.status })) : active.map((o) => ({ id: o.id, status: o.status }));
-    for (const row of source) {
-      if (!firstSeen.current.has(row.id)) firstSeen.current.set(row.id, Date.now());
-    }
+    if (!ticketsUpdatedAt) return;
+    const first = ticketsSeenAt.current === 0;
+    ticketsSeenAt.current = ticketsUpdatedAt;
+    if (!first && !display) void refetchOrders();
+  }, [ticketsUpdatedAt, refetchOrders, display]);
+
+  // Ask again now and then, besides live updates.
+  useEffect(() => {
+    const id = window.setInterval(() => void refetch(), KITCHEN_REFRESH_SECONDS * 1000);
+    return () => window.clearInterval(id);
+  }, [refetch]);
+
+  // A step Yetu took is let go once Yetu's list shows the ticket moved on (a
+  // new version, or gone from the board). A list from before the step keeps
+  // it held, so the same step can't be sent twice. It is checked again when
+  // Yetu's answer arrives, as the list may already have shown the move.
+  useEffect(() => {
+    setHeld((current) => {
+      let next: Map<string, Held> | null = null;
+      for (const [id, entry] of current) {
+        if (!entry.taken) continue;
+        const ticket = tickets.find((candidate) => candidate.id === id);
+        if (!ticket || ticket.version !== entry.version) {
+          next ??= new Map(current);
+          next.delete(id);
+        }
+      }
+      return next ?? current;
+    });
+  }, [tickets, held]);
+
+  // A chime for each ticket that arrives while the board is open.
+  useEffect(() => {
+    const fresh = tickets.filter((ticket) => ticket.status === "SENT").map((ticket) => ticket.id);
     if (!primed.current) {
-      source.forEach((row) => {
-        if (row.status === "SENT") seenSent.current.add(row.id);
-      });
-      primed.current = true;
+      if (source.isSuccess) {
+        fresh.forEach((id) => seenNew.current.add(id));
+        primed.current = true;
+      }
       return;
     }
-    for (const row of source) {
-      if (row.status === "SENT" && !seenSent.current.has(row.id)) {
-        seenSent.current.add(row.id);
-        playNewTicketChime();
-      }
+    for (const id of fresh) {
+      if (seenNew.current.has(id)) continue;
+      seenNew.current.add(id);
+      playNewTicketChime();
     }
-  }, [active, activeTickets, display]);
+  }, [tickets, source.isSuccess]);
 
-  function ageFor(id: string): { label: string; urgency: string } {
-    const seenAt = firstSeen.current.get(id);
-    if (!seenAt) return { label: "—", urgency: "" };
-    const iso = new Date(seenAt).toISOString();
-    return { label: elapsedLabel(iso, nowMs), urgency: urgencyClass(iso, nowMs) };
-  }
+  const pending = useMemo(() => [...held.values()].some((entry) => !entry.taken), [held]);
+  // The till doesn't lock itself while a step is with Yetu.
+  useHoldIdleLock(pending);
 
-  const filtered = useMemo(
-    () => (statusFilter === "all" ? active : active.filter((order) => order.status === statusFilter)),
-    [active, statusFilter],
+  const nextStep = useCallback(
+    async (ticket: BoardTicket) => {
+      const step = nextStepFor(ticket.status);
+      if (!step) return;
+      const request = [ticket.kind, ticket.id, step.target, ticket.version].join("|");
+      const key = keys.current.get(request) ?? crypto.randomUUID();
+      keys.current.set(request, key);
+      setHeld((current) => new Map(current).set(ticket.id, { version: ticket.version, taken: false }));
+      try {
+        if (ticket.kind === "station") {
+          await transitionTicket.mutateAsync({ ticketId: ticket.id, status: step.target, version: ticket.version, idempotencyKey: key });
+        } else {
+          await transitionOrder.mutateAsync({ orderId: ticket.id, status: step.target, version: ticket.version, idempotencyKey: key });
+        }
+        keys.current.delete(request);
+        setHeld((current) => new Map(current).set(ticket.id, { version: ticket.version, taken: true }));
+        setProblem(null);
+        setResult(stepDoneWords(step.target, ticket.orderNumber, ticket.kind === "station" ? ticket.station : undefined));
+      } catch (error) {
+        setHeld((current) => {
+          const next = new Map(current);
+          next.delete(ticket.id);
+          return next;
+        });
+        const refusal = kitchenProblem(error);
+        setResult(null);
+        setProblem(refusal ?? { kind: "other", words: "The ticket didn't move. Try again." });
+        // Only a lost answer is asked again under the same key; a refusal makes the next press a new request.
+        if (refusal?.kind !== "network") keys.current.delete(request);
+        // It may have moved on another screen: the board shows where it is now.
+        if (refusal?.kind === "moved") void refetch();
+      }
+    },
+    [transitionOrder, transitionTicket, refetch],
   );
 
-  const counts = useMemo(() => {
-    const by = new Map<string, number>();
-    active.forEach((order) => by.set(order.status, (by.get(order.status) ?? 0) + 1));
-    return by;
-  }, [active]);
-
-  const stationLabel = useMemo(() => {
-    const bound = identity?.prepStations ?? [];
-    if (bound.length === 0) return "All stations";
-    return bound.join(" · ");
-  }, [identity?.prepStations]);
-
-  function advance(order: POSOrder): void {
-    const next = NEXT_STATUS[order.status];
-    if (!next) return;
-    transition.mutate({
-      orderId: order.id,
-      status: next,
-      version: order.version,
-      idempotencyKey: transitionKey.next(),
-    });
-  }
-
-  function advanceTicket(ticket: POSStationTicket): void {
-    const next = NEXT_TICKET[ticket.status];
-    if (!next) return;
-    transitionTicket.mutate({
-      ticketId: ticket.id,
-      status: next,
-      version: ticket.version,
-      idempotencyKey: transitionKey.next(),
-    });
-  }
-
-  if ((display && tickets.isLoading) || (!display && orders.isLoading)) {
-    return (
-      <div className="space-y-4">
-        <div className="skeleton h-[96px] w-full rounded-xl" />
-        <div className="skeleton h-[300px] w-full rounded-xl" />
-      </div>
-    );
-  }
-
-  if (display) {
-    return (
-      <div className="kds-board" data-testid="kds-board">
-        <header className="kds-board__header">
-          <div>
-            <h1 className="kds-board__title">
-              {(identity?.mode ?? "").includes("BAR") ? "Bar" : "Kitchen"}
-            </h1>
-            <p className="kds-board__subtitle">
-              {activeTickets.length} active · {stationLabel} · tap a ticket to bump
-            </p>
-          </div>
-          {transitionError && (
-            <div className="badge badge-danger" data-testid="kitchen-error">
-              {transitionError}
-            </div>
-          )}
-        </header>
-        <div className="kds-columns">
-          {COLUMNS.map((column) => {
-            const columnTickets = activeTickets.filter((ticket) => ticket.status === column.status);
-            return (
-              <section key={column.status} className="kds-column" data-testid={`kds-col-${column.status}`}>
-                <div className="kds-column__head">
-                  <span>{column.title}</span>
-                  <span className="kds-column__count">{columnTickets.length}</span>
-                </div>
-                <div className="kds-column__body">
-                  {columnTickets.map((ticket) => {
-                    const age = ageFor(ticket.id);
-                    return (
-                      <StationCard
-                        key={ticket.id}
-                        ticket={ticket}
-                        ageLabel={age.label}
-                        urgency={age.urgency}
-                        pending={transitionTicket.isPending}
-                        onBump={advanceTicket}
-                      />
-                    );
-                  })}
-                  {columnTickets.length === 0 && <p className="kds-empty">Clear</p>}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
+  const bound = useMemo(() => (identity?.prepStations ?? []).map((name) => name.trim().toUpperCase()).filter(Boolean), [identity?.prepStations]);
+  const shown = display && station !== ALL_STATIONS ? tickets.filter((ticket) => ticket.station === station) : tickets;
+  const title = normalizeMode(identity?.mode) === "BAR_DISPLAY" ? "Bar" : "Kitchen";
 
   return (
-    <div className="space-y-5" data-testid="kitchen-compact">
-      <div className="flex flex-wrap gap-4">
-        <div className="kpi-card">
-          <div className="kpi-icon tone-brand">
-            <Icon name="orders" />
-          </div>
-          <div className="kpi-value" data-testid="kpi-active">
-            {active.length}
-          </div>
-          <div className="kpi-label">Active tickets</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-icon tone-warning">
-            <Icon name="clock" />
-          </div>
-          <div className="kpi-value" data-testid="kpi-queue">
-            {counts.get("SENT") ?? 0}
-          </div>
-          <div className="kpi-label">In queue (new)</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-icon tone-accent">
-            <Icon name="bolt" />
-          </div>
-          <div className="kpi-value" data-testid="kpi-preparing">
-            {counts.get("PREPARING") ?? 0}
-          </div>
-          <div className="kpi-label">Preparing</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-icon tone-green">
-            <Icon name="check" />
-          </div>
-          <div className="kpi-value" data-testid="kpi-ready">
-            {counts.get("READY") ?? 0}
-          </div>
-          <div className="kpi-label">Ready</div>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <h2 className="text-lg font-semibold text-[var(--foreground)]">Kitchen</h2>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <button
-          data-testid="pill-all"
-          className={`pill-filter-btn ${statusFilter === "all" ? "active" : ""}`}
-          onClick={() => setStatusFilter("all")}
-        >
-          All <span className="pill-count">{active.length}</span>
-        </button>
-        {["SENT", "PREPARING", "READY"].map((status) => (
-          <button
-            key={status}
-            data-testid={`pill-${status.toLowerCase()}`}
-            className={`pill-filter-btn ${statusFilter === status ? "active" : ""}`}
-            onClick={() => setStatusFilter(status)}
-          >
-            {status.charAt(0) + status.slice(1).toLowerCase()}{" "}
-            <span className="pill-count">{counts.get(status) ?? 0}</span>
-          </button>
-        ))}
-      </div>
-
-      {transitionError && (
-        <div className="badge badge-danger" data-testid="kitchen-error">
-          {transitionError}
-        </div>
-      )}
-
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {filtered.map((order) => {
-          const age = ageFor(order.id);
-          return (
-            <KitchenCard
-              key={order.id}
-              order={order}
-              ageLabel={age.label}
-              urgency={age.urgency}
-              display={false}
-              pending={transition.isPending}
-              onBump={advance}
-            />
-          );
-        })}
-        {filtered.length === 0 && (
-          <p className="text-sm text-[var(--foreground-muted)]">No kitchen tickets right now.</p>
-        )}
-      </div>
-    </div>
+    <KitchenBoard
+      title={title}
+      stationsWords={display && bound.length > 0 ? bound.map(stationWords).join(" · ") : undefined}
+      tickets={shown}
+      nowMs={nowMs}
+      busyIds={new Set(held.keys())}
+      canMove={canMove}
+      onNextStep={(ticket) => void nextStep(ticket)}
+      result={result}
+      problem={problem}
+      loading={source.isLoading}
+      failed={source.isError}
+      stationFilter={
+        display && bound.length > 1
+          ? {
+              options: [{ value: ALL_STATIONS, label: "All stations" }, ...bound.map((value) => ({ value, label: stationWords(value) }))],
+              value: station,
+              onChange: setStation,
+            }
+          : null
+      }
+    />
   );
 }

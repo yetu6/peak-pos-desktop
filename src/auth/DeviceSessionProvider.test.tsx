@@ -47,6 +47,7 @@ function Probe() {
     continueAfterApproval,
     resetPairing,
     offlineEligibility,
+    signInHeldUntil,
   } = useDeviceSession();
   return (
     <div>
@@ -60,6 +61,7 @@ function Probe() {
       <div data-testid="outlet">{session?.outletId ?? ""}</div>
       <div data-testid="error">{error ?? ""}</div>
       <div data-testid="offline-eligibility">{offlineEligibility?.state ?? ""}</div>
+      <div data-testid="held-until">{signInHeldUntil ?? ""}</div>
       <div data-testid="roster">{roster.map((entry) => entry.fullName).join(",")}</div>
       <div data-testid="pairing-code">{identity?.pairing?.pairingCode ?? ""}</div>
       <button data-testid="unlock" onClick={() => void unlock("0007", "418205")}>
@@ -221,6 +223,29 @@ describe("DeviceSessionProvider", () => {
     await userEvent.click(screen.getByTestId("unlock"));
     await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent(/not accepted/i));
     expect(getOperationalSession()).toBeNull();
+    expect(screen.getByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+  });
+
+  it("holds sign-in for as long as Yetu asks after too many attempts (429), without trying offline", async () => {
+    const keys = await generateDeviceKeyPair();
+    const store = memoryStore(JSON.stringify({ ...keys, terminalId: "terminal-1", deviceCredential: "device-secret", approved: true }));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/challenges")
+      ? jsonResponse({ challengeId: "c1", nonce: btoa("n".repeat(32)), expiresAt: "2099-01-01T00:00:00Z", staff: [] }, 201)
+      : new Response(JSON.stringify({ status: 429, code: "RATE_LIMITED", detail: "Too many requests. Try again in 90 seconds." }), {
+          status: 429,
+          headers: { "Content-Type": "application/problem+json", "Retry-After": "90" },
+        })));
+    const authenticateStaff = vi.fn();
+    const offline = { authenticateStaff, eligibilityStatus: vi.fn(), clearStaffSession: vi.fn(async () => undefined) } as unknown as OfflineAuthority;
+    renderSession(store, async () => undefined, offline);
+    expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+    const before = Date.now();
+    await userEvent.click(screen.getByTestId("unlock"));
+    await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent("Too many sign-in attempts. Wait before trying again."));
+    const heldUntil = Number(screen.getByTestId("held-until").textContent);
+    expect(heldUntil).toBeGreaterThanOrEqual(before + 90_000);
+    expect(heldUntil).toBeLessThanOrEqual(Date.now() + 90_000);
+    expect(authenticateStaff).not.toHaveBeenCalled();
     expect(screen.getByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
   });
 

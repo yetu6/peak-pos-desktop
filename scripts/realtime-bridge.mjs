@@ -18,36 +18,9 @@
  *     or: PEAK_OPS_TOKEN=ops_... node scripts/realtime-bridge.mjs
  */
 import { createServer } from "node:http";
+import { pathToFileURL } from "node:url";
 import { WebSocketServer } from "ws";
 import { WebSocket } from "ws";
-
-const BACKEND_WS = process.env.PEAK_REALTIME_URL ?? "ws://localhost:8080/api/v1/pos/realtime/ws";
-const PORT = Number(process.env.PEAK_BRIDGE_PORT ?? 5174);
-let tenantId = process.env.VITE_PEAK_TENANT_ID;
-let userId = process.env.VITE_PEAK_USER_ID;
-let opsToken = process.env.PEAK_OPS_TOKEN;
-
-if (opsToken && (tenantId || userId)) {
-  console.error(
-    "PEAK_OPS_TOKEN cannot be combined with identity headers; Peak refuses both on one handshake",
-  );
-  process.exit(1);
-}
-
-function handshakeHeaders() {
-  if (opsToken) {
-    return {
-      Authorization: `Bearer ${opsToken}`,
-      Origin: "http://localhost:5173",
-    };
-  }
-  if (tenantId && userId) return {
-    "X-Peak-Tenant-Id": tenantId,
-    "X-Peak-Tenant-User-Id": userId,
-    Origin: "http://localhost:5173",
-  };
-  return { Origin: "http://localhost:5173" };
-}
 
 function corsHeaders() {
   return {
@@ -65,68 +38,136 @@ function isLocalAddress(address) {
   );
 }
 
-const server = createServer((req, res) => {
-  if (req.method === "OPTIONS" && req.url === "/ops-token") {
-    res.writeHead(204, corsHeaders());
-    res.end();
-    return;
+/**
+ * Starts the bridge on `port` (0 picks a free one) in front of `backendUrl`.
+ * Resolves once it listens, with the port it took and a way to stop it.
+ */
+export function startRealtimeBridge({ backendUrl, port, opsToken: initialToken, tenantId: initialTenant, userId: initialUser, log = console }) {
+  let tenantId = initialTenant;
+  let userId = initialUser;
+  let opsToken = initialToken;
+
+  if (opsToken && (tenantId || userId)) {
+    throw new Error("PEAK_OPS_TOKEN cannot be combined with identity headers; Peak refuses both on one handshake");
   }
-  if (req.method === "POST" && req.url === "/ops-token") {
-    if (!isLocalAddress(req.socket.remoteAddress ?? "")) {
-      res.writeHead(403, corsHeaders());
-      res.end("localhost only");
+
+  function handshakeHeaders() {
+    if (opsToken) {
+      return {
+        Authorization: `Bearer ${opsToken}`,
+        Origin: "http://localhost:5173",
+      };
+    }
+    if (tenantId && userId) return {
+      "X-Peak-Tenant-Id": tenantId,
+      "X-Peak-Tenant-User-Id": userId,
+      Origin: "http://localhost:5173",
+    };
+    return { Origin: "http://localhost:5173" };
+  }
+
+  const server = createServer((req, res) => {
+    if (req.method === "OPTIONS" && req.url === "/ops-token") {
+      res.writeHead(204, corsHeaders());
+      res.end();
       return;
     }
-    const chunks = [];
-    req.on("data", (chunk) => chunks.push(chunk));
-    req.on("end", () => {
-      try {
-        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-        const token = typeof body?.token === "string" ? body.token : "";
-        if (token.length < 32) {
-          res.writeHead(400, corsHeaders());
-          res.end("token must be a restricted POS session");
-          return;
-        }
-        opsToken = token;
-        tenantId = undefined;
-        userId = undefined;
-        console.log("[bridge] switched to PEAK_OPS_TOKEN handshake");
-        res.writeHead(204, corsHeaders());
-        res.end();
-      } catch {
-        res.writeHead(400, corsHeaders());
-        res.end("invalid json");
+    if (req.method === "POST" && req.url === "/ops-token") {
+      if (!isLocalAddress(req.socket.remoteAddress ?? "")) {
+        res.writeHead(403, corsHeaders());
+        res.end("localhost only");
+        return;
       }
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(chunk));
+      req.on("end", () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          const token = typeof body?.token === "string" ? body.token : "";
+          if (token.length < 32) {
+            res.writeHead(400, corsHeaders());
+            res.end("token must be a restricted POS session");
+            return;
+          }
+          opsToken = token;
+          tenantId = undefined;
+          userId = undefined;
+          log.log("[bridge] switched to PEAK_OPS_TOKEN handshake");
+          res.writeHead(204, corsHeaders());
+          res.end();
+        } catch {
+          res.writeHead(400, corsHeaders());
+          res.end("invalid json");
+        }
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+
+  const wss = new WebSocketServer({ server });
+
+  wss.on("connection", (client) => {
+    const upstream = new WebSocket(backendUrl, {
+      headers: handshakeHeaders(),
     });
-    return;
+
+    // The till's socket opens before Yetu has answered the upstream handshake,
+    // and the till subscribes as soon as it opens: hold its frames until Yetu
+    // is there, then pass them on in order. Each frame keeps its kind: `ws`
+    // hands a text frame over as a Buffer, and sending a Buffer as it is makes
+    // a binary frame, which Yetu answers by closing (1003 "text messages
+    // required") -- every subscription change then dropped the connection.
+    const waiting = [];
+    client.on("message", (data, isBinary) => {
+      if (upstream.readyState === WebSocket.OPEN) upstream.send(data, { binary: isBinary });
+      else if (upstream.readyState === WebSocket.CONNECTING) waiting.push({ data, isBinary });
+    });
+    upstream.on("open", () => {
+      for (const frame of waiting.splice(0)) upstream.send(frame.data, { binary: frame.isBinary });
+    });
+    client.on("close", () => upstream.close());
+    client.on("error", () => upstream.close());
+
+    upstream.on("message", (data, isBinary) => {
+      if (client.readyState === WebSocket.OPEN) client.send(data, { binary: isBinary });
+    });
+    upstream.on("close", () => client.close());
+    upstream.on("error", (err) => {
+      log.error("[bridge] upstream error:", err.message);
+      client.close();
+    });
+  });
+
+  return new Promise((resolve) => {
+    server.listen(port, () => {
+      const address = server.address();
+      log.log(`[bridge] listening on ws://localhost:${address.port}/bridge -> ${backendUrl}`);
+      resolve({
+        port: address.port,
+        close: () =>
+          new Promise((done) => {
+            wss.clients.forEach((socket) => socket.terminate());
+            wss.close();
+            server.close(() => done());
+          }),
+      });
+    });
+  });
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    await startRealtimeBridge({
+      backendUrl: process.env.PEAK_REALTIME_URL ?? "ws://localhost:8080/api/v1/pos/realtime/ws",
+      port: Number(process.env.PEAK_BRIDGE_PORT ?? 5174),
+      opsToken: process.env.PEAK_OPS_TOKEN,
+      tenantId: process.env.VITE_PEAK_TENANT_ID,
+      userId: process.env.VITE_PEAK_USER_ID,
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
   }
-  res.writeHead(404);
-  res.end();
-});
-
-const wss = new WebSocketServer({ server });
-console.log(`[bridge] listening on ws://localhost:${PORT}/bridge -> ${BACKEND_WS}`);
-
-wss.on("connection", (client) => {
-  const upstream = new WebSocket(BACKEND_WS, {
-    headers: handshakeHeaders(),
-  });
-
-  client.on("message", (data) => {
-    if (upstream.readyState === WebSocket.OPEN) upstream.send(data);
-  });
-  client.on("close", () => upstream.close());
-  client.on("error", () => upstream.close());
-
-  upstream.on("message", (data) => {
-    if (client.readyState === WebSocket.OPEN) client.send(data);
-  });
-  upstream.on("close", () => client.close());
-  upstream.on("error", (err) => {
-    console.error("[bridge] upstream error:", err.message);
-    client.close();
-  });
-});
-
-server.listen(PORT);
+}

@@ -1,24 +1,13 @@
-import { useMemo, useState } from "react";
-import { Icon } from "../components/Icon";
-import { TillControls } from "../components/TillControls";
-import { ItemModifierDialog, type ModifierSelection } from "../components/ItemModifierDialog";
-import { SettleDialog } from "../components/SettleDialog";
+import { useState } from "react";
 import { DiscountDialog } from "../components/DiscountDialog";
-import {
-  CategoryTab,
-  MoneyDisplay,
-  OrderLine,
-  OrderRail,
-  ProductTile,
-  QuantityStepper,
-  TerminalState,
-} from "../components/terminal/TerminalPrimitives";
+import { VoidOrderDialog } from "../components/VoidOrderDialog";
 import {
   useAddOrderItem,
   useCatalog,
+  useCatalogCurrency,
   useCreateOrder,
+  useHasPermission,
   useIdempotencyKey,
-  useMutationMessage,
   usePosShift,
   usePrintAfter,
   usePropertyId,
@@ -27,44 +16,47 @@ import {
   useSetProductAvailability,
 } from "../hooks/usePosData";
 import { ReceiptView } from "../components/ReceiptView";
-import type { POSCatalogProduct, POSOrder, ServiceType } from "../lib/posContracts";
-import { formatMinor, moneyFormatter } from "../lib/posMoney";
-
-const SERVICE_TYPES: Array<{ id: ServiceType; label: string }> = [
-  { id: "DINE_IN", label: "Dine in" },
-  { id: "TAKEAWAY", label: "Takeaway" },
-  { id: "ROOM_SERVICE", label: "Room service" },
-];
-
-const CATEGORY_COLORS = [
-  "#3D7EA6",
-  "#5B8C5A",
-  "#C9A227",
-  "#8B6BB5",
-  "#C23B22",
-  "#2A9D8F",
-];
+import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
+import { OptionsSheet } from "../register/OptionsSheet";
+import { PaymentDone } from "../register/PaymentDone";
+import { PaySheet, type PaidInfo } from "../register/PaySheet";
+import { optionIdsFor } from "../register/repeatLine";
+import { NoteSheet } from "../register/NoteSheet";
+import { RegisterLayout } from "../register/RegisterLayout";
+import { TicketActions } from "../register/TicketActions";
+import { TicketPanel } from "../register/TicketPanel";
+import { sellProblem } from "../register/registerWords";
+import { useRequestKey } from "../lib/useRequestKey";
+import type { POSCatalogProduct, POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 
 /**
- * Online register: catalog from GET /pos/catalog, ticket from live order
- * mutations. Local-first offline path stays available elsewhere; this screen
- * is the cashier till against the live API.
+ * Sell, against the live API: the catalog from GET /pos/catalog and the
+ * ticket from the order mutations. The offline register is a separate screen.
  */
 export function NewOrder() {
   const { shift } = usePosShift();
   const catalog = useCatalog();
-  const [activeCategory, setActiveCategory] = useState<string | undefined>();
+  const currency = useCatalogCurrency();
+  const [activeCategory, setActiveCategory] = useState<string>(ALL_CATEGORIES);
   const [search, setSearch] = useState("");
   const [serviceType, setServiceType] = useState<ServiceType>("DINE_IN");
   const [tableLabel, setTableLabel] = useState("");
   const [notes, setNotes] = useState("");
   const [order, setOrder] = useState<POSOrder | null>(null);
+  const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
+  const [sentAt, setSentAt] = useState<Date | null>(null);
   const [configuring, setConfiguring] = useState<POSCatalogProduct | null>(null);
   const [settleOpen, setSettleOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
-  const [invoiceOrderId, setInvoiceOrderId] = useState<string | null>(null);
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
+  const [paid, setPaid] = useState<PaidInfo | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const canSend = useHasPermission("pos.order.send");
+  const canPay = useHasPermission("pos.payment.record");
   const propertyId = usePropertyId();
   const printAfter = usePrintAfter(propertyId);
   const createOrder = useCreateOrder();
@@ -74,40 +66,29 @@ export function NewOrder() {
   const setAvailability = useSetProductAvailability();
   const createKey = useIdempotencyKey();
   const addKey = useIdempotencyKey();
-  const sendKey = useIdempotencyKey();
+  // A send whose answer was lost is the same request again (same key); a refused one is new.
+  const sendRequest = useRequestKey();
   const removeKey = useIdempotencyKey();
 
-  const createError = useMutationMessage(createOrder.error);
-  const addError = useMutationMessage(addItem.error);
-  const removeError = useMutationMessage(removeItem.error);
-  const sendError = useMutationMessage(sendOrder.error);
-  const availabilityError = useMutationMessage(setAvailability.error);
-  const mutationError = createError ?? addError ?? removeError ?? sendError ?? availabilityError ?? actionError;
+  const createProblem = sellProblem(createOrder.error, "create");
+  const addProblem = sellProblem(addItem.error, "add");
+  const removeProblem = sellProblem(removeItem.error, "remove");
+  const sendProblem = sellProblem(sendOrder.error, "send");
+  const availabilityProblem = sellProblem(setAvailability.error, "availability");
+  const createError = createProblem?.words ?? null;
+  const addError = addProblem?.words ?? null;
+  const mutationError = createProblem ?? addProblem ?? removeProblem ?? sendProblem ?? availabilityProblem ?? actionError;
+  // Only a send whose answer was lost is offered again as it was; the order stays on the ticket.
+  const retrySend = sendProblem?.kind === "network" && order ? () => void sendToKitchen() : undefined;
 
-  const products = useMemo(() => {
-    const all = catalog.data?.products ?? [];
-    const q = search.trim().toLowerCase();
-    return all.filter((product) => {
-      if (activeCategory && product.categoryId !== activeCategory) return false;
-      if (!q) return true;
-      return product.name.toLowerCase().includes(q) || product.code.toLowerCase().includes(q);
-    });
-  }, [catalog.data?.products, activeCategory, search]);
-
-  const categories = useMemo(
-    () => (catalog.data?.categories ?? []).filter((c) => c.isActive).sort((a, b) => a.sortOrder - b.sortOrder),
-    [catalog.data?.categories],
-  );
-
-  const currency = catalog.data?.products[0]?.currency ?? "TZS";
-  const money = moneyFormatter(currency);
-  const busy =
-    createOrder.isPending ||
-    addItem.isPending ||
-    removeItem.isPending ||
-    sendOrder.isPending;
-  const totalItems = order?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+  const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || sendOrder.isPending;
   const canMutate = Boolean(shift) && !busy;
+  // Yetu adds items only to an order that is still open (not yet sent).
+  const addBlocked = !shift
+    ? "Open a shift before taking orders."
+    : order && order.status !== "OPEN"
+      ? "This order has gone to the kitchen. Start a new sale to add more."
+      : null;
 
   async function ensureOrder(): Promise<POSOrder | null> {
     if (order) return order;
@@ -120,7 +101,8 @@ export function NewOrder() {
       const created = await createOrder.mutateAsync({
         shiftId: shift.id,
         serviceType,
-        tableLabel: tableLabel.trim() || undefined,
+        // Takeaway has no table or room; a label typed under another type is not sent.
+        tableLabel: serviceType === "TAKEAWAY" ? undefined : tableLabel.trim() || undefined,
         notes: notes.trim() || undefined,
         idempotencyKey: createKey.next(),
       });
@@ -132,24 +114,28 @@ export function NewOrder() {
   }
 
   async function tapProduct(product: POSCatalogProduct) {
-    if (!canMutate) return;
+    if (!canMutate || addBlocked) return;
     if (product.isAvailable === false) return;
+    setNotice(null);
     if ((product.modifierGroups?.length ?? 0) > 0) {
-      setConfiguring(product);
+      openOptions(product);
       return;
     }
     await addProduct(product, 1, []);
   }
 
-  async function toggleEightySix(product: POSCatalogProduct) {
+  /** A fresh options sheet starts without an earlier add's refusal. */
+  function openOptions(product: POSCatalogProduct) {
+    addItem.reset();
+    createOrder.reset();
+    setConfiguring(product);
+  }
+
+  async function setSoldOut(product: POSCatalogProduct, available: boolean) {
     if (!shift || busy) return;
-    const currentlyAvailable = product.isAvailable !== false;
-    const next = !currentlyAvailable;
-    const label = next ? `Restore ${product.name}?` : `86 ${product.name}? Sold out until restored.`;
-    if (!window.confirm(label)) return;
     setActionError(null);
     try {
-      await setAvailability.mutateAsync({ productId: product.id, isAvailable: next });
+      await setAvailability.mutateAsync({ productId: product.id, isAvailable: available });
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not update availability.");
     }
@@ -159,346 +145,181 @@ export function NewOrder() {
     const current = await ensureOrder();
     if (!current) return;
     setActionError(null);
-    const next = await addItem.mutateAsync({
-      orderId: current.id,
-      productId: product.id,
-      quantity,
-      modifierOptionIds,
-      version: current.version,
-      idempotencyKey: addKey.next(),
-    });
-    // If STALE_VERSION returned a fresh order without applying the add, retry once.
-    if (next.version === current.version && next.items.length === current.items.length) {
-      const retried = await addItem.mutateAsync({
-        orderId: next.id,
+    try {
+      const next = await addItem.mutateAsync({
+        orderId: current.id,
         productId: product.id,
         quantity,
         modifierOptionIds,
-        version: next.version,
+        version: current.version,
         idempotencyKey: addKey.next(),
       });
-      setOrder(retried);
+      // If STALE_VERSION returned a fresh order without applying the add, retry once.
+      if (next.version === current.version && next.items.length === current.items.length) {
+        const retried = await addItem.mutateAsync({
+          orderId: next.id,
+          productId: product.id,
+          quantity,
+          modifierOptionIds,
+          version: next.version,
+          idempotencyKey: addKey.next(),
+        });
+        setOrder(retried);
+      } else {
+        setOrder(next);
+      }
       setConfiguring(null);
-      return;
+    } catch {
+      // The words come from addItem.error.
     }
-    setOrder(next);
-    setConfiguring(null);
   }
 
-  async function bumpQuantity(itemId: string, delta: number) {
-    if (!order || !canMutate) return;
-    const line = order.items.find((item) => item.id === itemId);
-    if (!line || line.status !== "ADDED") return;
-    if (delta < 0) {
-      // No quantity-patch API: removing an unsent line is the certified correction.
+  /** Another of the same line, with the same options (a new line: Yetu has no quantity change). */
+  async function addAnother(line: POSOrderItem) {
+    if (!canMutate) return;
+    const product = catalog.data?.products.find((candidate) => candidate.id === line.productId);
+    if (!product || product.isAvailable === false) {
+      setActionError(`${line.name} can't be added just now.`);
+      return;
+    }
+    const ids = optionIdsFor(line, product);
+    if (ids === null) {
+      openOptions(product);
+      return;
+    }
+    await addProduct(product, 1, ids);
+  }
+
+  async function removeLine(line: POSOrderItem) {
+    if (!order || !canMutate || line.status !== "ADDED") return;
+    try {
       const next = await removeItem.mutateAsync({
         orderId: order.id,
-        itemId,
+        itemId: line.id,
         version: order.version,
         idempotencyKey: removeKey.next(),
       });
       setOrder(next);
-      return;
+      setSelectedLineId(null);
+    } catch {
+      // The words come from removeItem.error.
     }
-    const next = await addItem.mutateAsync({
-      orderId: order.id,
-      productId: line.productId,
-      quantity: delta,
-      version: order.version,
-      idempotencyKey: addKey.next(),
-    });
-    setOrder(next);
   }
 
   async function sendToKitchen() {
     if (!order || order.items.length === 0) return;
     setActionError(null);
-    const next = await sendOrder.mutateAsync({
-      orderId: order.id,
-      version: order.version,
-      idempotencyKey: sendKey.next(),
-    });
-    setOrder(next);
-    await printAfter(next.id);
+    try {
+      const next = await sendOrder.mutateAsync({
+        orderId: order.id,
+        version: order.version,
+        idempotencyKey: sendRequest.keyFor(["send", order.id, order.version].join("|")),
+      });
+      setOrder(next);
+      setSentAt(new Date());
+      await printAfter(next.id);
+    } catch (error) {
+      // The words come from sendOrder.error. Yetu refused it: the next press is a new request.
+      if (sellProblem(error, "send")?.kind !== "network") sendRequest.forget();
+    }
   }
 
   function clearTicket() {
     setOrder(null);
     setTableLabel("");
     setNotes("");
+    setSelectedLineId(null);
+    setSentAt(null);
     setSettleOpen(false);
     createKey.next();
   }
 
-  async function afterSettled(orderId: string): Promise<void> {
-    await printAfter(orderId);
+  function afterPaid(info: PaidInfo) {
     setSettleOpen(false);
-    setInvoiceOrderId(orderId);
+    setPaid(info);
+    // The receipt Yetu made on closing is printed as before; the till doesn't hear back here (S8).
+    void printAfter(info.order.id);
+  }
+
+  function newSale() {
+    setPaid(null);
     clearTicket();
   }
 
   return (
-    <div className="new-order-screen">
-      <div className="new-order-header">
-        <div>
-          <h1 className="text-lg font-bold tracking-[-0.02em] text-[var(--foreground)]">Register</h1>
-          <p className="text-xs text-[var(--foreground-muted)]">
-            Live catalog · ticket settles exactly · prices from the server
-          </p>
-        </div>
-        <TillControls currency={currency} />
-      </div>
-      <div className="new-order-layout">
-        <section className="catalog-workspace" aria-label="Catalog">
-          <div className="catalog-toolbar">
-            {SERVICE_TYPES.map((type) => (
-              <CategoryTab
-                key={type.id}
-                data-testid={`service-type-${type.id}`}
-                active={serviceType === type.id}
-                disabled={busy || Boolean(order)}
-                onClick={() => setServiceType(type.id)}
-              >
-                {type.label}
-              </CategoryTab>
-            ))}
-            <label className="relative ml-auto min-w-44">
-              <span className="sr-only">Search menu</span>
-              <input
-                data-testid="catalog-search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search menu"
-                className="input w-full"
+    <>
+      <RegisterLayout
+        menu={
+          <MenuPanel
+            categories={catalog.data?.categories ?? []}
+            products={catalog.data?.products ?? []}
+            currency={currency}
+            activeCategory={activeCategory}
+            onCategory={setActiveCategory}
+            search={search}
+            onSearch={setSearch}
+            addBlocked={addBlocked}
+            onTap={(product) => void tapProduct(product)}
+            onSoldOutToggle={(product, available) => void setSoldOut(product, available)}
+            loading={catalog.isLoading}
+            failed={catalog.isError}
+          />
+        }
+        ticket={
+          <TicketPanel
+            order={order}
+            currency={currency}
+            serviceType={serviceType}
+            onServiceType={setServiceType}
+            label={tableLabel}
+            onLabel={setTableLabel}
+            selectedLineId={selectedLineId}
+            onSelectLine={setSelectedLineId}
+            onAddAnother={(line) => void addAnother(line)}
+            onRemoveLine={(line) => void removeLine(line)}
+            lineBusy={busy}
+            sentAt={sentAt}
+            error={mutationError}
+            onRetry={retrySend}
+            retrying={sendOrder.isPending}
+            notice={notice}
+            actions={
+              <TicketActions
+                order={order}
+                currency={currency}
+                busy={busy}
+                sending={sendOrder.isPending}
+                canSend={canSend}
+                canPay={canPay}
+                onSend={() => void sendToKitchen()}
+                onPay={() => setSettleOpen(true)}
+                onDiscount={() => setDiscountOpen(true)}
+                onVoid={() => setVoidOpen(true)}
+                onNote={() => setNoteOpen(true)}
+                onNewSale={clearTicket}
               />
-            </label>
-            <input
-              data-testid="table-label"
-              value={tableLabel}
-              onChange={(event) => setTableLabel(event.target.value)}
-              placeholder="Table"
-              className="input w-28"
-              disabled={Boolean(order)}
-            />
-          </div>
-          {categories.length > 0 && (
-            <div className="category-tabs" aria-label="Menu categories">
-              <CategoryTab data-testid="category-all" active={!activeCategory} onClick={() => setActiveCategory(undefined)}>
-                All
-              </CategoryTab>
-              {categories.map((category, index) => (
-                <CategoryTab
-                  key={category.id}
-                  data-testid={`category-${category.id}`}
-                  active={activeCategory === category.id}
-                  onClick={() => setActiveCategory(category.id)}
-                  style={{ ["--chip-accent" as string]: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }}
-                >
-                  {category.name}
-                </CategoryTab>
-              ))}
-            </div>
-          )}
-          {catalog.isLoading && <div className="skeleton h-40 w-full rounded-xl" />}
-          {catalog.isError && (
-            <TerminalState
-              state="offline"
-              title="Menu unavailable"
-              description="Could not load the outlet catalog. Check the connection and try again."
-            />
-          )}
-          {!catalog.isLoading && !catalog.isError && products.length === 0 && (
-            <TerminalState state="empty" title="No matching items" description="Try another category or search term." />
-          )}
-          <div className="product-grid">
-            {products.map((product) => (
-              <ProductTile
-                key={product.id}
-                data-testid={`menu-${product.name}`}
-                disabled={!shift || busy || setAvailability.isPending}
-                soldOut={product.isAvailable === false}
-                onClick={() => void tapProduct(product)}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  void toggleEightySix(product);
-                }}
-                title={product.isAvailable === false ? "Right-click to restore" : "Right-click to 86 (sold out)"}
-                name={product.name}
-                price={formatMinor(product.priceMinor, product.currency)}
-              />
-            ))}
-          </div>
-        </section>
-
-        <OrderRail
-          title="Ticket"
-          data-testid="current-order-rail"
-          className="receipt-ticket"
-          headerMeta={
-            <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-              {totalItems} {totalItems === 1 ? "item" : "items"}
-              {order ? ` · ${order.orderNumber}` : " · new"}
-              {order ? ` · ${order.status.replaceAll("_", " ").toLowerCase()}` : ""}
-              {order?.initiatedByName ? ` · ${order.initiatedByName}` : ""}
-            </p>
-          }
-          footer={
-            <>
-              <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-[var(--foreground-muted)]">
-                <span>Subtotal</span>
-                <MoneyDisplay className="text-right">{order ? money(order.subtotalMinor) : "—"}</MoneyDisplay>
-                {(order?.discountMinor ?? 0) > 0 && (
-                  <>
-                    <span>Discount</span>
-                    <MoneyDisplay className="text-right" data-testid="cart-discount">
-                      −{money(order!.discountMinor)}
-                    </MoneyDisplay>
-                  </>
-                )}
-                <span>Tax</span>
-                <MoneyDisplay className="text-right">{order ? money(order.taxMinor) : "—"}</MoneyDisplay>
-                <span className="font-semibold text-[var(--foreground)]">Total</span>
-                <MoneyDisplay
-                  prominence="strong"
-                  className="text-right text-base text-[var(--brass)]"
-                  data-testid="cart-preview-total"
-                >
-                  {order && order.items.length > 0 ? money(order.totalMinor) : "—"}
-                </MoneyDisplay>
-                {(order?.paidMinor ?? 0) > 0 && (
-                  <>
-                    <span>Paid</span>
-                    <MoneyDisplay className="text-right">{money(order!.paidMinor)}</MoneyDisplay>
-                    <span>Remaining</span>
-                    <MoneyDisplay className="text-right" data-testid="cart-remaining">
-                      {money(order!.remainingMinor)}
-                    </MoneyDisplay>
-                  </>
-                )}
-              </div>
-              <input
-                data-testid="order-notes"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="Order notes"
-                className="input w-full"
-                disabled={Boolean(order)}
-              />
-              {mutationError && (
-                <div className="badge badge-danger mt-3" data-testid="create-error" role="alert">
-                  {mutationError}
-                </div>
-              )}
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <button
-                  data-testid="send-order"
-                  onClick={() => void sendToKitchen()}
-                  disabled={!order || order.items.length === 0 || order.status !== "OPEN" || busy}
-                  className="btn-secondary w-full"
-                >
-                  <Icon name="orders" size={17} />
-                  {sendOrder.isPending ? "Sending…" : "Send"}
-                </button>
-                <button
-                  data-testid="pay-order"
-                  onClick={() => setSettleOpen(true)}
-                  disabled={
-                    !order ||
-                    order.items.length === 0 ||
-                    order.status === "CLOSED" ||
-                    order.status === "VOIDED" ||
-                    busy
-                  }
-                  className="btn-pay w-full"
-                >
-                  Pay
-                </button>
-              </div>
-              {order && order.items.length > 0 && (order.paidMinor ?? 0) === 0 && order.status !== "CLOSED" && order.status !== "VOIDED" && (
-                <button
-                  type="button"
-                  data-testid="discount-order"
-                  onClick={() => setDiscountOpen(true)}
-                  disabled={busy}
-                  className="btn-ghost mt-2 w-full text-xs"
-                >
-                  Apply discount
-                </button>
-              )}
-              {order?.status === "OPEN" && order.items.some((item) => item.status === "ADDED") && (
-                <p className="mt-2 text-[11px] text-[var(--foreground-muted)]">
-                  Send for a kitchen ticket, or Pay to settle now.
-                </p>
-              )}
-              {order && (
-                <button
-                  type="button"
-                  className="btn-ghost mt-2 w-full text-xs"
-                  data-testid="new-ticket"
-                  onClick={clearTicket}
-                  disabled={busy}
-                >
-                  New ticket
-                </button>
-              )}
-            </>
-          }
-        >
-          <ul>
-            {(!order || order.items.length === 0) && (
-              <li className="py-8 text-center text-xs text-[var(--foreground-muted)]">
-                Tap a menu item to start this order.
-              </li>
-            )}
-            {order?.items.map((line) => (
-              <OrderLine key={line.id} data-testid={`cart-${line.name}`}>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold text-[var(--foreground)]">{line.name}</span>
-                  {line.modifiers && line.modifiers.length > 0 && (
-                    <span className="block truncate text-[11px] text-[var(--foreground-muted)]">
-                      {line.modifiers.map((item) => item.optionName).join(", ")}
-                    </span>
-                  )}
-                  <MoneyDisplay className="mt-1 block text-[11px] text-[var(--foreground-muted)]">
-                    {money(line.totalMinor)}
-                  </MoneyDisplay>
-                </span>
-                {line.status === "ADDED" ? (
-                  <QuantityStepper
-                    label={line.name}
-                    value={line.quantity}
-                    minimum={0}
-                    onDecrease={() => void bumpQuantity(line.id, -1)}
-                    onIncrease={() => void bumpQuantity(line.id, 1)}
-                  />
-                ) : (
-                  <span className="text-[11px] text-[var(--foreground-muted)]">×{line.quantity}</span>
-                )}
-              </OrderLine>
-            ))}
-          </ul>
-        </OrderRail>
-      </div>
+            }
+          />
+        }
+      />
 
       {configuring && (
-        <ItemModifierDialog
+        <OptionsSheet
           product={configuring}
-          currency={configuring.currency}
+          currency={currency ?? configuring.currency}
+          pending={busy}
+          error={createError ?? addError}
           onCancel={() => setConfiguring(null)}
-          onConfirm={(selection: ModifierSelection) =>
-            void addProduct(configuring, selection.quantity, selection.modifierOptionIds)
-          }
+          onAdd={(choice) => void addProduct(configuring, choice.quantity, choice.modifierOptionIds)}
         />
       )}
-      {settleOpen && order && (
-        <SettleDialog
+      {settleOpen && order && currency && (
+        <PaySheet
           order={order}
           currency={currency}
           onClose={() => setSettleOpen(false)}
           onOrderChange={setOrder}
-          onSettled={() => {
-            void afterSettled(order.id);
-          }}
+          onPaid={afterPaid}
         />
       )}
       {discountOpen && order && currency && (
@@ -509,9 +330,38 @@ export function NewOrder() {
           onApplied={(updated) => setOrder(updated)}
         />
       )}
-      {invoiceOrderId && (
-        <ReceiptView orderId={invoiceOrderId} onClose={() => setInvoiceOrderId(null)} />
+      {voidOpen && order && (
+        <VoidOrderDialog
+          order={order}
+          currency={currency}
+          onClose={() => setVoidOpen(false)}
+          onVoided={() => {
+            const number = order.orderNumber;
+            clearTicket();
+            setNotice(`Order ${number} was voided. The kitchen has been told.`);
+          }}
+        />
       )}
-    </div>
+      {noteOpen && (
+        <NoteSheet
+          note={order ? (order.notes ?? "") : notes}
+          locked={order !== null}
+          onSave={setNotes}
+          onClose={() => setNoteOpen(false)}
+        />
+      )}
+      {paid && currency && (
+        <PaymentDone
+          paid={paid}
+          currency={currency}
+          onNewSale={newSale}
+          onViewReceipt={() => {
+            setReceiptOrderId(paid.order.id);
+            newSale();
+          }}
+        />
+      )}
+      {receiptOrderId && <ReceiptView orderId={receiptOrderId} onClose={() => setReceiptOrderId(null)} />}
+    </>
   );
 }

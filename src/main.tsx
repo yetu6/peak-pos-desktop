@@ -3,17 +3,12 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { TooltipProvider } from "./components/ui/tooltip";
-import { PeakTerminalFixture } from "./visual/PeakTerminalFixture";
-import {
-  LockedPinFixture,
-  LockedRosterFixture,
-  NoShiftFixture,
-  PairingFixture,
-  PairingWaitingFixture,
-  SplashFixture,
-} from "./visual/JourneyFixtures";
-import "@fontsource-variable/geist-mono";
+import { bootTheme } from "./lib/theme";
 import "./index.css";
+
+// The stored per-device theme (or the before-pairing default) is on screen
+// before the first paint; the paired mode's default follows once it is known.
+bootTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,31 +19,25 @@ const queryClient = new QueryClient({
   },
 });
 
-// Development-only, deterministic viewport evidence for pre-authentication
-// Peak Terminal journeys. Never reachable in a production build
-// (`import.meta.env.DEV` gates it).
-const VISUAL_FIXTURES = {
-  splash: SplashFixture,
-  pairing: PairingFixture,
-  "pairing-waiting": PairingWaitingFixture,
-  "locked-roster": LockedRosterFixture,
-  "locked-pin": LockedPinFixture,
-  "no-shift": NoShiftFixture,
-  terminal: PeakTerminalFixture,
-} as const;
-
-function resolveFixture() {
+// Development-only, deterministic viewport evidence: a fixture named by
+// `?fixture=` (the pixel harness) or `VITE_PEAK_VISUAL_FIXTURE`. The import is
+// inside the DEV branch, so a production build carries no fixture at all.
+async function resolveFixture(): Promise<React.ComponentType | null> {
   if (!import.meta.env.DEV) return null;
-  const name = import.meta.env.VITE_PEAK_VISUAL_FIXTURE as keyof typeof VISUAL_FIXTURES | undefined;
-  return name ? VISUAL_FIXTURES[name] : undefined;
+  const name =
+    new URLSearchParams(window.location.search).get("fixture") ??
+    (import.meta.env.VITE_PEAK_VISUAL_FIXTURE as string | undefined);
+  if (!name) return null;
+  const { resolveVisualFixture } = await import("./visual/fixtures");
+  return resolveVisualFixture(name);
 }
 
-const Fixture = resolveFixture();
-
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider delayDuration={350}>{Fixture ? <Fixture /> : <App />}</TooltipProvider>
-    </QueryClientProvider>
-  </React.StrictMode>,
-);
+void resolveFixture().then((Fixture) => {
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider delayDuration={350}>{Fixture ? <Fixture /> : <App />}</TooltipProvider>
+      </QueryClientProvider>
+    </React.StrictMode>,
+  );
+});

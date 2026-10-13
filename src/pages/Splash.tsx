@@ -1,37 +1,38 @@
+import { useEffect, useState } from "react";
+import { SPLASH_SLOW_AFTER_MS } from "../access/accessSettings";
 import { BrandLockup } from "../components/BrandLockup";
+import { Banner } from "../components/system";
 
 /**
- * The one screen every normal launch begins with. It communicates calm
- * progress — never implementation detail, never a raw percentage or step
- * count — while the native core runs its startup checks behind it.
+ * The screen every launch begins with while the till opens its secure
+ * storage and finds its server. Calm, in words, never a percentage. If
+ * opening takes longer than it should, it says what to do.
  */
-export function Splash() {
+export function Splash({ slowAfterMs = SPLASH_SLOW_AFTER_MS }: { slowAfterMs?: number }) {
+  const [slow, setSlow] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSlow(true), slowAfterMs);
+    return () => window.clearTimeout(timer);
+  }, [slowAfterMs]);
+
   return (
-    <div
-      className="flex h-screen flex-col items-center justify-center gap-6 bg-[var(--background)]"
-      data-testid="splash-screen"
-    >
-      <div className="flex flex-col items-center gap-3">
-        <BrandLockup height={40} />
-        <div className="flex flex-col items-center leading-none">
-          <span className="text-lg font-medium tracking-wide text-[var(--foreground-muted)]">
-            POS
-          </span>
-          <span className="text-2xl font-semibold tracking-[0.2em] text-[var(--foreground)]">
-            TERMINAL
-          </span>
+    <div className="y-splash" data-testid="splash-screen">
+      <BrandLockup height={44} />
+      <h1 className="y-splash__title">Opening the till</h1>
+      <span className="y-splash__dots" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      {slow ? (
+        <div className="y-splash__slow" data-testid="splash-slow">
+          <Banner tone="warning">
+            Opening is taking longer than usual. Check the till is connected to the internet. If nothing changes, close
+            the till and open it again. If it keeps happening, call support.
+          </Banner>
         </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[13px] text-[var(--foreground-muted)]">
-          Preparing this terminal
-        </span>
-        <span className="splash-progress" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </span>
-      </div>
+      ) : null}
     </div>
   );
 }

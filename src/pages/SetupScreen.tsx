@@ -1,78 +1,94 @@
 import { useState } from "react";
-import { BrandLockup } from "../components/BrandLockup";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
+import { AccessLayout } from "../access/AccessLayout";
+import { accessNotice, addressProblemWords } from "../access/accessWords";
+import { Button, Field, TechnicalDetails } from "../components/system";
+import { validatePeakApiUrl } from "../lib/peakConfig";
 
 /**
- * A normal operator never sees this
- * screen — the packaged server address (or a paired terminal's persisted
- * one) resolves before the app ever routes here. It only appears when
- * neither exists, which in production means an installer/service diagnostic
- * path, not a step in the daily launch journey. Framed as configuration, not
- * as the front door.
+ * A till normally finds its Yetu server by itself (the address is built into
+ * the installed app). This screen appears only when it has none: support
+ * types the address once.
  */
 export function SetupScreen() {
   const { saveApiUrl, error } = useDeviceSession();
-  const [url, setUrl] = useState("https://");
+  return <SetupView error={error} onSave={saveApiUrl} />;
+}
+
+export function SetupView({
+  error,
+  onSave,
+  initialAddress = "https://",
+}: {
+  /** The device session's message after a failed save. */
+  error: string | null;
+  onSave: (address: string) => Promise<void>;
+  initialAddress?: string;
+}) {
+  const [address, setAddress] = useState(initialAddress);
+  const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const shown = problem ?? accessNotice(error)?.words ?? null;
 
   async function submit(): Promise<void> {
     if (pending) return;
+    const check = validatePeakApiUrl(address);
+    if (!check.ok) {
+      setProblem(addressProblemWords(check.error));
+      return;
+    }
+    setProblem(null);
     setPending(true);
     try {
-      await saveApiUrl(url);
+      await onSave(address.trim());
     } catch {
-      // saveApiUrl already set a human error
+      // The device session words the failure (shown from `error`).
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <div
-      className="auth-shell flex h-screen items-center justify-center p-6"
-      data-testid="setup-screen"
+    <AccessLayout
+      testId="setup-screen"
+      title="Connect to your Yetu server"
+      lede={<p>Type the address your Yetu support team gave you. You only do this once on this till.</p>}
     >
-      <div className="glass-panel w-full max-w-md p-8">
-        <div className="mb-2 flex items-center justify-center gap-2">
-          <BrandLockup height={30} />
-          <span className="font-display text-2xl text-[var(--foreground)]">POS</span>
-        </div>
-        <p className="mb-6 text-center text-[12px] text-[var(--foreground-muted)]">
-          Installer configuration — set once when this device is first prepared
-        </p>
-        <label
-          htmlFor="peak-url"
-          className="block text-[11px] font-medium text-[var(--foreground-muted)]"
-        >
-          Server address
-        </label>
-        <input
+      <form
+        className="y-form"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <Field
+          label="Server address"
+          hint="It starts with https://"
+          value={address}
+          onChange={(value) => {
+            setAddress(value);
+            setProblem(null);
+          }}
+          error={shown ?? undefined}
+          errorTestId="setup-error"
           id="peak-url"
           data-testid="peak-url"
-          value={url}
-          onChange={(event) => setUrl(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") void submit();
-          }}
-          placeholder="https://"
-          autoFocus
-          className="input mt-1 w-full bg-[var(--surface-interactive)] text-[var(--foreground)]"
           autoComplete="off"
+          autoFocus
+          inputMode="url"
+          spellCheck={false}
         />
-        {error && (
-          <div className="badge badge-danger mt-4 w-full justify-center" data-testid="setup-error">
-            {error}
-          </div>
-        )}
-        <button
-          data-testid="save-peak-url"
-          onClick={() => void submit()}
-          disabled={pending}
-          className="btn-primary mt-5 w-full"
-        >
+        <Button type="submit" variant="primary" size={56} block data-testid="save-peak-url" disabled={pending}>
           {pending ? "Connecting…" : "Connect"}
-        </button>
-      </div>
-    </div>
+        </Button>
+      </form>
+      <TechnicalDetails>
+        <p className="y-access__muted">
+          The till only accepts https:// addresses. A development build may also use http://localhost.
+        </p>
+        <p className="y-access__muted">Till version {__APP_VERSION__}</p>
+      </TechnicalDetails>
+    </AccessLayout>
   );
 }

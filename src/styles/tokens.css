@@ -1,0 +1,270 @@
+/*
+ * Yetu till -- semantic design tokens, Light and Dark.
+ *
+ * The raw brand values live in src/fbc-tokens.css, an unchanged copy of the
+ * hotel web app's app/fbc-tokens.css. This file maps them onto the names the
+ * till's components read, once for each theme. Light (Yetu canvas) is the
+ * :root set; Dark (Yetu night) overrides it on body.dark-theme. Neither is an
+ * inversion of the other: each surface, line and text colour is chosen for
+ * its own theme, and src/peakTerminalFoundation.test.ts holds every text and
+ * surface pair to WCAG 2.2 AA in both.
+ *
+ * Action is Yetu Blue (ink on Light, the lighter ink-300 step on Dark so a
+ * button still reads as a button on the night surfaces). Orange is an accent
+ * only: the brand mark and the New marker on kitchen tickets, never an
+ * ordinary button. Green, amber and red are status colours and always travel
+ * with a word.
+ *
+ * Surfaces layer by tone, not shadow: canvas, then panels (top bar, rail,
+ * ticket), then raised (tiles, cards, sheets), with 1px lines between.
+ * Shadows are for sheets and dialogs only.
+ *
+ * Legacy names (--foreground, --primary, --brass ...) are kept as aliases of
+ * the new tokens, so every existing screen follows both themes until its own
+ * redesign replaces them.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Type scale. 13 is for technical details only; nothing operational is
+     under 14. Body text is 16. */
+  --type-technical: 13px;
+  --type-small: 14px;
+  --type-body: 16px;
+  --type-lead: 18px;
+  --type-title: 20px;
+  --type-heading: 24px;
+  --type-figure: 32px;
+  --type-display: 44px;
+
+  /* Spacing: a 4px base, laid out on 8. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  /* Radii: 6 for controls, 10 for cards and sheets. */
+  --radius-control: 6px;
+  --radius-card: 10px;
+
+  /* Touch sizes, with at least 8px between targets. */
+  --target-min: 48px;
+  --target-frequent: 56px;
+  --target-money: 64px;
+  --tile-height: 88px;
+  --keypad-key: 72px;
+  --target-gap: var(--space-2);
+
+  /* Shell geometry */
+  --topbar-height: 52px;
+  --rail-width: 76px;
+  /* Sell: the ticket's width beside the menu, and the menu's columns. */
+  --ticket-width: 400px;
+  --menu-columns: 4;
+
+  /* Motion: only to explain. Pressed within 100ms; sheets slide in 200ms. */
+  --motion-press: 100ms;
+  --motion-sheet: 200ms;
+
+  /* Legacy sizes. */
+  --radius: var(--radius-control);
+  --radius-tile: var(--radius-card);
+  --radius-panel: var(--radius-card);
+  --radius-sheet: var(--radius-card);
+  --control-height: var(--target-min);
+  --control-height-compact: var(--target-min);
+  --control-height-prominent: var(--target-money);
+  --product-tile-height: var(--tile-height);
+  --motion-fast: var(--motion-press);
+}
+
+/* Colours follow the theme. They are declared on body as well as :root
+   because CSS resolves var() where a custom property is declared: a token
+   declared only on :root would keep its Light value under body.dark-theme. */
+:root,
+body {
+  /* Surfaces */
+  --canvas: var(--fbc-mist);
+  --surface: var(--fbc-paper);
+  --surface-raised: #ffffff;
+  --surface-hover: var(--fbc-mist);
+  --surface-selected: var(--fbc-ink-050);
+
+  /* Lines: hairline between areas, strong around cards and tiles, control
+     edges at 3:1 (WCAG 1.4.11). The brand control grey is 2.9:1 on the mist
+     canvas, so the till's control edge is one step darker. */
+  --line: var(--fbc-hairline);
+  --line-strong: var(--fbc-hairline-strong);
+  --line-control: #75869d;
+
+  /* Text */
+  --text: var(--fbc-night);
+  --text-muted: var(--fbc-slate);
+
+  /* Action: Yetu Blue */
+  --action: var(--fbc-ink);
+  --action-hover: var(--fbc-ink-800);
+  --on-action: #ffffff;
+  --action-text: var(--fbc-ink);
+
+  /* Accent: the orange, for the brand mark and the New marker only */
+  --accent: var(--fbc-accent);
+  --on-accent: #1a0d08;
+  --accent-text: var(--fbc-accent-700);
+  --accent-subtle: var(--fbc-accent-050);
+
+  /* Status. The brand warning (#b45309) is 4.4:1 on the mist canvas, so the
+     till's warning text is one step darker; fills and lines are unchanged. */
+  --success: var(--fbc-leaf-700);
+  --success-subtle: var(--fbc-leaf-050);
+  --success-line: #b7e3bd;
+  --warning: #a84d08;
+  --warning-subtle: var(--fbc-warning-050);
+  --warning-line: var(--fbc-warning-border);
+  --danger: var(--fbc-danger);
+  --danger-subtle: var(--fbc-danger-050);
+  --danger-line: var(--fbc-danger-border);
+  --on-danger: #ffffff;
+  --info: var(--fbc-ink-600);
+  --info-subtle: var(--fbc-ink-050);
+  --info-line: #bfd6ef;
+
+  /* Focus: a 3px ring in the action colour */
+  --focus: var(--fbc-ink);
+  --focus-width: 3px;
+
+  /* Overlays */
+  --scrim: rgb(16 32 47 / 0.48);
+  --shadow-sheet: 0 16px 48px -12px rgb(16 65 124 / 0.28), 0 2px 6px rgb(16 65 124 / 0.08);
+
+  /* Category marks on menu tiles (decoration beside the name, never text) */
+  --mark-1: var(--fbc-ink-600);
+  --mark-2: var(--fbc-leaf);
+  --mark-3: var(--fbc-control);
+  --mark-4: var(--fbc-warning);
+
+  /* ---------------------------------------------------------------------
+   * Legacy aliases. The existing screens read these names; each follows the
+   * new token, so those screens render in both themes until S2-S6 move them
+   * onto the components in src/components/system.
+   * ------------------------------------------------------------------- */
+  --background: var(--canvas);
+  --surface-interactive: var(--surface-hover);
+  --foreground: var(--text);
+  --foreground-muted: var(--text-muted);
+  --primary: var(--action);
+  --primary-hover: var(--action-hover);
+  --primary-foreground: var(--on-action);
+  --primary-subtle: var(--surface-selected);
+  --gold-accent: var(--action-text);
+  --gold-subtle: var(--surface-selected);
+  --brass: var(--action-text);
+  --brand-ink: var(--fbc-ink);
+  --receipt-paper: var(--surface-raised);
+  --slate-ink: var(--text);
+  --border: var(--line-strong);
+  --border-strong: var(--line-control);
+  --border-subtle: var(--line);
+  --success-border: var(--success-line);
+  --warning-border: var(--warning-line);
+  --danger-border: var(--danger-line);
+  --info-border: var(--info-line);
+  --offline: var(--warning);
+
+  /* shadcn/Radix bridge: the vendored primitives read these. */
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--text);
+  --secondary: var(--surface-hover);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface-hover);
+  --muted-foreground: var(--text-muted);
+  --accent-foreground: var(--text);
+  --destructive: var(--danger);
+  --input: var(--line-control);
+  --ring: var(--focus);
+  --shadow-overlay: var(--shadow-sheet);
+}
+
+body.dark-theme {
+  color-scheme: dark;
+
+  --canvas: var(--fbc-night-paper);
+  --surface: var(--fbc-night-mist);
+  --surface-raised: var(--fbc-night-card);
+  --surface-hover: var(--fbc-night-raised);
+  --surface-selected: #14294a;
+
+  --line: var(--fbc-night-hairline);
+  --line-strong: var(--fbc-night-hairline-strong);
+  --line-control: var(--fbc-night-control);
+
+  --text: var(--fbc-night-fg);
+  --text-muted: var(--fbc-slate-300);
+
+  --action: var(--fbc-ink-300);
+  --action-hover: var(--fbc-ink-200);
+  --on-action: var(--fbc-night-paper);
+  --action-text: var(--fbc-ink-300);
+
+  --accent: var(--fbc-accent);
+  --on-accent: #1a0d08;
+  --accent-text: var(--fbc-accent-300);
+  --accent-subtle: #2c1a12;
+
+  --success: var(--fbc-leaf-300);
+  --success-subtle: #12301f;
+  --success-line: #1f4a2c;
+  --warning: var(--fbc-warning-night);
+  --warning-subtle: #2a2010;
+  --warning-line: #3d2f13;
+  --danger: var(--fbc-danger-night);
+  --danger-subtle: #2a1512;
+  --danger-line: #3d1c18;
+  --on-danger: var(--fbc-night-paper);
+  --info: var(--fbc-info-night);
+  --info-subtle: #14294a;
+  --info-line: #1b3a52;
+
+  --focus: var(--fbc-ink-200);
+
+  --scrim: rgb(2 8 16 / 0.72);
+  --shadow-sheet: 0 16px 48px -12px rgb(0 0 0 / 0.6), 0 2px 6px rgb(0 0 0 / 0.3);
+
+  --mark-1: var(--fbc-ink-300);
+  --mark-2: var(--fbc-leaf-300);
+  --mark-3: var(--fbc-slate-300);
+  --mark-4: var(--fbc-warning-night);
+}
+
+/* Size classes: the same layout scaled, with no position moving.
+   compact 1024-1279, regular 1280-1599, wide 1600 and up; heights from 768. */
+@media (max-width: 1279px) {
+  :root {
+    --rail-width: 64px;
+    --keypad-key: 64px;
+    --ticket-width: 360px;
+    --menu-columns: 3;
+  }
+}
+
+/* Short windows (768 to 800 high) use the compact keypad too: a PIN pad and
+   its message must fit without scrolling. */
+@media (max-height: 800px) {
+  :root {
+    --keypad-key: 64px;
+  }
+}
+
+@media (min-width: 1600px) {
+  :root {
+    --rail-width: 76px;
+    --menu-columns: 6;
+  }
+}

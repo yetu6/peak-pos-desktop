@@ -1,0 +1,548 @@
+/* Sell: menu | ticket. Sizes come from tokens.css (--ticket-width, --menu-columns). */
+
+.y-register {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) var(--ticket-width);
+  background: var(--canvas);
+  color: var(--text);
+}
+
+.y-register__menu {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.y-register__ticket {
+  display: flex;
+  width: var(--ticket-width);
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+
+/* The ticket's own content fills its column. */
+.y-register__ticket > * {
+  min-height: 0;
+  flex: 1;
+}
+
+.y-menu-grid {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  grid-template-columns: repeat(var(--menu-columns), minmax(0, 1fr));
+}
+
+/* ------------------------------------------------------------------ Menu */
+.y-catalog {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+.y-catalog__bar {
+  display: grid;
+  align-items: end;
+  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 240px);
+}
+
+/* A small screen gives the categories the whole row and the search its own. */
+@media (max-width: 1279px) {
+  .y-catalog__bar { grid-template-columns: minmax(0, 1fr); }
+}
+
+.y-catalog__tabs { min-width: 0; }
+
+.y-catalog__blocked {
+  margin: 0;
+  border: 1px solid var(--warning-line);
+  border-radius: var(--radius-control);
+  background: var(--warning-subtle);
+  padding: var(--space-2) var(--space-3);
+  font-weight: 500;
+}
+
+.y-catalog__scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding-bottom: var(--space-4);
+}
+
+.y-catalog__ask-actions {
+  display: flex;
+  flex: 1;
+  justify-content: flex-end;
+  gap: var(--target-gap);
+}
+
+/* --------------------------------------------------------------- Options */
+.y-options {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.y-options__group { display: grid; gap: var(--space-2); }
+
+.y-options__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.y-options__name { font-size: var(--type-lead); font-weight: 700; }
+
+.y-options__rule {
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  font-weight: 600;
+}
+
+.y-options__rule--required { color: var(--action-text); }
+.y-options__rule--over { color: var(--danger); }
+
+.y-options__list { display: grid; gap: var(--space-2); }
+
+.y-options__option {
+  display: grid;
+  min-height: var(--target-frequent);
+  align-items: center;
+  gap: var(--space-3);
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  padding: 0 var(--space-3);
+  color: var(--text);
+  font-size: var(--type-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.y-options__option:hover { background: var(--surface-hover); }
+
+.y-options__option[aria-checked="true"] {
+  border: 2px solid var(--action);
+  background: var(--surface-selected);
+}
+
+/* The mark says what kind of choice it is: a circle for one, a box for several. */
+.y-options__tick {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 2px solid var(--line-control);
+  border-radius: 4px;
+}
+
+.y-options__option[role="radio"] .y-options__tick { border-radius: 999px; }
+
+.y-options__option[aria-checked="true"] .y-options__tick {
+  border-color: var(--action);
+  background: var(--action);
+  color: var(--on-action);
+}
+
+.y-options__tick svg { width: 16px; height: 16px; }
+.y-options__price { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+.y-options__quantity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-4);
+}
+
+.y-options__footer {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+  gap: var(--target-gap);
+}
+
+/* ---------------------------------------------------------------- Ticket */
+.y-ticket {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.y-ticket__head {
+  display: grid;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-3) var(--space-4);
+}
+
+.y-ticket__title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.y-ticket__title { margin: 0; font-size: var(--type-title); font-weight: 700; }
+
+/* The order type spans the ticket; a long word wraps rather than being cut. */
+.y-ticket__head .y-segmented { display: flex; width: 100%; }
+.y-ticket__head .y-segmented__option {
+  min-width: 0;
+  padding: 0 var(--space-2);
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.y-ticket__where { margin: 0; font-size: var(--type-lead); font-weight: 600; }
+.y-ticket__saved { color: var(--text-muted); font-size: var(--type-small); font-weight: 400; }
+.y-ticket__who { color: var(--text-muted); font-size: var(--type-small); }
+
+.y-ticket__lines {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-2) var(--space-3);
+}
+
+.y-ticket__list {
+  display: grid;
+  margin: 0;
+  gap: var(--space-1);
+  padding: 0;
+  list-style: none;
+}
+
+.y-ticket__line-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--target-gap);
+  margin: var(--space-1) 0 var(--space-2) 40px;
+}
+
+.y-ticket__line-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+}
+
+.y-ticket__foot {
+  display: grid;
+  gap: var(--space-3);
+  border-top: 1px solid var(--line);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.y-ticket__totals {
+  display: grid;
+  margin: 0;
+  gap: var(--space-1);
+}
+
+.y-ticket__totals > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.y-ticket__totals dt { color: var(--text-muted); }
+.y-ticket__totals dd { margin: 0; font-variant-numeric: tabular-nums; }
+.y-ticket__total dt { color: var(--text); font-size: var(--type-lead); font-weight: 700; }
+
+.y-ticket__error-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.y-ticket__error-row .y-ticket__error {
+  flex: 1;
+}
+
+.y-ticket__error {
+  margin: 0;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius-control);
+  background: var(--danger-subtle);
+  padding: var(--space-2) var(--space-3);
+  font-weight: 500;
+}
+
+/* --------------------------------------------------------------- Actions */
+.y-actions { display: grid; gap: var(--space-3); }
+
+.y-actions__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--target-gap);
+}
+
+.y-actions__row > .y-button:first-child { flex: 1; white-space: nowrap; }
+.y-actions__row > .y-button { padding: 0 var(--space-3); }
+.y-actions__more { flex: none; }
+
+.y-more { display: grid; gap: var(--space-2); }
+
+.y-more__item {
+  display: grid;
+  min-height: var(--target-money);
+  align-content: center;
+  gap: 2px;
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  padding: var(--space-2) var(--space-4);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.y-more__item:hover:not(:disabled) { background: var(--surface-hover); }
+.y-more__item:disabled { background: var(--surface); cursor: not-allowed; }
+.y-more__item:disabled .y-more__title { color: var(--text-muted); }
+.y-more__title { font-size: var(--type-lead); font-weight: 600; }
+.y-more__meta { color: var(--text-muted); font-size: var(--type-small); }
+
+.y-note__text {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  padding: var(--space-3);
+  font-size: var(--type-lead);
+}
+
+/* ------------------------------------------------------------------- Pay */
+.y-pay {
+  display: grid;
+  min-height: 100%;
+  align-items: start;
+  gap: var(--space-6);
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+}
+
+.y-pay__left,
+.y-pay__right {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+}
+
+.y-pay__label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-lead);
+  font-weight: 600;
+}
+
+.y-pay__progress { display: grid; gap: var(--space-2); }
+
+.y-pay__bar {
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+}
+
+.y-pay__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--success);
+}
+
+.y-pay__paid { margin: 0; font-weight: 600; }
+
+.y-pay__methods {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.y-pay__method {
+  min-height: var(--target-money);
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  padding: var(--space-2) var(--space-4);
+  color: var(--text);
+  font-size: var(--type-lead);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.y-pay__method:hover:not(:disabled) { background: var(--surface-hover); }
+
+.y-pay__method[aria-checked="true"] {
+  border: 2px solid var(--action);
+  background: var(--surface-selected);
+}
+
+.y-pay__method:disabled {
+  border-style: dashed;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.y-pay__note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+}
+
+.y-pay__pane { display: grid; gap: var(--space-4); }
+.y-pay__pane-wrap { display: grid; }
+
+.y-pay__step {
+  margin: 0;
+  border: 1px solid var(--info-line);
+  border-radius: var(--radius-control);
+  background: var(--info-subtle);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--type-lead);
+  font-weight: 500;
+}
+
+.y-pay__change {
+  min-height: 44px;
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.y-pay__rooms { display: grid; gap: var(--space-2); }
+
+/* Always in the page (a live region), so a recorded part payment is announced. */
+.y-pay__recorded { margin: 0; font-weight: 600; }
+
+.y-pay__room {
+  display: grid;
+  min-height: var(--target-frequent);
+  align-content: center;
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  padding: var(--space-2) var(--space-4);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.y-pay__room[aria-pressed="true"] {
+  border: 2px solid var(--action);
+  background: var(--surface-selected);
+}
+
+.y-pay__room:disabled { background: var(--surface); color: var(--text-muted); cursor: not-allowed; }
+.y-pay__room-name { font-size: var(--type-lead); font-weight: 600; }
+.y-pay__room-why { font-size: var(--type-small); }
+
+@media (max-width: 1279px) {
+  .y-pay { gap: var(--space-4); }
+}
+
+/* ---------------------------------------------------------- Payment done */
+.y-done {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+
+.y-done__tick { width: 64px; height: 64px; color: var(--success); }
+.y-done__how { margin: 0; color: var(--text-muted); font-size: var(--type-lead); }
+
+.y-done__change {
+  margin: 0;
+  font-size: var(--type-heading);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.y-done__actions {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: var(--target-gap);
+  margin-top: var(--space-3);
+}
+
+.y-done__actions > .y-button:last-child { flex: 1; }
+.y-done__countdown { margin: 0; color: var(--text-muted); font-size: var(--type-small); }
+
+/* --------------------------------------------------------------- Receipt */
+.y-receipt { display: grid; gap: var(--space-3); }
+.y-receipt__loading { display: grid; gap: var(--space-2); }
+
+.y-receipt__paper {
+  display: grid;
+  gap: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  padding: var(--space-4);
+  font-variant-numeric: tabular-nums;
+}
+
+.y-receipt__head { display: grid; gap: 2px; text-align: center; }
+.y-receipt__property { margin: 0; font-size: var(--type-lead); font-weight: 700; }
+.y-receipt__meta-block { display: grid; gap: 2px; }
+.y-receipt__order { margin: 0; font-weight: 600; }
+.y-receipt__meta { margin: 0; color: var(--text-muted); font-size: var(--type-small); }
+
+.y-receipt__lines {
+  display: grid;
+  margin: 0;
+  gap: var(--space-1);
+  border-top: 1px dashed var(--line-strong);
+  border-bottom: 1px dashed var(--line-strong);
+  padding: var(--space-2) 0;
+  list-style: none;
+}
+
+.y-receipt__line { display: flex; justify-content: space-between; gap: var(--space-3); }
+.y-receipt__line-name { display: grid; }
+.y-receipt__option { padding-left: var(--space-4); color: var(--text-muted); font-size: var(--type-small); }
+
+.y-receipt__totals { display: grid; margin: 0; gap: 2px; }
+.y-receipt__totals > div { display: flex; justify-content: space-between; gap: var(--space-3); }
+.y-receipt__totals dd { margin: 0; }
+.y-receipt__total { font-size: var(--type-lead); font-weight: 700; }
+
+.y-receipt__footer {
+  margin: 0;
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  text-align: center;
+}
+
+/* The Pay sheet's footer: Cancel at the left, the one action at the right, always on screen. */
+.y-pay__footer {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--target-gap);
+}
+
+.y-pay__footer > .y-button--primary { min-width: min(100%, 360px); }

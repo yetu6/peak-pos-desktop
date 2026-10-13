@@ -119,6 +119,16 @@ class ManagerSession {
   }
 }
 
+/** Who approves a till's pairing in Hospitality Web. Since fbc-peak migration
+ *  00084 (staff sign in on the property's device with their PIN) only an
+ *  organization-scope role signs in on the web, by phone or, locally, by
+ *  dev-login: the seeded FNB_MANAGER is refused ("signs in on a property
+ *  device with a PIN"). The owner holds pos_terminal.pair and .revoke, so the
+ *  owner approves; the manager still acts at the till with their own PIN. */
+function pairingApproverEmail(fixture: PropertyFixture): string {
+  return fixture.ownerEmail;
+}
+
 async function posCall<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
@@ -142,7 +152,7 @@ async function pairAndLogin(fixture: PropertyFixture, staffId: string, pin: stri
   const issued = await requestPairing(baseUrl, rawPublicKeyB64Url(keys.publicKeySpki), credentialHash);
 
   const manager = new ManagerSession();
-  await manager.login(fixture.managerEmail);
+  await manager.login(pairingApproverEmail(fixture));
 
   const lookup = await manager.call<{ pairingRequestId: string }>(
     `/api/v1/organizations/${fixture.organizationId}/properties/${fixture.propertyId}/pos/pairing-requests/lookup`,
@@ -280,11 +290,20 @@ describe.skipIf(!mamaRose)("Mama Rose Restaurant: restaurant-only live certifica
         printedTitles.push(title);
       });
       expect(printResults.every((r) => r.ok)).toBe(true);
-      expect(printedTitles).toContain("peak-receipt");
+      // The receipt prints as the branded guest invoice since 0e933c7.
+      expect(printedTitles).toContain("yetu-invoice");
       clearOperationalSession();
 
       // 23-26: Cash Out, expected cash, counted cash, variance.
-      await posCall(session.token, "/api/v1/pos/cash-movements", { method: "POST", body: JSON.stringify({ movementType: "CASH_OUT", amountMinor: 100_000, reason: "Journey petty cash" }) });
+      // A cash out needs a supervisor other than the cashier, with their own
+      // PIN (money audit, 2026-10-06): here the manager approves.
+      await posCall(session.token, "/api/v1/pos/cash-movements", {
+        method: "POST",
+        body: JSON.stringify({
+          movementType: "CASH_OUT", amountMinor: 100_000, reason: "Journey petty cash",
+          supervisorStaffId: fixture.managerStaffId, supervisorPin: fixture.managerPin,
+        }),
+      });
       const shiftNow = await posCall<POSShift>(session.token, `/api/v1/pos/shifts/${shift.id}`);
       const wantExpected = 1_000_000 + order.totalMinor - 100_000;
       expect(shiftNow.expectedCashMinor).toBe(wantExpected);
@@ -394,7 +413,7 @@ describe.skipIf(!mamaRose)("Failure modes: wrong PIN, device revocation", () => 
     const issued = await requestPairing(baseUrl, rawPublicKeyB64Url(keys.publicKeySpki), credentialHash);
 
     const manager = new ManagerSession();
-    await manager.login(fixture.managerEmail);
+    await manager.login(pairingApproverEmail(fixture));
     const uniqueTerminalName = `Wrong PIN Fixture ${crypto.randomUUID().slice(0, 8)}`;
     const approved = await manager.call<{ terminalId: string }>(
       `/api/v1/organizations/${fixture.organizationId}/properties/${fixture.propertyId}/pos/pairing-requests/${issued.pairingRequestId}/approve`,

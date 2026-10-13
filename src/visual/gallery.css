@@ -1,0 +1,101 @@
+/* Development-only layout for the component gallery and shell fixtures. */
+
+.y-gallery {
+  height: 100dvh;
+  overflow-y: auto;
+  background: var(--canvas);
+  padding: var(--space-6);
+  color: var(--text);
+}
+
+.y-gallery__header { margin-bottom: var(--space-6); }
+
+.y-gallery__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--type-figure);
+  font-weight: 700;
+}
+
+.y-gallery__lede {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+}
+
+.y-gallery__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr));
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.y-gallery__section {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  padding: var(--space-4);
+}
+
+.y-gallery__section-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--type-lead);
+  font-weight: 700;
+}
+
+.y-gallery__stack {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.y-gallery__row,
+.y-gallery__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--target-gap);
+}
+
+.y-gallery__tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--target-gap);
+}
+
+.y-gallery__panel {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+}
+
+.y-gallery__caption,
+.y-gallery__keys {
+  display: flex;
+  margin: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+}
+
+.y-gallery__skeletons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--target-gap);
+}
+
+/* Shell fixtures: a work-area panel. */
+.y-fixture-panel {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+}
+
+.y-fixture-heading {
+  margin: 0;
+  padding: var(--space-4) var(--space-4) var(--space-2);
+  font-size: var(--type-heading);
+  font-weight: 700;
+}

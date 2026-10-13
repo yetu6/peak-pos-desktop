@@ -1,119 +1,145 @@
 import { useState } from "react";
-import { Icon } from "./Icon";
+import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
-import { useIdempotencyKey, useMutationMessage, useVoidOrder } from "../hooks/usePosData";
+import { useIdempotencyKey, useVoidOrder } from "../hooks/usePosData";
+import { formatMoney } from "../lib/money";
+import { useHoldIdleLock } from "../lib/useHoldIdleLock";
+import { useRateLimitWait } from "../lib/useRateLimitWait";
 import type { POSOrder } from "../lib/posContracts";
+import { voidProblem } from "../register/registerWords";
+import { Banner, Button, Field, Sheet, SupervisorApproval, type KeypadKey } from "./system";
 
 /**
- * `POST /pos/orders/{orderId}/void` — the one certified correction for a
- * sent or settled order. It requires a DIFFERENT supervisor's own PIN
- * (`pos.order.void`); Peak audits initiator and authorizer separately. This
- * is a void, never a refund — no money movement is invented here, and none
- * is implied in the copy.
+ * `POST /pos/orders/{orderId}/void`: the one certified correction for a sent
+ * order. It needs a DIFFERENT supervisor's own PIN (`pos.order.void`); Yetu
+ * records who asked and who approved. It is a void, never a refund: no money
+ * moves, and a part-paid order can't be voided. The approval is for one
+ * reason: changing it asks again.
  */
-export function VoidOrderDialog({ order, onClose }: { order: POSOrder; onClose: () => void }) {
-  const roster = useDeviceSessionOptional()?.roster ?? [];
+export function VoidOrderDialog({
+  order,
+  currency,
+  onClose,
+  onVoided,
+  onStale,
+}: {
+  order: POSOrder;
+  /** The currency the backend returned; without it the request says no amount. */
+  currency?: string;
+  onClose: () => void;
+  /** Called once Yetu has voided the order, before the sheet closes. */
+  onVoided?: () => void;
+  /** Yetu says the order changed on another till: ask for it again. */
+  onStale?: () => void;
+}) {
+  const device = useDeviceSessionOptional();
+  const roster = device?.roster ?? [];
+  const requesterId = device?.session?.staffId ?? "";
   const voidOrder = useVoidOrder();
   const idempotencyKey = useIdempotencyKey();
-  const error = useMutationMessage(voidOrder.error);
-  const [supervisorStaffId, setSupervisorStaffId] = useState("");
-  const [supervisorPin, setSupervisorPin] = useState("");
   const [reason, setReason] = useState("");
+  const [supervisorId, setSupervisorId] = useState<string | null>(null);
+  const [pin, setPin] = useState("");
+  // An approval is for the order as it was: when it changes (a new version) the supervisor is asked again.
+  const [approvedVersion, setApprovedVersion] = useState(order.version);
+  if (order.version !== approvedVersion) {
+    setApprovedVersion(order.version);
+    setSupervisorId(null);
+    setPin("");
+  }
+  const problem = voidProblem(voidOrder.error);
+  // The till doesn't lock itself while the void is with Yetu.
+  useHoldIdleLock(voidOrder.isPending);
+  // After "too many attempts" the next one waits for Yetu's Retry-After.
+  const waiting = useRateLimitWait(voidOrder.error, voidOrder.reset);
+  const ready = reason.trim().length > 0 && supervisorId !== null && pin.length === PIN_LENGTH && !voidOrder.isPending && !waiting;
 
-  const canSubmit =
-    supervisorStaffId.trim().length > 0 &&
-    /^\d{6}$/.test(supervisorPin) &&
-    reason.trim().length > 0 &&
-    !voidOrder.isPending;
+  function onPinKey(key: KeypadKey) {
+    if (key === "delete") setPin((current) => current.slice(0, -1));
+    else if (key === "clear") setPin("");
+    else if (/^\d$/.test(key)) setPin((current) => (current.length < PIN_LENGTH ? current + key : current));
+  }
 
-  function submit(): void {
+  function submit() {
+    if (!ready || supervisorId === null) return;
     voidOrder.mutate(
       {
         orderId: order.id,
         reason: reason.trim(),
-        supervisorStaffId: supervisorStaffId.trim(),
-        supervisorPin,
+        supervisorStaffId: supervisorId,
+        supervisorPin: pin,
         version: order.version,
         idempotencyKey: idempotencyKey.next(),
       },
-      { onSuccess: onClose },
+      {
+        onSuccess: () => {
+          onVoided?.();
+          onClose();
+        },
+        // A refused PIN counts toward the supervisor's lockout: never send it again.
+        onError: (error) => {
+          setPin("");
+          if (voidProblem(error)?.kind === "stale") onStale?.();
+        },
+      },
     );
   }
 
   return (
-    <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="void-order-dialog">
-      <div className="glass-dialog w-full max-w-sm p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-[var(--foreground)]">Void {order.orderNumber}</div>
-            <div className="mt-0.5 text-[11px] text-[var(--foreground-muted)]">
-              Requires a different supervisor's PIN. This is a void, not a refund.
-            </div>
-          </div>
-          <button onClick={onClose} className="rounded-md p-1 text-[var(--foreground-muted)] hover:bg-[var(--border-subtle)]" aria-label="Close">
-            <Icon name="x" size={16} />
-          </button>
-        </div>
-
-        <label className="mt-4 block text-[12px] font-medium text-[var(--foreground-muted)]">Supervisor</label>
-        {roster.length > 0 ? (
-          <select
-            data-testid="void-supervisor-select"
-            value={supervisorStaffId}
-            onChange={(event) => setSupervisorStaffId(event.target.value)}
-            className="input mt-1 w-full"
-          >
-            <option value="">Select supervisor…</option>
-            {roster.map((entry) => (
-              <option key={entry.staffNumber} value={entry.staffNumber}>
-                {entry.fullName}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <input
-            data-testid="void-supervisor-id"
-            value={supervisorStaffId}
-            onChange={(event) => setSupervisorStaffId(event.target.value)}
-            placeholder="Supervisor staff id"
-            className="input mt-1 w-full"
-          />
-        )}
-
-        <label className="mt-3 block text-[12px] font-medium text-[var(--foreground-muted)]">Supervisor PIN</label>
-        <input
-          data-testid="void-supervisor-pin"
-          type="password"
-          inputMode="numeric"
-          maxLength={6}
-          value={supervisorPin}
-          onChange={(event) => setSupervisorPin(event.target.value.replace(/\D/g, ""))}
-          className="input mt-1 w-full"
-        />
-
-        <label className="mt-3 block text-[12px] font-medium text-[var(--foreground-muted)]">Reason</label>
-        <input
-          data-testid="void-reason"
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          className="input mt-1 w-full"
-        />
-
-        {error && (
-          <div className="badge badge-danger mt-4" data-testid="void-order-error">
-            {error}
-          </div>
-        )}
-
-        <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="btn-tertiary btn-sm">
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open && !voidOrder.isPending) onClose();
+      }}
+      title="Void the order"
+      description="Takes the whole order off and tells the kitchen. This is not a refund: no money moves."
+      testId="void-order-dialog"
+      footer={
+        <div className="y-options__footer">
+          <Button variant="quiet" disabled={voidOrder.isPending} onClick={onClose}>
             Cancel
-          </button>
-          <button data-testid="confirm-void-order" onClick={submit} disabled={!canSubmit} className="btn-primary btn-sm">
+          </Button>
+          <Button variant="danger" size={56} data-testid="confirm-void-order" disabled={!ready} onClick={submit}>
             {voidOrder.isPending ? "Voiding…" : "Void order"}
-          </button>
+          </Button>
         </div>
+      }
+    >
+      <div className="y-form">
+        <Field
+          label="Reason"
+          hint="For example, the wrong table or a guest who left."
+          value={reason}
+          onChange={(text) => {
+            setReason(text);
+            setSupervisorId(null);
+            setPin("");
+          }}
+          autoComplete="off"
+          data-testid="void-reason"
+        />
+        <SupervisorApproval
+          request={
+            reason.trim()
+              ? `Void order ${order.orderNumber}${currency ? ` (${formatMoney(order.totalMinor, currency)})` : ""}: ${reason.trim()}`
+              : `Void order ${order.orderNumber}`
+          }
+          supervisors={roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }))}
+          requesterId={requesterId}
+          selectedId={supervisorId}
+          onSelect={(id) => {
+            setSupervisorId(id);
+            setPin("");
+          }}
+          pinLength={pin.length}
+          onPinKey={onPinKey}
+          status={{ kind: "idle" }}
+          onCancel={onClose}
+          actions="none"
+          keyTestIdPrefix="void-pin-key"
+        />
+        {problem ? <Banner inline tone="danger">{problem.words}</Banner> : null}
       </div>
-    </div>
+    </Sheet>
   );
 }

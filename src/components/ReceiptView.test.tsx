@@ -1,18 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { idleLockHeld } from "../lib/idleLock";
 import { ReceiptView } from "./ReceiptView";
 import type { POSReceipt } from "../lib/posContracts";
 
-const { reprintMutate, receiptRef } = vi.hoisted(() => ({
+const { reprintMutate, receiptRef, keys, reprintState } = vi.hoisted(() => ({
   reprintMutate: vi.fn(),
   receiptRef: { data: undefined as POSReceipt | undefined, isLoading: false, isError: false },
+  keys: { minted: 0 },
+  reprintState: { isPending: false },
 }));
 
 vi.mock("../hooks/usePosData", () => ({
   useReceipt: () => receiptRef,
-  useReprintReceipt: () => ({ mutate: reprintMutate, isPending: false, error: null }),
-  useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
+  useReprintReceipt: () => ({ mutate: reprintMutate, isPending: reprintState.isPending, error: null }),
+  useIdempotencyKey: () => ({ current: "", next: () => `key-${++keys.minted}` }),
   useMutationMessage: () => null,
 }));
 
@@ -46,20 +49,43 @@ const RECEIPT: POSReceipt = {
 };
 
 describe("ReceiptView", () => {
-  it("shows the immutable settled document, never a reconstruction from a live menu", () => {
+  it("shows the settled document as Yetu kept it, in words, called a receipt", () => {
     receiptRef.data = RECEIPT;
     receiptRef.isLoading = false;
     receiptRef.isError = false;
     render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
 
+    const sheet = screen.getByRole("dialog", { name: "Receipt" });
     const doc = screen.getByTestId("receipt-document");
-    expect(screen.getByTestId("invoice-property")).toHaveTextContent("Mama Rose Hotel");
-    expect(doc).toHaveTextContent("POS-1");
-    expect(doc).toHaveTextContent("CASH");
-    expect(doc).toHaveTextContent("Cappuccino");
-    expect(screen.getByTestId("invoice-taken-by")).toHaveTextContent("Amina Hassan");
-    expect(screen.getByTestId("invoice-yetu-footer")).toHaveTextContent("Yetu");
+    expect(screen.getByTestId("receipt-property")).toHaveTextContent("Mama Rose Hotel");
+    expect(doc).toHaveTextContent("Order POS-1");
+    expect(doc).toHaveTextContent("Paid by Cash");
+    expect(doc).not.toHaveTextContent("CASH");
+    expect(doc).toHaveTextContent("2 × Cappuccino");
+    expect(doc).toHaveTextContent("TSh 141.70");
+    expect(doc).toHaveTextContent("VAT");
+    expect(screen.getByTestId("receipt-taken-by")).toHaveTextContent("Taken by Amina Hassan");
+    expect(screen.getByTestId("receipt-footer")).toHaveTextContent(
+      "This is not a tax receipt. Use your EFD machine for tax receipts.",
+    );
+    expect(sheet).not.toHaveTextContent(/invoice/i);
     expect(screen.queryByTestId("receipt-error")).not.toBeInTheDocument();
+  });
+
+  it("says where the order went and who took the payment, when someone else did", () => {
+    receiptRef.data = {
+      ...RECEIPT,
+      document: { ...RECEIPT.document, tableLabel: "12", operatorId: "staff-2", operatorName: "Grace Mushi" },
+    };
+    render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+    expect(screen.getByTestId("receipt-document")).toHaveTextContent("Order POS-1 · Dine in · Table 12");
+    expect(screen.getByTestId("receipt-settled-by")).toHaveTextContent("Payment taken by Grace Mushi");
+  });
+
+  it("says a split payment in words", () => {
+    receiptRef.data = { ...RECEIPT, document: { ...RECEIPT.document, tenderMethod: "SPLIT" } };
+    render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+    expect(screen.getByTestId("receipt-document")).toHaveTextContent("Paid by Split payment");
   });
 
   it("disables reprint until the real settled document has loaded", () => {
@@ -71,14 +97,40 @@ describe("ReceiptView", () => {
     expect(screen.getByTestId("reprint-receipt")).toBeDisabled();
   });
 
-  it("calls the certified reprint endpoint with a fresh idempotency key, never a new original", async () => {
+  it("calls the certified reprint endpoint, never a new original: the same key when asked again after a lost answer, a new one for the next copy", async () => {
     receiptRef.data = RECEIPT;
     receiptRef.isLoading = false;
     receiptRef.isError = false;
-    render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+    const view = render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
 
     await userEvent.click(screen.getByTestId("reprint-receipt"));
-    expect(reprintMutate).toHaveBeenCalledWith({ orderId: "order-1", idempotencyKey: "key-1" });
+    await userEvent.click(screen.getByTestId("reprint-receipt"));
+    const [first, again] = reprintMutate.mock.calls.map(([args]) => args as { orderId: string; idempotencyKey: string });
+    expect(first.orderId).toBe("order-1");
+    expect(again.idempotencyKey).toBe(first.idempotencyKey);
+
+    // Yetu recorded the copy: the receipt now counts one reprint.
+    receiptRef.data = { ...RECEIPT, reprintCount: 1 };
+    view.rerender(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+    await userEvent.click(screen.getByTestId("reprint-receipt"));
+    expect(reprintMutate.mock.calls[2][0].idempotencyKey).not.toBe(first.idempotencyKey);
+  });
+
+  it("stays open, and keeps the till from locking, while a copy is with Yetu", async () => {
+    receiptRef.data = RECEIPT;
+    receiptRef.isLoading = false;
+    receiptRef.isError = false;
+    reprintState.isPending = true;
+    const onClose = vi.fn();
+    try {
+      render(<ReceiptView orderId="order-1" onClose={onClose} />);
+      expect(idleLockHeld()).toBe(true);
+      await userEvent.keyboard("{Escape}");
+      for (const close of screen.getAllByRole("button", { name: "Close" })) await userEvent.click(close);
+      expect(onClose).not.toHaveBeenCalled();
+    } finally {
+      reprintState.isPending = false;
+    }
   });
 
   it("surfaces receipt-unavailable rather than fabricating one", () => {
@@ -87,7 +139,7 @@ describe("ReceiptView", () => {
     receiptRef.isError = true;
     render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
 
-    expect(screen.getByTestId("receipt-error")).toBeInTheDocument();
+    expect(screen.getByTestId("receipt-error")).toHaveTextContent("The receipt couldn't be loaded. Check the connection, then try again.");
     expect(screen.getByTestId("reprint-receipt")).toBeDisabled();
   });
 });

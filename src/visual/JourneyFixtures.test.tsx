@@ -1,48 +1,60 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
-  LockedPinFixture,
+  AccessBannersFixture,
+  LockedPinPausedFixture,
   LockedRosterFixture,
-  NoShiftFixture,
+  LockedRosterSearchFixture,
+  PairingDeclinedFixture,
   PairingFixture,
   PairingWaitingFixture,
+  SetupProblemFixture,
   SplashFixture,
 } from "./JourneyFixtures";
 
 describe("JourneyFixtures", () => {
-  it("renders the branded startup composition", () => {
+  it("renders the opening screen", () => {
     render(<SplashFixture />);
-    expect(screen.getByTestId("splash-screen")).toBeInTheDocument();
+    expect(screen.getByTestId("splash-screen")).toHaveTextContent("Opening the till");
   });
 
-  it("renders the unpaired pairing composition", () => {
-    render(<PairingFixture />);
-    expect(screen.getByTestId("pairing-screen")).toBeInTheDocument();
-    expect(screen.getByText("Generate pairing code")).toBeInTheDocument();
+  it("renders the server setup after an address the till will not use", async () => {
+    render(<SetupProblemFixture />);
+    await waitFor(() => expect(screen.getByTestId("setup-error")).toHaveTextContent("The address must start with https://"));
   });
 
-  it("renders the waiting-for-approval pairing composition", () => {
+  it("renders connecting the till before and after a code", () => {
+    const { unmount } = render(<PairingFixture />);
+    expect(screen.getByRole("button", { name: "Get a code" })).toBeInTheDocument();
+    unmount();
     render(<PairingWaitingFixture />);
-    expect(screen.getByText("Waiting for connection…")).toBeInTheDocument();
-    expect(screen.getByText("Pairing code")).toBeInTheDocument();
-    expect(screen.getByText("7F3KQ-9ABCD")).toBeInTheDocument();
+    expect(screen.getByTestId("pairing-code")).toHaveTextContent("7F3KQ-9ABCD");
+    expect(screen.getByTestId("pairing-expiry")).toHaveTextContent(/This code works for \d:\d\d more/);
   });
 
-  it("renders the tap-to-select staff roster composition", () => {
-    render(<LockedRosterFixture />);
-    expect(screen.getByText("Who's using this terminal?")).toBeInTheDocument();
-    expect(screen.getAllByRole("button").length).toBeGreaterThanOrEqual(3);
+  it("renders the declined till", () => {
+    render(<PairingDeclinedFixture />);
+    expect(screen.getByTestId("pairing-error")).toHaveTextContent("A manager declined this till.");
   });
 
-  it("renders the PIN pad composition", () => {
-    render(<LockedPinFixture />);
-    expect(screen.getByText("Amina Hassan")).toBeInTheDocument();
-    expect(screen.getByText("Unlock")).toBeInTheDocument();
+  it("renders who's working, with a search for a large team", () => {
+    const { unmount } = render(<LockedRosterFixture />);
+    expect(screen.getByRole("heading", { name: "Who's working?" })).toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    unmount();
+    render(<LockedRosterSearchFixture />);
+    expect(screen.getByRole("searchbox", { name: "Find your name" })).toBeInTheDocument();
   });
 
-  it("renders the no-shift entry composition", () => {
-    render(<NoShiftFixture />);
-    expect(screen.getByTestId("open-shift-screen")).toBeInTheDocument();
-    expect(screen.getByText("No shift is open on this register")).toBeInTheDocument();
+  it("renders a paused PIN", () => {
+    render(<LockedPinPausedFixture />);
+    expect(screen.getByTestId("pin-error")).toHaveTextContent("Too many tries.");
   });
+
+  it("renders the update and key-storage notices above the screen", () => {
+    render(<AccessBannersFixture />);
+    expect(screen.getByTestId("updater-ready")).toBeInTheDocument();
+    expect(screen.getByTestId("key-storage-warning")).toBeInTheDocument();
+  });
+
 });

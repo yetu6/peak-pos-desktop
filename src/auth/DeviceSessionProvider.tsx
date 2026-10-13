@@ -22,6 +22,7 @@ import {
   isDeviceNetworkFailure,
   requestPairing,
   sendHeartbeat,
+  StaffLoginRateLimitedError,
   StaffLoginRejectedError,
   type RosterEntry,
 } from "../lib/deviceAuth";
@@ -96,6 +97,8 @@ export interface DeviceSessionValue {
   roster: RosterEntry[];
   refreshRoster: () => Promise<void>;
   offlineEligibility: OfflineEligibilityStatus | null;
+  /** After too many sign-in attempts (429): when Yetu allows the next one (ms since the epoch). */
+  signInHeldUntil: number | null;
 }
 
 const DeviceSessionContext = createContext<DeviceSessionValue | null>(null);
@@ -145,6 +148,7 @@ export function DeviceSessionProvider({
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [offlineEligibility, setOfflineEligibility] =
     useState<OfflineEligibilityStatus | null>(null);
+  const [signInHeldUntil, setSignInHeldUntil] = useState<number | null>(null);
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const identityRef = useRef(identity);
   const authorityRef = useRef<DeviceAuthority | null>(deviceAuthority ?? null);
@@ -609,6 +613,13 @@ export function DeviceSessionProvider({
           setError(humanDeviceError(err));
           return;
         }
+        if (err instanceof StaffLoginRateLimitedError) {
+          // Yetu limits attempts from this address: wait as long as it asked. Not a lost connection,
+          // so never the offline sign-in.
+          setSignInHeldUntil(Date.now() + err.retryAfterSeconds * 1000);
+          setError(humanDeviceError(err));
+          return;
+        }
         if (err instanceof StaffLoginRejectedError || err instanceof SessionExpiredError) {
           setError(err instanceof SessionExpiredError
             ? "Session expired — enter your PIN again"
@@ -680,6 +691,7 @@ export function DeviceSessionProvider({
       roster,
       refreshRoster,
       offlineEligibility,
+      signInHeldUntil,
     }),
     [
       phase,
@@ -696,6 +708,7 @@ export function DeviceSessionProvider({
       roster,
       refreshRoster,
       offlineEligibility,
+      signInHeldUntil,
     ],
   );
 

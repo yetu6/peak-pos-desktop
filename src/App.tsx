@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DeviceSessionProvider, useDeviceSession } from "./auth/DeviceSessionProvider";
+import { AccessFrame } from "./access/AccessLayout";
 import { IdleLockOverlay } from "./components/IdleLockOverlay";
-import { Icon } from "./components/Icon";
-import { BrandLockup } from "./components/BrandLockup";
-import { ConnectivityIndicator } from "./components/ConnectivityIndicator";
-import { ThemeToggle } from "./components/ThemeToggle";
+import { KeyStorageBanner } from "./components/KeyStorageBanner";
 import { UpdaterBanner } from "./components/UpdaterBanner";
 import { ActiveOrders } from "./pages/ActiveOrders";
 import { Kitchen } from "./pages/Kitchen";
@@ -20,18 +18,23 @@ import { Splash } from "./pages/Splash";
 import { Diagnostics } from "./pages/Diagnostics";
 import { RealtimeClient } from "./realtime/RealtimeClient";
 import { RealtimeProvider } from "./realtime/RealtimeProvider";
-import { useOutletId, usePosShift } from "./hooks/usePosData";
+import { usePosShift } from "./hooks/usePosData";
 import { REALTIME_BRIDGE_URL } from "./lib/env";
 import { createRealtimeSocket } from "./lib/peakSocket";
 import { getApiBaseUrl } from "./lib/peakConfig";
 import {
-  createRealtimeBackfill,
   createRealtimeCursorStorage,
+  noPosCatchUp,
 } from "./lib/realtimeBackfill";
-import { SessionExpiredError } from "./lib/operationalSession";
-import { staffLabel } from "./lib/staffLabel";
+import { personLabel } from "./lib/staffLabel";
 import { terminalRoute } from "./lib/terminalRoute";
-import { defaultWorkspacePage, workspaceNav, type WorkspacePage } from "./lib/workspace";
+import { applyModeDefaultTheme } from "./lib/theme";
+import { clockTime, shiftChipWords } from "./lib/words";
+import { defaultWorkspacePage, isDisplayMode, workspaceNav, type WorkspacePage } from "./lib/workspace";
+import { TillShell } from "./shell/TillShell";
+import { Banner } from "./components/system";
+import { OFFLINE_BANNER } from "./register/offlineWords";
+import { SyncChip, SyncProblemBanner, SyncSheet, useSyncCenter } from "./sync/SyncCenter";
 
 type Page = WorkspacePage;
 
@@ -41,183 +44,94 @@ function useClock(): string {
     const id = setInterval(() => setNow(new Date()), 15_000);
     return () => clearInterval(id);
   }, []);
-  return now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return clockTime(now);
+}
+
+/** Update, key-storage and offline notices. Inside the shell they sit under the top bar. */
+function ShellBanners({ offlineCash = false, sync = null }: { offlineCash?: boolean; sync?: ReactNode }) {
+  return (
+    <>
+      {sync}
+      {offlineCash ? (
+        <Banner tone="warning" data-testid="offline-banner">
+          {OFFLINE_BANNER}
+        </Banner>
+      ) : null}
+      <UpdaterBanner />
+      <KeyStorageBanner />
+    </>
+  );
 }
 
 function PosShell() {
-  const { session, switchStaff, identity } = useDeviceSession();
+  const { session, switchStaff, identity, roster } = useDeviceSession();
   const offlineCash = session?.mode === "offline-cash";
   const nav = workspaceNav(offlineCash ? "offline-cash" : identity?.mode);
   const [page, setPage] = useState<Page>(() =>
     defaultWorkspacePage(offlineCash ? "offline-cash" : identity?.mode),
   );
-  const outletId = useOutletId();
   const clock = useClock();
   const { shift } = usePosShift();
-  const staff = staffLabel(session?.staffId);
-  const kitchenOnly =
-    (identity?.mode ?? "").trim().toUpperCase().replace(/-/g, "_") === "KITCHEN_DISPLAY" ||
-    (identity?.mode ?? "").trim().toUpperCase().replace(/-/g, "_") === "BAR_DISPLAY";
+  const person = personLabel(session?.staffId, roster);
+  const sync = useSyncCenter();
 
   if (!nav.some((item) => item.page === page)) {
     setPage(nav[0]?.page ?? "orders");
   }
 
   return (
-    <div
-      className={`terminal-shell ${kitchenOnly ? "terminal-shell--kds" : ""}`}
-      data-testid="pos-register"
+    <TillShell
+      mode={identity?.mode}
+      offlineCash={offlineCash}
+      page={page}
+      onNavigate={setPage}
+      tillName={identity?.terminalName}
+      person={person}
+      shift={shiftChipWords(shift)}
+      clock={clock}
+      connection={<SyncChip sync={sync} />}
+      banners={<ShellBanners offlineCash={offlineCash} sync={<SyncProblemBanner sync={sync} />} />}
+      onSwitchPerson={() => switchStaff()}
+      onLock={() => switchStaff()}
+      workspaceVariant={page === "new" || page === "orders" || page === "kitchen" ? "full" : "padded"}
     >
-      {!kitchenOnly && (
-      <aside
-        className="terminal-nav"
-        data-testid="terminal-navigation"
-        aria-label="Terminal navigation"
-      >
-        <div className="terminal-brand">
-          <BrandLockup height={22} />
-          <span className="terminal-brand__name">POS</span>
-        </div>
-        <nav className="terminal-nav__items">
-          {nav.map((item) => (
-            <button
-              key={item.page}
-              data-testid={`nav-${item.page}`}
-              onClick={() => setPage(item.page)}
-              className="terminal-nav__action"
-              aria-current={page === item.page ? "page" : undefined}
-              aria-label={item.label}
-              title={item.label}
-            >
-              <Icon name={item.icon} size={20} />
-              <span className="terminal-nav__label">{item.label}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="terminal-staff">
-          <span className="terminal-staff__avatar">
-              {staff.initials}
-          </span>
-          <div className="terminal-staff__meta">
-            <div className="truncate text-xs font-semibold" data-testid="staff-name">
-              {staff.name}
-            </div>
-            <div className="truncate text-[11px] text-[var(--foreground-muted)]" data-testid="till-label">
-              {identity?.terminalName?.trim() ||
-                (outletId ? `outlet ${outletId.slice(0, 8)}` : "property till")}
-            </div>
-          </div>
-          <button
-            data-testid="switch-staff"
-            onClick={() => switchStaff()}
-            className="btn-tertiary ml-auto !h-11 !w-11 !p-0"
-            aria-label="Log out"
-            title="Log out"
-          >
-            <Icon name="logout" size={18} />
-          </button>
-        </div>
-      </aside>
+      {page === "orders" ? (
+        <ActiveOrders onNewOrder={() => setPage("new")} />
+      ) : page === "new" ? (
+        offlineCash ? <OfflineNewOrder /> : <NewOrder />
+      ) : page === "kitchen" ? (
+        <Kitchen />
+      ) : page === "manager" ? (
+        <Manager />
+      ) : (
+        <Diagnostics />
       )}
-
-      <div className="terminal-frame">
-        <header className="terminal-header px-4">
-          <span className="font-mono text-[13px] font-semibold tabular-nums text-[var(--foreground-muted)]">
-            {clock}
-          </span>
-          <span className="h-5 w-px bg-[var(--border)]" />
-          {!kitchenOnly && !offlineCash && (
-            <span className="badge badge-success badge-dot" data-testid="shell-business-date">
-              Business date {shift?.businessDate ?? "—"}
-            </span>
-          )}
-          {offlineCash && (
-            <span className="badge badge-warning badge-dot" data-testid="shell-offline-cash">
-              Offline cash · Sync Center in the header
-            </span>
-          )}
-          {kitchenOnly && (
-            <span className="badge badge-info badge-dot" data-testid="kds-mode-badge">
-              Kitchen display · {staff.name}
-            </span>
-          )}
-          <div className="min-w-0 flex-1" />
-          {!kitchenOnly && <ThemeToggle />}
-          <ConnectivityIndicator />
-          {kitchenOnly && (
-            <button
-              data-testid="switch-staff"
-              onClick={() => switchStaff()}
-              className="btn-tertiary btn-sm"
-              aria-label="Log out"
-            >
-              <Icon name="logout" size={16} />
-              Log out
-            </button>
-          )}
-        </header>
-
-        <main
-          className={`terminal-workspace ${page === "new" ? "terminal-workspace--order" : ""}`}
-          data-testid="terminal-workspace"
-        >
-          {page === "orders" ? (
-            <ActiveOrders onNewOrder={() => setPage("new")} />
-          ) : page === "new" ? (
-            offlineCash ? <OfflineNewOrder /> : <NewOrder />
-          ) : page === "kitchen" ? (
-            <Kitchen />
-          ) : page === "manager" ? (
-            <Manager />
-          ) : (
-            <Diagnostics />
-          )}
-        </main>
-      </div>
-    </div>
+      <SyncSheet sync={sync} />
+    </TillShell>
   );
 }
 
-function LiveRegister() {
-  const { switchStaff } = useDeviceSession();
+/**
+ * One realtime connection for each signed-in session: made when a person
+ * signs in, closed when the till locks. It sits above the shift check, so
+ * opening the shift (or the check answering) never reconnects.
+ */
+function RealtimeSession({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const client = useMemo(
     () =>
       new RealtimeClient({
         createSocket: () => createRealtimeSocket({ peakApiUrl: getApiBaseUrl(), bridgeUrl: REALTIME_BRIDGE_URL }),
-        backfillEvents: async (after) => {
-          try {
-            return await createRealtimeBackfill().fetchEvents(after);
-          } catch (error) {
-            if (error instanceof SessionExpiredError) {
-              switchStaff("Session expired — enter your PIN again");
-            }
-            throw error;
-          }
-        },
+        backfillEvents: noPosCatchUp,
         cursorStorage: createRealtimeCursorStorage(),
       }),
-    [switchStaff],
+    [],
   );
 
   return (
     <RealtimeProvider client={client} queryClient={queryClient}>
-      <PosShell />
+      {children}
     </RealtimeProvider>
-  );
-}
-
-function KeyStorageBanner() {
-  const { keyStorageWarning } = useDeviceSession();
-  if (!keyStorageWarning) return null;
-  return (
-    <div
-      className="fixed inset-x-0 top-0 z-50 bg-[#8B1E1E] px-4 py-2 text-center text-[12px] font-medium text-white"
-      data-testid="key-storage-warning"
-      role="alert"
-    >
-      {keyStorageWarning}
-    </div>
   );
 }
 
@@ -231,22 +145,31 @@ function KeyStorageBanner() {
  * conditionally within one component, honoring the Rules of Hooks.
  */
 function ReadyGate() {
-  const { session } = useDeviceSession();
+  const { session, identity } = useDeviceSession();
   const offlineCash = session?.mode === "offline-cash";
   const { shift, isLoading: shiftLoading } = usePosShift();
   // Offline cash resumes a lease-bound shift locally — never open a new one
-  // while Peak is unreachable (ONLINE REQUIRED for OpenShift).
+  // while Peak is unreachable (ONLINE REQUIRED for OpenShift). A kitchen or
+  // bar display takes no cash, so it needs no shift (owner, 2026-10-12; Yetu's
+  // station-ticket routes check no shift either).
   const route = terminalRoute(
     "ready",
     offlineCash || !shiftLoading,
     offlineCash || Boolean(shift),
+    { shiftRequired: !isDisplayMode(identity?.mode) },
   );
   return (
     <>
       <span className="sr-only" data-testid="shell-state">
         {route}
       </span>
-      {route === "NO_SHIFT" ? <OpenShiftScreen /> : <LiveRegister />}
+      {route === "NO_SHIFT" ? (
+        <AccessFrame banners={<ShellBanners />}>
+          <OpenShiftScreen />
+        </AccessFrame>
+      ) : (
+        <PosShell />
+      )}
     </>
   );
 }
@@ -256,7 +179,15 @@ function ReadyGate() {
  * enforced in `terminalRoute` / `shellStateOf` and their tests.
  */
 function AuthGate() {
-  const { phase } = useDeviceSession();
+  const { phase, identity, session } = useDeviceSession();
+  const mode = identity?.mode;
+
+  // A device nobody has chosen a theme for follows its paired mode's default
+  // (Light for tills, Dark for kitchen and bar displays). A choice made on the
+  // device always wins; nothing is stored here.
+  useEffect(() => {
+    applyModeDefaultTheme(mode);
+  }, [mode]);
 
   let screen: ReactNode;
   let route: string;
@@ -284,25 +215,29 @@ function AuthGate() {
     case "ready":
       // ReadyGate renders its own shell-state marker once it knows the
       // shift outcome — nothing to render here.
+      // Banners render inside the shell (under its top bar) from here on.
       return (
-        <>
-          <UpdaterBanner />
-          <KeyStorageBanner />
+        <RealtimeSession key={session?.token ?? "signed-in"}>
           <IdleLockOverlay />
           <ReadyGate />
-        </>
+        </RealtimeSession>
       );
   }
 
   return (
-    <>
-      <UpdaterBanner />
-      <KeyStorageBanner />
+    <AccessFrame
+      banners={
+        <>
+          <UpdaterBanner />
+          <KeyStorageBanner />
+        </>
+      }
+    >
       <span className="sr-only" data-testid="shell-state">
         {route}
       </span>
       {screen}
-    </>
+    </AccessFrame>
   );
 }
 
