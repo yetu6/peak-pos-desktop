@@ -107,6 +107,8 @@ export interface POSOrder {
    * shift opened at the outlet takes it.
    */
   waitingForShift?: boolean;
+  /** S10a: money given back on the order by refunds, 0 when none; absent from a Yetu before S10a. */
+  refundedMinor?: number;
   /** Optimistic concurrency token. Every mutation must echo the value the
    *  desktop last saw; a stale value is refused with STALE_VERSION. */
   version: number;

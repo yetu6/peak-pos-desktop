@@ -8,7 +8,7 @@ import { stationWords } from "../kitchen/kitchenWords";
 import { formatMoney, majorDigits } from "../lib/money";
 import type { POSOrder, POSOrderPayment, POSStationTicket } from "../lib/posContracts";
 import { otherWords, problemOf, stepRefusal, UNREACHABLE } from "../lib/problemWords";
-import { clockTime, orderPlaceWords, orderStatusWords, paymentMethodWords, ticketStepWords } from "../lib/words";
+import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, ticketStepWords, type Tone } from "../lib/words";
 import { orderReference } from "../lib/orderNumber";
 
 const AMOUNT_TYPED = /^\d+(\.\d*)?$/;
@@ -208,4 +208,14 @@ export function removeProblem(error: unknown): OrderProblem | null {
     return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then try again." };
   }
   return { kind: "other", words: otherWords(problem, "The item wasn't removed. Try again.") };
+}
+
+/**
+ * An order's state on a list, in words: Partly refunded or Refunded once
+ * money went back on it (Yetu's refundedMinor, S10a), else its status.
+ */
+export function orderStateWords(order: Pick<POSOrder, "status" | "totalMinor" | "refundedMinor">): { words: string; tone: Tone } {
+  const refunded = order.refundedMinor ?? 0;
+  if (refunded > 0) return { words: refunded >= order.totalMinor ? "Refunded" : "Partly refunded", tone: "danger" };
+  return { words: orderStatusWords(order.status), tone: orderStatusTone(order.status) };
 }

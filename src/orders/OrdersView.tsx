@@ -1,11 +1,11 @@
 import { orderStatusIcon } from "./orderStatusIcon";
-import { Plus, ReceiptText, SearchX } from "lucide-react";
+import { Plus, ReceiptText, SearchX, Undo2 } from "lucide-react";
 import type { KeyboardEvent } from "react";
 import { Banner, Button, EmptyState, Money, SearchField, Skeleton, StatusChip, Tabs } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSOrder } from "../lib/posContracts";
-import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, serviceTypeWords } from "../lib/words";
-import { orderMatches } from "./ordersWords";
+import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
+import { orderMatches, orderStateWords } from "./ordersWords";
 import { orderNumberWords } from "../lib/orderNumber";
 
 export type OrdersTab = "open" | "paid";
@@ -259,8 +259,14 @@ function OrderRow({
           Waiting for a shift
         </StatusChip>
       ) : (
-        <StatusChip tone={orderStatusTone(order.status)} icon={orderStatusIcon(order.status)} className="y-orow__status">
-          {orderStatusWords(order.status)}
+        // S10a: a paid order refunded says so (Partly refunded, Refunded), with money going back as its icon.
+        <StatusChip
+          tone={orderStateWords(order).tone}
+          icon={(order.refundedMinor ?? 0) > 0 ? <Undo2 aria-hidden="true" /> : orderStatusIcon(order.status)}
+          className="y-orow__status"
+          data-testid={`order-state-${order.id}`}
+        >
+          {orderStateWords(order).words}
         </StatusChip>
       )}
       <Money minor={order.totalMinor} currency={currency} size="lead" className="y-orow__total" />
