@@ -15,7 +15,7 @@ import { formatMoney } from "../lib/money";
 import type { POSOrder, POSOrderItem, POSReceipt } from "../lib/posContracts";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRequestKey } from "../lib/useRequestKey";
-import { orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
+import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, serviceTypeWords } from "../lib/words";
 import { REGISTER_KEYS } from "../register/TicketActions";
 import { orderTimeline, removeProblem, reprintProblem, sendProblem, type TimelineEntry } from "./ordersWords";
 import { orderName, orderReference } from "../lib/orderNumber";
@@ -44,12 +44,6 @@ export interface OrderDetailViewProps {
   onRemoveLine: (line: POSOrderItem) => void;
   onReprint: () => void;
   onClose: () => void;
-}
-
-function settledWords(method: string): string {
-  if (method === "SPLIT") return "Split payment";
-  if (method === "ROOM_CHARGE") return "Charged to the room";
-  return `Paid by ${paymentMethodWords(method as SettlementMethod)}`;
 }
 
 /**
@@ -89,8 +83,8 @@ export function OrderDetailView({
   const partPaid = order.paidMinor > 0;
   const sendable = open && lines.some((line) => line.status === "ADDED");
   const payable = owing && lines.length > 0 && order.remainingMinor > 0;
-  const doc = receipt?.document;
   const reference = orderReference(order);
+  const payments = order.payments ?? [];
 
   // Send (F8) and Pay (F9), as on Sell, while this sheet has the keys.
   const keys = useRef({ sendable, payable, canSend, canPay, busy, onSend, onPay });
@@ -308,27 +302,31 @@ export function OrderDetailView({
             <h3 id="detail-payment" className="y-detail__heading">
               Payment
             </h3>
-            {paid ? (
-              doc ? (
-                <>
-                  <p className="y-detail__line">
-                    {[settledWords(doc.tenderMethod), doc.operatorName ? `Payment taken by ${doc.operatorName}` : ""].filter(Boolean).join(" · ")}
-                  </p>
-                  {receipt && receipt.reprintCount > 0 ? (
-                    <p className="y-detail__line y-detail__muted">
-                      Printed again {receipt.reprintCount} {receipt.reprintCount === 1 ? "time" : "times"}
-                    </p>
-                  ) : null}
-                </>
-              ) : (
-                <p className="y-detail__line y-detail__muted">Getting the receipt…</p>
-              )
-            ) : (
+            {payments.length > 0 ? (
+              <ul className="y-detail__payments" data-testid="order-detail-payments">
+                {payments.map((payment) => (
+                  <li key={payment.id} className="y-detail__payment">
+                    <span className="y-detail__line">
+                      {paymentMethodWords(payment.paymentMethod)} · {formatMoney(payment.amountMinor, currency)}
+                    </span>
+                    <span className="y-detail__line y-detail__muted">
+                      {[`Taken by ${payment.recordedByName}`, clockTime(payment.createdAt)].filter(Boolean).join(" at ")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {partPaid && !paid ? (
               <p className="y-detail__line">
                 Paid {formatMoney(order.paidMinor, currency)} of {formatMoney(order.totalMinor, currency)} ·{" "}
                 {formatMoney(order.remainingMinor, currency)} still to pay
               </p>
-            )}
+            ) : null}
+            {paid && receipt && receipt.reprintCount > 0 ? (
+              <p className="y-detail__line y-detail__muted">
+                Printed again {receipt.reprintCount} {receipt.reprintCount === 1 ? "time" : "times"}
+              </p>
+            ) : null}
           </section>
         ) : null}
       </div>
@@ -469,7 +467,7 @@ export function OrderDetail({
       timeline={orderTimeline({
         order,
         tickets: (tickets.data ?? []).filter((ticket) => ticket.orderId === order.id && ticket.status !== "SERVED"),
-        receipt: receipt.data,
+        currency,
       })}
       receipt={receipt.data}
       canSend={canSend}

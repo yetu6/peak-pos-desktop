@@ -7,6 +7,7 @@ import { RealtimeProvider } from "../realtime/RealtimeProvider";
 import { ActiveOrders } from "./ActiveOrders";
 import { ORDERS_REFRESH_SECONDS } from "../orders/ordersSettings";
 import { idleLockHeld } from "../lib/idleLock";
+import { clockTime } from "../lib/words";
 import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
 import type { POSCatalog, POSOrder, POSReceipt, POSShift, POSStationTicket } from "../lib/posContracts";
 
@@ -215,7 +216,19 @@ const OPEN_ORDER: POSOrder = {
   items: [{ id: "item-1", productId: "p1", name: "Lunch", quantity: 1, unitPriceMinor: 100_000, taxMinor: 18_000, totalMinor: 118_000, status: "ADDED" }],
 };
 
-const PAID_ORDER: POSOrder = { ...OPEN_ORDER, id: "order-0", orderNumber: "1041", status: "CLOSED", paidMinor: 118_000, remainingMinor: 0, version: 5 };
+const PAID_AT = new Date(Date.now() - 5 * 60_000).toISOString();
+const PAID_ORDER: POSOrder = {
+  ...OPEN_ORDER,
+  id: "order-0",
+  orderNumber: "1041",
+  dailyNumber: 41,
+  status: "CLOSED",
+  paidMinor: 118_000,
+  remainingMinor: 0,
+  closedAt: PAID_AT,
+  payments: [{ id: "pay-0", paymentMethod: "CASH", amountMinor: 118_000, createdAt: PAID_AT, recordedByName: "Grace Mushi" }],
+  version: 5,
+};
 
 function receiptFor(order: POSOrder): POSReceipt {
   return {
@@ -508,7 +521,7 @@ describe("Orders", () => {
     await screen.findByText("No open orders");
     await userEvent.click(screen.getByRole("tab", { name: /Paid today/ }));
     const sheet = await openDetail("order-0");
-    expect(await within(sheet).findByTestId("order-detail-payment")).toHaveTextContent("Paid by Cash · Payment taken by Grace Mushi");
+    expect(await within(sheet).findByTestId("order-detail-payment")).toHaveTextContent(`Cash · TSh 1,180Taken by Grace Mushi at ${clockTime(PAID_AT)}`);
     const print = within(sheet).getByTestId("detail-reprint");
     await waitFor(() => expect(print).toBeEnabled());
     await userEvent.click(print);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { POSOrder, POSReceipt, POSStationTicket } from "../lib/posContracts";
+import type { POSOrder, POSOrderPayment, POSStationTicket } from "../lib/posContracts";
 import { clockTime } from "../lib/words";
 import { orderMatches, orderTimeline, removeProblem, reprintProblem, sendProblem } from "./ordersWords";
 
@@ -89,9 +89,10 @@ describe("orderMatches", () => {
 });
 
 describe("orderTimeline", () => {
-  const sentAt = new Date(Date.now() - 20 * 60_000).toISOString();
-  const settledAt = new Date(Date.now() - 2 * 60_000).toISOString();
-  const ticket = (station: POSStationTicket["station"], status: POSStationTicket["status"]): POSStationTicket => ({
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+  const startedAt = minutesAgo(25);
+  const sentAt = minutesAgo(20);
+  const ticket = (station: POSStationTicket["station"], status: POSStationTicket["status"], lastStepAt = sentAt): POSStationTicket => ({
     id: `t-${station}`,
     orderId: "order-1",
     orderNumber: "0142",
@@ -101,57 +102,89 @@ describe("orderTimeline", () => {
     serviceType: "DINE_IN",
     version: 1,
     createdAt: sentAt,
-    lastStepAt: sentAt,
+    lastStepAt,
     items: [],
   });
+  const paid = (paymentMethod: POSOrderPayment["paymentMethod"], amountMinor: number, createdAt: string): POSOrderPayment => ({
+    id: `pay-${createdAt}`,
+    paymentMethod,
+    amountMinor,
+    createdAt,
+    recordedByName: "Grace Mushi",
+  });
+  const timeline = (extra: Partial<POSOrder>, tickets: POSStationTicket[] = []) =>
+    orderTimeline({ order: order({ createdAt: startedAt, ...extra }), tickets, currency: "TZS" });
+  const STARTED = { time: clockTime(startedAt), words: "Started" };
 
-  it("says an open order hasn't gone to the kitchen", () => {
-    expect(orderTimeline({ order: order(), tickets: [] })).toEqual([{ time: null, words: "Not sent to the kitchen yet" }]);
+  it("starts with when the order was started, and says an open order hasn't gone to the kitchen", () => {
+    expect(timeline({})).toEqual([STARTED, { time: null, words: "Not sent to the kitchen yet" }]);
   });
 
-  it("gives the time it was sent, then where each station is now (Yetu keeps no time for the steps)", () => {
-    expect(
-      orderTimeline({ order: order({ status: "PREPARING" }), tickets: [ticket("GRILL", "PREPARING"), ticket("BAR", "READY")] }),
-    ).toEqual([
+  it("gives when it was sent, then when each station moved to its step", () => {
+    expect(timeline({ status: "PREPARING" }, [ticket("GRILL", "PREPARING", minutesAgo(15)), ticket("BAR", "READY", minutesAgo(12))])).toEqual([
+      STARTED,
       { time: clockTime(sentAt), words: "Sent to the kitchen" },
-      { time: null, words: "Now: Grill preparing" },
-      { time: null, words: "Now: Bar ready" },
+      { time: clockTime(minutesAgo(15)), words: "Grill: preparing" },
+      { time: clockTime(minutesAgo(12)), words: "Bar: ready" },
     ]);
   });
 
-  it("doesn't say an order just sent is sent twice", () => {
-    expect(orderTimeline({ order: order({ status: "SENT" }), tickets: [] })).toEqual([
-      { time: null, words: "Sent to the kitchen (time not known)" },
-    ]);
+  it("a station not yet started has no step of its own to tell", () => {
+    expect(timeline({ status: "SENT" }, [ticket("GRILL", "SENT")])).toEqual([STARTED, { time: clockTime(sentAt), words: "Sent to the kitchen" }]);
   });
 
   it("says the time sent isn't known when Yetu no longer lists its tickets", () => {
-    expect(orderTimeline({ order: order({ status: "SERVED" }), tickets: [] })).toEqual([
+    expect(timeline({ status: "SENT" })).toEqual([STARTED, { time: null, words: "Sent to the kitchen (time not known)" }]);
+    expect(timeline({ status: "SERVED" })).toEqual([
+      STARTED,
       { time: null, words: "Sent to the kitchen (time not known)" },
       { time: null, words: "Now: Served" },
     ]);
   });
 
-  it("trusts the order's own step when its stations weren't moved with it (a selling till moved the whole order)", () => {
-    expect(orderTimeline({ order: order({ status: "SERVED" }), tickets: [ticket("GENERAL", "SENT")] })).toEqual([
+  it("trusts the order's own step when its stations weren't moved with it", () => {
+    expect(timeline({ status: "SERVED" }, [ticket("GENERAL", "SENT")])).toEqual([
+      STARTED,
       { time: clockTime(sentAt), words: "Sent to the kitchen" },
       { time: null, words: "Now: Served" },
     ]);
   });
 
-  it("ends a paid order with when and how it was paid, from its receipt", () => {
-    const receipt = { document: { settledAt, tenderMethod: "SPLIT" } } as unknown as POSReceipt;
-    expect(orderTimeline({ order: order({ status: "CLOSED" }), tickets: [], receipt })).toEqual([
-      { time: clockTime(settledAt), words: "Paid: split payment" },
-    ]);
-    const room = { document: { settledAt, tenderMethod: "ROOM_CHARGE" } } as unknown as POSReceipt;
-    expect(orderTimeline({ order: order({ status: "CLOSED" }), tickets: [], receipt: room })).toEqual([
-      { time: clockTime(settledAt), words: "Charged to the room" },
+  it("tells each payment when it was taken, in time order with the kitchen's steps", () => {
+    expect(
+      timeline({ status: "PREPARING", paidMinor: 1_000_000, payments: [paid("CASH", 1_000_000, minutesAgo(18))] }, [
+        ticket("GRILL", "PREPARING", minutesAgo(15)),
+      ]),
+    ).toEqual([
+      STARTED,
+      { time: clockTime(sentAt), words: "Sent to the kitchen" },
+      { time: clockTime(minutesAgo(18)), words: "Paid TSh 10,000 · Cash" },
+      { time: clockTime(minutesAgo(15)), words: "Grill: preparing" },
     ]);
   });
 
-  it("says a paid order is paid while its receipt is still loading", () => {
-    expect(orderTimeline({ order: order({ status: "CLOSED" }), tickets: [] })).toEqual([{ time: null, words: "Paid" }]);
+  it("a paid order: each payment, a split's too, and a room charge", () => {
+    expect(
+      timeline({ status: "CLOSED", payments: [paid("MOBILE_MONEY", 2_000_000, minutesAgo(5)), paid("CASH", 2_779_000, minutesAgo(4))] }),
+    ).toEqual([
+      STARTED,
+      { time: clockTime(minutesAgo(5)), words: "Paid TSh 20,000 · Mobile money" },
+      { time: clockTime(minutesAgo(4)), words: "Paid TSh 27,790 · Cash" },
+    ]);
+    expect(timeline({ status: "CLOSED", payments: [paid("ROOM_CHARGE", 4_779_000, minutesAgo(3))] })).toEqual([
+      STARTED,
+      { time: clockTime(minutesAgo(3)), words: "Charged to the room · TSh 47,790" },
+    ]);
+  });
+
+  it("a voided order says when it was voided", () => {
+    expect(timeline({ status: "VOIDED", closedAt: minutesAgo(2) })).toEqual([STARTED, { time: clockTime(minutesAgo(2)), words: "Voided" }]);
+  });
+
+  it("leaves out a time Yetu didn't give, rather than guess", () => {
+    expect(orderTimeline({ order: order({ createdAt: "" }), tickets: [], currency: "TZS" })).toEqual([
+      { time: null, words: "Not sent to the kitchen yet" },
+    ]);
   });
 });
 

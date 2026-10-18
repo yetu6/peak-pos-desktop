@@ -5,10 +5,10 @@
  * receipts.go ReprintReceipt).
  */
 import { stationWords } from "../kitchen/kitchenWords";
-import { majorDigits } from "../lib/money";
-import type { POSOrder, POSReceipt, POSStationTicket } from "../lib/posContracts";
+import { formatMoney, majorDigits } from "../lib/money";
+import type { POSOrder, POSOrderPayment, POSStationTicket } from "../lib/posContracts";
 import { otherWords, problemOf, stepRefusal, UNREACHABLE } from "../lib/problemWords";
-import { clockTime, orderPlaceWords, orderStatusWords, paymentMethodWords, ticketStepWords, type SettlementMethod } from "../lib/words";
+import { clockTime, orderPlaceWords, orderStatusWords, paymentMethodWords, ticketStepWords } from "../lib/words";
 import { orderReference } from "../lib/orderNumber";
 
 const AMOUNT_TYPED = /^\d+(\.\d*)?$/;
@@ -47,52 +47,72 @@ export interface TimelineEntry {
   words: string;
 }
 
-function paidWords(method: string): string {
-  if (method === "ROOM_CHARGE") return "Charged to the room";
-  if (method === "SPLIT") return "Paid: split payment";
-  return `Paid: ${paymentMethodWords(method as SettlementMethod).toLowerCase()}`;
+/** A clock time for one of Yetu's times, or null when it gave none that can be read. */
+function timeOf(at: string | null | undefined): string | null {
+  return at && Number.isFinite(Date.parse(at)) ? clockTime(at) || null : null;
+}
+
+function paymentWords(payment: POSOrderPayment, currency: string | undefined): string {
+  const amount = formatMoney(payment.amountMinor, currency);
+  if (payment.paymentMethod === "ROOM_CHARGE") return `Charged to the room · ${amount}`;
+  return `Paid ${amount} · ${paymentMethodWords(payment.paymentMethod)}`;
 }
 
 /**
- * What happened to an order, from the times Yetu keeps: sent (its earliest
- * station ticket), where each station is now, and paid (its receipt). Yetu
- * keeps no time for when an order was started or for each kitchen step.
+ * What happened to an order, in time order, from the times Yetu keeps
+ * (S5b): when it was started, when it was sent (its earliest station
+ * ticket), when each station moved to the step it is at, each payment, and
+ * when it was voided. What Yetu keeps no time for (not sent yet, a sent time
+ * whose tickets have left Yetu's list, the order's own step) comes after.
  */
 export function orderTimeline({
   order,
   tickets,
-  receipt,
+  currency,
 }: {
   order: POSOrder;
   /** This order's station tickets still in the kitchen. */
   tickets: readonly POSStationTicket[];
-  receipt?: POSReceipt;
+  currency: string | undefined;
 }): TimelineEntry[] {
-  if (order.status === "OPEN") return [{ time: null, words: "Not sent to the kitchen yet" }];
-  if (order.status === "VOIDED") return [{ time: null, words: orderStatusWords("VOIDED") }];
-  if (order.status === "CLOSED") {
-    const doc = receipt?.document;
-    return doc ? [{ time: clockTime(doc.settledAt) || null, words: paidWords(doc.tenderMethod) }] : [{ time: null, words: "Paid" }];
-  }
+  const timed: Array<{ at: number; entry: TimelineEntry }> = [];
+  const untimed: TimelineEntry[] = [];
+  const add = (at: string | null | undefined, words: string) => {
+    const time = timeOf(at);
+    if (time !== null && at) timed.push({ at: Date.parse(at), entry: { time, words } });
+  };
+
+  add(order.createdAt, "Started");
+  const inKitchen = order.status !== "OPEN" && order.status !== "CLOSED" && order.status !== "VOIDED";
+  if (order.status === "OPEN") untimed.push({ time: null, words: "Not sent to the kitchen yet" });
   const sent = tickets
     .map((ticket) => ticket.createdAt)
-    .filter((at) => Number.isFinite(Date.parse(at)))
+    .filter((at) => timeOf(at) !== null)
     .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
-  const entries: TimelineEntry[] = [
-    sent ? { time: clockTime(sent), words: "Sent to the kitchen" } : { time: null, words: "Sent to the kitchen (time not known)" },
-  ];
-  // Yetu puts an order at its slowest station's step when a display moves a
-  // station; a selling till moves the whole order and leaves its stations as
-  // they were. The stations are told only while they agree with the order.
-  const slowest = Math.min(...tickets.map((ticket) => STEP_RANK[ticket.status]));
-  if (tickets.length > 0 && slowest === STEP_RANK[order.status as POSStationTicket["status"]]) {
-    for (const ticket of tickets) {
-      entries.push({ time: null, words: `Now: ${stationWords(ticket.station)} ${ticketStepWords(ticket.status).toLowerCase()}` });
+  if (sent) add(sent, "Sent to the kitchen");
+  else if (inKitchen) untimed.push({ time: null, words: "Sent to the kitchen (time not known)" });
+
+  if (inKitchen) {
+    // Yetu puts an order at its slowest station's step and moves the stations with a whole-order step (S5b).
+    // Where they still disagree, the order's own step is told, with no time.
+    const slowest = Math.min(...tickets.map((ticket) => STEP_RANK[ticket.status]));
+    if (tickets.length > 0 && slowest === STEP_RANK[order.status as POSStationTicket["status"]]) {
+      for (const ticket of tickets) {
+        if (ticket.status !== "SENT") add(ticket.lastStepAt, `${stationWords(ticket.station)}: ${ticketStepWords(ticket.status).toLowerCase()}`);
+      }
+    } else if (order.status !== "SENT") {
+      untimed.push({ time: null, words: `Now: ${orderStatusWords(order.status)}` });
     }
-  } else if (order.status !== "SENT") {
-    entries.push({ time: null, words: `Now: ${orderStatusWords(order.status)}` });
   }
-  return entries;
+
+  for (const payment of order.payments ?? []) add(payment.createdAt, paymentWords(payment, currency));
+  if (order.status === "VOIDED") {
+    if (timeOf(order.closedAt) !== null) add(order.closedAt, orderStatusWords("VOIDED"));
+    else untimed.push({ time: null, words: orderStatusWords("VOIDED") });
+  }
+
+  // Array sort is stable: what happened at the same minute keeps the order above.
+  return [...timed.sort((a, b) => a.at - b.at).map(({ entry }) => entry), ...untimed];
 }
 
 export interface OrderProblem {

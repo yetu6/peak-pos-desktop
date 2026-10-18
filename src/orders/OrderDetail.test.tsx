@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { POSOrder, POSOrderItem, POSReceipt } from "../lib/posContracts";
+import type { POSOrder, POSOrderPayment, POSOrderItem, POSReceipt } from "../lib/posContracts";
 import { OrderDetailView, type OrderDetailViewProps } from "./OrderDetail";
 
 function line(id: string, name: string, status: POSOrderItem["status"], options: string[] = []): POSOrderItem {
@@ -121,18 +121,36 @@ describe("OrderDetailView", () => {
     expect(within(footer()).getByRole("button", { name: "Void order" })).toBeEnabled();
   });
 
+  const at = (hour: number, minute: number) => new Date(2026, 9, 12, hour, minute).toISOString();
+  const payment = (paymentMethod: POSOrderPayment["paymentMethod"], amountMinor: number, createdAt: string, recordedByName: string) => ({
+    id: `pay-${createdAt}`,
+    paymentMethod,
+    amountMinor,
+    createdAt,
+    recordedByName,
+  });
+
   it("a part-paid order: what is paid and still to pay, and Void closed with the reason", () => {
-    renderDetail({ order: order({ status: "SENT", paidMinor: 1_000_000, remainingMinor: 534_000 }) });
+    renderDetail({
+      order: order({ status: "SENT", paidMinor: 1_000_000, remainingMinor: 534_000, payments: [payment("CASH", 1_000_000, at(14, 5), "Amina Hassan")] }),
+    });
     expect(screen.getByTestId("order-detail-payment")).toHaveTextContent("Paid TSh 10,000 of TSh 15,340");
+    // Each payment, with who took it and when (S5b).
+    expect(screen.getByTestId("order-detail-payments")).toHaveTextContent("Cash · TSh 10,000Taken by Amina Hassan at 14:05");
     expect(within(footer()).getByRole("button", { name: /Pay TSh 5,340/ })).toBeEnabled();
     const voidButton = within(footer()).getByRole("button", { name: "Void order" });
     expect(voidButton).toBeDisabled();
     expect(voidButton).toHaveAccessibleDescription("An order can't be voided once part of it is paid.");
   });
 
-  it("a paid order: how it was paid and who took the payment, and Print receipt", async () => {
-    const handlers = renderDetail({ order: order({ status: "CLOSED", paidMinor: 1_534_000, remainingMinor: 0 }), receipt: RECEIPT });
-    expect(screen.getByTestId("order-detail-payment")).toHaveTextContent("Paid by Cash · Payment taken by Grace Mushi");
+  it("a paid order: each payment, who took it and when, from the order itself; and Print receipt", async () => {
+    const split = [payment("MOBILE_MONEY", 1_000_000, at(14, 20), "Amina Hassan"), payment("CASH", 534_000, at(14, 23), "Grace Mushi")];
+    const handlers = renderDetail({ order: order({ status: "CLOSED", paidMinor: 1_534_000, remainingMinor: 0, payments: split }), receipt: RECEIPT });
+    const payments = within(screen.getByTestId("order-detail-payments")).getAllByRole("listitem");
+    expect(payments.map((item) => item.textContent)).toEqual([
+      "Mobile money · TSh 10,000Taken by Amina Hassan at 14:20",
+      "Cash · TSh 5,340Taken by Grace Mushi at 14:23",
+    ]);
     expect(screen.getByTestId("order-detail-payment")).toHaveTextContent("Printed again 2 times");
     expect(within(footer()).queryByRole("button", { name: /Pay/ })).toBeNull();
     expect(within(footer()).queryByRole("button", { name: "Void order" })).toBeNull();
@@ -140,6 +158,12 @@ describe("OrderDetailView", () => {
     expect(print).toHaveClass("y-button--primary");
     await userEvent.click(print);
     expect(handlers.onReprint).toHaveBeenCalled();
+  });
+
+  it("a paid order says how it was paid before its receipt has come", () => {
+    renderDetail({ order: order({ status: "CLOSED", paidMinor: 1_534_000, remainingMinor: 0, payments: [payment("CASH", 1_534_000, at(14, 23), "Grace Mushi")] }) });
+    expect(screen.getByTestId("order-detail-payments")).toHaveTextContent("Cash · TSh 15,340Taken by Grace Mushi at 14:23");
+    expect(screen.getByTestId("order-detail-payment")).not.toHaveTextContent("Getting the receipt");
   });
 
   it("shows the order's note for the kitchen", () => {
