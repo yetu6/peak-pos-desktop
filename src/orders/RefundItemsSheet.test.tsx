@@ -422,45 +422,39 @@ describe("Refund items: a supervisor approves", () => {
     expect(recordMutate.mock.calls[1][0]).toEqual(recordMutate.mock.calls[0][0]);
   });
 
-  it("Check the order finds the refund Yetu gave without answering, and finishes it", async () => {
-    nextOutcomes({ error: new TypeError("Failed to fetch") });
-    const onRefunded = vi.fn();
-    render(<RefundItemsSheet order={ORDER} currency="TZS" onClose={vi.fn()} onRefunded={onRefunded} />);
-    await chooseChipsAndReason();
-    await approveAsGrace();
-    await userEvent.click(screen.getByTestId("refund-give"));
-    // Yetu did give it: it is on the order now.
-    const recorded = given({ id: "refund-lost", lines: [{ id: "rl", orderItemId: "oi-chips", name: "Chips", quantity: 1, grossMinor: 500_000, discountMinor: 0, netMinor: 500_000, taxMinor: 90_000, totalMinor: 590_000 }] });
-    state.refunds = refunds({ refundedMinor: 590_000, refunds: [recorded] });
-    await userEvent.click(screen.getByTestId("refund-check"));
-    await waitFor(() => expect(screen.getByTestId("refund-done-view")).toHaveTextContent("Refunded TSh 5,900"));
-    expect(onRefunded).toHaveBeenCalledWith(expect.objectContaining({ id: "refund-lost" }));
-    expect(recordMutate).toHaveBeenCalledTimes(1);
-    expect(printJobs).toHaveBeenCalledWith("property-1", "refund-lost");
-  });
-
-  it("Check the order says when Yetu has no such refund, and the next try is a new request", async () => {
-    // An earlier refund of the same item, approved by the same supervisor, isn't this one.
-    const earlier = given({ id: "refund-before", lines: [{ id: "rl0", orderItemId: "oi-chips", name: "Chips", quantity: 1, grossMinor: 500_000, discountMinor: 0, netMinor: 500_000, taxMinor: 90_000, totalMinor: 590_000 }] });
-    state.refunds = refunds({
-      refundedMinor: 590_000,
-      refunds: [earlier],
-      lines: [
-        { orderItemId: "oi-chips", name: "Chips", quantity: 2, refundedQuantity: 1, remainingQuantity: 1 },
-        { orderItemId: "oi-soda", name: "Soda", quantity: 1, refundedQuantity: 0, remainingQuantity: 1 },
-      ],
-    });
+  it("Try again sends the refund exactly as it was sent, even after Yetu's figures changed meanwhile", async () => {
     nextOutcomes({ error: new TypeError("Failed to fetch") });
     render(<RefundItemsSheet order={ORDER} currency="TZS" onClose={vi.fn()} />);
     await chooseChipsAndReason();
     await approveAsGrace();
     await userEvent.click(screen.getByTestId("refund-give"));
-    await userEvent.click(screen.getByTestId("refund-check"));
-    expect(await screen.findByTestId("refund-not-given")).toHaveTextContent("nothing was given");
-    expect(screen.getByTestId("refund-give")).toBeDisabled();
-    for (const digit of "123456") await userEvent.click(screen.getByTestId(`refund-pin-key-${digit}`));
+    // The lost refund did go through: what is left, and so Yetu's figures for the items, change under the sheet.
+    state.refunds = refunds({
+      refundedMinor: 590_000,
+      lines: [
+        { orderItemId: "oi-chips", name: "Chips", quantity: 2, refundedQuantity: 1, remainingQuantity: 1 },
+        { orderItemId: "oi-soda", name: "Soda", quantity: 1, refundedQuantity: 0, remainingQuantity: 1 },
+      ],
+    });
+    PRICE["oi-chips"] = 590_001;
+    try {
+      act(() => state.redraw());
+      await userEvent.click(screen.getByTestId("refund-retry"));
+      expect(recordMutate.mock.calls[1][0]).toEqual(recordMutate.mock.calls[0][0]);
+    } finally {
+      PRICE["oi-chips"] = 590_000;
+    }
+  });
+
+  it("can be closed while unsure: the order then shows what Yetu has", async () => {
+    nextOutcomes({ error: new TypeError("Failed to fetch") });
+    const onClose = vi.fn();
+    render(<RefundItemsSheet order={ORDER} currency="TZS" onClose={onClose} />);
+    await chooseChipsAndReason();
+    await approveAsGrace();
     await userEvent.click(screen.getByTestId("refund-give"));
-    expect(recordMutate.mock.calls[1][0].idempotencyKey).not.toBe(recordMutate.mock.calls[0][0].idempotencyKey);
+    await userEvent.click(screen.getByTestId("refund-close"));
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("when the order changed meanwhile, goes back to the items, asks Yetu again, and keeps to what is left", async () => {

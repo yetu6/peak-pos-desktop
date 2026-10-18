@@ -61,7 +61,8 @@ describe("refund refusals in words", () => {
     ]) {
       expect(refundProblem(lost)).toEqual({
         kind: "unsure",
-        words: "Yetu's answer was lost, so this till can't tell whether the refund was given. Try again, or check the order: Yetu gives a refund only once.",
+        words:
+          "Yetu's answer was lost, so this till can't tell whether the refund was given. Try again: Yetu gives a refund only once. If you close this, the order shows what Yetu has.",
       });
     }
   });

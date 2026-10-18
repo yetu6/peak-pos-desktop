@@ -10,9 +10,9 @@ import type {
   POSOrder,
   POSOrderRefunds,
   POSRefund,
-  POSRefundLine,
   POSRefundLineRequest,
   POSRefundQuote,
+  POSRefundRequest,
   POSRefundTenderRequest,
 } from "../lib/posContracts";
 import type { PrintResult } from "../lib/kitchenTicketPrint";
@@ -49,14 +49,6 @@ function itemsWords(lines: readonly POSRefundLineRequest[], refunds: POSOrderRef
   return lines
     .map((line) => `${line.quantity} × ${refunds.lines.find((item) => item.orderItemId === line.orderItemId)?.name ?? "item"}`)
     .join(", ");
-}
-
-/** The refund Yetu has that this till sent: new since it was sent, by that supervisor, for those items. */
-function sameLines(given: readonly POSRefundLine[], sent: readonly POSRefundLineRequest[]): boolean {
-  return (
-    given.length === sent.length &&
-    sent.every((line) => given.some((item) => item.orderItemId === line.orderItemId && item.quantity === line.quantity))
-  );
 }
 
 function majorText(minor: number): string {
@@ -100,9 +92,9 @@ export function RefundItemsSheet({
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const [done, setDone] = useState<{ refund: POSRefund; print: PrintState } | null>(null);
-  // What the last refund sent asked for, to find it at Yetu after a lost answer.
-  const sent = useRef<{ knownIds: ReadonlySet<string>; supervisorId: string; lines: POSRefundLineRequest[] } | null>(null);
-  const [notGiven, setNotGiven] = useState(false);
+  // The refund as it was sent, body and key, frozen until Yetu answers it: after a lost answer Try again
+  // sends exactly this, never one rebuilt from figures that may have changed meanwhile.
+  const sent = useRef<{ body: POSRefundRequest; idempotencyKey: string } | null>(null);
 
   const data = refunds.data;
   const whole = data?.wholeOrderOnly ?? false;
@@ -151,6 +143,7 @@ export function RefundItemsSheet({
 
   const readyToAsk = stage === "build" && lines.length > 0 && reason.length > 0 && quote !== undefined && tenders.length > 0 && !quoting && !quoteProblem;
   const readyToGive = stage === "approve" && supervisorId !== null && pin.length === PIN_LENGTH && !record.isPending && !waiting;
+  const readyToRetry = unsure && sent.current !== null && !record.isPending && !waiting;
 
   function choose(orderItemId: string, quantity: number) {
     setChosen((current) => ({ ...current, [orderItemId]: quantity }));
@@ -190,7 +183,7 @@ export function RefundItemsSheet({
   /** Yetu has the refund: what it gave, what to do with the money, and the slip. */
   function finish(refund: POSRefund) {
     setPin("");
-    setNotGiven(false);
+    sent.current = null;
     setDone({ refund, print: { kind: "printing" } });
     setStage("done");
     onRefunded?.(refund);
@@ -200,42 +193,31 @@ export function RefundItemsSheet({
     );
   }
 
-  /** After a lost answer: did Yetu give the refund? If so it is done; if not, the next press is a new one. */
-  async function checkOrder() {
-    const latest = (await refunds.refetch()).data;
-    const asked = sent.current;
-    if (!latest || !asked) return;
-    const given = latest.refunds.find(
-      (refund) => !asked.knownIds.has(refund.id) && refund.authorizedById === asked.supervisorId && sameLines(refund.lines, asked.lines),
-    );
-    if (given) {
-      record.reset();
-      finish(given);
-      return;
-    }
-    record.reset();
-    requestKey.forget();
-    setPin("");
-    setNotGiven(true);
-  }
-
   function give() {
     if (!readyToGive || supervisorId === null) return;
-    const body = { reason, lines, tenders, supervisorStaffId: supervisorId, supervisorPin: pin };
-    // The same refund asked again after a lost answer goes under the same key, so Yetu gives it once.
-    const idempotencyKey = requestKey.keyFor(JSON.stringify({ reason, lines, tenders, supervisorId }));
-    setNotGiven(false);
-    sent.current = { knownIds: new Set((data?.refunds ?? []).map((refund) => refund.id)), supervisorId, lines };
+    const body: POSRefundRequest = { reason, lines, tenders, supervisorStaffId: supervisorId, supervisorPin: pin };
+    sent.current = { body, idempotencyKey: requestKey.keyFor(JSON.stringify({ reason, lines, tenders, supervisorId })) };
+    send();
+  }
+
+  /**
+   * Sends the frozen refund. After a lost answer this is Try again: the same body under the same key, so
+   * Yetu gives the refund once -- replaying its first answer if it already gave it.
+   */
+  function send() {
+    const request = sent.current;
+    if (!request) return;
     record.mutate(
-      { orderId: order.id, body, idempotencyKey },
+      { orderId: order.id, body: request.body, idempotencyKey: request.idempotencyKey },
       {
         onSuccess: finish,
         onError: (error) => {
           const refused = refundProblem(error);
-          // A lost answer keeps the request as it was, PIN and key, for Try again or Check the order.
+          // A lost answer keeps the request frozen, body and key, for Try again.
           if (refused?.kind === "unsure") return;
           // A refused PIN counts toward the supervisor's lockout: never send it again.
           requestKey.forget();
+          sent.current = null;
           setPin("");
           if (refused && CHANGED.has(refused.kind)) {
             // The order or drawer isn't as shown: what is left and Yetu's figures are asked for again.
@@ -268,10 +250,10 @@ export function RefundItemsSheet({
       </div>
     ) : stage === "approve" && unsure ? (
       <div className="y-options__footer">
-        <Button variant="secondary" size={56} data-testid="refund-check" disabled={record.isPending || refunds.isFetching} onClick={() => void checkOrder()}>
-          {refunds.isFetching ? "Checking…" : "Check the order"}
+        <Button variant="quiet" data-testid="refund-close" disabled={record.isPending} onClick={onClose}>
+          Close
         </Button>
-        <Button variant="danger" size={64} icon={<Undo2 />} data-testid="refund-retry" disabled={record.isPending} onClick={give}>
+        <Button variant="danger" size={64} icon={<Undo2 />} data-testid="refund-retry" disabled={!readyToRetry} onClick={send}>
           {record.isPending ? "Trying again…" : "Try again"}
         </Button>
       </div>
@@ -343,11 +325,6 @@ export function RefundItemsSheet({
             keyTestIdPrefix="refund-pin-key"
           />
           {problem ? <RefusalNotice refusal={problem} data-testid="refund-error" /> : null}
-          {notGiven ? (
-            <Banner inline tone="info" data-testid="refund-not-given">
-              Yetu has no record of this refund, so nothing was given. Ask a supervisor to approve it again.
-            </Banner>
-          ) : null}
         </div>
       ) : (
         <div className="y-refund">

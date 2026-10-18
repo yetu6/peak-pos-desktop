@@ -19,7 +19,7 @@ export interface RefundProblem {
   /**
    * `unsure`: the refund's answer was lost on the way (no connection, a proxy
    * page, Yetu busy), so it may have been given: the same request goes again
-   * under its key, or the order is checked. Never "not given".
+   * under its key (Yetu replays its first answer). Never "not given".
    */
   kind:
     | "unsure"
@@ -44,7 +44,7 @@ export type RefundAsk = "quote" | "record";
 const CONTRACT_TEXT = /schema|#\/components|request body|parameter "|doesn't match|does not match/i;
 
 const UNSURE_WORDS =
-  "Yetu's answer was lost, so this till can't tell whether the refund was given. Try again, or check the order: Yetu gives a refund only once.";
+  "Yetu's answer was lost, so this till can't tell whether the refund was given. Try again: Yetu gives a refund only once. If you close this, the order shows what Yetu has.";
 
 /** The refund codes whose detail Yetu writes for the till, and the till's words when it sends none. */
 const REFUND_CODES: Record<string, { kind: RefundProblem["kind"]; words: string }> = {
