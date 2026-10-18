@@ -8,20 +8,21 @@ import {
   type PrintResult,
 } from "./kitchenTicketPrint";
 import { formatReceipt, receiptCopyFromPrintDocument } from "./receiptPrint";
+import { formatRefundReceipt, refundReceiptCopyFromPrintDocument } from "./refundReceiptPrint";
 import type { POSPrintJob, PrintJobStatus } from "./posContracts";
 
 /**
- * Peak's only two certified `pos_print_jobs.job_type` values (schema 86,
- * `internal/pos/operations.go` and `internal/pos/receipts.go`): a kitchen
- * ticket enqueued at `sendOrder`, and a receipt enqueued at settlement (and
- * again, chained, at `/receipt/reprint`). There is no `void_ticket` or
- * `shift_report` job type anywhere in the backend — those were invented UI
- * that could never receive a real job and have been removed. A kitchen
- * ticket itself has no reprint endpoint in the certified V1 contract; only
- * a settled order's receipt can be reprinted (`useReprintReceipt`).
+ * The `pos_print_jobs.job_type` values Yetu writes: a kitchen ticket at
+ * `sendOrder` (`internal/pos/operations.go`), a receipt at settlement and
+ * again, chained, at `/receipt/reprint` (`internal/pos/receipts.go`), and a
+ * refund receipt when money is given back (`internal/pos/refunds.go`, S7).
+ * There is no `void_ticket` or `shift_report` job type anywhere in the
+ * backend. A kitchen ticket has no reprint endpoint; only a settled order's
+ * receipt can be reprinted (`useReprintReceipt`).
  */
 const KITCHEN_TICKET = "KITCHEN_TICKET";
 const RECEIPT = "RECEIPT";
+const REFUND_RECEIPT = "REFUND_RECEIPT";
 
 function tryDevIdentity(): DevIdentity | null {
   try {
@@ -116,6 +117,9 @@ export function ticketCopyFromPrintDocument(document: Record<string, unknown>): 
 export function formatPrintDocument(job: POSPrintJob): { title: string; text: string } {
   if (job.jobType === RECEIPT) {
     return { title: "yetu-invoice", text: formatReceipt(receiptCopyFromPrintDocument(job.document)) };
+  }
+  if (job.jobType === REFUND_RECEIPT) {
+    return { title: "yetu-refund-receipt", text: formatRefundReceipt(refundReceiptCopyFromPrintDocument(job.document)) };
   }
   if (job.jobType === KITCHEN_TICKET) {
     return { title: "yetu-kitchen-ticket", text: formatKitchenTicket(ticketCopyFromPrintDocument(job.document)) };

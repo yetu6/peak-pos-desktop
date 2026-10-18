@@ -1,7 +1,9 @@
-import { ChefHat, Printer, Trash2, Wallet } from "lucide-react";
+import { ChefHat, Printer, Trash2, Undo2, Wallet } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, PermissionNotice, RefusalNotice, Sheet, StatusChip, TicketLine, type Refusal } from "../components/system";
 import {
+  useOrderRefunds,
+  usePosShift,
   usePrintAfter,
   usePropertyId,
   useReceipt,
@@ -12,13 +14,14 @@ import {
 } from "../hooks/usePosData";
 import { isComposing } from "../lib/keyboard";
 import { formatMoney } from "../lib/money";
-import type { POSOrder, POSOrderItem, POSOrderPayment, POSReceipt } from "../lib/posContracts";
+import type { POSOrder, POSOrderItem, POSOrderPayment, POSOrderRefunds, POSReceipt } from "../lib/posContracts";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRequestKey } from "../lib/useRequestKey";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, serviceTypeWords } from "../lib/words";
 import { REGISTER_KEYS } from "../register/TicketActions";
 import { orderTimeline, removeProblem, reprintProblem, sendProblem, type TimelineEntry } from "./ordersWords";
 import { orderName, orderReference } from "../lib/orderNumber";
+import { refundAvailability, refundGivenWords } from "./refundWords";
 
 export type DetailPending = "send" | "remove" | "reprint" | null;
 
@@ -44,6 +47,12 @@ export interface OrderDetailViewProps {
   onRemoveLine: (line: POSOrderItem) => void;
   onReprint: () => void;
   onClose: () => void;
+  /** A paid order's refunds and what is left to refund (S7); absent until Yetu has sent them. */
+  refunds?: POSOrderRefunds;
+  /** Whether this till offers Refund items now, and if not, why (refundAvailability). */
+  refundOffer?: { offer: boolean; why: string | null };
+  /** Opens Refund items (the parent's sheet). */
+  onRefund?: () => void;
 }
 
 /** Who took a payment and when, saying only what Yetu gave. */
@@ -80,8 +89,12 @@ export function OrderDetailView({
   onRemoveLine,
   onReprint,
   onClose,
+  refunds,
+  refundOffer,
+  onRefund,
 }: OrderDetailViewProps) {
   const voidReasonId = useId();
+  const refundReasonId = useId();
   const primaryRef = useRef<HTMLButtonElement>(null);
   const busy = pending !== null;
   const lines = order.items.filter((line) => line.status !== "VOIDED");
@@ -94,6 +107,8 @@ export function OrderDetailView({
   const payable = owing && lines.length > 0 && order.remainingMinor > 0;
   const reference = orderReference(order);
   const payments = order.payments ?? [];
+  const refunded = paid && refunds !== undefined && refunds.refundedMinor > 0;
+  const refundedInFull = refunded && refunds.remainingMinor <= 0;
 
   // Send (F8) and Pay (F9), as on Sell, while this sheet has the keys.
   const keys = useRef({ sendable, payable, canSend, canPay, busy, onSend, onPay });
@@ -189,6 +204,19 @@ export function OrderDetailView({
               <Button variant="quiet" size={56} disabled={busy} onClick={onClose}>
                 Close
               </Button>
+              {paid && onRefund ? (
+                <Button
+                  variant="danger"
+                  size={56}
+                  icon={<Undo2 />}
+                  data-testid="detail-refund"
+                  disabled={busy || !refundOffer?.offer}
+                  aria-describedby={refundOffer && !refundOffer.offer && refundOffer.why ? refundReasonId : undefined}
+                  onClick={onRefund}
+                >
+                  Refund items
+                </Button>
+              ) : null}
               {paid ? (
                 canPay ? (
                   <Button
@@ -208,14 +236,25 @@ export function OrderDetailView({
               ) : null}
             </div>
           )}
+          {paid && onRefund && refundOffer && !refundOffer.offer && refundOffer.why ? (
+            <p className="y-detail__why" id={refundReasonId}>
+              {refundOffer.why}
+            </p>
+          ) : null}
         </div>
       }
     >
       <div className="y-detail">
         <div className="y-detail__state">
-          <StatusChip tone={orderStatusTone(order.status)} data-testid="order-detail-status">
-            {orderStatusWords(order.status)}
-          </StatusChip>
+          {refunded ? (
+            <StatusChip tone="danger" data-testid="order-detail-status">
+              {refundedInFull ? "Refunded" : "Partly refunded"}
+            </StatusChip>
+          ) : (
+            <StatusChip tone={orderStatusTone(order.status)} data-testid="order-detail-status">
+              {orderStatusWords(order.status)}
+            </StatusChip>
+          )}
           <p className="y-detail__result" role="status" data-testid="order-detail-result">
             {result ?? ""}
           </p>
@@ -337,6 +376,27 @@ export function OrderDetailView({
             ) : null}
           </section>
         ) : null}
+
+        {refunded ? (
+          <section className="y-detail__section" aria-labelledby="detail-refunds">
+            <h3 id="detail-refunds" className="y-detail__heading">
+              Refunds
+            </h3>
+            <ul className="y-detail__payments" data-testid="order-detail-refunds">
+              {refunds.refunds.map((refund) => (
+                <li key={refund.id} className="y-detail__payment">
+                  <span className="y-detail__line">
+                    {refundGivenWords(refund.totalMinor, refund.tenders, refund.currency || currency || "")}
+                    {clockTime(refund.createdAt) ? ` · ${clockTime(refund.createdAt)}` : ""}
+                  </span>
+                  <span className="y-detail__line y-detail__muted">
+                    {refund.reason} · {refund.initiatedByName}, approved by {refund.authorizedByName}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </div>
     </Sheet>
   );
@@ -344,8 +404,8 @@ export function OrderDetailView({
 
 /**
  * An order's detail against the live API: send it, remove a line not yet
- * sent, or print a copy of a paid order's receipt here; Pay and Void open
- * their own sheets (the parent's).
+ * sent, or print a copy of a paid order's receipt here; Pay, Void and Refund
+ * items open their own sheets (the parent's).
  */
 export function OrderDetail({
   order,
@@ -354,6 +414,7 @@ export function OrderDetail({
   canPay,
   onPay,
   onVoid,
+  onRefund,
   onClose,
   onReload,
 }: {
@@ -363,6 +424,7 @@ export function OrderDetail({
   canPay: boolean;
   onPay: () => void;
   onVoid: () => void;
+  onRefund?: () => void;
   onClose: () => void;
   /** Ask Yetu for the order again (it may have changed on another till). */
   onReload: () => void;
@@ -370,7 +432,17 @@ export function OrderDetail({
   const propertyId = usePropertyId();
   const printAfter = usePrintAfter(propertyId);
   const tickets = useStationTickets(true);
-  const receipt = useReceipt(order.status === "CLOSED" ? order.id : undefined);
+  const paid = order.status === "CLOSED";
+  const receipt = useReceipt(paid ? order.id : undefined);
+  const refunds = useOrderRefunds(paid ? order.id : undefined);
+  const { shift } = usePosShift();
+  const refundOffer = refunds.data
+    ? refundAvailability({
+        refunds: refunds.data,
+        shiftBusinessDate: shift?.status === "OPEN" ? shift.businessDate : null,
+        canRefund: canPay,
+      })
+    : undefined;
   const sendOrder = useSendOrder();
   const removeItem = useRemoveOrderItem();
   const reprint = useReprintReceipt();
@@ -491,6 +563,9 @@ export function OrderDetail({
       onRemoveLine={remove}
       onReprint={printCopy}
       onClose={onClose}
+      refunds={refunds.data}
+      refundOffer={refundOffer}
+      onRefund={onRefund}
     />
   );
 }

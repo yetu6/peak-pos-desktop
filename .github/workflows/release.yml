@@ -102,6 +102,13 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Named setting: the Yetu API a released till talks to, baked into the
+          # build (packagedApiUrl, src/lib/peakConfig.ts), so a new till opens on
+          # pairing and never asks for a server address. The repository variable
+          # YETU_API_URL replaces the default for another environment. Set here,
+          # not in .env.production, which would override a developer's own
+          # .env.local in every local production build.
+          VITE_PEAK_API_URL: ${{ vars.YETU_API_URL || 'https://api.yetu.fbcsoftwares.com' }}
           # openssl-sys (via rusqlite's bundled-sqlcipher-vendored-openssl,
           # Cargo.toml) compiles OpenSSL from source and needs a real Perl
           # to run its Configure script. Prepending Strawberry Perl's own

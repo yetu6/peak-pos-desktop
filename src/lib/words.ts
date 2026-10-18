@@ -140,6 +140,21 @@ export function businessDayWords(day: string | null | undefined): string {
 }
 
 /**
+ * A moment as a slip prints it: "Sun 18 Oct 2026 · 17:05", in the till's own
+ * time; nothing for anything that isn't a moment.
+ */
+export function dateTimeWords(value: Date | string | null | undefined): string {
+  if (value == null) return "";
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat(CLOCK_LOCALE, { weekday: "short", day: "numeric", month: "short", year: "numeric" }).formatToParts(
+    date,
+  );
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((piece) => piece.type === type)?.value ?? "";
+  return `${part("weekday")} ${part("day")} ${part("month")} ${part("year")} · ${clockTime(date)}`;
+}
+
+/**
  * The top bar's shift chip: the shift and its business day, in full
  * ("Shift open since 07:02 · Mon 12 Oct") and shorter for compact screens
  * ("Since 07:02 · Mon 12 Oct").
