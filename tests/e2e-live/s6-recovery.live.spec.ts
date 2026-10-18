@@ -12,7 +12,7 @@
  * itself (one socket, no reconnects), not as news delivered.
  */
 import { expect, test, type Page, type Request } from "@playwright/test";
-import { WebSession, ensurePlainDish, loadSeededProperty, tsh, typed } from "./liveApi";
+import { WebSession, ensurePlainDish, loadSeededProperty, tsh, typed, chooseApprovers, SEEDED_MANAGER_ROLE } from "./liveApi";
 import { paymentRows, startLiveApi, stopLiveApi } from "./liveControl";
 import { BRIDGE_PORT, LIVE_API_URL } from "./liveSettings";
 import { body, nextApi, openShift, pairTill, setServerAddress, signInWithPin, tapper } from "./liveTill";
@@ -21,6 +21,8 @@ import { PAY_CHECK_EVERY_SECONDS } from "../../src/register/registerSettings";
 interface Order {
   id: string;
   orderNumber: string;
+  /** S5b: the order's number for the day, what the till shows ("Order 42"). */
+  dailyNumber: number;
   status: string;
   totalMinor: number;
   version: number;
@@ -55,6 +57,10 @@ test("S6: one realtime connection, lost payment answers resolved by Yetu, refusa
   const web = new WebSession();
   await web.signIn(seeded.ownerEmail);
   const plainDish = await ensurePlainDish(web, seeded);
+  // Since fbc-peak #258 a new business has nobody chosen to approve at the till: the owner chooses, here for the
+  // seeded manager's role, every kind.
+  const approves = await chooseApprovers(web, seeded, SEEDED_MANAGER_ROLE);
+  expect(approves, "the manager's role may approve every kind").toEqual(expect.arrayContaining(["VOID", "DISCOUNT", "CASH_OUT", "SHIFT_VARIANCE"]));
   const { tap, pin, swallowed } = tapper(page);
   const realtime = sockets(page);
   const payments = paymentRequests(page);
@@ -93,7 +99,7 @@ test("S6: one realtime connection, lost payment answers resolved by Yetu, refusa
   async function paidOnce(order: Order) {
     const done = page.getByTestId("payment-done");
     await expect(done).toBeVisible({ timeout: (PAY_CHECK_EVERY_SECONDS + 20) * 1000 });
-    await expect(done).toContainText(`Cash · Order ${order.orderNumber}`);
+    await expect(done).toContainText(`Cash · Order ${order.dailyNumber}`);
     await expect(page.getByTestId("done-change")).toHaveText(`Change to give ${tsh(1_000_000)}`);
     const mine = payments.filter((entry) => entry.orderId === order.id);
     expect(mine.length, "the payment was asked for more than once").toBeGreaterThan(1);

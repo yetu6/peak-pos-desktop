@@ -17,6 +17,10 @@
 #   tests/e2e-live/live-api.sh reset-limits  # start this API's per-address rate limits again
 #   tests/e2e-live/live-api.sh payments <orderId>  # how many pos_payments rows an order has (read-only)
 #
+# E2E_POS_ORDERS_PAGE_DEFAULT sets Yetu's page of the till's orders list
+# (YETU_POS_ORDERS_PAGE_DEFAULT, 50 unless set): orders-kitchen.live.spec.ts
+# runs with 1, so a handful of orders proves the till reads past a page.
+#
 # E2E_SKIP_BUILD=1 makes `api` start the binary already built (the S6 suite
 # stops and restarts the API mid-payment and must not wait for a build).
 #
@@ -125,6 +129,7 @@ cmd_api() {
     YETU_DB_MIN_CONNS=10 YETU_DB_MAX_CONNS=10 YETU_DB_MAX_CONN_LIFETIME=24h YETU_DB_MAX_CONN_IDLE_TIME=24h \
     YETU_REDIS_ADDR=127.0.0.1:6379 YETU_REDIS_PASSWORD="$(value PEAK_LOCAL_REDIS_PASSWORD)" YETU_REDIS_DB="$redis_db" \
     YETU_SEARCH_ENABLED=false YETU_GEOCODE_PROVIDER=none YETU_LOG_FORMAT=text \
+    YETU_POS_ORDERS_PAGE_DEFAULT="${E2E_POS_ORDERS_PAGE_DEFAULT:-50}" \
     "$work/peak-api"
 }
 
