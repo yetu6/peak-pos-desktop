@@ -11,6 +11,7 @@ import {
   businessDayWords,
   cashMovementWords,
   clockTime,
+  dateTimeWords,
   orderStatusTone,
   orderStatusWords,
   paymentMethodWords,
@@ -107,6 +108,13 @@ describe("plain words for backend codes", () => {
 });
 
 describe("time in words", () => {
+  it("writes a moment as a slip prints it, and nothing for what isn't one", () => {
+    expect(dateTimeWords(new Date(2026, 9, 18, 17, 5))).toBe("Sun 18 Oct 2026 · 17:05");
+    expect(dateTimeWords(new Date(2026, 9, 6, 7, 2).toISOString())).toBe("Tue 6 Oct 2026 · 07:02");
+    expect(dateTimeWords(undefined)).toBe("");
+    expect(dateTimeWords("not a time")).toBe("");
+  });
+
   it("shows a 24-hour clock time, and nothing for a missing one", () => {
     expect(clockTime(undefined)).toBe("");
     expect(clockTime(new Date(2026, 9, 12, 7, 2))).toBe("07:02");

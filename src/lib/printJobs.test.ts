@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatPrintDocument, processPendingPrintJobs, ticketCopyFromPrintDocument } from "./printJobs";
 import type { POSPrintJob } from "./posContracts";
+import { dateTimeWords } from "./words";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -54,6 +55,129 @@ describe("printJobs: the order's number for the day (S5b)", () => {
   });
 });
 
+// Yetu's own receipt document, field for field as internal/pos/receipts.go
+// (ReceiptDocument, ReceiptLine) writes it: money in minor units beside the
+// currency, the time as an instant, the method as a code.
+const YETU_RECEIPT: POSPrintJob = {
+  ...KITCHEN_JOB,
+  id: "job-r",
+  sourceId: "order-7",
+  jobType: "RECEIPT",
+  document: {
+    orderId: "order-7",
+    orderNumber: "POS-a3f90c14",
+    dailyNumber: 7,
+    businessDate: "2026-10-18",
+    propertyName: "Jacaranda B&B",
+    outletName: "Garden Restaurant",
+    initiatedByName: "Amina Juma",
+    operatorName: "Amina Juma",
+    serviceType: "DINE_IN",
+    tableLabel: "4",
+    items: [
+      { name: "Chips", quantity: 2, unitPriceMinor: 500_000, taxMinor: 180_000, totalMinor: 1_180_000 },
+      { name: "Soda", quantity: 1, unitPriceMinor: 150_000, taxMinor: 27_000, totalMinor: 177_000 },
+    ],
+    subtotalMinor: 1_150_000,
+    taxMinor: 207_000,
+    totalMinor: 1_357_000,
+    currency: "TZS",
+    tenderMethod: "MOBILE_MONEY",
+    settledAt: "2026-10-18T14:05:00Z",
+  },
+};
+
+describe("printJobs: Yetu's receipt as a guest reads it", () => {
+  it("prints money as money, never the minor units Yetu sends", () => {
+    const { text } = formatPrintDocument(YETU_RECEIPT);
+    expect(text).toContain("TSh 11,800");
+    expect(text).toContain("Subtotal  TSh 11,500");
+    expect(text).toContain("VAT  TSh 2,070");
+    expect(text).toContain("TOTAL  TSh 13,570");
+    expect(text).not.toMatch(/1180000|1357000|207000/);
+  });
+
+  it("says how it was paid and when, in words", () => {
+    const { text } = formatPrintDocument(YETU_RECEIPT);
+    expect(text).toContain("Mobile money");
+    expect(text).not.toContain("MOBILE");
+    expect(text).toContain(`Paid ${dateTimeWords("2026-10-18T14:05:00Z")}`);
+    expect(text).not.toContain("2026-10-18T14:05:00Z");
+  });
+});
+
+// Yetu's refund receipt document, as internal/pos/refunds.go
+// (RefundReceiptDocument) writes it.
+const YETU_REFUND_RECEIPT: POSPrintJob = {
+  ...KITCHEN_JOB,
+  id: "job-refund",
+  sourceType: "POS_REFUND",
+  sourceId: "refund-1",
+  jobType: "REFUND_RECEIPT",
+  document: {
+    refundId: "refund-1",
+    orderId: "order-7",
+    orderNumber: "POS-a3f90c14",
+    dailyNumber: 7,
+    businessDate: "2026-10-18",
+    propertyName: "Jacaranda B&B",
+    outletName: "Garden Restaurant",
+    lines: [
+      { id: "rl-1", orderItemId: "oi-1", name: "Chips", quantity: 1, grossMinor: 500_000, discountMinor: 0, netMinor: 500_000, taxMinor: 90_000, totalMinor: 590_000 },
+    ],
+    netMinor: 500_000,
+    discountMinor: 0,
+    taxMinor: 90_000,
+    totalMinor: 590_000,
+    currency: "TZS",
+    tenders: [{ paymentMethod: "CASH", amountMinor: 590_000 }],
+    reason: "Cold when served",
+    initiatedByName: "Amina Juma",
+    authorizedByName: "Baraka Mushi",
+    refundedAt: "2026-10-18T15:40:00Z",
+  },
+};
+
+describe("printJobs: a refund receipt", () => {
+  it("is its own slip, never a kitchen ticket", () => {
+    const formatted = formatPrintDocument(YETU_REFUND_RECEIPT);
+    expect(formatted.title).toBe("yetu-refund-receipt");
+    expect(formatted.text).toContain("REFUND");
+    expect(formatted.text).toContain("Jacaranda B&B".toUpperCase());
+    expect(formatted.text).toContain("Order 7");
+    expect(formatted.text).toContain("Ref POS-a3f90c14");
+  });
+
+  it("says what was given back, how, why, and who asked and approved", () => {
+    const { text } = formatPrintDocument(YETU_REFUND_RECEIPT);
+    expect(text).toMatch(/1 {2}Chips {2}TSh 5,900/);
+    expect(text).toContain("Given back  TSh 5,900");
+    expect(text).toContain("VAT included  TSh 900");
+    expect(text).toContain("Cash  TSh 5,900");
+    expect(text).toContain("Reason: Cold when served");
+    expect(text).toContain("Asked by Amina Juma");
+    expect(text).toContain("Approved by Baraka Mushi");
+    expect(text).toContain(dateTimeWords("2026-10-18T15:40:00Z"));
+    expect(text).not.toMatch(/590000|CASH|2026-10-18T/);
+  });
+
+  it("names a room charge refund as taken off the room's bill", () => {
+    const { text } = formatPrintDocument({
+      ...YETU_REFUND_RECEIPT,
+      document: { ...YETU_REFUND_RECEIPT.document, tenders: [{ paymentMethod: "ROOM_CHARGE", amountMinor: 590_000 }] },
+    });
+    expect(text).toContain("Taken off the room bill  TSh 5,900");
+  });
+
+  it("shows the discount share when the order had a discount", () => {
+    const { text } = formatPrintDocument({
+      ...YETU_REFUND_RECEIPT,
+      document: { ...YETU_REFUND_RECEIPT.document, discountMinor: 50_000, netMinor: 450_000, taxMinor: 81_000, totalMinor: 531_000 },
+    });
+    expect(text).toContain("Less the order's discount  TSh 500");
+  });
+});
+
 describe("printJobs", () => {
   it("formats a Peak kitchen ticket without prices", () => {
     const copy = ticketCopyFromPrintDocument(KITCHEN_JOB.document);
@@ -84,7 +208,7 @@ describe("printJobs", () => {
     expect(formatted.text).toContain("INVOICE");
     expect(formatted.text).toContain("POS-1");
     expect(formatted.text).toContain("TOTAL  23.60");
-    expect(formatted.text).toContain("Tax  3.60");
+    expect(formatted.text).toContain("VAT  3.60");
   });
 
   it("falls back to the generic ticket formatter for an unrecognized job type instead of dropping it", () => {

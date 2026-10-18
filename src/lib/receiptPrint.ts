@@ -1,4 +1,6 @@
+import { formatMoney } from "./money";
 import { orderName, orderReference } from "./orderNumber";
+import { dateTimeWords, paymentMethodWords, type SettlementMethod } from "./words";
 export interface ReceiptLine {
   name: string;
   quantity: string;
@@ -24,7 +26,18 @@ export interface ReceiptCopy {
   lines: ReceiptLine[];
 }
 
+/**
+ * An amount from Yetu's document as a guest reads it: Yetu sends minor units
+ * beside the currency (`totalMinor`, `currency`); a document that already
+ * carries the words (`total`) keeps them.
+ */
+function amountWords(words: unknown, minor: unknown, currency: string | undefined): string | undefined {
+  if (typeof words === "string") return words;
+  return typeof minor === "number" ? formatMoney(minor, currency) : undefined;
+}
+
 export function receiptCopyFromPrintDocument(document: Record<string, unknown>): ReceiptCopy {
+  const currency = typeof document.currency === "string" ? document.currency : undefined;
   const lines = Array.isArray(document.lines)
     ? document.lines.flatMap((line) => {
         if (!line || typeof line !== "object") return [];
@@ -48,12 +61,7 @@ export function receiptCopyFromPrintDocument(document: Record<string, unknown>):
             {
               name: row.name,
               quantity: String(row.quantity ?? "1"),
-              total:
-                typeof row.total === "string"
-                  ? row.total
-                  : typeof row.totalMinor === "number"
-                    ? String(row.totalMinor)
-                    : undefined,
+              total: amountWords(row.total, row.totalMinor, currency),
             },
           ];
         })
@@ -85,31 +93,16 @@ export function receiptCopyFromPrintDocument(document: Record<string, unknown>):
           : undefined,
     takenBy,
     settledBy,
-    settledAt: typeof document.settledAt === "string" ? document.settledAt : undefined,
+    settledAt: typeof document.settledAt === "string" ? dateTimeWords(document.settledAt) || undefined : undefined,
     settlementMethod:
       typeof document.tenderMethod === "string"
-        ? document.tenderMethod
+        ? paymentMethodWords(document.tenderMethod as SettlementMethod)
         : typeof document.settlementMethod === "string"
-          ? document.settlementMethod
+          ? paymentMethodWords(document.settlementMethod as SettlementMethod)
           : undefined,
-    subtotal:
-      typeof document.subtotal === "string"
-        ? document.subtotal
-        : typeof document.subtotalMinor === "number"
-          ? String(document.subtotalMinor)
-          : undefined,
-    taxAmount:
-      typeof document.taxAmount === "string"
-        ? document.taxAmount
-        : typeof document.taxMinor === "number"
-          ? String(document.taxMinor)
-          : undefined,
-    totalAmount:
-      typeof document.totalAmount === "string"
-        ? document.totalAmount
-        : typeof document.totalMinor === "number"
-          ? String(document.totalMinor)
-          : undefined,
+    subtotal: amountWords(document.subtotal, document.subtotalMinor, currency),
+    taxAmount: amountWords(document.taxAmount, document.taxMinor, currency),
+    totalAmount: amountWords(document.totalAmount, document.totalMinor, currency),
     lines,
   };
 }
@@ -127,7 +120,7 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     orderReference(receipt) ? `Ref ${orderReference(receipt)}` : null,
     [
       receipt.tableNumber ? `Table ${receipt.tableNumber}` : null,
-      receipt.settlementMethod ? receipt.settlementMethod.replaceAll("_", " ") : null,
+      receipt.settlementMethod ? receipt.settlementMethod : null,
     ]
       .filter(Boolean)
       .join("  "),
@@ -135,7 +128,7 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     receipt.settledBy && receipt.settledBy !== receipt.takenBy
       ? `Settled by ${receipt.settledBy}`
       : null,
-    receipt.settledAt ? `Settled ${receipt.settledAt}` : null,
+    receipt.settledAt ? `Paid ${receipt.settledAt}` : null,
   ]
     .filter((line) => line && line.length > 0)
     .join("\n");
@@ -150,7 +143,7 @@ export function formatReceipt(receipt: ReceiptCopy): string {
 
   const totals = [
     receipt.subtotal ? `Subtotal  ${receipt.subtotal}` : null,
-    receipt.taxAmount ? `Tax  ${receipt.taxAmount}` : null,
+    receipt.taxAmount ? `VAT  ${receipt.taxAmount}` : null,
     receipt.totalAmount ? `TOTAL  ${receipt.totalAmount}` : null,
   ]
     .filter(Boolean)
