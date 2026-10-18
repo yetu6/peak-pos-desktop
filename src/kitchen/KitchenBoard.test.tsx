@@ -301,3 +301,15 @@ describe("KitchenBoard", () => {
     expect(onNextStep).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("KitchenBoard: what staff say about an item (S16-B4)", () => {
+  it("says an item's tags on its ticket, and nothing for an item with none", () => {
+    const tagged = ticket("a1", "SENT", MINUTE, { items: [line("a1-1", "Satay", 1), line("a1-2", "Chips", 1)] });
+    renderBoard({ tickets: [tagged], tagsOf: (productId) => (productId === "p-a1-1" ? "Contains nuts · Spicy" : undefined) });
+    const card = screen.getByTestId("kitchen-ticket-a1");
+    const tags = within(card).getAllByTestId("kitchen-tags");
+    expect(tags).toHaveLength(1);
+    expect(tags[0]).toHaveTextContent("Contains nuts · Spicy");
+    expect(tags[0].closest("li")).toHaveTextContent("Satay");
+  });
+});

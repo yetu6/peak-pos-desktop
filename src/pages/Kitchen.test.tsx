@@ -36,6 +36,17 @@ vi.mock("../lib/posApi", () => ({
   }),
 }));
 
+// The Restaurant & Bar module's menu for the outlet: none (404) unless a test sets one.
+const tillMenuAnswer = vi.hoisted(() => ({ current: null as unknown }));
+vi.mock("../fnb/fnbApi", () => ({
+  createFnbApi: () => ({
+    fnbGetTillMenu: async () =>
+      tillMenuAnswer.current
+        ? { data: tillMenuAnswer.current, error: undefined, response: { status: 200 } }
+        : { data: undefined, error: { code: "NOT_FOUND" }, response: { status: 404 } },
+  }),
+}));
+
 vi.mock("../auth/DeviceSessionProvider", () => ({
   useDeviceSession: () => ({ identity: identity.current, phase: "ready", switchStaff: vi.fn() }),
 }));
@@ -358,6 +369,18 @@ describe("Kitchen on a kitchen or bar display (station tickets)", () => {
     await userEvent.click(await screen.findByTestId("kitchen-next-t-1"));
     expect(await screen.findByRole("alert")).toHaveTextContent("This ticket was moved on another screen. The board shows where it is now.");
     await waitFor(() => expect(listStationTicketsSpy.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it("says staff's tags on an item, from the outlet's menu", async () => {
+    identity.current = { mode: "KITCHEN_DISPLAY", terminalName: "Grill screen", prepStations: ["GRILL"] };
+    tillMenuAnswer.current = {
+      enabled: true, groups: [], unplacedCategoryIds: [], sizes: {},
+      products: { p1: { tags: [{ label: "Contains nuts", kind: "ALLERGEN" }] } },
+    };
+    ticketsStore.set("t-1", stationTicket("t-1", "GRILL"));
+    renderKitchen();
+    expect(await screen.findByTestId("kitchen-tags")).toHaveTextContent("Contains nuts");
+    tillMenuAnswer.current = null;
   });
 
   it("is the Bar on a bar display", async () => {

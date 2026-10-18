@@ -178,6 +178,13 @@
 .y-kticket__what { display: grid; min-width: 0; justify-items: start; gap: var(--space-1); }
 .y-kticket__name { font-weight: 600; overflow-wrap: anywhere; }
 
+/* What staff say about an item ("Contains nuts"): plain, beside the options. */
+.y-kticket__tags {
+  color: var(--text);
+  font-size: var(--type-small);
+  font-weight: 600;
+}
+
 /* Options and the note are what a cook must not miss: picked out, never faint. */
 .y-kticket__option {
   border-left: 3px solid var(--warning);
