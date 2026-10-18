@@ -9,6 +9,7 @@ import type {
   POSOrder,
   POSOrderPage,
   POSOrderRefunds,
+  POSKitchenReprint,
   POSReceipt,
   POSRefund,
   POSRefundQuote,
@@ -248,6 +249,14 @@ export function createPosApi() {
       return client.POST<POSReceipt>(
         `/api/v1/pos/orders/${encodeURIComponent(orderId)}/receipt/reprint`,
         { headers: idempotent(idempotencyKey) },
+      );
+    },
+
+    /** S8a: the latest round's kitchen tickets again (or the round named), marked COPY. */
+    reprintKitchenTickets(orderId: string, idempotencyKey: string, roundNumber?: number): Promise<ApiResult<POSKitchenReprint>> {
+      return client.POST<POSKitchenReprint>(
+        `/api/v1/pos/orders/${encodeURIComponent(orderId)}/kitchen-tickets/reprint`,
+        { headers: idempotent(idempotencyKey), body: roundNumber === undefined ? {} : { roundNumber } },
       );
     },
 

@@ -1,6 +1,7 @@
-import { loadPrinterSettings, printRawToPrinter } from "../print/printerStore";
 import type { FnbTillMenu } from "../fnb/fnbContracts";
 import { tagNote } from "../fnb/fnbWords";
+import { printFor } from "../print/printFor";
+import { loadPrinterSettings } from "../print/printerStore";
 import { useMemo, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPosApi } from "../lib/posApi";
@@ -9,7 +10,6 @@ import { READ_AFTER_RECORD_FAILED } from "../lib/problemWords";
 import { devIdentityFromEnv } from "../lib/env";
 import { useRealtimeEvents } from "../realtime/RealtimeProvider";
 import { isOrderEvent } from "../realtime/subscriptions";
-import { processPendingPrintJobs } from "../lib/printJobs";
 import { getOperationalSession } from "../lib/operationalSession";
 import { listEveryPage } from "../orders/orderPages";
 import { OPEN_MOST_PAGES } from "../orders/ordersSettings";
@@ -691,7 +691,9 @@ export function useReprintReceipt() {
       const receipt = await unwrap(createPosApi().reprintReceipt(args.orderId, args.idempotencyKey));
       // The reprint is a chained pos_print_jobs row; the terminal claims and
       // physically prints it exactly like the original and kitchen tickets.
-      await processPendingPrintJobs(propertyId, receipt.id);
+      // Its source is the order (receipt.id is the copy's own id: asking for
+      // that printed nothing).
+      await printFor(propertyId, args.orderId);
       return receipt;
     },
     onSuccess: (_data, variables) =>
@@ -745,6 +747,40 @@ export function useCloseBusinessDay() {
 // Print jobs (kitchen tickets, receipts) already sent for a source id.
 // ---------------------------------------------------------------------------
 
+/** Staff's tags for an item, from the menu Yetu last sent this till (none while menus are off). */
+function menuTags(queryClient: ReturnType<typeof useQueryClient>, outletId: string | undefined) {
+  const menu = queryClient.getQueryData<FnbTillMenu>(["fnb", "menu", outletId]);
+  return (productId: string) => (menu?.enabled ? tagNote(menu, productId) : undefined);
+}
+
+/** This till prints no kitchen tickets (Manager, Printers): a copy would print nowhere. */
+export class KitchenPaperOff extends Error {
+  constructor() {
+    super("This till doesn't print kitchen tickets. A manager can turn them on in Manager, Printers.");
+    this.name = "KitchenPaperOff";
+  }
+}
+
+/**
+ * S8a: prints the latest round's kitchen ticket again (or a round named),
+ * marked COPY, on this till's kitchen printer. Yetu makes the copy; this till
+ * prints it. `failed` is what the printer said when it didn't.
+ */
+export function useReprintKitchenTickets() {
+  const queryClient = useQueryClient();
+  const propertyId = usePropertyId();
+  const outletId = useOutletId();
+  return useMutation({
+    mutationFn: async (args: { orderId: string; idempotencyKey: string; roundNumber?: number }) => {
+      const settings = await loadPrinterSettings();
+      if (!settings.kitchenTickets) throw new KitchenPaperOff();
+      const reprint = await unwrap(createPosApi().reprintKitchenTickets(args.orderId, args.idempotencyKey, args.roundNumber));
+      const results = await printFor(propertyId, args.orderId, menuTags(queryClient, outletId), settings);
+      return { reprint, failed: results.find((result) => !result.ok)?.error };
+    },
+  });
+}
+
 export function usePrintAfter(propertyId: string) {
   const printing = useRef(false);
   const queryClient = useQueryClient();
@@ -754,13 +790,7 @@ export function usePrintAfter(propertyId: string) {
     printing.current = true;
     try {
       // Kitchen tickets to the kitchen's printer, with staff's tags from the menu Yetu last sent (S8a).
-      const settings = await loadPrinterSettings();
-      const menu = queryClient.getQueryData<FnbTillMenu>(["fnb", "menu", outletId]);
-      await processPendingPrintJobs(propertyId, sourceId, undefined, {
-        settings,
-        printRaw: printRawToPrinter,
-        tagsOf: (productId) => (menu?.enabled ? tagNote(menu, productId) : undefined),
-      });
+      await printFor(propertyId, sourceId, menuTags(queryClient, outletId));
     } finally {
       printing.current = false;
     }

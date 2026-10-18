@@ -27,6 +27,8 @@ export interface KitchenTicketPaper {
   notes?: string;
   /** Printed again: says COPY, so nobody makes it twice. */
   copy?: boolean;
+  /** Who printed it again. */
+  printedAgainByName?: string;
   lines: { quantity: number; name: string; options: string[]; tags?: string }[];
 }
 
@@ -37,7 +39,10 @@ export function kitchenTicketBytes(ticket: KitchenTicketPaper, width: PaperWidth
   if (ticket.roundNumber && ticket.roundNumber > 1) out.size(1, 2).line(`ROUND ${ticket.roundNumber}`);
   out.size(1, 1);
   if (ticket.station) out.line(stationWords(ticket.station).toUpperCase());
-  if (ticket.copy) out.line("*** COPY: printed again ***");
+  if (ticket.copy) {
+    out.line("*** COPY: printed again ***");
+    if (ticket.printedAgainByName) out.wrapped(`by ${ticket.printedAgainByName}`, width);
+  }
   out.bold(false).align("left").rule();
 
   const place = ticket.serviceType ? orderPlaceWords(ticket.serviceType, ticket.label) : ticket.label ? `Table ${ticket.label}` : "";

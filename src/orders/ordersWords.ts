@@ -148,6 +148,24 @@ export function reprintProblem(error: unknown): OrderProblem | null {
   return { kind: "other", words: otherWords(problem, "The copy wasn't printed. Try again.") };
 }
 
+/** Printing a kitchen ticket again (S8a; needs pos.order.send, and paper kitchen tickets on this till). */
+export function kitchenReprintProblem(error: unknown): OrderProblem | null {
+  if (error instanceof Error && error.name === "KitchenPaperOff") return { kind: "other", words: error.message };
+  const problem = problemOf(error);
+  if (!problem) return null;
+  if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only staff who take orders can print a kitchen ticket again. Ask one to help." };
+  if (problem.code === "NOT_FOUND") return { kind: "missing", words: "Nothing of this order has gone to the kitchen yet: send it first." };
+  return { kind: "other", words: otherWords(problem, "The kitchen ticket wasn't printed again. Try again.") };
+}
+
+/** What happened when a kitchen ticket was printed again: the round, and whether the printer took it. */
+export function kitchenReprintWords(roundNumber: number, roundsSent: number | undefined, failed: string | undefined): string {
+  const ticket = (roundsSent ?? 0) > 1 ? `Round ${roundNumber}'s kitchen ticket` : "The kitchen ticket";
+  if (failed) return `${ticket} was made again, but the printer didn't print it: ${failed}`;
+  return `${ticket} went to the printer again, marked COPY.`;
+}
+
 /** Removing a line that hasn't gone to the kitchen. */
 export function removeProblem(error: unknown): OrderProblem | null {
   const problem = problemOf(error);

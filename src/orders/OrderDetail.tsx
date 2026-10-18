@@ -8,6 +8,7 @@ import {
   usePropertyId,
   useReceipt,
   useRemoveOrderItem,
+  useReprintKitchenTickets,
   useReprintReceipt,
   useSendOrder,
   useStationTickets,
@@ -19,11 +20,19 @@ import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRequestKey } from "../lib/useRequestKey";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, serviceTypeWords } from "../lib/words";
 import { REGISTER_KEYS } from "../register/TicketActions";
-import { orderTimeline, removeProblem, reprintProblem, sendProblem, type TimelineEntry } from "./ordersWords";
+import {
+  kitchenReprintProblem,
+  kitchenReprintWords,
+  orderTimeline,
+  removeProblem,
+  reprintProblem,
+  sendProblem,
+  type TimelineEntry,
+} from "./ordersWords";
 import { orderName, orderReference } from "../lib/orderNumber";
 import { refundAvailability, refundGivenWords } from "./refundWords";
 
-export type DetailPending = "send" | "remove" | "reprint" | null;
+export type DetailPending = "send" | "remove" | "reprint" | "kitchen" | null;
 
 export interface OrderDetailViewProps {
   order: POSOrder;
@@ -46,6 +55,8 @@ export interface OrderDetailViewProps {
   onVoid: () => void;
   onRemoveLine: (line: POSOrderItem) => void;
   onReprint: () => void;
+  /** S8a: print the latest round's kitchen ticket again, marked COPY; absent when nothing has gone to the kitchen or this person can't send orders. */
+  onKitchenReprint?: () => void;
   onClose: () => void;
   /** A paid order's refunds and what is left to refund (S7); absent until Yetu has sent them. */
   refunds?: POSOrderRefunds;
@@ -53,6 +64,11 @@ export interface OrderDetailViewProps {
   refundOffer?: { offer: boolean; why: string | null };
   /** Opens Refund items (the parent's sheet). */
   onRefund?: () => void;
+}
+
+/** The order has had a round (or, before rounds, left the Open state): it has a kitchen ticket. */
+function sentToKitchen(order: POSOrder): boolean {
+  return (order.roundsSent ?? 0) > 0 || order.status !== "OPEN";
 }
 
 /** Who took a payment and when, saying only what Yetu gave. */
@@ -88,6 +104,7 @@ export function OrderDetailView({
   onVoid,
   onRemoveLine,
   onReprint,
+  onKitchenReprint,
   onClose,
   refunds,
   refundOffer,
@@ -176,6 +193,18 @@ export function OrderDetailView({
                   )
                 ) : null}
               </div>
+              {onKitchenReprint ? (
+                <Button
+                  variant="quiet"
+                  size={56}
+                  icon={<Printer />}
+                  data-testid="detail-kitchen-reprint"
+                  disabled={busy}
+                  onClick={onKitchenReprint}
+                >
+                  {pending === "kitchen" ? "Sending to the printer…" : "Print kitchen ticket again"}
+                </Button>
+              ) : null}
               {partPaid ? (
                 <p className="y-detail__why" id={voidReasonId}>
                   An order can't be voided once part of it is paid.
@@ -446,15 +475,25 @@ export function OrderDetail({
   const sendOrder = useSendOrder();
   const removeItem = useRemoveOrderItem();
   const reprint = useReprintReceipt();
+  const kitchenReprint = useReprintKitchenTickets();
   const sendKey = useRequestKey();
   const removeKey = useRequestKey();
   const reprintKey = useRequestKey();
+  const kitchenKey = useRequestKey();
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [problem, setProblem] = useState<Refusal | null>(null);
   const focusAfter = useRef(false);
 
-  const pending: DetailPending = sendOrder.isPending ? "send" : removeItem.isPending ? "remove" : reprint.isPending ? "reprint" : null;
+  const pending: DetailPending = sendOrder.isPending
+    ? "send"
+    : removeItem.isPending
+      ? "remove"
+      : reprint.isPending
+        ? "reprint"
+        : kitchenReprint.isPending
+          ? "kitchen"
+          : null;
   // The till doesn't lock itself while a request is with Yetu.
   useHoldIdleLock(pending !== null);
 
@@ -540,6 +579,28 @@ export function OrderDetail({
     );
   }
 
+  function printKitchenAgain() {
+    if (pending !== null) return;
+    begin();
+    kitchenReprint.mutate(
+      { orderId: order.id, idempotencyKey: kitchenKey.keyFor([order.id, "kitchen", order.roundsSent ?? 1].join("|")) },
+      {
+        onSuccess: ({ reprint: again, failed }) => {
+          // Each press is another copy: the next press gets its own key.
+          kitchenKey.forget();
+          const words = kitchenReprintWords(again.roundNumber, order.roundsSent, failed);
+          if (failed) setProblem({ kind: "other", words });
+          else setResult(words);
+        },
+        onError: (error) => {
+          const refusal = kitchenReprintProblem(error);
+          setProblem(refusal ?? { kind: "other", words: "The kitchen ticket wasn't printed again. Try again." });
+          if (refusal?.kind !== "network") kitchenKey.forget();
+        },
+      },
+    );
+  }
+
   return (
     <OrderDetailView
       order={order}
@@ -562,6 +623,7 @@ export function OrderDetail({
       onVoid={onVoid}
       onRemoveLine={remove}
       onReprint={printCopy}
+      onKitchenReprint={canSend && sentToKitchen(order) ? printKitchenAgain : undefined}
       onClose={onClose}
       refunds={refunds.data}
       refundOffer={refundOffer}

@@ -70,7 +70,9 @@ const spies = vi.hoisted(() => ({
     receiptsStore.set(orderId, { ...receipt, reprintCount: receipt.reprintCount + 1 });
     return { data: { ...receipt, id: `copy-${receipt.reprintCount + 1}` }, error: null };
   }),
-  processPendingPrintJobs: vi.fn(async (..._args: unknown[]) => [{ ok: false, error: "No printer is configured" }]),
+  // S8a: Yetu's copies of a round's kitchen tickets.
+  reprintKitchenTickets: vi.fn(async (..._args: unknown[]): Promise<Result> => ({ data: { roundNumber: 2, printJobs: [] }, error: null })),
+  processPendingPrintJobs: vi.fn(async (..._args: unknown[]): Promise<{ ok: boolean; error?: string }[]> => [{ ok: false, error: "No printer is configured" }]),
 }));
 
 function catalogFixture(currency: string): POSCatalog {
@@ -94,6 +96,7 @@ vi.mock("../lib/posApi", () => ({
     getShift: spies.getShift,
     getReceipt: spies.getReceipt,
     reprintReceipt: spies.reprintReceipt,
+    reprintKitchenTickets: spies.reprintKitchenTickets,
     voidOrder: spies.voidOrder,
   }),
 }));
@@ -110,6 +113,13 @@ vi.mock("../auth/DeviceSessionProvider", () => ({
 
 vi.mock("../lib/printJobs", () => ({
   processPendingPrintJobs: spies.processPendingPrintJobs,
+}));
+
+// This till's printer settings (Manager, Printers), as the till app holds them.
+const tillPrinters = vi.hoisted(() => ({ kitchenTickets: true }));
+vi.mock("../print/printerStore", () => ({
+  loadPrinterSettings: async () => ({ kitchenTickets: tillPrinters.kitchenTickets, kitchen: null, stations: {} }),
+  printRawToPrinter: async () => undefined,
 }));
 
 class FakeSocket {
@@ -408,7 +418,7 @@ describe("Orders", () => {
     await userEvent.click(within(sheet).getByTestId("detail-send"));
     await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledWith("order-1", 1, expect.any(String)));
     expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("Sent to the kitchen.");
-    await waitFor(() => expect(spies.processPendingPrintJobs).toHaveBeenCalledWith("property-1", "order-1"));
+    await waitFor(() => expect(spies.processPendingPrintJobs).toHaveBeenCalledWith("property-1", "order-1", undefined, expect.objectContaining({ settings: expect.any(Object) })));
     await waitFor(() => expect(within(sheet).queryByTestId("detail-send")).toBeNull());
     await waitFor(() => expect(within(sheet).getByTestId("detail-pay")).toHaveFocus());
   });
@@ -534,6 +544,8 @@ describe("Orders", () => {
     const keys = spies.reprintReceipt.mock.calls.map((call) => call[1]);
     expect(keys[1]).toBe(keys[0]);
     expect(keys[2]).not.toBe(keys[1]);
+    // The copy is printed here: its jobs are the order's (the copy's own id found none).
+    expect(spies.processPendingPrintJobs).toHaveBeenCalledWith("property-1", "order-0", undefined, expect.objectContaining({ settings: expect.any(Object) }));
   });
 
   it("keeps an open order's detail when another till takes payment for it, now showing it paid", async () => {
@@ -574,5 +586,85 @@ describe("Orders", () => {
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await waitFor(() => expect(screen.getByTestId("order-row-order-1")).toHaveFocus());
+  });
+});
+
+describe("Orders: a kitchen ticket printed again (S8a)", () => {
+  // Round 2 has gone to the kitchen.
+  const SENT_ORDER: POSOrder = {
+    ...OPEN_ORDER,
+    status: "SENT",
+    roundsSent: 2,
+    items: [{ ...OPEN_ORDER.items[0], status: "SENT", roundNumber: 2 }],
+  };
+
+  it("prints the latest round's ticket again on this till, a new copy each press", async () => {
+    ordersStore.set("order-1", SENT_ORDER);
+    spies.processPendingPrintJobs.mockResolvedValueOnce([{ ok: true }]).mockResolvedValueOnce([{ ok: true }]);
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    const again = await within(sheet).findByTestId("detail-kitchen-reprint");
+    await userEvent.click(again);
+    expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("Round 2's kitchen ticket went to the printer again, marked COPY.");
+    expect(spies.reprintKitchenTickets).toHaveBeenCalledWith("order-1", expect.any(String), undefined);
+    expect(spies.processPendingPrintJobs).toHaveBeenCalledWith("property-1", "order-1", undefined, expect.objectContaining({ settings: expect.objectContaining({ kitchenTickets: true }) }));
+    await userEvent.click(again);
+    await waitFor(() => expect(spies.reprintKitchenTickets).toHaveBeenCalledTimes(2));
+    const keys = spies.reprintKitchenTickets.mock.calls.map((call) => call[1]);
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it("says so when the printer didn't print the copy", async () => {
+    ordersStore.set("order-1", SENT_ORDER);
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(await within(sheet).findByTestId("detail-kitchen-reprint"));
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent(
+      "Round 2's kitchen ticket was made again, but the printer didn't print it: No printer is configured",
+    );
+  });
+
+  it("says Yetu's refusal in words", async () => {
+    ordersStore.set("order-1", SENT_ORDER);
+    spies.reprintKitchenTickets.mockResolvedValueOnce({ data: undefined, error: { code: "NOT_FOUND", detail: "This order hasn't gone to the kitchen yet: send it first." } });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(await within(sheet).findByTestId("detail-kitchen-reprint"));
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent("Nothing of this order has gone to the kitchen yet: send it first.");
+    expect(spies.processPendingPrintJobs).not.toHaveBeenCalled();
+  });
+
+  it("isn't offered before the order has gone to the kitchen, or to someone who can't send orders", async () => {
+    ordersStore.set("order-1", OPEN_ORDER);
+    renderOrders();
+    let sheet = await openDetail("order-1");
+    await within(sheet).findByTestId("detail-send");
+    expect(within(sheet).queryByTestId("detail-kitchen-reprint")).toBeNull();
+    await userEvent.click(within(sheet).getByRole("button", { name: "Close" }));
+  });
+
+  it("on a till that prints no kitchen tickets, says so and asks Yetu for no copy", async () => {
+    tillPrinters.kitchenTickets = false;
+    try {
+      ordersStore.set("order-1", SENT_ORDER);
+      renderOrders();
+      const sheet = await openDetail("order-1");
+      await userEvent.click(await within(sheet).findByTestId("detail-kitchen-reprint"));
+      expect(await within(sheet).findByRole("alert")).toHaveTextContent(
+        "This till doesn't print kitchen tickets. A manager can turn them on in Manager, Printers.",
+      );
+      expect(spies.reprintKitchenTickets).not.toHaveBeenCalled();
+    } finally {
+      tillPrinters.kitchenTickets = true;
+    }
+  });
+
+  it("isn't offered to someone who can't send orders", async () => {
+    signIn(EVERYTHING.filter((permission) => permission !== "pos.order.send"));
+    ordersStore.set("order-1", SENT_ORDER);
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await within(sheet).findByTestId("order-detail-status");
+    expect(within(sheet).queryByTestId("detail-kitchen-reprint")).toBeNull();
   });
 });

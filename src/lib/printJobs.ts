@@ -142,8 +142,12 @@ async function defaultPrint(title: string, text: string): Promise<void> {
 
 /** Peak's job status column stores PENDING/CLAIMED/PRINTED/FAILED exactly —
  *  the query filter must match that case or every row is silently excluded. */
-export async function listPrintJobs(status: PrintJobStatus | "" = "PENDING"): Promise<POSPrintJob[]> {
-  const query = status ? new URLSearchParams({ status }).toString() : "";
+export async function listPrintJobs(status: PrintJobStatus | "" = "PENDING", sourceId?: string): Promise<POSPrintJob[]> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  // S8a: the order's or refund's own jobs, however many others wait at the outlet.
+  if (sourceId) params.set("sourceId", sourceId);
+  const query = params.toString();
   return request(`/api/v1/pos/print-jobs${query ? `?${query}` : ""}`);
 }
 
@@ -239,7 +243,7 @@ export async function processPendingPrintJobs(
 ): Promise<PrintResult[]> {
   let jobs: POSPrintJob[];
   try {
-    jobs = await listPrintJobs("PENDING");
+    jobs = await listPrintJobs("PENDING", sourceId);
   } catch (error) {
     return [printFailure(error)];
   }

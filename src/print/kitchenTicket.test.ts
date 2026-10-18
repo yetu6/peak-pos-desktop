@@ -46,6 +46,7 @@ describe("kitchen ticket on paper (S8a)", () => {
   it("a ticket printed again says COPY; round 1 and the waiter's own send say nothing more", () => {
     const again = readable(kitchenTicketBytes({ ...TICKET, copy: true, roundNumber: 1, sentByName: "Amina Hassan" }, PAPER_58MM));
     expect(again).toContain("*** COPY: printed again ***");
+    expect(readable(kitchenTicketBytes({ ...TICKET, copy: true, printedAgainByName: "Grace Mushi" }, PAPER_58MM))).toContain("by Grace Mushi");
     expect(again).not.toContain("ROUND");
     expect(again).not.toContain("Sent by");
   });

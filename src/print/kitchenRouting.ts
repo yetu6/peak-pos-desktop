@@ -37,6 +37,7 @@ export function paperFromPrintDocument(
     sentAt: text("sentAt"),
     notes: text("notes"),
     copy: document.copy === true,
+    printedAgainByName: text("printedAgainByName"),
     lines: items.flatMap((item) => {
       if (!item || typeof item !== "object") return [];
       const row = item as Record<string, unknown>;

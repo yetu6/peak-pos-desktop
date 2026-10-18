@@ -272,6 +272,12 @@ export interface POSPrintJob {
   createdAt: string;
 }
 
+/** S8a: a round's kitchen tickets printed again, each marked COPY (reprintPOSKitchenTickets). */
+export interface POSKitchenReprint {
+  roundNumber: number;
+  printJobs: POSPrintJob[];
+}
+
 // ---------------------------------------------------------------------------
 // S7 refunds by item (fbc-peak #254): GET/POST /pos/orders/{orderId}/refunds,
 // POST /pos/orders/{orderId}/refunds/quote. Every amount is the server's.

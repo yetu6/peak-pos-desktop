@@ -236,6 +236,8 @@ describe("printJobs", () => {
       printed.push(`${title}\n${text}`);
     });
     expect(requestedUrls[0]).toContain("status=PENDING");
+    // S8a: only this order's jobs, however many others wait at the outlet.
+    expect(requestedUrls[0]).toContain("sourceId=order-1");
     expect(results).toEqual([{ ok: true }]);
     expect(printed[0]).toContain("POS-1");
   });
@@ -353,6 +355,28 @@ describe("printJobs: kitchen tickets on paper (S8a)", () => {
     expect(paper).toContain("2 x Satay");
     expect(paper).toContain("! Contains nuts");
     expect(requests.some((url) => url.endsWith("/printed"))).toBe(true);
+  });
+
+  it("a copy printed again says COPY and who printed it", async () => {
+    yetu([]);
+    const raw: Uint8Array[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = String(input);
+        const copy = { ...JOB, document: { ...DOC, copy: true, printedAgainByName: "Grace Mushi" } };
+        if (url.endsWith("/claim")) return json({ ...copy, status: "CLAIMED" });
+        if (url.endsWith("/printed")) return json({ ...copy, status: "PRINTED" });
+        if (url.includes("/pos/print-jobs")) return json([copy]);
+        return json({}, 500);
+      }),
+    );
+    await processPendingPrintJobs("prop", "order-1", vi.fn(), {
+      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: {} },
+      printRaw: async (_target, bytes) => void raw.push(bytes),
+    });
+    expect(text(raw[0])).toContain("*** COPY: printed again ***");
+    expect(text(raw[0])).toContain("by Grace Mushi");
   });
 
   it("a till with paper kitchen tickets off leaves the job for one that prints them", async () => {
