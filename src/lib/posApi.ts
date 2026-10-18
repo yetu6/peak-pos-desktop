@@ -72,7 +72,7 @@ export function createPosApi() {
     },
     closeShift(
       shiftId: string,
-      body: { countedCashMinor: number; supervisorStaffId?: string; supervisorPin?: string },
+      body: { countedCashMinor: number; supervisorStaffId?: string; supervisorPin?: string; handOver?: boolean },
       idempotencyKey: string,
     ): Promise<ApiResult<POSShift>> {
       return client.POST<POSShift>(`/api/v1/pos/shifts/${encodeURIComponent(shiftId)}/close`, {
@@ -250,6 +250,13 @@ export function createPosApi() {
         `/api/v1/pos/orders/${encodeURIComponent(orderId)}/receipt/reprint`,
         { headers: idempotent(idempotencyKey) },
       );
+    },
+
+    /** S17b: a tab handed over to the next shift, taken onto this till's open shift. */
+    takeOverTab(orderId: string, idempotencyKey: string): Promise<ApiResult<POSOrder>> {
+      return client.POST<POSOrder>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/take-over`, {
+        headers: idempotent(idempotencyKey),
+      });
     },
 
     /** S8a: the latest round's kitchen tickets again (or the round named), marked COPY. */

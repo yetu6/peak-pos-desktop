@@ -70,6 +70,13 @@ const spies = vi.hoisted(() => ({
     receiptsStore.set(orderId, { ...receipt, reprintCount: receipt.reprintCount + 1 });
     return { data: { ...receipt, id: `copy-${receipt.reprintCount + 1}` }, error: null };
   }),
+  // S17b: a waiting tab taken onto this till's shift.
+  takeOverTab: vi.fn(async (orderId: string, ..._rest: unknown[]): Promise<Result> => {
+    const order = ordersStore.get(orderId)!;
+    const taken = { ...order, waitingForShift: false, shiftId: "shift-1", version: order.version + 1 };
+    ordersStore.set(orderId, taken);
+    return { data: taken, error: null };
+  }),
   // S8a: Yetu's copies of a round's kitchen tickets.
   reprintKitchenTickets: vi.fn(async (..._args: unknown[]): Promise<Result> => ({ data: { roundNumber: 2, printJobs: [] }, error: null })),
   processPendingPrintJobs: vi.fn(async (..._args: unknown[]): Promise<{ ok: boolean; error?: string }[]> => [{ ok: false, error: "No printer is configured" }]),
@@ -97,6 +104,7 @@ vi.mock("../lib/posApi", () => ({
     getReceipt: spies.getReceipt,
     reprintReceipt: spies.reprintReceipt,
     reprintKitchenTickets: spies.reprintKitchenTickets,
+    takeOverTab: spies.takeOverTab,
     voidOrder: spies.voidOrder,
   }),
 }));
@@ -369,6 +377,17 @@ describe("Orders", () => {
     ordersStore.clear();
     socket.emit(announce(2, "pos.shift.closed", "shift-1"));
     expect(await screen.findByText("No open orders")).toBeInTheDocument();
+  });
+
+  it("keeps a tab handed over when the shift closes: Yetu still lists it (S17b)", async () => {
+    ordersStore.set("order-1", OPEN_ORDER);
+    const { socket } = renderOrders();
+    await screen.findByTestId("order-row-order-1");
+    socket.open();
+    await flush();
+    ordersStore.set("order-1", { ...OPEN_ORDER, waitingForShift: true, handedOverAt: new Date().toISOString() });
+    socket.emit(announce(2, "pos.shift.closed", "shift-1"));
+    expect(await screen.findByTestId("order-waiting-order-1")).toHaveTextContent("Waiting for a shift");
   });
 
   it("asks Yetu for paid orders only when the Paid tab is opened: the shift's business day, every till at the outlet", async () => {
@@ -666,5 +685,50 @@ describe("Orders: a kitchen ticket printed again (S8a)", () => {
     const sheet = await openDetail("order-1");
     await within(sheet).findByTestId("order-detail-status");
     expect(within(sheet).queryByTestId("detail-kitchen-reprint")).toBeNull();
+  });
+});
+
+describe("Orders: a tab handed over to the next shift (S17b)", () => {
+  const WAITING: POSOrder = {
+    ...OPEN_ORDER,
+    shiftId: "shift-0",
+    status: "SENT",
+    roundsSent: 1,
+    items: [{ ...OPEN_ORDER.items[0], status: "SENT", roundNumber: 1 }],
+    handedOverAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    waitingForShift: true,
+  };
+
+  it("says it waits for a shift, offers only to take it over, and then carries on here", async () => {
+    ordersStore.set("order-1", WAITING);
+    renderOrders();
+    expect(await screen.findByTestId("order-waiting-order-1")).toHaveTextContent("Waiting for a shift");
+    const sheet = await openDetail("order-1");
+    const waiting = await within(sheet).findByTestId("detail-waiting");
+    expect(waiting).toHaveTextContent(`Handed over to the next shift at ${clockTime(WAITING.handedOverAt!)}.`);
+    expect(within(sheet).queryByTestId("detail-pay")).toBeNull();
+    expect(within(sheet).queryByTestId("detail-send")).toBeNull();
+    await userEvent.click(within(sheet).getByTestId("detail-take-over"));
+    expect(spies.takeOverTab).toHaveBeenCalledWith("order-1", expect.any(String));
+    expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("The tab is on this till's shift now.");
+    await waitFor(() => expect(within(sheet).queryByTestId("detail-waiting")).toBeNull());
+  });
+
+  it("says Yetu's refusal in words: no shift open on this till", async () => {
+    ordersStore.set("order-1", WAITING);
+    spies.takeOverTab.mockResolvedValueOnce({ data: undefined, error: { code: "SHIFT_NOT_OPEN", detail: "No shift is open on this till." } });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(await within(sheet).findByTestId("detail-take-over"));
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent("Open a shift on this till, then take the tab over.");
+  });
+
+  it("isn't offered to someone who can't take orders", async () => {
+    signIn(EVERYTHING.filter((permission) => permission !== "pos.order.send"));
+    ordersStore.set("order-1", WAITING);
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await within(sheet).findByTestId("detail-waiting");
+    expect(within(sheet).queryByTestId("detail-take-over")).toBeNull();
   });
 });

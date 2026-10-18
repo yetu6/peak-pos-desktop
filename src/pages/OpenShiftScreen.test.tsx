@@ -149,6 +149,13 @@ describe("OpenShiftScreen after a shift closes", () => {
     expect(summary).toHaveTextContent("Expected TSh 74,000");
     expect(summary).toHaveTextContent("Counted TSh 74,500");
     expect(summary).toHaveTextContent("Over by TSh 500");
+    expect(screen.queryByTestId("closed-shift-tabs")).toBeNull();
+  });
+
+  it("says the tabs it handed over to the next shift, and what they owe (S17b)", () => {
+    rememberClosedShift({ shift: { ...CLOSED, handedOverTabs: 3, handedOverOwedMinor: 4_520_000 }, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) });
+    render(<OpenShiftScreen />);
+    expect(screen.getByTestId("closed-shift-tabs")).toHaveTextContent("3 tabs handed over to the next shift, owing TSh 45,200.");
   });
 });
 

@@ -166,6 +166,17 @@ export function kitchenReprintWords(roundNumber: number, roundsSent: number | un
   return `${ticket} went to the printer again, marked COPY.`;
 }
 
+/** S17b: taking over a tab handed over to the next shift. */
+export function takeOverProblem(error: unknown): OrderProblem | null {
+  const problem = problemOf(error);
+  if (!problem) return null;
+  if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  if (problem.code === "SHIFT_NOT_OPEN") return { kind: "other", words: "Open a shift on this till, then take the tab over." };
+  if (problem.code === "TAB_NOT_WAITING") return { kind: "moved", words: "Another till has taken this tab over. It's been reloaded." };
+  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only staff who take orders can take a tab over. Ask one to help." };
+  return { kind: "other", words: otherWords(problem, "The tab wasn't taken over. Try again.") };
+}
+
 /** Removing a line that hasn't gone to the kitchen. */
 export function removeProblem(error: unknown): OrderProblem | null {
   const problem = problemOf(error);

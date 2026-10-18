@@ -99,6 +99,14 @@ export interface POSOrder {
    * Absent from a Yetu before rounds: then nothing can be added once sent.
    */
   roundsSent?: number;
+  /** S17b: when a shift closing handed this tab over to the next shift. */
+  handedOverAt?: string;
+  /**
+   * S17b: handed over and not yet taken by a shift: nothing is done to it
+   * (TAB_WAITING_FOR_SHIFT) until this till takes it over, or the next
+   * shift opened at the outlet takes it.
+   */
+  waitingForShift?: boolean;
   /** Optimistic concurrency token. Every mutation must echo the value the
    *  desktop last saw; a stale value is refused with STALE_VERSION. */
   version: number;
@@ -188,6 +196,11 @@ export interface POSShift {
   /** Snapshotted from the property's authoritative business date at OpenShift. */
   businessDate: string;
   openedAt: string;
+  /** S17b: on a closed shift, the tabs it handed over to the next shift and what they owed. */
+  handedOverTabs?: number;
+  handedOverOwedMinor?: number;
+  /** S17b: on opening, the waiting tabs this shift took over. */
+  takenOverTabs?: number;
 }
 
 export interface POSCashMovement {

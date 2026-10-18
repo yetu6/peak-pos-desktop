@@ -8,11 +8,17 @@ import { idleLockHeld } from "../lib/idleLock";
 import { CloseShiftSheet } from "./CloseShiftSheet";
 import { lastClosedShift, forgetClosedShift } from "./closedShift";
 
-const { closeAsync, closeState } = vi.hoisted(() => ({ closeAsync: vi.fn(), closeState: { isPending: false } }));
+const { closeAsync, closeState, tabs } = vi.hoisted(() => ({
+  closeAsync: vi.fn(),
+  closeState: { isPending: false },
+  // S17b: the shift's tabs still open, as the outlet's open orders say.
+  tabs: { count: 0, owedMinor: 0 },
+}));
 
 vi.mock("../hooks/usePosData", () => ({
   usePosShift: () => ({ close: { mutateAsync: closeAsync, isPending: closeState.isPending } }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
+  useOpenTabsOf: () => tabs,
 }));
 
 const SHIFT: POSShift = {
@@ -53,6 +59,8 @@ async function count(amount: string) {
 beforeEach(() => {
   closeAsync.mockReset();
   forgetClosedShift();
+  tabs.count = 0;
+  tabs.owedMinor = 0;
 });
 
 describe("CloseShiftSheet: count first, blind", () => {
@@ -322,7 +330,7 @@ describe("CloseShiftSheet: check", () => {
     await count("74000");
     await userEvent.click(screen.getByTestId("close-shift"));
     expect(await screen.findByTestId("close-shift-error")).toHaveTextContent(
-      "Some orders on this till are still open. Take payment for them or void them, then close the shift.",
+      "Some orders on this shift are still open. Hand them over to the next shift, or take payment for them first.",
     );
   });
 
@@ -368,5 +376,44 @@ describe("CloseShiftSheet for a role that can't close it (403)", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveClass("y-permission");
     expect(alert).toHaveTextContent("Only a cashier or manager can close the shift. Ask one to close it.");
+  });
+});
+
+describe("CloseShiftSheet: tabs go to the next shift (S17b)", () => {
+  it("says the open tabs and what they owe, and hands them over with the close", async () => {
+    tabs.count = 2;
+    tabs.owedMinor = 4_500_000;
+    closeAsync.mockResolvedValue({ ...SHIFT, status: "CLOSED", countedCashMinor: 7_400_000, varianceMinor: 0, handedOverTabs: 2, handedOverOwedMinor: 4_500_000 });
+    renderSheet();
+    await count("74000");
+    expect(screen.getByTestId("close-open-tabs")).toHaveTextContent(
+      "2 tabs are still open, owing TSh 45,000. Closing hands them over to the next shift: whoever opens it carries them on.",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Hand over 2 tabs and close" }));
+    expect(closeAsync).toHaveBeenCalledWith(expect.objectContaining({ countedCashMinor: 7_400_000, handOver: true }));
+    expect(lastClosedShift()?.shift.handedOverTabs).toBe(2);
+  });
+
+  it("with no tabs open, closes as before, handing nothing over", async () => {
+    closeAsync.mockResolvedValue({ ...SHIFT, status: "CLOSED", countedCashMinor: 7_400_000, varianceMinor: 0 });
+    renderSheet();
+    await count("74000");
+    expect(screen.queryByTestId("close-open-tabs")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Close shift" }));
+    expect(closeAsync.mock.calls[0][0]).not.toHaveProperty("handOver");
+  });
+
+  it("when Yetu finds tabs this till didn't know of, offers to hand them over too", async () => {
+    closeAsync
+      .mockRejectedValueOnce(problem("SHIFT_HAS_OPEN_ORDERS", "Orders on this shift are still open."))
+      .mockResolvedValueOnce({ ...SHIFT, status: "CLOSED", countedCashMinor: 7_400_000, varianceMinor: 0, handedOverTabs: 1, handedOverOwedMinor: 1_180_000 });
+    renderSheet();
+    await count("74000");
+    await userEvent.click(screen.getByRole("button", { name: "Close shift" }));
+    expect(await screen.findByTestId("close-shift-error")).toHaveTextContent("Hand them over to the next shift, or take payment for them first.");
+    await userEvent.click(screen.getByTestId("close-hand-over-found"));
+    await userEvent.click(screen.getByRole("button", { name: "Hand over and close" }));
+    expect(closeAsync.mock.calls[1][0]).toMatchObject({ handOver: true });
+    expect(closeAsync.mock.calls[0][0]).not.toHaveProperty("handOver");
   });
 });

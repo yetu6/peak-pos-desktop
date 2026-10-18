@@ -22,7 +22,7 @@ export interface CashProblem<K extends string> {
  */
 export function closeShiftProblem(
   error: unknown,
-): CashProblem<"open-orders" | "offline-cash" | "supervisor" | "no-approver" | "not-open"> | null {
+): CashProblem<"open-orders" | "offline-cash" | "supervisor" | "no-approver" | "not-open" | "claimed-offline"> | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
@@ -30,8 +30,11 @@ export function closeShiftProblem(
     case "SHIFT_HAS_OPEN_ORDERS":
       return {
         kind: "open-orders",
-        words: "Some orders on this till are still open. Take payment for them or void them, then close the shift.",
+        words: "Some orders on this shift are still open. Hand them over to the next shift, or take payment for them first.",
       };
+    case "TAB_CLAIMED_OFFLINE":
+      // Yetu names the order (S17b).
+      return { kind: "claimed-offline", words: otherWords(problem, "An order of this shift is being settled offline. Sync the till, then close.") };
     case "SHIFT_OFFLINE_CASH_UNRESOLVED":
       return {
         kind: "offline-cash",
@@ -54,13 +57,29 @@ export function closeShiftProblem(
 }
 
 /**
+ * S17b: the tabs a shift still has open, as the close says them: they go to
+ * the next shift, owing what Yetu says.
+ */
+export function openTabsWords(count: number, owedMinor: number, currency: string | undefined): string {
+  if (count === 0) return "";
+  const tabs = count === 1 ? "1 tab is" : `${count} tabs are`;
+  return `${tabs} still open, owing ${formatMoney(owedMinor, currency)}. Closing hands ${count === 1 ? "it" : "them"} over to the next shift: whoever opens it carries ${count === 1 ? "it" : "them"} on.`;
+}
+
+/** S17b: what a closed shift handed over, for its summary. */
+export function handedOverWords(count: number | undefined, owedMinor: number | undefined, currency: string | undefined): string | null {
+  if (!count) return null;
+  return `${count === 1 ? "1 tab" : `${count} tabs`} handed over to the next shift, owing ${formatMoney(owedMinor ?? 0, currency)}.`;
+}
+
+/**
  * Closing the business day. fbc-peak internal/pos/business_day.go refuses
  * with INVALID_STATE: shifts still open, offline cash not settled, or a hotel
  * whose night audit closes the day.
  */
 export function dayCloseProblem(
   error: unknown,
-): CashProblem<"shifts-open" | "offline-cash" | "night-audit"> | null {
+): CashProblem<"shifts-open" | "offline-cash" | "night-audit" | "tabs-open"> | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
@@ -71,6 +90,15 @@ export function dayCloseProblem(
     return {
       kind: "shifts-open",
       words: `${n} ${n === 1 ? "shift is" : "shifts are"} still open today. Close every till's shift, then close the day.`,
+    };
+  }
+  // S17b: the day closes once its tabs are settled.
+  const tabs = /(\d+) open tab\(s\)/.exec(detail);
+  if (tabs) {
+    const n = Number(tabs[1]);
+    return {
+      kind: "tabs-open",
+      words: `${n} ${n === 1 ? "tab is" : "tabs are"} still open today. Take payment for ${n === 1 ? "it" : "them"}, charge ${n === 1 ? "it" : "them"} to a room or void ${n === 1 ? "it" : "them"}, then close the day.`,
     };
   }
   const offline = /(\d+) unresolved offline cash/.exec(detail);

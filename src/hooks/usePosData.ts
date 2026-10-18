@@ -210,6 +210,8 @@ export function usePosShift() {
       countedCashMinor: number;
       supervisorStaffId?: string;
       supervisorPin?: string;
+      /** S17b: hand the shift's open tabs over to the next shift. */
+      handOver?: boolean;
       idempotencyKey: string;
     }) => {
       const currentId =
@@ -224,6 +226,7 @@ export function usePosShift() {
             countedCashMinor: args.countedCashMinor,
             supervisorStaffId: args.supervisorStaffId,
             supervisorPin: args.supervisorPin,
+            ...(args.handOver ? { handOver: true } : {}),
           },
           args.idempotencyKey,
         ),
@@ -304,8 +307,9 @@ export function useActiveOrders() {
   });
   const queryClient = useQueryClient();
   useRealtimeEvents({ kind: "outletOrders", outletId }, async (event) => {
-    if (event.type === "pos.shift.closed") {
-      queryClient.setQueryData(["pos", "orders", "active", outletId], []);
+    // A shift closing may leave its tabs open, handed over (S17b): ask Yetu again.
+    if (event.type === "pos.shift.closed" || event.type === "pos.shift.opened") {
+      queryClient.invalidateQueries({ queryKey: ["pos", "orders", "active", outletId] });
       return;
     }
     // A station ticket's step moves its order too (Yetu syncs the order's
@@ -777,6 +781,29 @@ export function useReprintKitchenTickets() {
       const reprint = await unwrap(createPosApi().reprintKitchenTickets(args.orderId, args.idempotencyKey, args.roundNumber));
       const results = await printFor(propertyId, args.orderId, menuTags(queryClient, outletId), settings);
       return { reprint, failed: results.find((result) => !result.ok)?.error };
+    },
+  });
+}
+
+/** S17b: the open tabs of a shift, from the outlet's open orders: how many, and what they owe. */
+export function useOpenTabsOf(shiftId: string | undefined): { count: number; owedMinor: number } {
+  const { data: orders = [] } = useActiveOrders();
+  return useMemo(() => {
+    const mine = orders.filter((order) => order.shiftId === shiftId && order.status !== "CLOSED" && order.status !== "VOIDED");
+    return { count: mine.length, owedMinor: mine.reduce((sum, order) => sum + order.remainingMinor, 0) };
+  }, [orders, shiftId]);
+}
+
+/** S17b: takes a tab handed over to the next shift onto this till's open shift. */
+export function useTakeOverTab() {
+  const queryClient = useQueryClient();
+  const outletId = useOutletId();
+  return useMutation({
+    mutationFn: (args: { orderId: string; idempotencyKey: string }) =>
+      unwrap(createPosApi().takeOverTab(args.orderId, args.idempotencyKey)),
+    onSuccess: (order) => {
+      queryClient.setQueryData(["pos", "order", order.id], order);
+      queryClient.invalidateQueries({ queryKey: ["pos", "orders", "active", outletId] });
     },
   });
 }

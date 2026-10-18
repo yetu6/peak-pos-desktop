@@ -9,6 +9,7 @@ import {
   useReceipt,
   useRemoveOrderItem,
   useReprintKitchenTickets,
+  useTakeOverTab,
   useReprintReceipt,
   useSendOrder,
   useStationTickets,
@@ -27,12 +28,13 @@ import {
   removeProblem,
   reprintProblem,
   sendProblem,
+  takeOverProblem,
   type TimelineEntry,
 } from "./ordersWords";
 import { orderName, orderReference } from "../lib/orderNumber";
 import { refundAvailability, refundGivenWords } from "./refundWords";
 
-export type DetailPending = "send" | "remove" | "reprint" | "kitchen" | null;
+export type DetailPending = "send" | "remove" | "reprint" | "kitchen" | "take-over" | null;
 
 export interface OrderDetailViewProps {
   order: POSOrder;
@@ -57,6 +59,8 @@ export interface OrderDetailViewProps {
   onReprint: () => void;
   /** S8a: print the latest round's kitchen ticket again, marked COPY; absent when nothing has gone to the kitchen or this person can't send orders. */
   onKitchenReprint?: () => void;
+  /** S17b: take a tab handed over to the next shift onto this till's shift. */
+  onTakeOver?: () => void;
   onClose: () => void;
   /** A paid order's refunds and what is left to refund (S7); absent until Yetu has sent them. */
   refunds?: POSOrderRefunds;
@@ -69,6 +73,12 @@ export interface OrderDetailViewProps {
 /** The order has had a round (or, before rounds, left the Open state): it has a kitchen ticket. */
 function sentToKitchen(order: POSOrder): boolean {
   return (order.roundsSent ?? 0) > 0 || order.status !== "OPEN";
+}
+
+/** S17b: a tab waiting for a shift, as staff read it. */
+function waitingWords(handedOverAt: string | undefined): string {
+  const when = handedOverAt ? clockTime(handedOverAt) : "";
+  return `${when ? `Handed over to the next shift at ${when}.` : "Handed over to the next shift."} Take it over on this till to add to it, send it or take payment.`;
 }
 
 /** Who took a payment and when, saying only what Yetu gave. */
@@ -105,6 +115,7 @@ export function OrderDetailView({
   onRemoveLine,
   onReprint,
   onKitchenReprint,
+  onTakeOver,
   onClose,
   refunds,
   refundOffer,
@@ -164,7 +175,29 @@ export function OrderDetailView({
       initialFocus={primaryRef}
       footer={
         <div className="y-detail__actions" data-testid="order-detail-actions">
-          {owing ? (
+          {owing && order.waitingForShift ? (
+            // S17b: a tab handed over waits for a shift; nothing else is done to it until one takes it.
+            <div className="y-detail__waiting" data-testid="detail-waiting">
+              <p className="y-detail__why">
+                {waitingWords(order.handedOverAt)}
+              </p>
+              {onTakeOver ? (
+                <Button
+                  ref={primaryRef}
+                  variant="primary"
+                  size={64}
+                  block
+                  data-testid="detail-take-over"
+                  disabled={busy}
+                  onClick={onTakeOver}
+                >
+                  {pending === "take-over" ? "Taking it over…" : "Take over this tab"}
+                </Button>
+              ) : (
+                <PermissionNotice who="staff who take orders" action="take a tab over" next="Ask one to help." />
+              )}
+            </div>
+          ) : owing ? (
             <>
               <div className="y-detail__row">
                 <Button
@@ -476,6 +509,8 @@ export function OrderDetail({
   const removeItem = useRemoveOrderItem();
   const reprint = useReprintReceipt();
   const kitchenReprint = useReprintKitchenTickets();
+  const takeOver = useTakeOverTab();
+  const takeOverKey = useRequestKey();
   const sendKey = useRequestKey();
   const removeKey = useRequestKey();
   const reprintKey = useRequestKey();
@@ -493,7 +528,9 @@ export function OrderDetail({
         ? "reprint"
         : kitchenReprint.isPending
           ? "kitchen"
-          : null;
+          : takeOver.isPending
+            ? "take-over"
+            : null;
   // The till doesn't lock itself while a request is with Yetu.
   useHoldIdleLock(pending !== null);
 
@@ -579,6 +616,27 @@ export function OrderDetail({
     );
   }
 
+  function takeTabOver() {
+    if (pending !== null) return;
+    begin();
+    takeOver.mutate(
+      { orderId: order.id, idempotencyKey: takeOverKey.keyFor(order.id) },
+      {
+        onSuccess: () => {
+          takeOverKey.forget();
+          setResult("The tab is on this till's shift now.");
+          onReload();
+        },
+        onError: (error) => {
+          const refusal = takeOverProblem(error);
+          setProblem(refusal ?? { kind: "other", words: "The tab wasn't taken over. Try again." });
+          if (refusal?.kind !== "network") takeOverKey.forget();
+          if (refusal?.kind === "moved") onReload();
+        },
+      },
+    );
+  }
+
   function printKitchenAgain() {
     if (pending !== null) return;
     begin();
@@ -624,6 +682,7 @@ export function OrderDetail({
       onRemoveLine={remove}
       onReprint={printCopy}
       onKitchenReprint={canSend && sentToKitchen(order) ? printKitchenAgain : undefined}
+      onTakeOver={canSend ? takeTabOver : undefined}
       onClose={onClose}
       refunds={refunds.data}
       refundOffer={refundOffer}

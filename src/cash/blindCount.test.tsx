@@ -49,6 +49,7 @@ vi.mock("../hooks/usePosData", () => ({
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
   useMutationMessage: () => null,
   useCloseBusinessDay: () => ({ mutate: vi.fn(), isPending: false, error: null, data: undefined }),
+  useOpenTabsOf: () => ({ count: 0, owedMinor: 0 }),
 }));
 
 vi.mock("../auth/DeviceSessionProvider", () => ({

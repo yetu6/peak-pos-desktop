@@ -212,6 +212,8 @@ export function CashOutFixture() {
   );
 }
 
+const NO_TABS = { count: 0, owedMinor: 0 };
+
 /** Closing over a cashier's Cash page: the usual closer, and the count stays blind behind the sheet. */
 function Close(props: Partial<Parameters<typeof CloseShiftSheetView>[0]>) {
   return (
@@ -223,6 +225,7 @@ function Close(props: Partial<Parameters<typeof CloseShiftSheetView>[0]>) {
         currency={CURRENCY}
         requesterId={AMINA}
         roster={ROSTER}
+        openTabs={NO_TABS}
         onClose={async () => SHIFT}
         {...props}
       />

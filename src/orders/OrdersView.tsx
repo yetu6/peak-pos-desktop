@@ -252,9 +252,16 @@ function OrderRow({
         <span className="y-orow__place">{placeWords(order)}</span>
         {meta ? <span className="y-orow__meta">{meta}</span> : null}
       </span>
-      <StatusChip tone={orderStatusTone(order.status)} className="y-orow__status">
-        {orderStatusWords(order.status)}
-      </StatusChip>
+      {order.waitingForShift ? (
+        // S17b: handed over at a shift close; nothing is done to it until a shift takes it.
+        <StatusChip tone="warning" className="y-orow__status" data-testid={`order-waiting-${order.id}`}>
+          Waiting for a shift
+        </StatusChip>
+      ) : (
+        <StatusChip tone={orderStatusTone(order.status)} className="y-orow__status">
+          {orderStatusWords(order.status)}
+        </StatusChip>
+      )}
       <Money minor={order.totalMinor} currency={currency} size="lead" className="y-orow__total" />
     </button>
   );
