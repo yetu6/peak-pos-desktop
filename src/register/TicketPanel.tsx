@@ -1,3 +1,4 @@
+import { roundWords } from "./rounds";
 import { ChefHat, Plus, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Banner, Button, EmptyState, Field, Money, PermissionNotice, SegmentedControl, StatusChip, TicketLine, type Refusal } from "../components/system";
@@ -132,6 +133,7 @@ export function TicketPanel({
                     tags={tagsOf?.(line.productId)}
                     amount={formatMoney(line.totalMinor, currency)}
                     sent={line.status === "SENT"}
+                    sentWords={roundWords(line.roundNumber, order?.roundsSent) ?? "Sent"}
                     selected={selected}
                     onSelect={() => onSelectLine(selected ? null : line.id)}
                   />

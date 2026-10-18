@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { POSOrder, POSOrderItem } from "../lib/posContracts";
@@ -178,5 +178,23 @@ describe("TicketPanel", () => {
   it("starts empty with what to do", () => {
     renderTicket({ order: null });
     expect(screen.getByText("Tap an item to start an order.")).toBeInTheDocument();
+  });
+});
+
+describe("TicketPanel: rounds (S17a)", () => {
+  it("says each sent line's round once there are several, and Sent when there is one", () => {
+    const rounds = {
+      ...ORDER,
+      status: "SERVED" as const,
+      roundsSent: 2,
+      items: [line("l1", "Cappuccino", 2, 1_534_000, { status: "SENT", roundNumber: 1 }), line("l2", "Cake", 1, 590_000, { status: "SENT", roundNumber: 2 })],
+    };
+    renderTicket({ order: rounds });
+    expect(screen.getByTestId("cart-Cappuccino")).toHaveTextContent("Round 1");
+    expect(screen.getByTestId("cart-Cake")).toHaveTextContent("Round 2");
+    cleanup();
+    renderTicket({ order: { ...rounds, roundsSent: 1, items: [rounds.items[0]] } });
+    expect(screen.getByTestId("cart-Cappuccino")).toHaveTextContent("Sent");
+    expect(screen.getByTestId("cart-Cappuccino")).not.toHaveTextContent("Round");
   });
 });

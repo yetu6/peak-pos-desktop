@@ -18,6 +18,7 @@ import {
 import { ReceiptView } from "../components/ReceiptView";
 import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OptionsSheet } from "../register/OptionsSheet";
+import { takesMore } from "../register/rounds";
 import { useTillMenu } from "../fnb/useTillMenu";
 import { sizesOf, tagNote } from "../fnb/fnbWords";
 import { PaymentDone } from "../register/PaymentDone";
@@ -89,11 +90,14 @@ export function NewOrder() {
 
   const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || sendOrder.isPending;
   const canMutate = Boolean(shift) && !busy;
-  // Yetu adds items only to an order that is still open (not yet sent).
+  // An order takes more after it was sent, as the next round (S17a); a Yetu
+  // before rounds takes nothing once sent, and a paid or voided order never.
   const addBlocked = !shift
     ? "Open a shift before taking orders."
-    : order && order.status !== "OPEN"
-      ? "This order has gone to the kitchen. Start a new sale to add more."
+    : order && !takesMore(order)
+      ? order.status === "CLOSED" || order.status === "VOIDED"
+        ? "This order is finished. Start a new sale."
+        : "This order has gone to the kitchen. Start a new sale to add more."
       : null;
 
   async function ensureOrder(): Promise<POSOrder | null> {

@@ -128,3 +128,33 @@ describe("TicketActions", () => {
     expect(within(more).getByRole("button", { name: /Order note/ })).toBeEnabled();
   });
 });
+
+describe("TicketActions: rounds (S17a)", () => {
+  const served: POSOrder = {
+    ...ORDER,
+    status: "SERVED",
+    roundsSent: 1,
+    items: [
+      { ...ORDER.items[0], status: "SENT", roundNumber: 1 },
+      { id: "l2", productId: "p2", name: "Cake", quantity: 1, unitPriceMinor: 500_000, taxMinor: 90_000, totalMinor: 590_000, status: "ADDED" },
+    ],
+  };
+
+  it("sends what was added after a round as the next round, and Pay waits for it in Yetu's words", async () => {
+    const handlers = renderActions({ order: served });
+    const send = screen.getByTestId("send-order");
+    expect(send).toHaveTextContent("Send round 2");
+    expect(send).toBeEnabled();
+    expect(screen.getByTestId("pay-order")).toBeDisabled();
+    expect(screen.getByTestId("pay-waits")).toHaveTextContent("Send or remove what isn't sent yet, then take payment.");
+    await userEvent.click(send);
+    expect(handlers.onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("a Yetu before rounds sends an order once: nothing to send after it", () => {
+    const old = { ...served, roundsSent: undefined };
+    renderActions({ order: old });
+    expect(screen.getByTestId("send-order")).toBeDisabled();
+    expect(screen.queryByTestId("pay-waits")).toBeNull();
+  });
+});

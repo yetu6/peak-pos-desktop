@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NewOrder } from "./NewOrder";
@@ -656,5 +656,54 @@ describe("NewOrder: the Restaurant & Bar module's menu (S16-B4)", () => {
     expect(pint).toHaveTextContent("Sold out");
     await userEvent.click(pint);
     expect(pint).toHaveAttribute("aria-checked", "false");
+  });
+});
+
+describe("NewOrder: rounds (S17a)", () => {
+  beforeEach(() => {
+    tillMenu.data = undefined;
+    localStorage.clear();
+    setOperationalSession({
+      token: "t",
+      expiresAt: "2099-01-01T00:00:00Z",
+      tenantId: "tenant-1",
+      propertyId: "property-1",
+      outletId: "outlet-1",
+      terminalId: "terminal-1",
+      staffId: "staff-1",
+      assurance: "RESTRICTED",
+      capabilities: ["CORE", "POS"],
+      permissions: ["pos.shift.open", "pos.order.create", "pos.order.item.add", "pos.order.send", "pos.payment.record"],
+    });
+  });
+  afterEach(() => clearOperationalSession());
+
+  async function ringUp() {
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Nyama Choma");
+    await waitFor(() => expect(tile).toBeEnabled());
+    await userEvent.click(tile);
+    await within(screen.getByTestId("ticket-panel")).findByRole("button", { name: /Nyama Choma/ });
+  }
+
+  it("takes more after a send from a Yetu with rounds, and says so for one without", async () => {
+    const sentLines = OPEN_ORDER.items.map((item) => ({ ...item, status: "SENT" as const, roundNumber: 1 }));
+    // Sell reads the order again after sending it: Yetu's sent order, with its round.
+    getOrderSpy.mockResolvedValueOnce({ data: { ...OPEN_ORDER, status: "SENT", version: 3, roundsSent: 1, items: sentLines }, error: null } as never);
+    await ringUp();
+    await userEvent.click(screen.getByTestId("send-order"));
+    await waitFor(() => expect(sendOrderSpy).toHaveBeenCalled());
+    // The order is Yetu's sent one now (its line says so), and the menu still takes more.
+    expect(await within(screen.getByTestId("ticket-panel")).findByText("Sent")).toBeInTheDocument();
+    const tile = await screen.findByTestId("menu-Tusker Lager");
+    await waitFor(() => expect(tile).toBeEnabled());
+    expect(screen.queryByText("This order has gone to the kitchen. Start a new sale to add more.")).toBeNull();
+
+    getOrderSpy.mockResolvedValueOnce({ data: { ...OPEN_ORDER, status: "SENT", version: 3, items: sentLines }, error: null } as never);
+    cleanup();
+    localStorage.clear();
+    await ringUp();
+    await userEvent.click(screen.getByTestId("send-order"));
+    expect(await screen.findByText("This order has gone to the kitchen. Start a new sale to add more.")).toBeInTheDocument();
   });
 });

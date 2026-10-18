@@ -313,3 +313,12 @@ describe("KitchenBoard: what staff say about an item (S16-B4)", () => {
     expect(tags[0].closest("li")).toHaveTextContent("Satay");
   });
 });
+
+describe("KitchenBoard: rounds (S17a)", () => {
+  it("says a ticket's round beside its number from round 2", () => {
+    renderBoard({ tickets: [ticket("a1", "SENT", MINUTE, { roundNumber: 2 }), ticket("b1", "SENT", MINUTE, { roundNumber: 1 })] });
+    expect(screen.getByTestId("kitchen-round-a1")).toHaveTextContent("Round 2");
+    expect(within(screen.getByTestId("kitchen-ticket-a1")).getByRole("heading", { level: 3 })).toHaveTextContent("11");
+    expect(screen.queryByTestId("kitchen-round-b1")).toBeNull();
+  });
+});

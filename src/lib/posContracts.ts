@@ -35,6 +35,8 @@ export interface POSOrderItem {
   status: OrderItemStatus;
   prepStation?: PrepStation;
   modifiers?: POSOrderItemModifier[];
+  /** S17a: the round the line was sent in; absent while it is not yet sent. */
+  roundNumber?: number;
 }
 
 export interface POSStationTicket {
@@ -44,6 +46,8 @@ export interface POSStationTicket {
   /** S5b: the order's short number for its outlet and business day ("Order 42"). */
   dailyNumber: number;
   station: PrepStation;
+  /** S17a: the round of the order this ticket makes; absent from a Yetu before rounds (round 1). */
+  roundNumber?: number;
   status: "SENT" | "PREPARING" | "READY" | "SERVED";
   serviceType: ServiceType;
   tableLabel?: string;
@@ -90,6 +94,11 @@ export interface POSOrder {
   totalMinor: number;
   paidMinor: number;
   remainingMinor: number;
+  /**
+   * S17a: rounds the order has sent to the kitchen, 0 until the first send.
+   * Absent from a Yetu before rounds: then nothing can be added once sent.
+   */
+  roundsSent?: number;
   /** Optimistic concurrency token. Every mutation must echo the value the
    *  desktop last saw; a stale value is refused with STALE_VERSION. */
   version: number;

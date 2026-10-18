@@ -310,6 +310,11 @@ function TicketCard({
         <h3 id={headingId} className="y-kticket__number" data-whole="">
           {orderNumberWords(ticket)}
         </h3>
+        {ticket.roundNumber && ticket.roundNumber > 1 ? (
+          <StatusChip tone="info" className="y-kticket__round" data-testid={`kitchen-round-${ticket.id}`}>
+            Round {ticket.roundNumber}
+          </StatusChip>
+        ) : null}
         {fresh ? (
           <StatusChip tone="accent" className="y-kticket__new">
             New

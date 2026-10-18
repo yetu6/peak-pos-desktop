@@ -1,3 +1,4 @@
+import { payWaitsWords, sendWords, takesMore, unsentLines } from "./rounds";
 import { ChefHat, Ellipsis, Wallet } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button, Dialog, PermissionNotice } from "../components/system";
@@ -51,8 +52,10 @@ export function TicketActions({
   const [moreOpen, setMoreOpen] = useState(initialMoreOpen);
   const lines = (order?.items ?? []).filter((line) => line.status !== "VOIDED");
   const settled = order !== null && (order.status === "CLOSED" || order.status === "VOIDED");
-  const sendable = Boolean(order && order.status === "OPEN" && lines.some((line) => line.status === "ADDED")) && !busy;
-  const payable = Boolean(order && lines.length > 0 && !settled && order.remainingMinor > 0) && !busy;
+  // Each send is the next round (S17a); a Yetu before rounds sends an order once.
+  const sendable = Boolean(order && takesMore(order) && unsentLines(order) > 0) && !busy;
+  const payWaits = payWaitsWords(order);
+  const payable = Boolean(order && lines.length > 0 && !settled && order.remainingMinor > 0 && !payWaits) && !busy;
 
   const keys = useRef({ sendable, payable, canSend, canPay, onSend, onPay });
   keys.current = { sendable, payable, canSend, canPay, onSend, onPay };
@@ -98,7 +101,7 @@ export function TicketActions({
             disabled={!sendable}
             onClick={onSend}
           >
-            {sending ? "Sending…" : "Send to kitchen"}
+            {sending ? "Sending…" : sendWords(order)}
           </Button>
         ) : (
           <PermissionNotice who="staff who take orders" action="send them to the kitchen" next="Ask one to help." />
@@ -107,6 +110,11 @@ export function TicketActions({
           More
         </Button>
       </div>
+      {payWaits && canPay ? (
+        <p className="y-actions__why" data-testid="pay-waits">
+          {payWaits}
+        </p>
+      ) : null}
       {canPay ? (
         <Button
           variant="primary"

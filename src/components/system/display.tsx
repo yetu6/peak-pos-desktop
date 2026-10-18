@@ -116,6 +116,7 @@ export function TicketLine({
   tags,
   amount,
   sent = false,
+  sentWords = "Sent",
   selected = false,
   onSelect,
   className,
@@ -128,6 +129,8 @@ export function TicketLine({
   tags?: string;
   amount: string;
   sent?: boolean;
+  /** What the sent chip says: "Sent", or its round once there are several ("Round 2"). */
+  sentWords?: string;
   selected?: boolean;
   onSelect?: () => void;
   className?: string;
@@ -149,7 +152,7 @@ export function TicketLine({
         {note ? <span className="y-ticket-line__note">{note}</span> : null}
         {sent ? (
           <StatusChip tone="info" className="y-ticket-line__sent">
-            Sent
+            {sentWords}
           </StatusChip>
         ) : null}
       </span>

@@ -287,6 +287,8 @@
 
 /* --------------------------------------------------------------- Actions */
 .y-actions { display: grid; gap: var(--space-3); }
+/* Why Pay waits (S17a): said above the button, in the till's plain words. */
+.y-actions__why { margin: 0; color: var(--text-muted); font-size: var(--type-small); }
 
 .y-actions__row {
   display: flex;
