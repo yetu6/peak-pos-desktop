@@ -84,8 +84,9 @@
   display: grid;
   width: 100%;
   min-height: 72px;
-  /* The number column fits Yetu's numbers whole: POS- and eight letters and digits. */
-  grid-template-columns: 9.5em minmax(0, 1fr) auto minmax(132px, auto);
+  /* The number column fits the order's number for the day (up to four digits, so rows line up); a
+     reference standing in for one (no number yet) widens only its own row, never cut. */
+  grid-template-columns: max-content minmax(0, 1fr) auto minmax(132px, auto);
   align-items: center;
   gap: var(--space-4);
   border: 0;
@@ -105,6 +106,7 @@
 .y-orow:focus-visible { outline-offset: -3px; }
 
 .y-orow__number {
+  min-width: 4ch;
   font-family: var(--font-display);
   font-size: var(--type-title);
   font-variant-numeric: tabular-nums;

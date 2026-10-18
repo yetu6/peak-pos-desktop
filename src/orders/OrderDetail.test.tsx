@@ -160,6 +160,16 @@ describe("OrderDetailView", () => {
     expect(handlers.onReprint).toHaveBeenCalled();
   });
 
+  it("a room charge reads as done, and a payment with no name given says only when", () => {
+    const lines = [payment("ROOM_CHARGE", 1_000_000, at(14, 20), "Amina Hassan"), payment("CASH", 534_000, at(14, 23), "")];
+    renderDetail({ order: order({ status: "CLOSED", paidMinor: 1_534_000, remainingMinor: 0, payments: lines }) });
+    const items = within(screen.getByTestId("order-detail-payments")).getAllByRole("listitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Charged to the room · TSh 10,000Taken by Amina Hassan at 14:20",
+      "Cash · TSh 5,340Taken at 14:23",
+    ]);
+  });
+
   it("a paid order says how it was paid before its receipt has come", () => {
     renderDetail({ order: order({ status: "CLOSED", paidMinor: 1_534_000, remainingMinor: 0, payments: [payment("CASH", 1_534_000, at(14, 23), "Grace Mushi")] }) });
     expect(screen.getByTestId("order-detail-payments")).toHaveTextContent("Cash · TSh 15,340Taken by Grace Mushi at 14:23");

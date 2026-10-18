@@ -151,6 +151,7 @@ describe("OrdersView", () => {
     hasMore: false,
     loadingMore: false,
     searchedAll: true,
+    reading: false,
     onMore: vi.fn(),
     ...extra,
   });
@@ -180,9 +181,17 @@ describe("OrdersView", () => {
     expect(screen.getByTestId("order-row-p000")).toHaveTextContent("Amina Hassan · Paid 14:23");
   });
 
-  it("while a search reads the rest of today, it says so", async () => {
-    render(<Harness tab="paid" query="p001" paidOrders={paidPage(50)} paidPaging={paging({ hasMore: true, loadingMore: true, searchedAll: false })} />);
+  it("while a search reads the rest of today, it says so, even between two pages, and never says 'no match' yet", () => {
+    render(
+      <Harness
+        tab="paid"
+        query="nothing like it"
+        paidOrders={paidPage(50)}
+        paidPaging={paging({ hasMore: true, loadingMore: false, searchedAll: false, reading: true })}
+      />,
+    );
     expect(screen.getByTestId("orders-status")).toHaveTextContent("Looking through today's paid orders…");
+    expect(screen.queryByText(/No order matches/)).toBeNull();
   });
 
   it("a search that stopped at its ceiling says which orders it looked through", () => {

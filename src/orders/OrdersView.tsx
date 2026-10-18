@@ -23,10 +23,12 @@ interface PaidPaging {
   loadingMore: boolean;
   /** Every paid order of the day has been read, so a search covered them all. */
   searchedAll: boolean;
+  /** A search is still reading the rest of the day, between pages too: "no match" isn't its answer yet. */
+  reading: boolean;
   onMore: () => void;
 }
 
-const ALL_READ: PaidPaging = { hasMore: false, loadingMore: false, searchedAll: true, onMore: () => {} };
+const ALL_READ: PaidPaging = { hasMore: false, loadingMore: false, searchedAll: true, reading: false, onMore: () => {} };
 
 export interface OrdersViewProps {
   tab: OrdersTab;
@@ -98,7 +100,7 @@ export function OrdersView({
   const paged = tab === "paid";
   const searching = query.trim().length > 0;
   // A search on Paid reads the rest of the day first (usePaidOrders): until then it isn't the answer.
-  const stillReading = paged && searching && paidPaging.loadingMore;
+  const stillReading = paged && searching && paidPaging.reading;
   const searchWords = stillReading ? "Looking through today's paid orders…" : matchWords(shown.length);
   const status = [notice, searching && !state.loading ? searchWords : null].filter(Boolean).join(" ");
   // A search that stopped at its ceiling says how far it looked.

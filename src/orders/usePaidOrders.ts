@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useOutletId } from "../hooks/usePosData";
 import { createPosApi } from "../lib/posApi";
 import type { POSOrder, POSOrderPage, POSShift } from "../lib/posContracts";
@@ -23,6 +23,8 @@ export interface PaidOrders {
   loadingMore: boolean;
   /** Every paid order of the day has been read, so a search covered them all. */
   searchedAll: boolean;
+  /** A search is still reading the rest of the day: until it stops, "no match" isn't its answer. */
+  reading: boolean;
 }
 
 function unwrapPage({ data, error }: { data?: POSOrderPage; error?: unknown }): POSOrderPage {
@@ -39,7 +41,10 @@ function unwrapPage({ data, error }: { data?: POSOrderPage; error?: unknown }): 
  * is read, up to PAID_SEARCH_MOST_PAGES pages, so the search never says
  * "no match" of orders it hasn't read. A payment at the outlet only marks the
  * list out of date; while the tab is open it is asked for again at most every
- * PAID_LIST_REFRESH_SECONDS, and only if something was paid meanwhile.
+ * PAID_LIST_REFRESH_SECONDS, and only if something was paid meanwhile. Asking
+ * again reads again every page read so far (Yetu's cursors are only good for
+ * the list as it was), so after a long search that is up to
+ * PAID_SEARCH_MOST_PAGES pages. One request runs at a time.
  */
 export function usePaidOrders(shift: Pick<POSShift, "id" | "businessDate"> | undefined, enabled: boolean, searching: boolean): PaidOrders {
   const outletId = useOutletId();
@@ -58,23 +63,39 @@ export function usePaidOrders(shift: Pick<POSShift, "id" | "businessDate"> | und
     // Fresh until a payment marks it out of date.
     staleTime: Infinity,
   });
+  // A payment makes the list out of date. Kept here as well as on the query: any page that arrives clears
+  // the query's own mark, though the pages read before it are still the old ones.
+  const refreshDue = useRef(false);
   useRealtimeEvents({ kind: "outletOrders", outletId }, (event) => {
-    if (PAID_EVENTS.includes(event.type)) void queryClient.invalidateQueries({ queryKey, refetchType: "none" });
+    if (!PAID_EVENTS.includes(event.type)) return;
+    refreshDue.current = true;
+    // Marked on the query too, so the list is asked for again when the tab is next opened.
+    void queryClient.invalidateQueries({ queryKey, refetchType: "none" });
   });
-  const { refetch, fetchNextPage, hasNextPage, isFetchingNextPage, isError } = query;
+  const { refetch, fetchNextPage, hasNextPage, isFetching, isFetchingNextPage, isError } = query;
+  // Only one request at a time: a page asked for never cancels a refresh under way, and a refresh due
+  // while a page is out waits for the next tick.
+  const busy = useRef(isFetching);
+  busy.current = isFetching;
   useEffect(() => {
     if (!active) return;
     const id = window.setInterval(() => {
-      if (queryClient.getQueryState(queryKey)?.isInvalidated) void refetch();
+      const due = refreshDue.current || queryClient.getQueryState(queryKey)?.isInvalidated;
+      if (!due || busy.current) return;
+      refreshDue.current = false;
+      void refetch();
     }, PAID_LIST_REFRESH_SECONDS * 1000);
     return () => window.clearInterval(id);
   }, [active, queryClient, queryKey, refetch]);
 
   const pagesRead = query.data?.pages.length ?? 0;
+  const moreToSearch = active && searching && !isError && Boolean(hasNextPage) && pagesRead < PAID_SEARCH_MOST_PAGES;
   useEffect(() => {
-    if (!active || !searching || !hasNextPage || isFetchingNextPage || isError || pagesRead >= PAID_SEARCH_MOST_PAGES) return;
+    // A page that failed stops the search (isError): it is not asked for again and again. Each page read
+    // asks for the next (pagesRead), even when its request began and ended between two renders.
+    if (!moreToSearch || isFetching) return;
     void fetchNextPage();
-  }, [active, searching, hasNextPage, isFetchingNextPage, isError, pagesRead, fetchNextPage]);
+  }, [moreToSearch, isFetching, pagesRead, fetchNextPage]);
 
   const orders = useMemo(() => {
     if (!query.data) return null;
@@ -97,9 +118,11 @@ export function usePaidOrders(shift: Pick<POSShift, "id" | "businessDate"> | und
     refetch: () => void refetch(),
     hasMore: Boolean(hasNextPage),
     loadMore: () => {
-      if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+      if (hasNextPage && !busy.current) void fetchNextPage();
     },
-    loadingMore: isFetchingNextPage,
+    // A refresh under way holds Show more too: one request at a time.
+    loadingMore: isFetchingNextPage || (isFetching && !query.isLoading),
     searchedAll: query.isSuccess && !hasNextPage,
+    reading: moreToSearch || (searching && isFetchingNextPage),
   };
 }

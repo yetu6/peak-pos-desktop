@@ -12,7 +12,7 @@ import {
 } from "../hooks/usePosData";
 import { isComposing } from "../lib/keyboard";
 import { formatMoney } from "../lib/money";
-import type { POSOrder, POSOrderItem, POSReceipt } from "../lib/posContracts";
+import type { POSOrder, POSOrderItem, POSOrderPayment, POSReceipt } from "../lib/posContracts";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRequestKey } from "../lib/useRequestKey";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, serviceTypeWords } from "../lib/words";
@@ -44,6 +44,15 @@ export interface OrderDetailViewProps {
   onRemoveLine: (line: POSOrderItem) => void;
   onReprint: () => void;
   onClose: () => void;
+}
+
+/** Who took a payment and when, saying only what Yetu gave. */
+function takenWords(payment: POSOrderPayment): string {
+  const who = payment.recordedByName.trim();
+  const when = clockTime(payment.createdAt);
+  if (who && when) return `Taken by ${who} at ${when}`;
+  if (who) return `Taken by ${who}`;
+  return when ? `Taken at ${when}` : "";
 }
 
 /**
@@ -307,11 +316,10 @@ export function OrderDetailView({
                 {payments.map((payment) => (
                   <li key={payment.id} className="y-detail__payment">
                     <span className="y-detail__line">
-                      {paymentMethodWords(payment.paymentMethod)} · {formatMoney(payment.amountMinor, currency)}
+                      {payment.paymentMethod === "ROOM_CHARGE" ? "Charged to the room" : paymentMethodWords(payment.paymentMethod)} ·{" "}
+                      {formatMoney(payment.amountMinor, currency)}
                     </span>
-                    <span className="y-detail__line y-detail__muted">
-                      {[`Taken by ${payment.recordedByName}`, clockTime(payment.createdAt)].filter(Boolean).join(" at ")}
-                    </span>
+                    <span className="y-detail__line y-detail__muted">{takenWords(payment)}</span>
                   </li>
                 ))}
               </ul>

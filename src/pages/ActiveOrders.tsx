@@ -126,7 +126,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
         onTab={setTab}
         openOrders={open}
         paidOrders={paid.orders}
-        paidPaging={{ hasMore: paid.hasMore, loadingMore: paid.loadingMore, searchedAll: paid.searchedAll, onMore: paid.loadMore }}
+        paidPaging={{ hasMore: paid.hasMore, loadingMore: paid.loadingMore, searchedAll: paid.searchedAll, reading: paid.reading, onMore: paid.loadMore }}
         query={query}
         onQuery={setQuery}
         currency={currency}

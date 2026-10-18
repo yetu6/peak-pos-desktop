@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { idleLockHeld } from "../lib/idleLock";
-import { CashMovementDialog } from "./CashMovementDialog";
+import { CashMovementDialog, CashMovementSheetView } from "./CashMovementDialog";
 
 const { recordMutate, record, sessionRef, recordReset } = vi.hoisted(() => ({
   recordReset: vi.fn(),
@@ -194,6 +194,27 @@ describe("CashMovementDialog", () => {
     expect(screen.getByTestId("movement-error")).toHaveTextContent(
       "A different supervisor must approve taking cash out. Their PIN wasn't accepted, or they can't approve this.",
     );
+  });
+});
+
+describe("a refusal is worded for the request that was refused", () => {
+  it("a cash out refused, then the sheet switched to cash in: still the supervisor's refusal", async () => {
+    const refusal = new Error(JSON.stringify({ status: 403, code: "FORBIDDEN", detail: "That approval was not accepted." }));
+    render(
+      <CashMovementSheetView
+        onClose={vi.fn()}
+        currency="TZS"
+        initialType="CASH_OUT"
+        roster={[]}
+        requesterId="staff-amina"
+        pending={false}
+        error={refusal}
+        errorMovementType="CASH_OUT"
+        onRecord={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("radio", { name: /Cash in/ }));
+    expect(screen.getByTestId("movement-error")).toHaveTextContent("A different supervisor must approve taking cash out.");
   });
 });
 
