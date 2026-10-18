@@ -25,7 +25,13 @@ function Board({ mode = "POS", ...props }: Partial<KitchenBoardProps> & { mode?:
 
 /** A selling till's kitchen: new, getting late, late, preparing and ready, with what just happened. */
 export function KitchenFixture() {
-  return <Board result="Order POS-5be2d871 is ready." />;
+  return <Board result="Order 42 is ready." />;
+}
+
+/** A kitchen display with a second round (S17a): its ticket says Round 2. */
+export function KitchenRoundsFixture() {
+  const rounds = DISPLAY_TICKETS.map((ticket, index) => (index === 0 ? { ...ticket, roundNumber: 2 } : ticket));
+  return <Board mode="KITCHEN_DISPLAY" tickets={rounds} stationsWords={STATIONS.map(stationWords).join(" · ")} />;
 }
 
 /** Nothing waiting. */

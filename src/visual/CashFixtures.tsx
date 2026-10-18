@@ -1,3 +1,4 @@
+import { PrintersCard } from "../print/PrintersCard";
 import { AccessFrame } from "../access/AccessLayout";
 import { CloseDayCardView } from "../cash/CloseDayCard";
 import { CloseShiftSheetView } from "../cash/CloseShiftSheet";
@@ -157,6 +158,11 @@ function Cash(props: Partial<Parameters<typeof CashView>[0]>) {
   );
 }
 
+/** Manager -> Printers (S8a/S8b): paper kitchen tickets, the kitchen and receipt printers, the drawer. */
+export function PrintersFixture() {
+  return <Cash printers={<PrintersCard />} />;
+}
+
 /** Cash for a manager: the drawer, cash in and out, close shift, close the day. */
 export function CashFixture() {
   return <Cash />;
@@ -241,6 +247,11 @@ export function CloseCountFixture() {
 /** Close shift, step 2: the count matches. */
 export function CloseBalancedFixture() {
   return <Close initialCounted="74000" initialStep="check" />;
+}
+
+/** Close shift with tabs still open (S17b): they go to the next shift, and the button says so. */
+export function CloseTabsFixture() {
+  return <Close initialCounted="74000" initialStep="check" openTabs={{ count: 2, owedMinor: 4_520_000 }} />;
 }
 
 /** Close shift, step 2: over, so a manager approves. */
