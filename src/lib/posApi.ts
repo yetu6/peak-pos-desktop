@@ -8,7 +8,12 @@ import type {
   POSCatalog,
   POSOrder,
   POSOrderPage,
+  POSOrderRefunds,
   POSReceipt,
+  POSRefund,
+  POSRefundQuote,
+  POSRefundQuoteRequest,
+  POSRefundRequest,
   POSRoomChargeCandidate,
   POSShift,
   POSStationTicket,
@@ -213,6 +218,23 @@ export function createPosApi() {
       idempotencyKey: string,
     ): Promise<ApiResult<void>> {
       return client.POST<void>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/void`, {
+        headers: idempotent(idempotencyKey),
+        body,
+      });
+    },
+
+    // ---- Refunds (S7) ---------------------------------------------------
+    /** listPOSOrderRefunds: what was given back, and each line's and payment's remaining room. */
+    listPOSOrderRefunds(orderId: string): Promise<ApiResult<POSOrderRefunds>> {
+      return client.GET<POSOrderRefunds>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/refunds`);
+    },
+    /** quotePOSRefund: the refund worked out by the server, nothing written, no approval asked. */
+    quotePOSRefund(orderId: string, body: POSRefundQuoteRequest): Promise<ApiResult<POSRefundQuote>> {
+      return client.POST<POSRefundQuote>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/refunds/quote`, { body });
+    },
+    /** recordPOSRefund: a different person's supervisor PIN; idempotent under the caller's key. */
+    recordPOSRefund(orderId: string, body: POSRefundRequest, idempotencyKey: string): Promise<ApiResult<POSRefund>> {
+      return client.POST<POSRefund>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/refunds`, {
         headers: idempotent(idempotencyKey),
         body,
       });

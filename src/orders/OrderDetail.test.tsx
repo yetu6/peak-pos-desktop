@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { POSOrder, POSOrderPayment, POSOrderItem, POSReceipt } from "../lib/posContracts";
+import type { POSOrder, POSOrderPayment, POSOrderItem, POSOrderRefunds, POSReceipt, POSRefund } from "../lib/posContracts";
 import { OrderDetailView, type OrderDetailViewProps } from "./OrderDetail";
 
 function line(id: string, name: string, status: POSOrderItem["status"], options: string[] = []): POSOrderItem {
@@ -84,6 +84,98 @@ function renderDetail(props: Partial<OrderDetailViewProps> = {}) {
 }
 
 const footer = () => screen.getByTestId("order-detail-actions");
+
+const PAID = { status: "CLOSED" as const, paidMinor: 1_534_000, remainingMinor: 0 };
+
+function refundGiven(extra: Partial<POSRefund> = {}): POSRefund {
+  return {
+    id: "refund-1",
+    orderId: "order-1",
+    orderNumber: "0142",
+    dailyNumber: 42,
+    outletId: "outlet-1",
+    shiftId: "shift-1",
+    terminalId: "till-1",
+    businessDate: "2026-10-18",
+    reason: "Cold or not as ordered",
+    initiatedById: "staff-1",
+    initiatedByName: "Amina Hassan",
+    authorizedById: "staff-2",
+    authorizedByName: "Grace Mushi",
+    netMinor: 650_000,
+    discountMinor: 0,
+    taxMinor: 117_000,
+    totalMinor: 767_000,
+    currency: "TZS",
+    createdAt: new Date(2026, 9, 18, 17, 40).toISOString(),
+    lines: [],
+    tenders: [{ id: "t-1", paymentId: "pay-1", paymentMethod: "CASH", amountMinor: 767_000 }],
+    ...extra,
+  };
+}
+
+function refundsOf(refunds: POSRefund[], extra: Partial<POSOrderRefunds> = {}): POSOrderRefunds {
+  const refundedMinor = refunds.reduce((sum, refund) => sum + refund.totalMinor, 0);
+  return {
+    orderId: "order-1",
+    status: "CLOSED",
+    totalMinor: 1_534_000,
+    refundedMinor,
+    remainingMinor: 1_534_000 - refundedMinor,
+    lastRefundDate: "2026-11-17",
+    wholeOrderOnly: false,
+    refunds,
+    lines: [],
+    payments: [],
+    ...extra,
+  };
+}
+
+describe("OrderDetailView: refunds (S7)", () => {
+  it("a paid order offers Refund items beside Print receipt", async () => {
+    const onRefund = vi.fn();
+    renderDetail({ order: order(PAID), receipt: RECEIPT, refunds: refundsOf([]), refundOffer: { offer: true, why: null }, onRefund });
+    const refund = within(footer()).getByRole("button", { name: "Refund items" });
+    expect(refund).toBeEnabled();
+    expect(within(footer()).getByRole("button", { name: "Print receipt" })).toHaveClass("y-button--primary");
+    await userEvent.click(refund);
+    expect(onRefund).toHaveBeenCalled();
+  });
+
+  it("says why a refund can't be given here, instead of offering it", () => {
+    renderDetail({
+      order: order(PAID),
+      receipt: RECEIPT,
+      refunds: refundsOf([]),
+      refundOffer: { offer: false, why: "Open a shift on this till to give a refund." },
+      onRefund: vi.fn(),
+    });
+    const refund = within(footer()).getByRole("button", { name: "Refund items" });
+    expect(refund).toBeDisabled();
+    expect(refund).toHaveAccessibleDescription("Open a shift on this till to give a refund.");
+  });
+
+  it("a partly refunded order says so in words, with each refund: how much, how, why and who", () => {
+    renderDetail({ order: order(PAID), receipt: RECEIPT, refunds: refundsOf([refundGiven()]), refundOffer: { offer: true, why: null }, onRefund: vi.fn() });
+    expect(screen.getByTestId("order-detail-status")).toHaveTextContent("Partly refunded");
+    const given = within(screen.getByTestId("order-detail-refunds")).getAllByRole("listitem");
+    expect(given.map((item) => item.textContent)).toEqual([
+      "TSh 7,670 back in cash · 17:40Cold or not as ordered · Amina Hassan, approved by Grace Mushi",
+    ]);
+  });
+
+  it("an order refunded in full reads Refunded, and a room charge as taken off the bill", () => {
+    const room = refundGiven({ totalMinor: 1_534_000, tenders: [{ id: "t-2", paymentId: "pay-2", paymentMethod: "ROOM_CHARGE", amountMinor: 1_534_000 }] });
+    renderDetail({ order: order(PAID), receipt: RECEIPT, refunds: refundsOf([room]), refundOffer: { offer: false, why: "Everything on this order has been refunded." } });
+    expect(screen.getByTestId("order-detail-status")).toHaveTextContent("Refunded");
+    expect(screen.getByTestId("order-detail-refunds")).toHaveTextContent("TSh 15,340 taken off the room bill");
+  });
+
+  it("offers no refund on an order that isn't paid", () => {
+    renderDetail({ order: order({ status: "SENT" }), onRefund: vi.fn() });
+    expect(within(footer()).queryByRole("button", { name: "Refund items" })).toBeNull();
+  });
+});
 
 describe("OrderDetailView", () => {
   it("names the order, where it goes and who took it, with its lines, totals and what happened", () => {

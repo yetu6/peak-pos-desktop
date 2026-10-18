@@ -262,3 +262,145 @@ export interface POSPrintJob {
   lastError?: string;
   createdAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// S7 refunds by item (fbc-peak #254): GET/POST /pos/orders/{orderId}/refunds,
+// POST /pos/orders/{orderId}/refunds/quote. Every amount is the server's.
+// ---------------------------------------------------------------------------
+
+/** The ways money goes back: the ways it was paid, a room charge among them. */
+export type RefundMethod = PaymentMethod | "ROOM_CHARGE";
+
+export interface POSRefundLine {
+  id: string;
+  orderItemId: string;
+  name: string;
+  quantity: number;
+  /** Quantity at the price sold. */
+  grossMinor: number;
+  discountMinor: number;
+  /** grossMinor - discountMinor. */
+  netMinor: number;
+  taxMinor: number;
+  /** netMinor + taxMinor. */
+  totalMinor: number;
+}
+
+export interface POSRefundTender {
+  id: string;
+  paymentId: string;
+  paymentMethod: RefundMethod;
+  amountMinor: number;
+  /** ROOM_CHARGE only: the reversal line posted on the guest's bill. */
+  folioItemId?: string;
+}
+
+/** POSRefund: one refund as given. */
+export interface POSRefund {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  dailyNumber: number;
+  outletId: string;
+  shiftId: string;
+  terminalId: string;
+  /** The refunding shift's business date: reports count the refund on this day. */
+  businessDate: string;
+  reason: string;
+  initiatedById: string;
+  initiatedByName: string;
+  authorizedById: string;
+  authorizedByName: string;
+  netMinor: number;
+  discountMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+  currency: string;
+  createdAt: string;
+  lines: POSRefundLine[];
+  tenders: POSRefundTender[];
+  /** The REFUND_RECEIPT print job; on the response that gave the refund. */
+  receiptJobId?: string;
+}
+
+/** listPOSOrderRefunds: what was given back on an order, and what is left to give. */
+export interface POSOrderRefunds {
+  orderId: string;
+  status: OrderStatus;
+  totalMinor: number;
+  refundedMinor: number;
+  /** Left to refund; zero unless CLOSED. */
+  remainingMinor: number;
+  /** The last business date the till may refund this order. */
+  lastRefundDate: string;
+  /** Charged to a room: refunded whole, in one go, or at the front desk. */
+  wholeOrderOnly: boolean;
+  refunds: POSRefund[];
+  lines: { orderItemId: string; name: string; quantity: number; refundedQuantity: number; remainingQuantity: number }[];
+  payments: { paymentId: string; paymentMethod: string; amountMinor: number; refundedMinor: number; remainingMinor: number }[];
+}
+
+export interface POSRefundLineRequest {
+  orderItemId: string;
+  quantity: number;
+}
+
+export interface POSRefundTenderRequest {
+  paymentId: string;
+  amountMinor: number;
+}
+
+/** POSRefundQuoteRequest: recordPOSRefund's body without the supervisor. */
+export interface POSRefundQuoteRequest {
+  /** Accepted so the till can send the refund it is building; not used by the quote. */
+  reason?: string;
+  lines: POSRefundLineRequest[];
+  /** Must add up to the refund exactly. Leave out for the proposed split. */
+  tenders?: POSRefundTenderRequest[];
+}
+
+export interface POSRefundQuoteLine {
+  orderItemId: string;
+  name: string;
+  quantity: number;
+  grossMinor: number;
+  discountMinor: number;
+  netMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+}
+
+export interface POSRefundQuoteTender {
+  paymentId: string;
+  paymentMethod: RefundMethod;
+  /** What this refund would give back on the payment (0 for none). */
+  amountMinor: number;
+  /** The most it can. */
+  capMinor: number;
+}
+
+/** POSRefundQuote: what a refund would give back, worked out by the server, nothing written. */
+export interface POSRefundQuote {
+  orderId: string;
+  currency: string;
+  netMinor: number;
+  discountMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+  /** What would leave this till's drawer. */
+  cashMinor: number;
+  wholeOrderOnly: boolean;
+  lines: POSRefundQuoteLine[];
+  /** Every payment that can still give money back. */
+  tenders: POSRefundQuoteTender[];
+}
+
+/** recordPOSRefund's body. */
+export interface POSRefundRequest {
+  reason: string;
+  lines: POSRefundLineRequest[];
+  /** Leave out when the order was paid one way. */
+  tenders?: POSRefundTenderRequest[];
+  supervisorStaffId: string;
+  supervisorPin: string;
+}

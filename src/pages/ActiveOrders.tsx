@@ -14,18 +14,21 @@ import {
 import { sentTimesByOrder } from "../kitchen/kitchenTickets";
 import type { POSOrder } from "../lib/posContracts";
 import { OrderDetail } from "../orders/OrderDetail";
+import { RefundItemsSheet } from "../orders/RefundItemsSheet";
 import { OrdersView, type OrdersTab } from "../orders/OrdersView";
 import { ORDERS_REFRESH_SECONDS } from "../orders/ordersSettings";
 import { usePaidOrders } from "../orders/usePaidOrders";
 import { PaymentDone } from "../register/PaymentDone";
 import { PaySheet, type PaidInfo } from "../register/PaySheet";
+import { formatMoney } from "../lib/money";
 import { orderName } from "../lib/orderNumber";
 
-/** What is open over the list: an order, its Pay or Void sheet, payment done, or a receipt. */
+/** What is open over the list: an order, its Pay, Void or Refund sheet, payment done, or a receipt. */
 type Overlay =
   | { kind: "detail"; orderId: string }
   | { kind: "pay"; orderId: string }
   | { kind: "void"; orderId: string }
+  | { kind: "refund"; orderId: string }
   | { kind: "done"; paid: PaidInfo }
   | { kind: "receipt"; orderId: string }
   | null;
@@ -149,6 +152,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
             voided.current = false;
             setOverlay({ kind: "void", orderId: current.id });
           }}
+          onRefund={() => setOverlay({ kind: "refund", orderId: current.id })}
           onClose={close}
           onReload={reloadOrders}
         />
@@ -174,6 +178,14 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
             else setOverlay({ kind: "detail", orderId: current.id });
           }}
           onStale={reloadOrders}
+        />
+      ) : null}
+      {overlay?.kind === "refund" && current && currency ? (
+        <RefundItemsSheet
+          order={current}
+          currency={currency}
+          onRefunded={(refund) => setNotice(`${orderName(current)}: ${formatMoney(refund.totalMinor, refund.currency || currency)} refunded.`)}
+          onClose={() => setOverlay({ kind: "detail", orderId: current.id })}
         />
       ) : null}
       {overlay?.kind === "done" && currency ? (

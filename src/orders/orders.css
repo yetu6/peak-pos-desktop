@@ -230,3 +230,102 @@
   color: var(--text-muted);
   font-size: var(--type-small);
 }
+
+/* ------------------------------------------------------------ Refund items */
+.y-refund {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.y-refund__lines {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One item: its name and what is left of it, the stepper, Yetu's amount for what goes back. */
+.y-refund__line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(96px, auto);
+  grid-template-areas:
+    "name stepper amount"
+    "left stepper amount";
+  align-items: center;
+  column-gap: var(--space-3);
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-2) 0;
+}
+
+.y-refund__name { grid-area: name; font-weight: 600; overflow-wrap: anywhere; }
+.y-refund__left { grid-area: left; color: var(--text-muted); font-size: var(--type-small); }
+.y-refund__line > .y-stepper,
+.y-refund__fixed { grid-area: stepper; }
+.y-refund__fixed { min-width: var(--target-min); text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+.y-refund__amount { grid-area: amount; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* The reasons wrap at any width; each is a full-size target. */
+.y-refund__reasons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-2);
+}
+
+.y-refund__reason {
+  min-height: var(--target-min);
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.y-refund__reason:hover:not([aria-checked="true"]) { background: var(--surface-hover); }
+
+.y-refund__reason[aria-checked="true"] {
+  border-color: var(--action);
+  background: var(--action);
+  color: var(--on-action);
+}
+
+.y-refund__summary {
+  min-height: 1.4em;
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 700;
+}
+
+.y-refund__split { display: grid; gap: var(--space-3); justify-items: start; }
+.y-refund__split > .y-field { width: 100%; }
+
+/* Done: calm and clear, the amount first. */
+.y-refund__done {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6) 0;
+  text-align: center;
+}
+
+.y-refund__tick { width: 56px; height: 56px; color: var(--success); }
+
+.y-refund__done-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--type-figure);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.y-refund__done-lines {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--type-lead);
+}

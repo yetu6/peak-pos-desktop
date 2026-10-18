@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPosApi } from "../lib/posApi";
 import { describePosError } from "../lib/posErrors";
 import { READ_AFTER_RECORD_FAILED } from "../lib/problemWords";
@@ -15,6 +15,8 @@ import type {
   DiscountKind,
   PaymentMethod,
   POSOrder,
+  POSRefundQuoteRequest,
+  POSRefundRequest,
   POSShift,
   ServiceType,
 } from "../lib/posContracts";
@@ -614,6 +616,51 @@ export function useVoidOrder() {
         ),
       ),
     onSuccess: () => invalidateOrders(queryClient),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Refunds by item (S7). The till never works money out: the quote is Yetu's,
+// and so is every amount on the refund.
+// ---------------------------------------------------------------------------
+
+/** What was given back on an order, and what each line and payment can still give. */
+export function useOrderRefunds(orderId: string | undefined) {
+  return useQuery({
+    queryKey: ["pos", "order-refunds", orderId],
+    queryFn: () => unwrap(createPosApi().listPOSOrderRefunds(orderId!)),
+    enabled: Boolean(orderId),
+    retry: false,
+  });
+}
+
+/**
+ * Yetu's figures for the refund being built (quotePOSRefund writes nothing).
+ * Asked again whenever the items or the split change; the last answer stays
+ * on screen while the next one comes.
+ */
+export function useRefundQuote(orderId: string, body: POSRefundQuoteRequest | null) {
+  return useQuery({
+    queryKey: ["pos", "refund-quote", orderId, body],
+    queryFn: () => unwrap(createPosApi().quotePOSRefund(orderId, body!)),
+    enabled: body !== null && body.lines.length > 0,
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+/** recordPOSRefund under the caller's key: the same key for a retry of the same refund. */
+export function useRecordRefund() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { orderId: string; body: POSRefundRequest; idempotencyKey: string }) =>
+      unwrap(createPosApi().recordPOSRefund(args.orderId, args.body, args.idempotencyKey)),
+    onSuccess: (refund) => {
+      invalidateOrders(queryClient);
+      queryClient.invalidateQueries({ queryKey: ["pos", "order-refunds", refund.orderId] });
+      // Cash given back lowers the drawer's expected cash.
+      queryClient.invalidateQueries({ queryKey: ["pos", "shift"] });
+    },
   });
 }
 

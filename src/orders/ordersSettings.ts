@@ -31,3 +31,14 @@ export const PAID_LIST_REFRESH_SECONDS = 30;
  * so a missed update still shows. The same as the kitchen board's.
  */
 export const ORDERS_REFRESH_SECONDS = 15;
+
+/**
+ * orders.refundReasons: the reasons a cashier picks from when giving money
+ * back, besides typing their own. Each is written as staff would say it.
+ */
+export const REFUND_REASONS: readonly string[] = [
+  "Cold or not as ordered",
+  "Wrong item served",
+  "Guest changed their mind",
+  "Charged twice",
+];
