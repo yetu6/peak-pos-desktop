@@ -13,6 +13,7 @@ const {
   recordMutate,
   recordReset,
   refetchRefunds,
+  refetchQuote,
   printJobs,
   keys,
 } = vi.hoisted(() => ({
@@ -27,10 +28,13 @@ const {
     redraw: () => {},
     kept: null as POSRefundQuoteRequest | null,
     laterRefusal: null as Error | null,
+    // A split asked for, while Yetu works it out: the last answer (Yetu's own split) is kept on screen.
+    splitKept: false,
   },
   recordMutate: vi.fn(),
   recordReset: vi.fn(),
   refetchRefunds: vi.fn(),
+  refetchQuote: vi.fn(),
   printJobs: vi.fn(async () => [{ ok: true }]),
   keys: { next: 0 },
 }));
@@ -74,16 +78,17 @@ vi.mock("../hooks/usePosData", async () => {
   return {
   usePropertyId: () => "property-1",
   useIdempotencyKey: () => ({ current: "unused", next: () => `key-${++keys.next}` }),
-  useOrderRefunds: () => ({ data: state.refunds, isLoading: false, isError: false, refetch: refetchRefunds }),
+  useOrderRefunds: () => ({ data: state.refunds, isLoading: false, isError: false, isFetching: false, refetch: refetchRefunds }),
   useRefundQuote: (orderId: string, body: POSRefundQuoteRequest | null) => {
-    if (!body || body.lines.length === 0) return { data: undefined, isFetching: false, error: null };
+    if (!body || body.lines.length === 0) return { data: undefined, isFetching: false, error: null, refetch: refetchQuote };
     state.quoted.push(body);
-    if (state.quoteError) return { data: undefined, isFetching: false, error: state.quoteError };
+    if (state.quoteError) return { data: undefined, isFetching: false, error: state.quoteError, refetch: refetchQuote };
     // A later ask of the same refund refused: React Query keeps the earlier answer beside the error.
-    if (state.laterRefusal) return { data: quoteFor(orderId, body), isFetching: false, error: state.laterRefusal };
+    if (state.laterRefusal) return { data: quoteFor(orderId, body), isFetching: false, error: state.laterRefusal, refetch: refetchQuote };
     // React Query keeps the last answer on screen while the next is with Yetu.
-    if (state.kept) return { data: quoteFor(orderId, state.kept), isFetching: true, error: null };
-    return { data: quoteFor(orderId, body), isFetching: false, error: null };
+    if (state.kept) return { data: quoteFor(orderId, state.kept), isFetching: true, error: null, refetch: refetchQuote };
+    if (state.splitKept && body.tenders) return { data: quoteFor(orderId, { lines: body.lines }), isFetching: true, error: null, refetch: refetchQuote };
+    return { data: quoteFor(orderId, body), isFetching: false, error: null, refetch: refetchQuote };
   },
   useRecordRefund: () => {
     const [, redraw] = useReducer((count: number) => count + 1, 0);
@@ -184,6 +189,7 @@ beforeEach(() => {
   state.quoted = [];
   state.kept = null;
   state.laterRefusal = null;
+  state.splitKept = false;
   state.roster = [
     { fullName: "Amina Hassan", staffNumber: "staff-amina" },
     { fullName: "Grace Mushi", staffNumber: "staff-grace" },
@@ -191,6 +197,13 @@ beforeEach(() => {
   keys.next = 0;
   recordMutate.mockReset();
   refetchRefunds.mockReset();
+  refetchRefunds.mockImplementation(async () => ({ data: state.refunds }));
+  refetchQuote.mockReset();
+  // useMutation's reset clears its error, and the screen is drawn again.
+  recordReset.mockReset();
+  recordReset.mockImplementation(() => {
+    state.recordError = null;
+  });
   printJobs.mockClear();
   nextOutcomes();
 });
@@ -313,6 +326,20 @@ describe("Refund items: a split payment", () => {
     expect(screen.getByTestId("refund-ask")).toBeEnabled();
   });
 
+  it("never asks a supervisor while Yetu is still working out a changed split", async () => {
+    state.splitKept = true;
+    render(<RefundItemsSheet order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    await chooseChipsAndReason();
+    await userEvent.click(screen.getByTestId("refund-change-split"));
+    const cash = screen.getByTestId("refund-split-CASH");
+    await userEvent.clear(cash);
+    await userEvent.type(cash, "1000");
+    const mobile = screen.getByTestId("refund-split-MOBILE_MONEY");
+    await userEvent.clear(mobile);
+    await userEvent.type(mobile, "4900");
+    expect(screen.getByTestId("refund-ask")).toBeDisabled();
+  });
+
   it("sends the split the supervisor approved, exactly", async () => {
     render(<RefundItemsSheet order={ORDER} currency="TZS" onClose={vi.fn()} />);
     await chooseChipsAndReason();
@@ -374,22 +401,91 @@ describe("Refund items: a supervisor approves", () => {
     await chooseChipsAndReason();
     await approveAsGrace();
     await userEvent.click(screen.getByTestId("refund-give"));
-    const error = screen.getByTestId("refund-error");
-    expect(error).toHaveTextContent("Can't reach Yetu.");
-    await userEvent.click(within(error).getByRole("button", { name: "Try again" }));
+    expect(screen.getByTestId("refund-error")).toHaveTextContent("can't tell whether the refund was given");
+    await userEvent.click(screen.getByTestId("refund-retry"));
     expect(recordMutate).toHaveBeenCalledTimes(2);
     expect(recordMutate.mock.calls[1][0]).toEqual(recordMutate.mock.calls[0][0]);
   });
 
-  it("when the order changed meanwhile, goes back to the items and asks Yetu again", async () => {
-    nextOutcomes({ error: new Error(JSON.stringify({ status: 409, code: "REFUND_QUANTITY", detail: "Only 0 of Chips can still be refunded." })) });
+  it("after a lost answer, the request can't be changed: no Back, no other supervisor, no other PIN", async () => {
+    state.roster = [...state.roster, { fullName: "Baraka Mushi", staffNumber: "staff-baraka" }];
+    nextOutcomes({ error: new Error(JSON.stringify("<html><body>502 Bad Gateway</body></html>")) });
     render(<RefundItemsSheet order={ORDER} currency="TZS" onClose={vi.fn()} />);
     await chooseChipsAndReason();
     await approveAsGrace();
     await userEvent.click(screen.getByTestId("refund-give"));
-    expect(screen.getByTestId("refund-lines")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
+    expect(screen.queryByTestId("refund-give")).toBeNull();
+    await userEvent.click(screen.getByRole("radio", { name: /Baraka Mushi/ }));
+    await userEvent.click(screen.getByTestId("refund-pin-key-delete"));
+    await userEvent.click(screen.getByTestId("refund-retry"));
+    expect(recordMutate.mock.calls[1][0]).toEqual(recordMutate.mock.calls[0][0]);
+  });
+
+  it("Check the order finds the refund Yetu gave without answering, and finishes it", async () => {
+    nextOutcomes({ error: new TypeError("Failed to fetch") });
+    const onRefunded = vi.fn();
+    render(<RefundItemsSheet order={ORDER} currency="TZS" onClose={vi.fn()} onRefunded={onRefunded} />);
+    await chooseChipsAndReason();
+    await approveAsGrace();
+    await userEvent.click(screen.getByTestId("refund-give"));
+    // Yetu did give it: it is on the order now.
+    const recorded = given({ id: "refund-lost", lines: [{ id: "rl", orderItemId: "oi-chips", name: "Chips", quantity: 1, grossMinor: 500_000, discountMinor: 0, netMinor: 500_000, taxMinor: 90_000, totalMinor: 590_000 }] });
+    state.refunds = refunds({ refundedMinor: 590_000, refunds: [recorded] });
+    await userEvent.click(screen.getByTestId("refund-check"));
+    await waitFor(() => expect(screen.getByTestId("refund-done-view")).toHaveTextContent("Refunded TSh 5,900"));
+    expect(onRefunded).toHaveBeenCalledWith(expect.objectContaining({ id: "refund-lost" }));
+    expect(recordMutate).toHaveBeenCalledTimes(1);
+    expect(printJobs).toHaveBeenCalledWith("property-1", "refund-lost");
+  });
+
+  it("Check the order says when Yetu has no such refund, and the next try is a new request", async () => {
+    // An earlier refund of the same item, approved by the same supervisor, isn't this one.
+    const earlier = given({ id: "refund-before", lines: [{ id: "rl0", orderItemId: "oi-chips", name: "Chips", quantity: 1, grossMinor: 500_000, discountMinor: 0, netMinor: 500_000, taxMinor: 90_000, totalMinor: 590_000 }] });
+    state.refunds = refunds({
+      refundedMinor: 590_000,
+      refunds: [earlier],
+      lines: [
+        { orderItemId: "oi-chips", name: "Chips", quantity: 2, refundedQuantity: 1, remainingQuantity: 1 },
+        { orderItemId: "oi-soda", name: "Soda", quantity: 1, refundedQuantity: 0, remainingQuantity: 1 },
+      ],
+    });
+    nextOutcomes({ error: new TypeError("Failed to fetch") });
+    render(<RefundItemsSheet order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    await chooseChipsAndReason();
+    await approveAsGrace();
+    await userEvent.click(screen.getByTestId("refund-give"));
+    await userEvent.click(screen.getByTestId("refund-check"));
+    expect(await screen.findByTestId("refund-not-given")).toHaveTextContent("nothing was given");
+    expect(screen.getByTestId("refund-give")).toBeDisabled();
+    for (const digit of "123456") await userEvent.click(screen.getByTestId(`refund-pin-key-${digit}`));
+    await userEvent.click(screen.getByTestId("refund-give"));
+    expect(recordMutate.mock.calls[1][0].idempotencyKey).not.toBe(recordMutate.mock.calls[0][0].idempotencyKey);
+  });
+
+  it("when the order changed meanwhile, goes back to the items, asks Yetu again, and keeps to what is left", async () => {
+    recordMutate.mockImplementation((_vars: unknown, opts: { onError?: (error: Error) => void }) => {
+      // Another till refunded both Chips first.
+      state.refunds = refunds({
+        refundedMinor: 1_180_000,
+        lines: [
+          { orderItemId: "oi-chips", name: "Chips", quantity: 2, refundedQuantity: 2, remainingQuantity: 0 },
+          { orderItemId: "oi-soda", name: "Soda", quantity: 1, refundedQuantity: 0, remainingQuantity: 1 },
+        ],
+      });
+      state.recordError = new Error(JSON.stringify({ status: 409, code: "REFUND_QUANTITY", detail: "Only 0 of Chips can still be refunded." }));
+      opts.onError?.(state.recordError);
+      act(() => state.redraw());
+    });
+    render(<RefundItemsSheet order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    await chooseChipsAndReason();
+    await approveAsGrace();
+    await userEvent.click(screen.getByTestId("refund-give"));
     expect(screen.getByTestId("refund-error")).toHaveTextContent("Only 0 of Chips can still be refunded.");
     expect(refetchRefunds).toHaveBeenCalled();
+    expect(refetchQuote).toHaveBeenCalled();
+    expect(lineOf("oi-chips").getByText("Refunded")).toBeInTheDocument();
+    expect(screen.getByTestId("refund-ask")).toBeDisabled();
   });
 });
 

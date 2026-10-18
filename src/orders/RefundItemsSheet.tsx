@@ -1,12 +1,20 @@
 import { CircleCheck, ShieldCheck, Undo2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { Banner, Button, Field, MoneyField, RefusalNotice, Sheet, Skeleton, Stepper, SupervisorApproval, type KeypadKey } from "../components/system";
 import { useOrderRefunds, usePropertyId, useRecordRefund, useRefundQuote } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
 import { orderName } from "../lib/orderNumber";
-import type { POSOrder, POSOrderRefunds, POSRefund, POSRefundLineRequest, POSRefundQuote, POSRefundTenderRequest } from "../lib/posContracts";
+import type {
+  POSOrder,
+  POSOrderRefunds,
+  POSRefund,
+  POSRefundLine,
+  POSRefundLineRequest,
+  POSRefundQuote,
+  POSRefundTenderRequest,
+} from "../lib/posContracts";
 import type { PrintResult } from "../lib/kitchenTicketPrint";
 import { processPendingPrintJobs } from "../lib/printJobs";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
@@ -41,6 +49,14 @@ function itemsWords(lines: readonly POSRefundLineRequest[], refunds: POSOrderRef
   return lines
     .map((line) => `${line.quantity} × ${refunds.lines.find((item) => item.orderItemId === line.orderItemId)?.name ?? "item"}`)
     .join(", ");
+}
+
+/** The refund Yetu has that this till sent: new since it was sent, by that supervisor, for those items. */
+function sameLines(given: readonly POSRefundLine[], sent: readonly POSRefundLineRequest[]): boolean {
+  return (
+    given.length === sent.length &&
+    sent.every((line) => given.some((item) => item.orderItemId === line.orderItemId && item.quantity === line.quantity))
+  );
 }
 
 function majorText(minor: number): string {
@@ -84,11 +100,19 @@ export function RefundItemsSheet({
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const [done, setDone] = useState<{ refund: POSRefund; print: PrintState } | null>(null);
+  // What the last refund sent asked for, to find it at Yetu after a lost answer.
+  const sent = useRef<{ knownIds: ReadonlySet<string>; supervisorId: string; lines: POSRefundLineRequest[] } | null>(null);
+  const [notGiven, setNotGiven] = useState(false);
 
   const data = refunds.data;
   const whole = data?.wholeOrderOnly ?? false;
-  // A room charge goes back whole: every item, all that is left of it.
-  const quantities: Record<string, number> = whole && data ? Object.fromEntries(data.lines.map((line) => [line.orderItemId, line.remainingQuantity])) : chosen;
+  // A room charge goes back whole: every item, all that is left of it. Otherwise what was chosen, never
+  // more than Yetu says is left (it may have changed on another till).
+  const quantities: Record<string, number> = data
+    ? Object.fromEntries(
+        data.lines.map((line) => [line.orderItemId, whole ? line.remainingQuantity : Math.min(chosen[line.orderItemId] ?? 0, line.remainingQuantity)]),
+      )
+    : {};
   const lines: POSRefundLineRequest[] = Object.entries(quantities)
     .filter(([, quantity]) => quantity > 0)
     .map(([orderItemId, quantity]) => ({ orderItemId, quantity }));
@@ -111,13 +135,15 @@ export function RefundItemsSheet({
   );
   const quote = editingSplit ? (typedAddsUp && quoteMatches(splitQuery.data, lines) ? splitQuery.data : undefined) : base;
   const quoting = baseQuery.isFetching || (editingSplit && splitQuery.isFetching);
-  const quoteProblem = refundProblem(editingSplit && typedAddsUp ? splitQuery.error : baseQuery.error);
+  const quoteProblem = refundProblem(editingSplit && typedAddsUp ? splitQuery.error : baseQuery.error, "quote");
   const tenders: POSRefundTenderRequest[] = (quote?.tenders ?? [])
     .filter((tender) => tender.amountMinor > 0)
     .map((tender) => ({ paymentId: tender.paymentId, amountMinor: tender.amountMinor }));
   const summary = quote ? refundSummaryWords(quote.tenders, currency) : "";
 
   const problem = refundProblem(record.error);
+  // The answer may have been lost: the request stays exactly as sent until it is sent again or checked.
+  const unsure = problem?.kind === "unsure";
   // The till doesn't lock itself while the refund is with Yetu.
   useHoldIdleLock(record.isPending);
   // After "too many attempts" the next one waits for Yetu's Retry-After.
@@ -132,6 +158,7 @@ export function RefundItemsSheet({
   }
 
   function onPinKey(key: KeypadKey) {
+    if (unsure) return;
     if (key === "delete") setPin((current) => current.slice(0, -1));
     else if (key === "clear") setPin("");
     else if (/^\d$/.test(key)) setPin((current) => (current.length < PIN_LENGTH ? current + key : current));
@@ -152,7 +179,7 @@ export function RefundItemsSheet({
   }
 
   function backToItems() {
-    if (record.isPending) return;
+    if (record.isPending || unsure) return;
     record.reset();
     requestKey.forget();
     setSupervisorId(null);
@@ -160,34 +187,61 @@ export function RefundItemsSheet({
     setStage("build");
   }
 
+  /** Yetu has the refund: what it gave, what to do with the money, and the slip. */
+  function finish(refund: POSRefund) {
+    setPin("");
+    setNotGiven(false);
+    setDone({ refund, print: { kind: "printing" } });
+    setStage("done");
+    onRefunded?.(refund);
+    void processPendingPrintJobs(propertyId, refund.id).then(
+      (results) => setDone((current) => (current ? { ...current, print: printOutcome(results) } : current)),
+      () => setDone((current) => (current ? { ...current, print: { kind: "failed", words: "" } } : current)),
+    );
+  }
+
+  /** After a lost answer: did Yetu give the refund? If so it is done; if not, the next press is a new one. */
+  async function checkOrder() {
+    const latest = (await refunds.refetch()).data;
+    const asked = sent.current;
+    if (!latest || !asked) return;
+    const given = latest.refunds.find(
+      (refund) => !asked.knownIds.has(refund.id) && refund.authorizedById === asked.supervisorId && sameLines(refund.lines, asked.lines),
+    );
+    if (given) {
+      record.reset();
+      finish(given);
+      return;
+    }
+    record.reset();
+    requestKey.forget();
+    setPin("");
+    setNotGiven(true);
+  }
+
   function give() {
     if (!readyToGive || supervisorId === null) return;
     const body = { reason, lines, tenders, supervisorStaffId: supervisorId, supervisorPin: pin };
     // The same refund asked again after a lost answer goes under the same key, so Yetu gives it once.
     const idempotencyKey = requestKey.keyFor(JSON.stringify({ reason, lines, tenders, supervisorId }));
+    setNotGiven(false);
+    sent.current = { knownIds: new Set((data?.refunds ?? []).map((refund) => refund.id)), supervisorId, lines };
     record.mutate(
       { orderId: order.id, body, idempotencyKey },
       {
-        onSuccess: (refund) => {
-          setPin("");
-          setDone({ refund, print: { kind: "printing" } });
-          setStage("done");
-          onRefunded?.(refund);
-          void processPendingPrintJobs(propertyId, refund.id).then(
-            (results) => setDone((current) => (current ? { ...current, print: printOutcome(results) } : current)),
-            () => setDone((current) => (current ? { ...current, print: { kind: "failed", words: "" } } : current)),
-          );
-        },
+        onSuccess: finish,
         onError: (error) => {
           const refused = refundProblem(error);
-          // A lost answer keeps the request as it was, PIN and key, for Try again.
-          if (refused?.kind === "network") return;
+          // A lost answer keeps the request as it was, PIN and key, for Try again or Check the order.
+          if (refused?.kind === "unsure") return;
           // A refused PIN counts toward the supervisor's lockout: never send it again.
           requestKey.forget();
           setPin("");
           if (refused && CHANGED.has(refused.kind)) {
+            // The order or drawer isn't as shown: what is left and Yetu's figures are asked for again.
             setStage("build");
             void refunds.refetch();
+            void baseQuery.refetch();
           }
         },
       },
@@ -210,6 +264,15 @@ export function RefundItemsSheet({
         </Button>
         <Button variant="primary" size={64} icon={<ShieldCheck />} data-testid="refund-ask" disabled={!readyToAsk} onClick={ask}>
           Ask a supervisor
+        </Button>
+      </div>
+    ) : stage === "approve" && unsure ? (
+      <div className="y-options__footer">
+        <Button variant="secondary" size={56} data-testid="refund-check" disabled={record.isPending || refunds.isFetching} onClick={() => void checkOrder()}>
+          {refunds.isFetching ? "Checking…" : "Check the order"}
+        </Button>
+        <Button variant="danger" size={64} icon={<Undo2 />} data-testid="refund-retry" disabled={record.isPending} onClick={give}>
+          {record.isPending ? "Trying again…" : "Try again"}
         </Button>
       </div>
     ) : stage === "approve" ? (
@@ -268,6 +331,7 @@ export function RefundItemsSheet({
             requesterId={requesterId}
             selectedId={supervisorId}
             onSelect={(id) => {
+              if (unsure) return;
               setSupervisorId(id);
               setPin("");
             }}
@@ -278,13 +342,11 @@ export function RefundItemsSheet({
             actions="none"
             keyTestIdPrefix="refund-pin-key"
           />
-          {problem ? (
-            <RefusalNotice
-              refusal={problem}
-              data-testid="refund-error"
-              onRetry={problem.kind === "network" ? give : undefined}
-              retrying={record.isPending}
-            />
+          {problem ? <RefusalNotice refusal={problem} data-testid="refund-error" /> : null}
+          {notGiven ? (
+            <Banner inline tone="info" data-testid="refund-not-given">
+              Yetu has no record of this refund, so nothing was given. Ask a supervisor to approve it again.
+            </Banner>
           ) : null}
         </div>
       ) : (

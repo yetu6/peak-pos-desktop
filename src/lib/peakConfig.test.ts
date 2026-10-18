@@ -22,16 +22,21 @@ describe("validatePeakApiUrl", () => {
 });
 
 describe("a released till is connected to Yetu (no server address to type)", () => {
-  it("a production build carries Yetu's API address", async () => {
-    const { loadEnv } = await import("vite");
-    const env = loadEnv("production", process.cwd(), "VITE_");
-    expect(env.VITE_PEAK_API_URL).toBe("https://api.yetu.fbcsoftwares.com");
-    expect(validatePeakApiUrl(env.VITE_PEAK_API_URL).ok).toBe(true);
+  it("the release build bakes in Yetu's API address", async () => {
+    const { readFileSync } = await import("node:fs");
+    const workflow = readFileSync(".github/workflows/release.yml", "utf8");
+    // The step that runs `bunx tauri build`: from its `- name:` to the command.
+    const command = workflow.indexOf("bunx tauri build");
+    const step = workflow.slice(workflow.lastIndexOf("- name:", command), command);
+    expect(step).toMatch(/^ +VITE_PEAK_API_URL: \$\{\{ vars\.YETU_API_URL \|\| 'https:\/\/api\.yetu\.fbcsoftwares\.com' \}\}$/m);
+    expect(validatePeakApiUrl("https://api.yetu.fbcsoftwares.com").ok).toBe(true);
   });
 
-  it("a development build carries none, so it can point at a local Yetu", async () => {
-    const { loadEnv } = await import("vite");
-    expect(loadEnv("development", process.cwd(), "VITE_").VITE_PEAK_API_URL).toBeUndefined();
+  it("no env file in the repository sets it, so a developer's own .env.local keeps working", async () => {
+    const { existsSync, readFileSync } = await import("node:fs");
+    for (const file of [".env", ".env.production", ".env.development"]) {
+      if (existsSync(file)) expect(readFileSync(file, "utf8")).not.toMatch(/^VITE_PEAK_API_URL=/m);
+    }
   });
 
   it("with an address baked in and none stored, the till is connected before anyone types one", async () => {

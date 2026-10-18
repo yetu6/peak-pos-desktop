@@ -51,8 +51,39 @@ describe("refund refusals in words", () => {
     );
   });
 
-  it("treats a lost answer as the connection, so the same refund can be sent again", () => {
-    expect(refundProblem(new TypeError("Failed to fetch"))?.kind).toBe("network");
+  it("never says a refund wasn't given when its answer may have been lost", () => {
+    // No connection; a proxy's page with no code (an unreadable answer); Yetu busy or failing.
+    for (const lost of [
+      new TypeError("Failed to fetch"),
+      new Error(JSON.stringify("<html><body>502 Bad Gateway</body></html>")),
+      new Error(JSON.stringify({ status: 503, code: "SERVICE_UNAVAILABLE", detail: "x" })),
+      new Error(JSON.stringify({ status: 500, code: "INTERNAL_ERROR", detail: "x" })),
+    ]) {
+      expect(refundProblem(lost)).toEqual({
+        kind: "unsure",
+        words: "Yetu's answer was lost, so this till can't tell whether the refund was given. Try again, or check the order: Yetu gives a refund only once.",
+      });
+    }
+  });
+
+  it("for Yetu's figures, a lost answer only means the figures didn't come", () => {
+    expect(refundProblem(new TypeError("Failed to fetch"), "quote")?.kind).toBe("network");
+    expect(refundProblem(new Error(JSON.stringify("<html>502</html>")), "quote")).toEqual({
+      kind: "other",
+      words: "The refund couldn't be worked out. Try again.",
+    });
+  });
+
+  it("a refusal of Yetu's figures is about the cashier, not a PIN nobody typed", () => {
+    expect(refundProblem(new Error(JSON.stringify({ status: 403, code: "FORBIDDEN", detail: "x" })), "quote")).toEqual({
+      kind: "permission",
+      words: "Only a cashier or manager can give a refund. Ask one to help.",
+    });
+  });
+
+  it("shows Yetu's own sentence for a refund it can't read as one", () => {
+    const free = new Error(JSON.stringify({ status: 422, code: "VALIDATION_FAILED", detail: "Those items cost nothing, so there is nothing to give back." }));
+    expect(refundProblem(free)?.words).toBe("Those items cost nothing, so there is nothing to give back.");
   });
 });
 
@@ -100,6 +131,10 @@ describe("whether this order can be refunded here, and why not", () => {
 
   it("offers a refund on a paid order within its window, on a till with an open shift", () => {
     expect(refundAvailability({ refunds: base, shiftBusinessDate: "2026-10-18", canRefund: true })).toEqual({ offer: true, why: null });
+  });
+
+  it("still offers it on the window's last day", () => {
+    expect(refundAvailability({ refunds: base, shiftBusinessDate: "2026-10-20", canRefund: true })).toEqual({ offer: true, why: null });
   });
 
   it("says why not, in words", () => {

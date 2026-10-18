@@ -16,9 +16,35 @@ import { businessDayWords } from "../lib/words";
 import { noApproverWords } from "../register/registerWords";
 
 export interface RefundProblem {
-  kind: "network" | "supervisor" | "no-approver" | "not-allowed" | "quantity" | "drawer" | "room" | "split" | "invalid" | "other";
+  /**
+   * `unsure`: the refund's answer was lost on the way (no connection, a proxy
+   * page, Yetu busy), so it may have been given: the same request goes again
+   * under its key, or the order is checked. Never "not given".
+   */
+  kind:
+    | "unsure"
+    | "network"
+    | "permission"
+    | "supervisor"
+    | "no-approver"
+    | "not-allowed"
+    | "quantity"
+    | "drawer"
+    | "room"
+    | "split"
+    | "invalid"
+    | "other";
   words: string;
 }
+
+/** What was being asked: Yetu's figures (nothing written) or the refund itself. */
+export type RefundAsk = "quote" | "record";
+
+/** A sentence from the contract check (schema text), never shown to a cashier. */
+const CONTRACT_TEXT = /schema|#\/components|request body|parameter "|doesn't match|does not match/i;
+
+const UNSURE_WORDS =
+  "Yetu's answer was lost, so this till can't tell whether the refund was given. Try again, or check the order: Yetu gives a refund only once.";
 
 /** The refund codes whose detail Yetu writes for the till, and the till's words when it sends none. */
 const REFUND_CODES: Record<string, { kind: RefundProblem["kind"]; words: string }> = {
@@ -39,25 +65,39 @@ const REFUND_CODES: Record<string, { kind: RefundProblem["kind"]; words: string 
 /** Kinds of refusal that mean the answer may have been lost on the way: the same refund goes again, under its key. */
 const LOST_ANSWER = new Set(["NETWORK_ERROR", "SERVER_UNAVAILABLE", "RETRYABLE_INFRASTRUCTURE_ERROR"]);
 
-export function refundProblem(error: unknown): RefundProblem | null {
+export function refundProblem(error: unknown, ask: RefundAsk = "record"): RefundProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
-  if (problem === "network" || LOST_ANSWER.has(describePosError(problem).kind)) return { kind: "network", words: UNREACHABLE };
+  // An answer that may have been lost (or that can't be read: a proxy's page has no code). For the
+  // refund itself that means it may have been given; for a quote, only that the figures didn't come.
+  const lost = problem === "network" || !problem.code || LOST_ANSWER.has(describePosError(problem).kind);
+  if (lost) {
+    if (ask === "record") return { kind: "unsure", words: UNSURE_WORDS };
+    return problem === "network" ? { kind: "network", words: UNREACHABLE } : { kind: "other", words: "The refund couldn't be worked out. Try again." };
+  }
   const code = problem.code ?? "";
   const known = REFUND_CODES[code];
   if (known) return { kind: known.kind, words: problem.detail?.trim() || known.words };
   switch (code) {
     case "FORBIDDEN":
-      return {
-        kind: "supervisor",
-        words: "A different person who may approve refunds must enter their PIN. That PIN wasn't accepted, or they can't approve refunds.",
-      };
+      // On the quote it is the cashier's own permission; on the refund, the supervisor's approval.
+      return ask === "quote"
+        ? { kind: "permission", words: "Only a cashier or manager can give a refund. Ask one to help." }
+        : {
+            kind: "supervisor",
+            words: "A different person who may approve refunds must enter their PIN. That PIN wasn't accepted, or they can't approve refunds.",
+          };
     case "NO_APPROVER_SET":
       return { kind: "no-approver", words: noApproverWords("refunds") };
-    case "VALIDATION_FAILED":
+    case "VALIDATION_FAILED": {
+      // Yetu's refund sentences ("Those items cost nothing, so there is nothing to give back.") are
+      // shown; the contract check's schema text never is.
+      const detail = problem.detail?.trim();
+      if (detail && !CONTRACT_TEXT.test(detail)) return { kind: "invalid", words: detail };
       return { kind: "invalid", words: "Choose at least one item and say why the money is going back, then try again." };
+    }
   }
-  return { kind: "other", words: otherWords(problem, "The refund wasn't given. Try again.") };
+  return { kind: "other", words: otherWords(problem, ask === "quote" ? "The refund couldn't be worked out. Try again." : "The refund wasn't given. Try again.") };
 }
 
 /** How the money goes back, after its amount: "in cash", "by mobile money". */
