@@ -4,6 +4,7 @@ import { Banner, Button, EmptyState, Field, Money, PermissionNotice, SegmentedCo
 import { formatMoney } from "../lib/money";
 import type { POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
+import { orderName } from "../lib/orderNumber";
 
 /** The order types the backend accepts (posContracts ServiceType), in this order. */
 export const SERVICE_TYPES: readonly ServiceType[] = ["DINE_IN", "TAKEAWAY", "ROOM_SERVICE"];
@@ -79,7 +80,7 @@ export function TicketPanel({
     <div className="y-ticket">
       <header className="y-ticket__head">
         <div className="y-ticket__title-row">
-          <h2 className="y-ticket__title">{order ? `Order ${order.orderNumber}` : "New order"}</h2>
+          <h2 className="y-ticket__title">{order ? orderName(order) : "New order"}</h2>
           {order?.initiatedByName ? <span className="y-ticket__who">{order.initiatedByName}</span> : null}
         </div>
         <SegmentedControl

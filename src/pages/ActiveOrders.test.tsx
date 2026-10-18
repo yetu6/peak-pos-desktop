@@ -188,6 +188,10 @@ const OPEN_ORDER: POSOrder = {
   id: "order-1",
   shiftId: "shift-1",
   orderNumber: "1042",
+  dailyNumber: 42,
+  createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  closedAt: null,
+  payments: [],
   status: "OPEN",
   serviceType: "DINE_IN",
   initiatedById: "staff-1",
@@ -355,7 +359,7 @@ describe("Orders", () => {
     ordersStore.set("order-1", OPEN_ORDER);
     renderOrders();
     const sheet = await openDetail("order-1");
-    expect(sheet).toHaveAccessibleName("Order 1042");
+    expect(sheet).toHaveAccessibleName("Order 42");
     expect(within(sheet).getByTestId("order-detail-lines")).toHaveTextContent("Lunch");
     expect(within(sheet).getByTestId("detail-pay")).toHaveTextContent("Pay TSh 1,180");
     expect(within(sheet).getByTestId("detail-pay")).toHaveFocus();
@@ -455,7 +459,7 @@ describe("Orders", () => {
     const pay = await screen.findByTestId("settle-dialog");
     expect(within(pay).getByTestId("amount-due")).toHaveTextContent("TSh 1,180");
     await userEvent.click(within(pay).getByRole("button", { name: "Cancel" }));
-    expect(await screen.findByRole("dialog", { name: "Order 1042" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Order 42" })).toBeInTheDocument();
   });
 
   it("opens Void with a supervisor and comes back to the order on Cancel", async () => {
@@ -465,7 +469,7 @@ describe("Orders", () => {
     await userEvent.click(within(sheet).getByRole("button", { name: "Void order" }));
     const voiding = await screen.findByTestId("void-order-dialog");
     await userEvent.click(within(voiding).getByRole("button", { name: "Cancel" }));
-    expect(await screen.findByRole("dialog", { name: "Order 1042" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Order 42" })).toBeInTheDocument();
   });
 
   it("a void refused because the order changed reloads it, and the supervisor is asked again for the order as it is now", async () => {
@@ -522,7 +526,7 @@ describe("Orders", () => {
     ordersStore.set("order-1", { ...OPEN_ORDER, status: "CLOSED", paidMinor: 118_000, remainingMinor: 0, version: 3 });
     socket.emit(announce(3, "pos.order.payment_recorded", "order-1"));
     await waitFor(() => expect(within(sheet).getByTestId("order-detail-status")).toHaveTextContent("Paid"));
-    expect(screen.getByRole("dialog", { name: "Order 1042" })).toBe(sheet);
+    expect(screen.getByRole("dialog", { name: "Order 42" })).toBe(sheet);
     expect(await within(sheet).findByTestId("detail-reprint")).toBeInTheDocument();
   });
 

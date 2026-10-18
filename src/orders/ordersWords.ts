@@ -9,18 +9,27 @@ import { majorDigits } from "../lib/money";
 import type { POSOrder, POSReceipt, POSStationTicket } from "../lib/posContracts";
 import { otherWords, problemOf, stepRefusal, UNREACHABLE } from "../lib/problemWords";
 import { clockTime, orderPlaceWords, orderStatusWords, paymentMethodWords, ticketStepWords, type SettlementMethod } from "../lib/words";
+import { orderReference } from "../lib/orderNumber";
 
 const AMOUNT_TYPED = /^\d+(\.\d*)?$/;
 
+const SAID_NUMBER = /^(?:order\s*|#\s*)?(\d+)$/;
+
 /**
- * Whether an order is the one typed in the search: its number, its table or
+ * Whether an order is the one typed in the search: its number for the day
+ * ("42", "Order 42", "#42"), its reference ("POS-MR-261012-42"), its table or
  * room ("12", "Table 12", "Room 204"), or the start of its total as people
- * write it ("47790", "47,790", "TSh 47,7").
+ * write it ("47790", "47,790", "TSh 47,7"). Typed digits are never looked for
+ * inside a reference: every reference of the day carries the same date, so
+ * "26" would find them all. An order with no number yet (taken offline, not
+ * synced) goes by its reference, so there its digits count.
  */
 export function orderMatches(order: POSOrder, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
-  if (order.orderNumber.toLowerCase().includes(needle)) return true;
+  const said = SAID_NUMBER.exec(needle);
+  if (said && orderReference(order) !== null && Number(said[1]) === order.dailyNumber) return true;
+  if ((!said || orderReference(order) === null) && order.orderNumber.toLowerCase().includes(needle)) return true;
   const label = order.tableLabel?.trim().toLowerCase() ?? "";
   if (label && label.includes(needle)) return true;
   const place = orderPlaceWords(order.serviceType, order.tableLabel).toLowerCase();

@@ -187,6 +187,14 @@
 .y-detail__line { margin: 0; }
 .y-detail__muted { color: var(--text-muted); }
 
+/* The order's reference: small, for finding it again; staff call it by its number. */
+.y-detail__reference {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  overflow-wrap: anywhere;
+}
+
 /* The actions: Void and Send on one row, Pay below them, full width. */
 .y-detail__actions {
   display: grid;

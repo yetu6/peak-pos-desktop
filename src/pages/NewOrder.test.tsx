@@ -104,6 +104,10 @@ const CATALOG: POSCatalog = {
 const OPEN_ORDER: POSOrder = {
   id: "order-1",
   orderNumber: "POS-1",
+  dailyNumber: 1,
+  createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  closedAt: null,
+  payments: [],
   version: 2,
   shiftId: "shift-1",
   status: "OPEN",

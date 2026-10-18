@@ -19,6 +19,7 @@ import { ORDERS_REFRESH_SECONDS } from "../orders/ordersSettings";
 import { usePaidOrders } from "../orders/usePaidOrders";
 import { PaymentDone } from "../register/PaymentDone";
 import { PaySheet, type PaidInfo } from "../register/PaySheet";
+import { orderName } from "../lib/orderNumber";
 
 /** What is open over the list: an order, its Pay or Void sheet, payment done, or a receipt. */
 type Overlay =
@@ -164,7 +165,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
           currency={currency}
           onVoided={() => {
             voided.current = true;
-            setNotice(`Order ${current.orderNumber} was voided. The kitchen has been told.`);
+            setNotice(`${orderName(current)} was voided. The kitchen has been told.`);
           }}
           onClose={() => {
             if (voided.current) close();

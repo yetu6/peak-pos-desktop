@@ -10,6 +10,10 @@ const ORDER: POSOrder = {
   id: "order-1",
   shiftId: "shift-1",
   orderNumber: "0142",
+  dailyNumber: 42,
+  createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  closedAt: null,
+  payments: [],
   status: "SENT",
   serviceType: "DINE_IN",
   tableLabel: "12",
@@ -81,7 +85,7 @@ afterEach(() => {
 describe("PaySheet", () => {
   it("shows the amount still to pay, large, and only the methods Yetu takes", () => {
     renderPay();
-    expect(screen.getByRole("dialog", { name: "Take payment" })).toHaveAccessibleDescription("Order 0142 · Dine in · Table 12");
+    expect(screen.getByRole("dialog", { name: "Take payment" })).toHaveAccessibleDescription("Order 42 · Dine in · Table 12");
     expect(screen.getByTestId("amount-due")).toHaveTextContent("TSh 42,500");
     const methods = within(screen.getByRole("radiogroup", { name: "How the guest pays" })).getAllByRole("radio");
     expect(methods.map((method) => method.textContent)).toEqual([

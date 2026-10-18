@@ -6,6 +6,7 @@ import type { POSOrder } from "../lib/posContracts";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, serviceTypeWords } from "../lib/words";
 import { PAID_ROWS_SHOWN } from "./ordersSettings";
 import { orderMatches } from "./ordersWords";
+import { orderNumberWords } from "../lib/orderNumber";
 
 export type OrdersTab = "open" | "paid";
 
@@ -218,7 +219,7 @@ function OrderRow({
       onClick={() => onOpen(order)}
     >
       <span className="y-orow__number" data-whole="">
-        {order.orderNumber}
+        {orderNumberWords(order)}
       </span>
       <span className="y-orow__main">
         <span className="y-orow__place">{placeWords(order)}</span>

@@ -18,6 +18,7 @@ import { useRequestKey } from "../lib/useRequestKey";
 import { orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { REGISTER_KEYS } from "../register/TicketActions";
 import { orderTimeline, removeProblem, reprintProblem, sendProblem, type TimelineEntry } from "./ordersWords";
+import { orderName, orderReference } from "../lib/orderNumber";
 
 export type DetailPending = "send" | "remove" | "reprint" | null;
 
@@ -89,6 +90,7 @@ export function OrderDetailView({
   const sendable = open && lines.some((line) => line.status === "ADDED");
   const payable = owing && lines.length > 0 && order.remainingMinor > 0;
   const doc = receipt?.document;
+  const reference = orderReference(order);
 
   // Send (F8) and Pay (F9), as on Sell, while this sheet has the keys.
   const keys = useRef({ sendable, payable, canSend, canPay, busy, onSend, onPay });
@@ -120,9 +122,9 @@ export function OrderDetailView({
       onOpenChange={(next) => {
         if (!next && !busy) onClose();
       }}
-      title={`Order ${order.orderNumber}`}
+      title={orderName(order)}
       description={description}
-      bodyLabel={`Order ${order.orderNumber} details`}
+      bodyLabel={`${orderName(order)} details`}
       testId="order-detail"
       initialFocus={primaryRef}
       footer={
@@ -215,6 +217,11 @@ export function OrderDetailView({
             {result ?? ""}
           </p>
         </div>
+        {reference ? (
+          <p className="y-detail__reference" data-testid="order-detail-reference">
+            Reference {reference}
+          </p>
+        ) : null}
         {problem ? <RefusalNotice refusal={problem} data-testid="order-detail-error" /> : null}
 
         {order.notes?.trim() ? (

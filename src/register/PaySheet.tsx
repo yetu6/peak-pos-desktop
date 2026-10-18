@@ -16,6 +16,7 @@ import { toMinor } from "../lib/posMoney";
 import { orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { afterLostAnswer, firstAnswerLost, lostAnswerRefusalWords, roomChargeProblem, tenderProblem } from "./registerWords";
 import { PAY_CHECK_EVERY_SECONDS } from "./registerSettings";
+import { orderName } from "../lib/orderNumber";
 
 const CASH_FORM = "pay-cash";
 const RECORDED_FORM = "pay-recorded";
@@ -433,7 +434,7 @@ export function PaySheetView({
         if (!open && !pending) onClose();
       }}
       title="Take payment"
-      description={[`Order ${order.orderNumber}`, serviceTypeWords(order.serviceType), orderPlaceWords(order.serviceType, order.tableLabel)]
+      description={[orderName(order), serviceTypeWords(order.serviceType), orderPlaceWords(order.serviceType, order.tableLabel)]
         .filter(Boolean)
         .join(" · ")}
       footer={

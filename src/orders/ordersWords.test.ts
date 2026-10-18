@@ -7,7 +7,11 @@ function order(extra: Partial<POSOrder> = {}): POSOrder {
   return {
     id: "order-1",
     shiftId: "shift-1",
-    orderNumber: "0142",
+    orderNumber: "POS-MR-261012-42",
+    dailyNumber: 42,
+    createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+    closedAt: null,
+    payments: [],
     status: "OPEN",
     serviceType: "DINE_IN",
     tableLabel: "12",
@@ -30,10 +34,28 @@ function order(extra: Partial<POSOrder> = {}): POSOrder {
 const refused = (problem: Record<string, unknown>) => new Error(JSON.stringify(problem));
 
 describe("orderMatches", () => {
-  it("finds an order by its number", () => {
-    expect(orderMatches(order(), "0142")).toBe(true);
-    expect(orderMatches(order(), "142")).toBe(true);
-    expect(orderMatches(order(), "0143")).toBe(false);
+  it("finds an order by its number for the day, as staff say it", () => {
+    expect(orderMatches(order(), "42")).toBe(true);
+    expect(orderMatches(order(), "Order 42")).toBe(true);
+    expect(orderMatches(order(), "order 42")).toBe(true);
+    expect(orderMatches(order(), "#42")).toBe(true);
+    expect(orderMatches(order(), "43")).toBe(false);
+    // The number, not its digits: order 42 is not order 4 or order 2.
+    expect(orderMatches(order({ totalMinor: 1_180_000 }), "order 4")).toBe(false);
+  });
+
+  it("finds an order by its reference, but never by the date inside every reference", () => {
+    expect(orderMatches(order(), "POS-MR-261012-42")).toBe(true);
+    expect(orderMatches(order(), "mr-261012-42")).toBe(true);
+    // Every order today has 261012 in its reference: typed digits are a number, a table or an amount.
+    expect(orderMatches(order({ tableLabel: "3", totalMinor: 1_180_000 }), "26")).toBe(false);
+    expect(orderMatches(order({ tableLabel: "3", totalMinor: 1_180_000 }), "261012")).toBe(false);
+  });
+
+  it("finds an order with no number yet (taken offline, not synced) by its reference", () => {
+    const offline = order({ dailyNumber: undefined as unknown as number, orderNumber: "OFF-T1-0007", tableLabel: "3", totalMinor: 1_180_000 });
+    expect(orderMatches(offline, "0007")).toBe(true);
+    expect(orderMatches(offline, "off-t1")).toBe(true);
   });
 
   it("finds an order by its table or room, with or without the word", () => {
@@ -87,11 +109,13 @@ describe("orderTimeline", () => {
     id: `t-${station}`,
     orderId: "order-1",
     orderNumber: "0142",
+    dailyNumber: 42,
     station,
     status,
     serviceType: "DINE_IN",
     version: 1,
     createdAt: sentAt,
+    lastStepAt: sentAt,
     items: [],
   });
 

@@ -32,6 +32,10 @@ const ORDER: POSOrder = {
   id: "order-1",
   shiftId: "shift-1",
   orderNumber: "0142",
+  dailyNumber: 42,
+  createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  closedAt: null,
+  payments: [],
   status: "OPEN",
   serviceType: "DINE_IN",
   initiatedById: "staff-amina",
@@ -67,7 +71,7 @@ describe("DiscountDialog", () => {
     const submit = screen.getByTestId("confirm-discount");
     await userEvent.type(screen.getByTestId("discount-value"), "2000");
     await userEvent.type(screen.getByTestId("discount-reason"), "Regular guest");
-    expect(screen.getByText("Take TSh 2,000 off order 0142: Regular guest")).toBeInTheDocument();
+    expect(screen.getByText("Take TSh 2,000 off order 42: Regular guest")).toBeInTheDocument();
     expect(submit).toBeDisabled();
     await approveAsGrace();
     expect(submit).toBeEnabled();
@@ -99,7 +103,7 @@ describe("DiscountDialog", () => {
     await userEvent.click(screen.getByRole("radio", { name: "Percent" }));
     await userEvent.type(screen.getByTestId("discount-value"), "12.5");
     await userEvent.type(screen.getByTestId("discount-reason"), "Staff meal");
-    expect(screen.getByText("Take 12.5% off order 0142: Staff meal")).toBeInTheDocument();
+    expect(screen.getByText("Take 12.5% off order 42: Staff meal")).toBeInTheDocument();
     await approveAsGrace();
     await userEvent.click(screen.getByTestId("confirm-discount"));
     expect(applyMutate).toHaveBeenCalledWith(expect.objectContaining({ kind: "PERCENT", value: 1250 }), expect.anything());

@@ -12,6 +12,10 @@ function order(id: string, extra: Partial<POSOrder> = {}): POSOrder {
     id,
     shiftId: "shift-1",
     orderNumber: id,
+    dailyNumber: Number(id.replace(/\D/g, "")) || 1,
+    createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+    closedAt: null,
+    payments: [],
     status: "OPEN",
     serviceType: "DINE_IN",
     tableLabel: "12",
@@ -66,7 +70,9 @@ describe("OrdersView", () => {
     expect(screen.getByRole("tab", { name: /Open/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: /Open/ })).toHaveTextContent("3");
     const row = screen.getByTestId("order-row-0141");
-    expect(row).toHaveTextContent("0141");
+    // Its number for the day, as staff call it; never the long reference.
+    expect(row).toHaveTextContent(/^141/);
+    expect(row).not.toHaveTextContent("0141");
     expect(row).toHaveTextContent("Room 204");
     expect(row).toHaveTextContent(`Juma Ally · Sent ${clockTime(SENT_AT)}`);
     expect(row).toHaveTextContent("Preparing");

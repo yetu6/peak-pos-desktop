@@ -9,6 +9,7 @@ import type { DiscountKind, POSOrder } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
 import { discountProblem } from "../register/registerWords";
 import { Banner, Button, Field, MoneyField, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
+import { orderNumberWords } from "../lib/orderNumber";
 
 /**
  * A percentage as Yetu takes it: basis points (12.5% → 1250), from more than
@@ -105,7 +106,7 @@ export function DiscountDialog({
         if (!open && !applyDiscount.isPending) onClose();
       }}
       title="Discount"
-      description={`On order ${order.orderNumber}, before VAT. A different supervisor approves with their PIN.`}
+      description={`On order ${orderNumberWords(order)}, before VAT. A different supervisor approves with their PIN.`}
       testId="discount-dialog"
       footer={
         <div className="y-options__footer">
@@ -171,8 +172,8 @@ export function DiscountDialog({
         <SupervisorApproval
           request={
             valueWords && reason.trim()
-              ? `Take ${valueWords} off order ${order.orderNumber}: ${reason.trim()}`
-              : `A discount on order ${order.orderNumber}`
+              ? `Take ${valueWords} off order ${orderNumberWords(order)}: ${reason.trim()}`
+              : `A discount on order ${orderNumberWords(order)}`
           }
           supervisors={roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }))}
           requesterId={requesterId}

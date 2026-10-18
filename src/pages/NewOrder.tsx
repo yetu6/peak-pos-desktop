@@ -28,6 +28,7 @@ import { TicketPanel } from "../register/TicketPanel";
 import { sellProblem } from "../register/registerWords";
 import { useRequestKey } from "../lib/useRequestKey";
 import type { POSCatalogProduct, POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
+import { orderName } from "../lib/orderNumber";
 
 /**
  * Sell, against the live API: the catalog from GET /pos/catalog and the
@@ -336,9 +337,9 @@ export function NewOrder() {
           currency={currency}
           onClose={() => setVoidOpen(false)}
           onVoided={() => {
-            const number = order.orderNumber;
+            const name = orderName(order);
             clearTicket();
-            setNotice(`Order ${number} was voided. The kitchen has been told.`);
+            setNotice(`${name} was voided. The kitchen has been told.`);
           }}
         />
       )}

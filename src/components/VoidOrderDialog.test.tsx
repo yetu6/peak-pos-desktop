@@ -27,6 +27,10 @@ const ORDER: POSOrder = {
   id: "order-1",
   shiftId: "shift-1",
   orderNumber: "0142",
+  dailyNumber: 42,
+  createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  closedAt: null,
+  payments: [],
   status: "SENT",
   serviceType: "DINE_IN",
   initiatedById: "staff-amina",
@@ -65,7 +69,7 @@ describe("VoidOrderDialog", () => {
     const submit = screen.getByTestId("confirm-void-order");
     expect(submit).toBeDisabled();
     await userEvent.type(screen.getByTestId("void-reason"), "Wrong table");
-    expect(screen.getByText("Void order 0142 (TSh 24,000): Wrong table")).toBeInTheDocument();
+    expect(screen.getByText("Void order 42 (TSh 24,000): Wrong table")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Amina Hassan/ })).toBeDisabled();
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
     await typePin("12345");

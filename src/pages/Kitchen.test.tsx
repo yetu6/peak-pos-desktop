@@ -117,6 +117,10 @@ const SENT_ORDER: POSOrder = {
   id: "order-1",
   shiftId: "shift-1",
   orderNumber: "K-12",
+  dailyNumber: 12,
+  createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  closedAt: null,
+  payments: [],
   status: "SENT",
   serviceType: "DINE_IN",
   tableLabel: "T4",
@@ -139,6 +143,7 @@ function stationTicket(id: string, station: POSStationTicket["station"], extra: 
     id,
     orderId: "order-1",
     orderNumber: "K-12",
+    dailyNumber: 12,
     station,
     status: "SENT",
     serviceType: "DINE_IN",
@@ -146,6 +151,7 @@ function stationTicket(id: string, station: POSStationTicket["station"], extra: 
     waiterName: "Amina Hassan",
     version: 1,
     createdAt: SENT_AT,
+    lastStepAt: SENT_AT,
     items: SENT_ORDER.items,
     ...extra,
   };
@@ -205,7 +211,7 @@ describe("Kitchen on a selling till (whole orders)", () => {
     await userEvent.click(await screen.findByTestId("kitchen-next-order-1"));
     await waitFor(() => expect(transitionStatusSpy).toHaveBeenCalledWith("order-1", "PREPARING", 2, expect.any(String)));
     expect(transitionStationTicketSpy).not.toHaveBeenCalled();
-    expect(await screen.findByRole("status")).toHaveTextContent("Order K-12 started.");
+    expect(await screen.findByRole("status")).toHaveTextContent("Order 12 started.");
   });
 
   it("asks again with the same key after a lost answer, and with a new key for the next step", async () => {
@@ -341,7 +347,7 @@ describe("Kitchen on a kitchen or bar display (station tickets)", () => {
     await userEvent.click(await screen.findByTestId("kitchen-next-t-1"));
     await waitFor(() => expect(transitionStationTicketSpy).toHaveBeenCalledWith("t-1", "PREPARING", 1, expect.any(String)));
     expect(transitionStatusSpy).not.toHaveBeenCalled();
-    expect(await screen.findByRole("status")).toHaveTextContent("Order K-12 (Grill) started.");
+    expect(await screen.findByRole("status")).toHaveTextContent("Order 12 (Grill) started.");
   });
 
   it("reloads the tickets when another screen moved one first", async () => {

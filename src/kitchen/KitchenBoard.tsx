@@ -5,6 +5,7 @@ import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
 import { KITCHEN_REFRESH_SECONDS } from "./kitchenSettings";
 import { boardColumns, type BoardColumn, type BoardTicket } from "./kitchenTickets";
 import { isNewTicket, nextStepFor, stationWords, ticketAge, type AgeThresholds } from "./kitchenWords";
+import { orderNumberWords } from "../lib/orderNumber";
 
 export interface KitchenBoardProps {
   /** "Kitchen" or "Bar". */
@@ -298,7 +299,7 @@ function TicketCard({
     >
       <header className="y-kticket__head">
         <h3 id={headingId} className="y-kticket__number" data-whole="">
-          {ticket.orderNumber}
+          {orderNumberWords(ticket)}
         </h3>
         {fresh ? (
           <StatusChip tone="accent" className="y-kticket__new">
@@ -339,7 +340,7 @@ function TicketCard({
           data-kitchen-next=""
           data-ticket-id={ticket.id}
           data-testid={`kitchen-next-${ticket.id}`}
-          aria-label={`${busy ? next.pendingWords : next.words} order ${ticket.orderNumber}`}
+          aria-label={`${busy ? next.pendingWords : next.words} order ${orderNumberWords(ticket)}`}
           // Held while the step is with Yetu, or closed to a person who can't move tickets: the press is
           // ignored but the button keeps its focus and place (not the native disabled), with the reason.
           aria-disabled={busy || !canMove || undefined}

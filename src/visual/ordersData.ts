@@ -1,5 +1,5 @@
 import type { POSOrder, POSOrderItem, POSReceipt, POSStationTicket, PrepStation } from "../lib/posContracts";
-import { CURRENCY, line, ORDER, order, PRODUCTS } from "./registerData";
+import { CURRENCY, line, ORDER, order, payment, PRODUCTS } from "./registerData";
 
 /**
  * The Orders and Kitchen fixtures' data in the backend's shapes, built the
@@ -7,7 +7,8 @@ import { CURRENCY, line, ORDER, order, PRODUCTS } from "./registerData";
  * line and order), its station tickets from its sent lines (one per station,
  * made when it was sent), and a paid order's receipt from the order itself.
  * The screens are seen at 14:32 on Mon 12 Oct, the shell's clock. Order
- * numbers are as Yetu writes them: POS- and eight letters and digits.
+ * numbers are as Yetu gives them since S5b: a number for the outlet's day
+ * ("Order 41") and a reference, POS-<outlet>-<YYMMDD>-<number>.
  */
 
 /** The moment the fixtures are seen: the shell's clock, 14:32. */
@@ -31,15 +32,34 @@ function made(productId: string, quantity: number, options: Array<[string, strin
   return { ...line(productId, quantity, options, "SENT"), prepStation: STATION_OF[productId] ?? "GRILL" };
 }
 
-function sentOrder(id: string, number: string, items: POSOrderItem[], extra: Partial<POSOrder>): POSOrder {
+/** When each order was started on the till, in seconds before the fixtures' moment. */
+const STARTED_SECONDS_AGO: Readonly<Record<string, number>> = {
+  "order-144": 8 * 60,
+  "order-143": 3 * 60,
+  "order-141": 14 * 60,
+  "order-140": 6 * 60,
+  "order-138": 21 * 60,
+  "order-137": 40 * 60,
+  "order-136": 50 * 60,
+  "order-135": 70 * 60,
+};
+
+function sentOrder(id: string, dailyNumber: number, items: POSOrderItem[], extra: Partial<POSOrder>): POSOrder {
   return order(
     items.map((item) => ({ ...item, id: `${id}-${item.id}` })),
-    { id, orderNumber: number, shiftId: SHIFT_ID, ...extra },
+    {
+      id,
+      dailyNumber,
+      orderNumber: `POS-MR-261012-${dailyNumber}`,
+      shiftId: SHIFT_ID,
+      createdAt: at(STARTED_SECONDS_AGO[id] ?? 0),
+      ...extra,
+    },
   );
 }
 
-/** POS-a3f90c14: room service for room 204, two stations, sent 12 minutes ago, the grill cooking. */
-export const ROOM_ORDER = sentOrder("order-141", "POS-a3f90c14", [made("chicken", 1), made("juice", 2)], {
+/** Order 41: room service for room 204, two stations, sent 12 minutes ago, the grill cooking. */
+export const ROOM_ORDER = sentOrder("order-141", 41, [made("chicken", 1), made("juice", 2)], {
   status: "PREPARING",
   serviceType: "ROOM_SERVICE",
   tableLabel: "204",
@@ -49,26 +69,27 @@ export const ROOM_ORDER = sentOrder("order-141", "POS-a3f90c14", [made("chicken"
   version: 6,
 });
 
-/** POS-5be2d871: takeaway, ready, TSh 10,000 paid in cash so far. */
-export const TAKEAWAY_ORDER = sentOrder("order-140", "POS-5be2d871", [made("curry", 1), made("burger", 1, [["Cooked", "Well done"], ["Extras", "Fried egg"]])], {
+/** Order 40: takeaway, ready, TSh 10,000 paid in cash so far. */
+export const TAKEAWAY_ORDER = sentOrder("order-140", 40, [made("curry", 1), made("burger", 1, [["Cooked", "Well done"], ["Extras", "Fried egg"]])], {
   status: "READY",
   serviceType: "TAKEAWAY",
   tableLabel: undefined,
   initiatedById: "staff-grace",
   initiatedByName: "Grace Mushi",
   paidMinor: 1_000_000,
+  payments: [payment("pay-140", "CASH", 1_000_000, at(2 * 60), "Grace Mushi")],
   version: 7,
 });
 
-/** POS-e09b7c41: table 4, sent 15 seconds ago, nobody has started it. */
-export const NEW_ORDER = sentOrder("order-143", "POS-e09b7c41", [made("breakfast", 2), made("flat", 2)], {
+/** Order 43: table 4, sent 15 seconds ago, nobody has started it. */
+export const NEW_ORDER = sentOrder("order-143", 43, [made("breakfast", 2), made("flat", 2)], {
   status: "SENT",
   tableLabel: "4",
   version: 3,
 });
 
-/** POS-91d4f3a2: table 7, sent 18 minutes ago and still waiting. */
-export const LATE_ORDER = sentOrder("order-138", "POS-91d4f3a2", [made("nyama", 2), made("tusker", 3)], {
+/** Order 38: table 7, sent 18 minutes ago and still waiting. */
+export const LATE_ORDER = sentOrder("order-138", 38, [made("nyama", 2), made("tusker", 3)], {
   status: "SENT",
   tableLabel: "7",
   initiatedById: "staff-juma",
@@ -76,8 +97,8 @@ export const LATE_ORDER = sentOrder("order-138", "POS-91d4f3a2", [made("nyama", 
   version: 3,
 });
 
-/** POS-0c6a85fe: table 9, served, nothing paid yet. */
-export const SERVED_ORDER = sentOrder("order-137", "POS-0c6a85fe", [made("chicken", 2), made("water", 2)], {
+/** Order 37: table 9, served, nothing paid yet. */
+export const SERVED_ORDER = sentOrder("order-137", 37, [made("chicken", 2), made("water", 2)], {
   status: "SERVED",
   tableLabel: "9",
   version: 9,
@@ -103,6 +124,7 @@ function ticketsFor(sent: POSOrder): POSStationTicket[] {
     id: `${sent.id}-${station.toLowerCase()}`,
     orderId: sent.id,
     orderNumber: sent.orderNumber,
+    dailyNumber: sent.dailyNumber,
     station,
     status: STATION_STEP[sent.id]?.[station] ?? (sent.status === "SENT" ? "SENT" : (sent.status as POSStationTicket["status"])),
     serviceType: sent.serviceType,
@@ -111,6 +133,8 @@ function ticketsFor(sent: POSOrder): POSStationTicket[] {
     waiterName: sent.initiatedByName,
     version: 2,
     createdAt: at(SENT_SECONDS_AGO[sent.id] ?? 0),
+    // A ticket a display has moved on moved 2 minutes after it was sent; a new one hasn't moved.
+    lastStepAt: at(Math.max(0, (SENT_SECONDS_AGO[sent.id] ?? 0) - ((STATION_STEP[sent.id]?.[station] ?? sent.status) === "SENT" ? 0 : 2 * 60))),
     items: sent.items.filter((item) => (item.prepStation ?? "GENERAL") === station),
   }));
 }
@@ -123,16 +147,26 @@ export const STATION_TICKETS: POSStationTicket[] = [LATE_ORDER, TAKEAWAY_ORDER, 
 
 /** Two orders paid on this shift, the most recent first. */
 export const PAID_ORDERS: POSOrder[] = [
-  sentOrder("order-136", "POS-d2b7194e", [made("capp", 2), made("tart", 1)], { status: "CLOSED", tableLabel: "3", version: 8 }),
-  sentOrder("order-135", "POS-46ef0b3c", [made("nyama", 1), made("tusker", 2)], {
+  sentOrder("order-136", 36, [made("capp", 2), made("tart", 1)], { status: "CLOSED", tableLabel: "3", closedAt: at(9 * 60), version: 8 }),
+  sentOrder("order-135", 35, [made("nyama", 1), made("tusker", 2)], {
     status: "CLOSED",
     serviceType: "ROOM_SERVICE",
     tableLabel: "112",
     initiatedById: "staff-juma",
     initiatedByName: "Juma Ally",
+    closedAt: at(25 * 60),
     version: 6,
   }),
-].map((paid) => ({ ...paid, paidMinor: paid.totalMinor, remainingMinor: 0 }));
+].map((paid) => ({
+  ...paid,
+  paidMinor: paid.totalMinor,
+  remainingMinor: 0,
+  payments: [
+    paid.id === "order-136"
+      ? payment("pay-136", "CASH", paid.totalMinor, at(9 * 60), "Grace Mushi")
+      : payment("pay-135", "MOBILE_MONEY", paid.totalMinor, at(25 * 60), "Juma Ally"),
+  ],
+}));
 
 /** The receipt Yetu kept for the first paid order: taken in cash by Grace, printed again once. */
 export const PAID_RECEIPT: POSReceipt = (() => {
@@ -146,6 +180,7 @@ export const PAID_RECEIPT: POSReceipt = (() => {
     document: {
       orderId: paid.id,
       orderNumber: paid.orderNumber,
+      dailyNumber: paid.dailyNumber,
       businessDate: BUSINESS_DATE,
       propertyName: "Jacaranda Lodge",
       outletId: "o",
@@ -178,7 +213,7 @@ export const PAID_RECEIPT: POSReceipt = (() => {
 /** A long order for the busy kitchen: every item on the menu, so the ticket is taller than its column. */
 export const LONG_ORDER = sentOrder(
   "order-144",
-  "POS-b81c5d07",
+  44,
   PRODUCTS.filter((product) => product.isAvailable && !product.modifierGroups?.length).map((product) => made(product.id, 1)),
   { status: "SENT", tableLabel: "15", version: 2 },
 );

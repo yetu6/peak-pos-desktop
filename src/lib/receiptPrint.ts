@@ -1,3 +1,4 @@
+import { orderName, orderReference } from "./orderNumber";
 export interface ReceiptLine {
   name: string;
   quantity: string;
@@ -8,7 +9,10 @@ export interface ReceiptLine {
 export interface ReceiptCopy {
   propertyName?: string;
   outletName?: string;
+  /** The order's reference: printed small as "Ref …" when the order has a number for the day. */
   orderNumber?: string;
+  /** S5b: the order's number for the day ("Order 42"); absent on receipts made before S5b. */
+  dailyNumber?: number;
   tableNumber?: string;
   takenBy?: string;
   settledBy?: string;
@@ -72,6 +76,7 @@ export function receiptCopyFromPrintDocument(document: Record<string, unknown>):
     propertyName: typeof document.propertyName === "string" ? document.propertyName : undefined,
     outletName: typeof document.outletName === "string" ? document.outletName : undefined,
     orderNumber: typeof document.orderNumber === "string" ? document.orderNumber : undefined,
+    dailyNumber: typeof document.dailyNumber === "number" ? document.dailyNumber : undefined,
     tableNumber:
       typeof document.tableLabel === "string"
         ? document.tableLabel
@@ -118,7 +123,8 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     (receipt.propertyName ?? "PROPERTY").toUpperCase(),
     receipt.outletName ? receipt.outletName : null,
     "INVOICE",
-    receipt.orderNumber ?? "order",
+    receipt.dailyNumber || receipt.orderNumber ? orderName(receipt) : "order",
+    orderReference(receipt) ? `Ref ${orderReference(receipt)}` : null,
     [
       receipt.tableNumber ? `Table ${receipt.tableNumber}` : null,
       receipt.settlementMethod ? receipt.settlementMethod.replaceAll("_", " ") : null,

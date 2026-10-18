@@ -23,6 +23,10 @@ function order(extra: Partial<POSOrder> = {}): POSOrder {
     id: "order-1",
     shiftId: "shift-1",
     orderNumber: "0142",
+    dailyNumber: 42,
+    createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+    closedAt: null,
+    payments: [],
     status: "OPEN",
     serviceType: "DINE_IN",
     tableLabel: "12",
@@ -84,7 +88,9 @@ const footer = () => screen.getByTestId("order-detail-actions");
 describe("OrderDetailView", () => {
   it("names the order, where it goes and who took it, with its lines, totals and what happened", () => {
     renderDetail();
-    const sheet = screen.getByRole("dialog", { name: "Order 0142" });
+    const sheet = screen.getByRole("dialog", { name: "Order 42" });
+    // The reference Yetu keeps, small, for finding it again.
+    expect(within(sheet).getByTestId("order-detail-reference")).toHaveTextContent("Reference 0142");
     expect(sheet).toHaveAccessibleDescription("Table 12 · Dine in · Amina Hassan");
     expect(within(sheet).getByTestId("order-detail-status")).toHaveTextContent("Open");
     expect(within(sheet).getByTestId("order-detail-lines")).toHaveTextContent("Flat white");
