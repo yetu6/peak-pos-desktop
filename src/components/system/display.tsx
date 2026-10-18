@@ -113,6 +113,7 @@ export function TicketLine({
   name,
   options = [],
   note,
+  tags,
   amount,
   sent = false,
   selected = false,
@@ -123,13 +124,15 @@ export function TicketLine({
   name: string;
   options?: readonly string[];
   note?: string;
+  /** What staff say about the item ("Halal · Contains nuts"), under its name. */
+  tags?: string;
   amount: string;
   sent?: boolean;
   selected?: boolean;
   onSelect?: () => void;
   className?: string;
 }) {
-  const label = [`${quantity} × ${name}`, ...options, note ? `Note: ${note}` : "", sent ? "Sent to kitchen" : "", amount]
+  const label = [`${quantity} × ${name}`, ...options, tags ?? "", note ? `Note: ${note}` : "", sent ? "Sent to kitchen" : "", amount]
     .filter(Boolean)
     .join(", ");
   const body = (
@@ -142,6 +145,7 @@ export function TicketLine({
             {option}
           </span>
         ))}
+        {tags ? <span className="y-ticket-line__tags">{tags}</span> : null}
         {note ? <span className="y-ticket-line__note">{note}</span> : null}
         {sent ? (
           <StatusChip tone="info" className="y-ticket-line__sent">

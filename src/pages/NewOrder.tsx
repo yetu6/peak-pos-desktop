@@ -19,7 +19,7 @@ import { ReceiptView } from "../components/ReceiptView";
 import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OptionsSheet } from "../register/OptionsSheet";
 import { useTillMenu } from "../fnb/useTillMenu";
-import { sizesOf } from "../fnb/fnbWords";
+import { sizesOf, tagNote } from "../fnb/fnbWords";
 import { PaymentDone } from "../register/PaymentDone";
 import { PaySheet, type PaidInfo } from "../register/PaySheet";
 import { optionIdsFor } from "../register/repeatLine";
@@ -279,6 +279,7 @@ export function NewOrder() {
           <TicketPanel
             order={order}
             currency={currency}
+            tagsOf={(productId) => (menu?.enabled ? tagNote(menu, productId) : undefined)}
             serviceType={serviceType}
             onServiceType={setServiceType}
             label={tableLabel}

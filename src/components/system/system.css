@@ -558,6 +558,7 @@ button.y-ticket-line:hover { background: var(--surface-hover); }
 .y-ticket-line__name { font-weight: 600; }
 
 .y-ticket-line__option,
+.y-ticket-line__tags,
 .y-ticket-line__note {
   padding-left: var(--space-3);
   color: var(--text-muted);

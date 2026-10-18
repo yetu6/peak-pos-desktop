@@ -40,6 +40,8 @@ export interface TicketPanelProps {
   notice?: string | null;
   /** Send to kitchen, Pay and More. */
   actions: ReactNode;
+  /** What staff say about an item, by its product (the Restaurant & Bar module's tags). */
+  tagsOf?: (productId: string) => string | undefined;
 }
 
 /**
@@ -69,6 +71,7 @@ export function TicketPanel({
   retrying = false,
   notice = null,
   actions,
+  tagsOf,
 }: TicketPanelProps) {
   const locked = order !== null;
   const type = order?.serviceType ?? serviceType;
@@ -126,6 +129,7 @@ export function TicketPanel({
                     quantity={line.quantity}
                     name={line.name}
                     options={(line.modifiers ?? []).map((modifier) => modifier.optionName)}
+                    tags={tagsOf?.(line.productId)}
                     amount={formatMoney(line.totalMinor, currency)}
                     sent={line.status === "SENT"}
                     selected={selected}

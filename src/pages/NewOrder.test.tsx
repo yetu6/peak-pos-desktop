@@ -635,6 +635,15 @@ describe("NewOrder: the Restaurant & Bar module's menu (S16-B4)", () => {
     expect((addItemSpy.mock.calls[0] as unknown[])[1]).toEqual(expect.objectContaining({ productId: TL, variantId: "sz-pint", quantity: 1 }));
   });
 
+  it("says staff's tags on the order's line too", async () => {
+    tillMenu.data = sized();
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Nyama Choma");
+    await waitFor(() => expect(tile).toBeEnabled());
+    await userEvent.click(tile);
+    expect(await within(screen.getByTestId("ticket-panel")).findByTestId("cart-Nyama Choma")).toHaveTextContent("Halal");
+  });
+
   it("won't take a size that is sold out today", async () => {
     tillMenu.data = sized(false);
     renderNewOrder();
