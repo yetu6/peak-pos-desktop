@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { POSOrder } from "../lib/posContracts";
 import { clockTime } from "../lib/words";
 import { OrdersView, type OrdersViewProps } from "./OrdersView";
-import { PAID_ROWS_SHOWN } from "./ordersSettings";
 
 function order(id: string, extra: Partial<POSOrder> = {}): POSOrder {
   return {
@@ -82,9 +81,9 @@ describe("OrdersView", () => {
     expect(screen.getByTestId("order-row-0142")).toHaveTextContent("Open");
   });
 
-  it("shows this shift's paid orders on the other tab", async () => {
+  it("shows today's paid orders on the other tab", async () => {
     render(<Harness />);
-    await userEvent.click(screen.getByRole("tab", { name: /Paid this shift/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Paid today/ }));
     expect(screen.getByTestId("order-row-0139")).toHaveTextContent("Paid");
     expect(screen.queryByTestId("order-row-0142")).toBeNull();
   });
@@ -139,39 +138,68 @@ describe("OrdersView", () => {
     expect(onNewSale).toHaveBeenCalled();
   });
 
-  it("shows the paid orders a page at a time, the most recent orders first, saying so", async () => {
-    const many = Array.from({ length: PAID_ROWS_SHOWN * 2 + 5 }, (_, index) =>
-      order(`p${String(index).padStart(3, "0")}`, { status: "CLOSED", paidMinor: 4_779_000, remainingMinor: 0 }),
+  const paidPage = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      order(`p${String(index).padStart(3, "0")}`, {
+        status: "CLOSED",
+        paidMinor: 4_779_000,
+        remainingMinor: 0,
+        closedAt: new Date(2026, 9, 12, 14, 23).toISOString(),
+      }),
     );
-    render(<Harness tab="paid" paidOrders={many} />);
-    expect(screen.getAllByTestId(/^order-row-/)).toHaveLength(PAID_ROWS_SHOWN);
-    expect(screen.getByTestId("orders-caption")).toHaveTextContent(`Most recent orders first · showing ${PAID_ROWS_SHOWN} of ${many.length}`);
-    await userEvent.click(screen.getByRole("button", { name: "Show more" }));
-    expect(screen.getAllByTestId(/^order-row-/)).toHaveLength(PAID_ROWS_SHOWN * 2);
-    await userEvent.click(screen.getByRole("button", { name: "Show more" }));
-    expect(screen.getAllByTestId(/^order-row-/)).toHaveLength(many.length);
-    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
-    expect(screen.getByTestId("orders-caption")).toHaveTextContent(`Most recent orders first · showing ${many.length} of ${many.length}`);
+  const paging = (extra: Partial<NonNullable<OrdersViewProps["paidPaging"]>> = {}) => ({
+    hasMore: false,
+    loadingMore: false,
+    searchedAll: true,
+    onMore: vi.fn(),
+    ...extra,
   });
 
-  it("searches every paid order, not just the ones shown", async () => {
-    const many = Array.from({ length: PAID_ROWS_SHOWN + 3 }, (_, index) =>
-      order(`p${String(index).padStart(3, "0")}`, { status: "CLOSED", paidMinor: 4_779_000, remainingMinor: 0 }),
-    );
-    render(<Harness tab="paid" paidOrders={many} />);
-    await userEvent.type(screen.getByRole("searchbox", { name: "Find an order" }), `p${String(PAID_ROWS_SHOWN + 2).padStart(3, "0")}`);
-    expect(screen.getAllByTestId(/^order-row-/)).toHaveLength(1);
+  it("shows today's paid orders as Yetu pages them, the latest paid first; Show more asks for the next page", async () => {
+    const onMore = vi.fn();
+    render(<Harness tab="paid" paidOrders={paidPage(50)} paidPaging={paging({ hasMore: true, searchedAll: false, onMore })} />);
+    expect(screen.getByRole("tab", { name: /Paid today/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByTestId(/^order-row-/)).toHaveLength(50);
+    expect(screen.getByTestId("orders-caption")).toHaveTextContent("Latest paid first · 50 shown");
+    // How many were paid today isn't known until every page is read.
+    expect(screen.getByRole("tab", { name: /Paid today/ })).not.toHaveTextContent(/\d/);
+    await userEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(onMore).toHaveBeenCalledTimes(1);
   });
 
-  it("says there are no paid orders on this shift yet", () => {
-    render(<Harness tab="paid" paidOrders={[]} />);
-    expect(screen.getByText("No paid orders on this shift yet")).toBeInTheDocument();
+  it("holds Show more while the next page is with Yetu, and drops it once every page is read", () => {
+    const { rerender } = render(<Harness tab="paid" paidOrders={paidPage(50)} paidPaging={paging({ hasMore: true, loadingMore: true, searchedAll: false })} />);
+    expect(screen.getByRole("button", { name: "Loading more…" })).toBeDisabled();
+    rerender(<Harness tab="paid" paidOrders={paidPage(62)} paidPaging={paging()} />);
+    expect(screen.queryByRole("button", { name: /Show more|Loading more/ })).toBeNull();
+    expect(screen.getByRole("tab", { name: /Paid today/ })).toHaveTextContent("62");
+  });
+
+  it("a paid row says when it was paid", () => {
+    render(<Harness tab="paid" paidOrders={paidPage(1)} paidPaging={paging()} />);
+    expect(screen.getByTestId("order-row-p000")).toHaveTextContent("Amina Hassan · Paid 14:23");
+  });
+
+  it("while a search reads the rest of today, it says so", async () => {
+    render(<Harness tab="paid" query="p001" paidOrders={paidPage(50)} paidPaging={paging({ hasMore: true, loadingMore: true, searchedAll: false })} />);
+    expect(screen.getByTestId("orders-status")).toHaveTextContent("Looking through today's paid orders…");
+  });
+
+  it("a search that stopped at its ceiling says which orders it looked through", () => {
+    render(<Harness tab="paid" query="nothing like it" paidOrders={paidPage(50)} paidPaging={paging({ hasMore: true, searchedAll: false })} />);
+    expect(screen.getByText("No order matches “nothing like it”")).toBeInTheDocument();
+    expect(screen.getByText("Only the latest 50 paid orders today were searched.")).toBeInTheDocument();
+  });
+
+  it("says there are no paid orders today yet", () => {
+    render(<Harness tab="paid" paidOrders={[]} paidPaging={paging()} />);
+    expect(screen.getByText("No paid orders today yet")).toBeInTheDocument();
   });
 
   it("shows rows loading, and leaves the paid count off until it is known", () => {
     render(<Harness tab="paid" paidOrders={null} paidState={{ loading: true, failed: false, onRetry: vi.fn() }} />);
     expect(screen.getByLabelText("Loading the orders")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Paid this shift/ })).not.toHaveTextContent(/\d/);
+    expect(screen.getByRole("tab", { name: /Paid today/ })).not.toHaveTextContent(/\d/);
   });
 
   it("says the list couldn't be loaded, as an alert, with Try again", async () => {

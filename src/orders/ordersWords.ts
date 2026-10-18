@@ -39,15 +39,6 @@ export function orderMatches(order: POSOrder, query: string): boolean {
   return majorDigits(order.totalMinor).replace(/,/g, "").startsWith(amount);
 }
 
-/**
- * This shift's paid orders, the latest first. Yetu's order list has no
- * date or status of its own to ask for (GET /pos/orders takes only
- * `active`), so the till keeps the paid orders that belong to its open shift.
- */
-export function paidThisShift(orders: readonly POSOrder[], shiftId: string | undefined): POSOrder[] {
-  return orders.filter((order) => order.status === "CLOSED" && order.shiftId === shiftId).reverse();
-}
-
 const STEP_RANK: Record<POSStationTicket["status"], number> = { SENT: 0, PREPARING: 1, READY: 2, SERVED: 3 };
 
 export interface TimelineEntry {

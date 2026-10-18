@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { POSOrder, POSReceipt, POSStationTicket } from "../lib/posContracts";
 import { clockTime } from "../lib/words";
-import { orderMatches, orderTimeline, paidThisShift, removeProblem, reprintProblem, sendProblem } from "./ordersWords";
+import { orderMatches, orderTimeline, removeProblem, reprintProblem, sendProblem } from "./ordersWords";
 
 function order(extra: Partial<POSOrder> = {}): POSOrder {
   return {
@@ -85,20 +85,6 @@ describe("orderMatches", () => {
 
   it("finds everything when nothing is typed", () => {
     expect(orderMatches(order(), "   ")).toBe(true);
-  });
-});
-
-describe("paidThisShift", () => {
-  it("keeps this shift's paid orders, the latest first", () => {
-    const orders = [
-      order({ id: "a", status: "CLOSED" }),
-      order({ id: "b", status: "OPEN" }),
-      order({ id: "c", status: "CLOSED", shiftId: "shift-0" }),
-      order({ id: "d", status: "VOIDED" }),
-      order({ id: "e", status: "CLOSED" }),
-    ];
-    expect(paidThisShift(orders, "shift-1").map((entry) => entry.id)).toEqual(["e", "a"]);
-    expect(paidThisShift(orders, undefined)).toEqual([]);
   });
 });
 

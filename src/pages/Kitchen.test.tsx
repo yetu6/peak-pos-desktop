@@ -18,7 +18,7 @@ const ticketsStore = new Map<string, POSStationTicket>();
 
 type Result = { data?: unknown; error?: unknown };
 const { listOrdersSpy, transitionStatusSpy, getOrderSpy, listStationTicketsSpy, transitionStationTicketSpy, identity } = vi.hoisted(() => ({
-  listOrdersSpy: vi.fn(async (): Promise<Result> => ({ data: Array.from(ordersStore.values()), error: null })),
+  listOrdersSpy: vi.fn(async (): Promise<Result> => ({ data: { items: Array.from(ordersStore.values()), nextCursor: null }, error: null })),
   transitionStatusSpy: vi.fn(async (..._args: unknown[]): Promise<Result> => ({ data: undefined, error: null })),
   getOrderSpy: vi.fn(async (orderId: string): Promise<Result> => ({ data: ordersStore.get(orderId), error: null })),
   listStationTicketsSpy: vi.fn(async (): Promise<Result> => ({ data: { items: Array.from(ticketsStore.values()) }, error: null })),
@@ -28,7 +28,7 @@ const { listOrdersSpy, transitionStatusSpy, getOrderSpy, listStationTicketsSpy, 
 
 vi.mock("../lib/posApi", () => ({
   createPosApi: () => ({
-    listOrders: listOrdersSpy,
+    listOrderPage: listOrdersSpy,
     transitionStatus: transitionStatusSpy,
     getOrder: getOrderSpy,
     listStationTickets: listStationTicketsSpy,
