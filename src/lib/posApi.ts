@@ -122,7 +122,7 @@ export function createPosApi() {
     },
     addItem(
       orderId: string,
-      body: { productId: string; quantity: number; modifierOptionIds?: string[]; version: number },
+      body: { productId: string; variantId?: string; quantity: number; modifierOptionIds?: string[]; version: number },
       idempotencyKey: string,
     ): Promise<ApiResult<POSOrder>> {
       return client.POST<POSOrder>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/items`, {

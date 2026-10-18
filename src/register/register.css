@@ -158,6 +158,8 @@
 
 .y-options__tick svg { width: 16px; height: 16px; }
 .y-options__price { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.y-options__option[aria-disabled="true"] { border-style: dashed; color: var(--text-muted); cursor: not-allowed; }
+.y-options__description { margin: 0; color: var(--text-muted); }
 
 .y-options__quantity {
   display: flex;

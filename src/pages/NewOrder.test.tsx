@@ -6,6 +6,10 @@ import { NewOrder } from "./NewOrder";
 import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
 import type { POSCatalog, POSOrder } from "../lib/posContracts";
 
+// The Restaurant & Bar module's menu for the outlet: none unless a test sets one.
+const { tillMenu } = vi.hoisted(() => ({ tillMenu: { data: undefined as unknown } }));
+vi.mock("../fnb/useTillMenu", () => ({ useTillMenu: () => ({ data: tillMenu.data }) }));
+
 vi.mock("../lib/env", () => ({
   API_BASE_URL: "http://peak.test",
   getApiBaseUrl: () => "http://peak.test",
@@ -251,6 +255,7 @@ function renderNewOrder() {
 
 describe("NewOrder", () => {
   beforeEach(() => {
+    tillMenu.data = undefined;
     localStorage.clear();
     setOperationalSession({
       token: "t",
@@ -569,5 +574,78 @@ describe("NewOrder", () => {
       const [first, second] = sendOrderSpy.mock.calls as unknown as Array<[string, number, string]>;
       expect(second[2]).not.toBe(first[2]);
     });
+  });
+});
+
+describe("NewOrder: the Restaurant & Bar module's menu (S16-B4)", () => {
+  const NC = "00000000-0000-0000-0000-000000000001";
+  const TL = "00000000-0000-0000-0000-000000000006";
+  const sized = (pintAvailable = true) => ({
+    enabled: true,
+    groups: [{ id: "g-food", name: "Food", categoryIds: ["cat-1"] }],
+    unplacedCategoryIds: [],
+    sizes: {
+      [TL]: [
+        { id: "sz-bottle", name: "Bottle", priceMinor: 500000, isDefault: true, isAvailable: true },
+        { id: "sz-pint", name: "Pint", priceMinor: 700000, isDefault: false, isAvailable: pintAvailable },
+      ],
+    },
+    products: { [NC]: { tags: [{ label: "Halal", kind: "DIETARY" }] }, [TL]: { description: "Cold, from the tap or the bottle.", tags: [] } },
+  });
+
+  beforeEach(() => {
+    localStorage.clear();
+    setOperationalSession({
+      token: "t",
+      expiresAt: "2099-01-01T00:00:00Z",
+      tenantId: "tenant-1",
+      propertyId: "property-1",
+      outletId: "outlet-1",
+      staffId: "staff-1",
+      terminalId: "terminal-1",
+    } as never);
+  });
+  afterEach(() => {
+    tillMenu.data = undefined;
+    clearOperationalSession();
+  });
+
+  it("puts the groups first and says staff's tags on the tiles", async () => {
+    tillMenu.data = sized();
+    renderNewOrder();
+    expect(await screen.findByRole("tab", { name: "Food" })).toBeInTheDocument();
+    expect(await screen.findByTestId("menu-Nyama Choma")).toHaveTextContent("Halal");
+    expect(screen.getByTestId("menu-Tusker Lager")).toHaveTextContent("TSh 5,000 · 2 sizes");
+  });
+
+  it("asks which size, and asks Yetu for that size (Yetu prices it)", async () => {
+    tillMenu.data = sized();
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Tusker Lager");
+    await waitFor(() => expect(tile).toBeEnabled());
+    addItemSpy.mockClear();
+    await userEvent.click(tile);
+    const sheet = await screen.findByTestId("modifier-dialog");
+    expect(within(sheet).getByTestId("options-description")).toHaveTextContent("Cold, from the tap or the bottle.");
+    expect(within(sheet).getByTestId("size-option-sz-bottle")).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(within(sheet).getByTestId("size-option-sz-pint"));
+    expect(within(sheet).getByTestId("modifier-confirm-add")).toHaveTextContent("Add to order · TSh 7,000");
+    await userEvent.click(within(sheet).getByTestId("modifier-confirm-add"));
+    await waitFor(() => expect(addItemSpy).toHaveBeenCalled());
+    expect((addItemSpy.mock.calls[0] as unknown[])[1]).toEqual(expect.objectContaining({ productId: TL, variantId: "sz-pint", quantity: 1 }));
+  });
+
+  it("won't take a size that is sold out today", async () => {
+    tillMenu.data = sized(false);
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Tusker Lager");
+    await waitFor(() => expect(tile).toBeEnabled());
+    await userEvent.click(tile);
+    const sheet = await screen.findByTestId("modifier-dialog");
+    const pint = within(sheet).getByTestId("size-option-sz-pint");
+    expect(pint).toHaveAttribute("aria-disabled", "true");
+    expect(pint).toHaveTextContent("Sold out");
+    await userEvent.click(pint);
+    expect(pint).toHaveAttribute("aria-checked", "false");
   });
 });

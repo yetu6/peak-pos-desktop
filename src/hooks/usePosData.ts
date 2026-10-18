@@ -385,6 +385,8 @@ export function useAddOrderItem() {
     mutationFn: async (args: {
       orderId: string;
       productId: string;
+      /** A size of the item (the Restaurant & Bar module's); left out, its default size. Yetu prices it. */
+      variantId?: string;
       quantity: number;
       modifierOptionIds?: string[];
       version: number;
@@ -396,6 +398,7 @@ export function useAddOrderItem() {
             args.orderId,
             {
               productId: args.productId,
+              ...(args.variantId ? { variantId: args.variantId } : {}),
               quantity: args.quantity,
               modifierOptionIds: args.modifierOptionIds,
               version: args.version,

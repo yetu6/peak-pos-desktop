@@ -18,6 +18,8 @@ import {
 import { ReceiptView } from "../components/ReceiptView";
 import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OptionsSheet } from "../register/OptionsSheet";
+import { useTillMenu } from "../fnb/useTillMenu";
+import { sizesOf } from "../fnb/fnbWords";
 import { PaymentDone } from "../register/PaymentDone";
 import { PaySheet, type PaidInfo } from "../register/PaySheet";
 import { optionIdsFor } from "../register/repeatLine";
@@ -37,6 +39,9 @@ import { orderName } from "../lib/orderNumber";
 export function NewOrder() {
   const { shift } = usePosShift();
   const catalog = useCatalog();
+  // The Restaurant & Bar module's menu (groups, sizes, tags); none: sell as before.
+  const tillMenu = useTillMenu();
+  const menu = tillMenu.data;
   const currency = useCatalogCurrency();
   const [activeCategory, setActiveCategory] = useState<string>(ALL_CATEGORIES);
   const [search, setSearch] = useState("");
@@ -118,7 +123,7 @@ export function NewOrder() {
     if (!canMutate || addBlocked) return;
     if (product.isAvailable === false) return;
     setNotice(null);
-    if ((product.modifierGroups?.length ?? 0) > 0) {
+    if ((product.modifierGroups?.length ?? 0) > 0 || sizesOf(menu, product.id).length > 1) {
       openOptions(product);
       return;
     }
@@ -142,7 +147,7 @@ export function NewOrder() {
     }
   }
 
-  async function addProduct(product: POSCatalogProduct, quantity: number, modifierOptionIds: string[]) {
+  async function addProduct(product: POSCatalogProduct, quantity: number, modifierOptionIds: string[], variantId?: string) {
     const current = await ensureOrder();
     if (!current) return;
     setActionError(null);
@@ -150,6 +155,7 @@ export function NewOrder() {
       const next = await addItem.mutateAsync({
         orderId: current.id,
         productId: product.id,
+        variantId,
         quantity,
         modifierOptionIds,
         version: current.version,
@@ -160,6 +166,7 @@ export function NewOrder() {
         const retried = await addItem.mutateAsync({
           orderId: next.id,
           productId: product.id,
+          variantId,
           quantity,
           modifierOptionIds,
           version: next.version,
@@ -184,7 +191,8 @@ export function NewOrder() {
       return;
     }
     const ids = optionIdsFor(line, product);
-    if (ids === null) {
+    // Which size the line was is Yetu's to know: with a choice of sizes, the person picks again.
+    if (ids === null || sizesOf(menu, product.id).length > 1) {
       openOptions(product);
       return;
     }
@@ -254,6 +262,7 @@ export function NewOrder() {
           <MenuPanel
             categories={catalog.data?.categories ?? []}
             products={catalog.data?.products ?? []}
+            menu={menu}
             currency={currency}
             activeCategory={activeCategory}
             onCategory={setActiveCategory}
@@ -311,7 +320,9 @@ export function NewOrder() {
           pending={busy}
           error={createError ?? addError}
           onCancel={() => setConfiguring(null)}
-          onAdd={(choice) => void addProduct(configuring, choice.quantity, choice.modifierOptionIds)}
+          onAdd={(choice) => void addProduct(configuring, choice.quantity, choice.modifierOptionIds, choice.variantId)}
+          sizes={sizesOf(menu, configuring.id)}
+          description={menu?.products[configuring.id]?.description}
         />
       )}
       {settleOpen && order && currency && (

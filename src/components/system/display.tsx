@@ -58,6 +58,7 @@ export function StatusChip({
 export function Tile({
   name,
   price,
+  note,
   soldOut = false,
   disabled = false,
   mark,
@@ -68,6 +69,8 @@ export function Tile({
 }: {
   name: string;
   price: string;
+  /** A short line under the name: what staff say about the item ("Vegan · Contains nuts"). */
+  note?: string;
   soldOut?: boolean;
   /** Can't be added just now; the screen says why. It stays focusable and keeps its place. */
   disabled?: boolean;
@@ -92,6 +95,7 @@ export function Tile({
       onContextMenu={onContextMenu}
     >
       <span className="y-tile__name">{name}</span>
+      {note ? <span className="y-tile__note">{note}</span> : null}
       {soldOut ? (
         <StatusChip tone="neutral" icon={<Ban aria-hidden="true" />}>
           Sold out
