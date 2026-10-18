@@ -1,3 +1,6 @@
+import { loadPrinterSettings, printRawToPrinter } from "../print/printerStore";
+import type { FnbTillMenu } from "../fnb/fnbContracts";
+import { tagNote } from "../fnb/fnbWords";
 import { useMemo, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPosApi } from "../lib/posApi";
@@ -744,11 +747,20 @@ export function useCloseBusinessDay() {
 
 export function usePrintAfter(propertyId: string) {
   const printing = useRef(false);
+  const queryClient = useQueryClient();
+  const outletId = useOutletId();
   return async (sourceId: string | undefined): Promise<void> => {
     if (!sourceId || printing.current) return;
     printing.current = true;
     try {
-      await processPendingPrintJobs(propertyId, sourceId);
+      // Kitchen tickets to the kitchen's printer, with staff's tags from the menu Yetu last sent (S8a).
+      const settings = await loadPrinterSettings();
+      const menu = queryClient.getQueryData<FnbTillMenu>(["fnb", "menu", outletId]);
+      await processPendingPrintJobs(propertyId, sourceId, undefined, {
+        settings,
+        printRaw: printRawToPrinter,
+        tagsOf: (productId) => (menu?.enabled ? tagNote(menu, productId) : undefined),
+      });
     } finally {
       printing.current = false;
     }

@@ -10,6 +10,9 @@ import {
 import { formatReceipt, receiptCopyFromPrintDocument } from "./receiptPrint";
 import { formatRefundReceipt, refundReceiptCopyFromPrintDocument } from "./refundReceiptPrint";
 import type { POSPrintJob, PrintJobStatus } from "./posContracts";
+import { kitchenTicketBytes } from "../print/kitchenTicket";
+import { paperFromPrintDocument, type KitchenPrintRoutes } from "../print/kitchenRouting";
+import { printerFor } from "../print/printerSettings";
 
 /**
  * The `pos_print_jobs.job_type` values Yetu writes: a kitchen ticket at
@@ -183,7 +186,12 @@ export async function ackFailed(jobId: string, error: string): Promise<POSPrintJ
 export async function processPrintJob(
   job: POSPrintJob,
   printFn: (title: string, text: string) => Promise<void> = defaultPrint,
+  routes?: KitchenPrintRoutes,
 ): Promise<PrintResult> {
+  const kitchen = job.jobType === KITCHEN_TICKET && routes !== undefined;
+  // Paper kitchen tickets off on this till (its kitchen has a screen): the job
+  // is left for a till that prints them, never claimed and dropped.
+  if (kitchen && !routes.settings.kitchenTickets) return { ok: true };
   let claimed: POSPrintJob;
   try {
     claimed = job.status === "PENDING" ? await claimPrintJob(job.id) : job;
@@ -196,7 +204,14 @@ export async function processPrintJob(
   }
   const formatted = formatPrintDocument(claimed);
   try {
-    await printFn(formatted.title, formatted.text);
+    const station = typeof claimed.document.station === "string" ? claimed.document.station : undefined;
+    const printer = kitchen ? printerFor(routes.settings, station) : null;
+    if (kitchen && printer) {
+      // A thermal printer of the kitchen's: the ticket in large type, with a cut (S8a).
+      await routes.printRaw(printer.target, kitchenTicketBytes(paperFromPrintDocument(claimed.document, routes.tagsOf), printer.width));
+    } else {
+      await printFn(formatted.title, formatted.text);
+    }
     await ackPrinted(claimed.id);
     return { ok: true };
   } catch (error) {
@@ -220,6 +235,7 @@ export async function processPendingPrintJobs(
   _propertyId: string,
   sourceId?: string,
   printFn: (title: string, text: string) => Promise<void> = defaultPrint,
+  routes?: KitchenPrintRoutes,
 ): Promise<PrintResult[]> {
   let jobs: POSPrintJob[];
   try {
@@ -230,7 +246,7 @@ export async function processPendingPrintJobs(
   const mine = sourceId ? jobs.filter((job) => String(job.sourceId) === sourceId) : jobs;
   const results: PrintResult[] = [];
   for (const job of mine) {
-    results.push(await processPrintJob(job, printFn));
+    results.push(await processPrintJob(job, printFn, routes));
   }
   return results;
 }

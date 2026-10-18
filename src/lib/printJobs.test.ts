@@ -305,3 +305,89 @@ describe("printJobs", () => {
     expect(printed).toEqual([]);
   });
 });
+
+describe("printJobs: kitchen tickets on paper (S8a)", () => {
+  // Yetu's kitchen print document, as createStationTicketsAndPrintJobs writes it.
+  const DOC = {
+    orderId: "order-1", orderNumber: "POS-MR-261019-42", dailyNumber: 42, roundNumber: 2, station: "HOT",
+    tableLabel: "12", serviceType: "DINE_IN", waiterName: "Amina Hassan", sentAt: "2026-10-19T09:40:00Z",
+    items: [{ id: "i1", productId: "p-satay", name: "Satay", quantity: 2, modifiers: [{ name: "Extra sauce" }] }],
+  };
+  const JOB: POSPrintJob = { ...KITCHEN_JOB, document: DOC };
+  const KITCHEN = { target: { kind: "network" as const, host: "192.168.1.50", port: 9100 }, width: 48 as const };
+
+  function yetu(requests: string[]) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = String(input);
+        requests.push(url);
+        if (url.endsWith("/claim")) return json({ ...JOB, status: "CLAIMED" });
+        if (url.endsWith("/printed")) return json({ ...JOB, status: "PRINTED" });
+        if (url.endsWith("/failed")) return json({ ...JOB, status: "FAILED" });
+        if (url.includes("/pos/print-jobs")) return json([JOB]);
+        return json({}, 500);
+      }),
+    );
+  }
+  const text = (bytes: Uint8Array) => Array.from(bytes, (b) => (b >= 0x20 && b < 0x7f) || b === 0x0a ? String.fromCharCode(b) : "").join("");
+
+  it("goes to the kitchen's printer as a ticket, with who took it and staff's tags", async () => {
+    const requests: string[] = [];
+    yetu(requests);
+    const raw: { target: unknown; bytes: Uint8Array }[] = [];
+    const printFn = vi.fn();
+    const results = await processPendingPrintJobs("prop", "order-1", printFn, {
+      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: {} },
+      printRaw: async (target, bytes) => void raw.push({ target, bytes }),
+      tagsOf: (productId) => (productId === "p-satay" ? "Contains nuts" : undefined),
+    });
+    expect(results).toEqual([{ ok: true }]);
+    expect(printFn).not.toHaveBeenCalled();
+    expect(raw).toHaveLength(1);
+    expect(raw[0].target).toEqual(KITCHEN.target);
+    const paper = text(raw[0].bytes);
+    expect(paper).toContain("ORDER 42");
+    expect(paper).toContain("ROUND 2");
+    expect(paper).toContain("Taken by Amina Hassan");
+    expect(paper).toContain("2 x Satay");
+    expect(paper).toContain("! Contains nuts");
+    expect(requests.some((url) => url.endsWith("/printed"))).toBe(true);
+  });
+
+  it("a till with paper kitchen tickets off leaves the job for one that prints them", async () => {
+    const requests: string[] = [];
+    yetu(requests);
+    const printRaw = vi.fn();
+    const printFn = vi.fn();
+    const results = await processPendingPrintJobs("prop", "order-1", printFn, {
+      settings: { kitchenTickets: false, kitchen: KITCHEN, stations: {} }, printRaw,
+    });
+    expect(results).toEqual([{ ok: true }]);
+    expect(requests.some((url) => url.endsWith("/claim"))).toBe(false);
+    expect(printRaw).not.toHaveBeenCalled();
+    expect(printFn).not.toHaveBeenCalled();
+  });
+
+  it("with no kitchen printer chosen, this till's own printer prints it, as before", async () => {
+    yetu([]);
+    const printRaw = vi.fn();
+    const printed: string[] = [];
+    await processPendingPrintJobs("prop", "order-1", async (_title, body) => void printed.push(body), {
+      settings: { kitchenTickets: true, kitchen: null, stations: {} }, printRaw,
+    });
+    expect(printRaw).not.toHaveBeenCalled();
+    expect(printed[0]).toContain("Order 42");
+  });
+
+  it("a kitchen printer that doesn't answer is said to Yetu as failed", async () => {
+    const requests: string[] = [];
+    yetu(requests);
+    const results = await processPendingPrintJobs("prop", "order-1", vi.fn(), {
+      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: {} },
+      printRaw: async () => { throw new Error("The kitchen printer didn't answer"); },
+    });
+    expect(results).toEqual([{ ok: false, error: "The kitchen printer didn't answer" }]);
+    expect(requests.some((url) => url.endsWith("/failed"))).toBe(true);
+  });
+});

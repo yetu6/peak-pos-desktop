@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { CloseDayCard } from "../cash/CloseDayCard";
 import { CloseShiftSheet } from "../cash/CloseShiftSheet";
+import { PrintersCard } from "../print/PrintersCard";
 import { useExpectedCashVisible } from "../cash/useExpectedCashVisible";
 import { CashMovementDialog } from "../components/CashMovementDialog";
 import { Button, EmptyState, ListRow, Money, PermissionNotice } from "../components/system";
@@ -50,6 +51,7 @@ export function Manager() {
       canCloseShift={canCloseShift}
       showExpected={showExpected}
       closeDay={isManager && !hotel ? <CloseDayCard thisTillShiftOpen={Boolean(shift)} /> : null}
+      printers={isManager ? <PrintersCard /> : null}
       onCashIn={() => setMovement("CASH_IN")}
       onCashOut={() => setMovement("CASH_OUT")}
       onCloseShift={() => setClosing(true)}
@@ -82,6 +84,8 @@ export interface CashViewProps {
   showExpected: boolean;
   /** The Close the day card, for managers on a restaurant-only property. */
   closeDay: ReactNode;
+  /** Manager → Printers (S8a): shown to a manager. */
+  printers?: ReactNode;
   onCashIn: () => void;
   onCashOut: () => void;
   onCloseShift: () => void;
@@ -98,6 +102,7 @@ export function CashView({
   canCloseShift,
   showExpected,
   closeDay,
+  printers = null,
   onCashIn,
   onCashOut,
   onCloseShift,
@@ -229,6 +234,7 @@ export function CashView({
           </section>
 
           {closeDay}
+          {printers}
         </div>
       </div>
 

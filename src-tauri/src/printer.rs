@@ -308,3 +308,64 @@ mod tests {
         assert_eq!(error, "Print document is empty");
     }
 }
+
+// ------------------------------------------------------------------ raw printing (S8a)
+
+/// A printer as the till's settings name it (src/print/printerSettings.ts).
+#[derive(serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum PrintTarget {
+    System { name: String },
+    Network { host: String, port: u16 },
+}
+
+impl From<PrintTarget> for crate::raw_print::RawTarget {
+    fn from(target: PrintTarget) -> Self {
+        match target {
+            PrintTarget::System { name } => crate::raw_print::RawTarget::System { name },
+            PrintTarget::Network { host, port } => crate::raw_print::RawTarget::Network { host, port },
+        }
+    }
+}
+
+/// Sends a ticket the till laid out (ESC/POS) to a thermal printer, as it is.
+/// Like every print here, a failure is the device's: never an unsend.
+#[tauri::command]
+pub fn print_raw(target: PrintTarget, bytes: Vec<u8>) -> Result<(), String> {
+    crate::raw_print::print_raw(&target.into(), &bytes)
+}
+
+/// The printers this computer knows, for choosing a kitchen or bar printer.
+#[tauri::command]
+pub fn list_printers() -> Vec<String> {
+    crate::raw_print::list_system_printers()
+}
+
+const PRINTER_SETTINGS_FILE: &str = "printers.json";
+
+fn printer_settings_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let dir = app.path().app_config_dir().map_err(|err| err.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    Ok(dir.join(PRINTER_SETTINGS_FILE))
+}
+
+/// This till's printer settings, as last saved; none before the first save.
+#[tauri::command]
+pub fn load_printer_settings(app: tauri::AppHandle) -> Result<Option<serde_json::Value>, String> {
+    let path = printer_settings_path(&app)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(path).map_err(|err| err.to_string())?;
+    Ok(serde_json::from_str(raw.trim()).ok())
+}
+
+/// Saves this till's printer settings (the screen made them whole first).
+#[tauri::command]
+pub fn save_printer_settings(app: tauri::AppHandle, settings: serde_json::Value) -> Result<(), String> {
+    let path = printer_settings_path(&app)?;
+    let mut file = std::fs::File::create(&path).map_err(|err| err.to_string())?;
+    file.write_all(settings.to_string().as_bytes())
+        .map_err(|err| format!("The printer settings couldn't be saved: {err}"))
+}
