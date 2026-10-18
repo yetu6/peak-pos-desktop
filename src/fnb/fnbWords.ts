@@ -19,8 +19,25 @@ export function sizesOf(menu: FnbTillMenu | undefined, productId: string): FnbTi
  * The price on an item's tile: its own; with more than one size, the default
  * size's and how many sizes ("TSh 5,000 · 2 sizes"). Yetu prices the line.
  */
-export function tilePriceWords(priceMinor: number, sizes: readonly FnbTillSize[], currency: string | undefined): string {
+export function tilePriceWords(
+  priceMinor: number,
+  sizes: readonly FnbTillSize[],
+  currency: string | undefined,
+  offline = false,
+): string {
   if (sizes.length <= 1) return formatMoney(priceMinor, currency);
   const shown = sizes.find((size) => size.isDefault) ?? sizes[0];
+  // Offline the till sells the default size only (the offline menu has no sizes): say which.
+  if (offline) return `${formatMoney(priceMinor, currency)} · ${shown.name}`;
   return `${formatMoney(shown.priceMinor, currency)} · ${sizes.length} sizes`;
+}
+
+/** Under an item with sizes, offline: the other sizes wait for Yetu. */
+export const OFFLINE_SIZES_NOTE = "More sizes need a connection";
+
+/** A tile's note: staff's tags, and offline, that the other sizes wait for Yetu. */
+export function tileNote(menu: FnbTillMenu | undefined, productId: string, offline = false): string | undefined {
+  const parts = [tagNote(menu, productId), offline && sizesOf(menu, productId).length > 1 ? OFFLINE_SIZES_NOTE : undefined];
+  const words = parts.filter(Boolean).join(" · ");
+  return words || undefined;
 }

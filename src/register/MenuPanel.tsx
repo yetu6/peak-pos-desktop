@@ -5,7 +5,7 @@ import { isComposing } from "../lib/keyboard";
 import { formatMoney } from "../lib/money";
 import type { POSCatalogProduct, POSCategory } from "../lib/posContracts";
 import type { FnbTillMenu } from "../fnb/fnbContracts";
-import { MORE_GROUP, sizesOf, tagNote, tilePriceWords } from "../fnb/fnbWords";
+import { MORE_GROUP, sizesOf, tileNote, tilePriceWords } from "../fnb/fnbWords";
 
 export const ALL_CATEGORIES = "all";
 const SEARCH_ID = "menu-search";
@@ -36,6 +36,8 @@ export interface MenuPanelProps {
    * menu is exactly as before.
    */
   menu?: FnbTillMenu;
+  /** The offline register: an item with sizes sells as its default size, said on its tile. */
+  offline?: boolean;
 }
 
 /**
@@ -72,6 +74,7 @@ export function MenuPanel({
     description: "Check the internet connection. The menu loads again on its own when Yetu can be reached.",
   },
   menu,
+  offline = false,
 }: MenuPanelProps) {
   const [asking, setAsking] = useState<POSCatalogProduct | null>(null);
   const grouped = menu?.enabled === true;
@@ -218,8 +221,8 @@ export function MenuPanel({
                 key={item.id}
                 data-testid={`menu-${item.name}`}
                 name={item.name}
-                price={grouped ? tilePriceWords(item.priceMinor, sizesOf(menu, item.id), currency ?? item.currency) : formatMoney(item.priceMinor, currency ?? item.currency)}
-                note={grouped ? tagNote(menu, item.id) : undefined}
+                price={grouped ? tilePriceWords(item.priceMinor, sizesOf(menu, item.id), currency ?? item.currency, offline) : formatMoney(item.priceMinor, currency ?? item.currency)}
+                note={grouped ? tileNote(menu, item.id, offline) : undefined}
                 soldOut={item.isAvailable === false}
                 disabled={Boolean(addBlocked)}
                 mark={item.categoryId ? markOf.get(item.categoryId) : undefined}

@@ -159,3 +159,49 @@ describe("MenuPanel", () => {
     expect(onSoldOutToggle).toHaveBeenCalledWith(PRODUCTS[2], true);
   });
 });
+
+describe("MenuPanel with the Restaurant & Bar module's menu (S16-B4)", () => {
+  const MENU = {
+    enabled: true,
+    groups: [
+      { id: "g-food", name: "Food", categoryIds: ["mains"] },
+      { id: "g-drinks", name: "Drinks", categoryIds: ["drinks"] },
+    ],
+    unplacedCategoryIds: [],
+    sizes: {
+      tusker: [
+        { id: "bottle", name: "Bottle", priceMinor: 500_000, isDefault: true, isAvailable: true },
+        { id: "pint", name: "Pint", priceMinor: 700_000, isDefault: false, isAvailable: true },
+      ],
+    },
+    products: { nyama: { tags: [{ label: "Halal", kind: "DIETARY" as const }] } },
+  };
+  const plain = (text: string | null | undefined) => text?.replace(/ /g, " ");
+
+  it("puts the groups first, the group's categories second, and staff's tags on the tiles", async () => {
+    render(<Menu menu={MENU} />);
+    const groups = within(screen.getByRole("tablist", { name: "Menu" })).getAllByRole("tab");
+    expect(groups.map((tab) => tab.textContent)).toEqual(["Food", "Drinks"]);
+    expect(tileNames()).toEqual(["menu-Nyama Choma", "menu-Chips Mayai"]);
+    expect(screen.getByTestId("menu-Nyama Choma")).toHaveTextContent("Halal");
+    await userEvent.click(within(screen.getByRole("tablist", { name: "Menu" })).getByRole("tab", { name: "Drinks" }));
+    expect(tileNames()).toEqual(["menu-Tusker Lager", "menu-Soda"]);
+    expect(plain(screen.getByTestId("menu-Tusker Lager").textContent)).toContain("TSh 5,000 · 2 sizes");
+  });
+
+  it("offline, an item with sizes says it sells as its default size, and that more sizes need a connection", async () => {
+    render(<Menu menu={MENU} offline />);
+    await userEvent.click(within(screen.getByRole("tablist", { name: "Menu" })).getByRole("tab", { name: "Drinks" }));
+    const tile = plain(screen.getByTestId("menu-Tusker Lager").textContent);
+    expect(tile).toContain("TSh 5,000 · Bottle");
+    expect(tile).toContain("More sizes need a connection");
+    expect(tile).not.toContain("2 sizes");
+    expect(screen.getByTestId("menu-Soda")).not.toHaveTextContent("More sizes need a connection");
+  });
+
+  it("menus off: the categories as before, nothing said of sizes or tags", () => {
+    render(<Menu menu={{ ...MENU, enabled: false }} />);
+    expect(screen.queryByRole("tablist", { name: "Menu" })).toBeNull();
+    expect(screen.getByTestId("menu-Nyama Choma")).not.toHaveTextContent("Halal");
+  });
+});

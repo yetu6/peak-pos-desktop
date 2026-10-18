@@ -106,8 +106,10 @@ const core = vi.hoisted(() => ({
 
 vi.mock("../lib/localPosCore", () => ({ loadLocalPosCore: async () => core }));
 
-function renderRegister() {
+function renderRegister(cachedTillMenu?: unknown) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // The menu the till last read from Yetu before it went offline, when it has one.
+  if (cachedTillMenu) client.setQueryData(["fnb", "menu", "outlet-1"], cachedTillMenu);
   render(
     <QueryClientProvider client={client}>
       <OfflineNewOrder />
@@ -302,5 +304,40 @@ describe("the offline register", () => {
     renderRegister();
     expect(await screen.findByText("No menu saved for working offline")).toBeInTheDocument();
     expect(screen.getByText("Connect to Yetu once so this till can save the menu, then try again.")).toBeInTheDocument();
+  });
+});
+
+describe("OfflineNewOrder with the menu Yetu last sent (S16-B4)", () => {
+  const MENU = {
+    enabled: true,
+    groups: [{ id: "g-food", name: "Food", categoryIds: ["cat-mains"] }],
+    unplacedCategoryIds: [],
+    sizes: {
+      "prod-chips": [
+        { id: "regular", name: "Regular", priceMinor: 500_000, isDefault: true, isAvailable: true },
+        { id: "large", name: "Large", priceMinor: 800_000, isDefault: false, isAvailable: true },
+      ],
+    },
+    products: {},
+  };
+
+  afterEach(() => clearOperationalSession());
+
+  it("sells an item with sizes as its default size, says so, and that more sizes need a connection", async () => {
+    renderRegister(MENU);
+    const tile = await screen.findByTestId("menu-Chips");
+    const words = tile.textContent?.replace(/\u00a0/g, " ");
+    expect(words).toContain("TSh 5,000 · Regular");
+    expect(words).toContain("More sizes need a connection");
+    await waitFor(() => expect(tile).not.toBeDisabled());
+    await userEvent.click(tile);
+    await waitFor(() => expect(core.addItem).toHaveBeenCalled());
+    expect(screen.queryByTestId("modifier-dialog")).toBeNull();
+  });
+
+  it("with no menu from Yetu (a restart offline), the saved menu as it is", async () => {
+    renderRegister();
+    const tile = await screen.findByTestId("menu-Chips");
+    expect(tile).not.toHaveTextContent("More sizes need a connection");
   });
 });

@@ -8,6 +8,17 @@ import { NO_MENU, type FnbTillMenu } from "./fnbContracts";
 export const MENU_EVENTS: ReadonlySet<string> = new Set(["fnb.menu.updated", "pos.catalog.updated"]);
 
 /**
+ * The menu the till last read from Yetu, without asking again: what the
+ * offline register knows of groups, tags and sizes while Yetu can't be
+ * reached (nothing, after a restart offline).
+ */
+export function useCachedTillMenu(): FnbTillMenu | undefined {
+  const outletId = useOutletId();
+  const queryClient = useQueryClient();
+  return queryClient.getQueryData<FnbTillMenu>(["fnb", "menu", outletId]);
+}
+
+/**
  * The outlet's menu from the Restaurant & Bar module: groups, sizes, what
  * staff say about each item. A Yetu without the module answers 404, which is
  * no menu: the till sells exactly as before. Menu or catalogue news from Yetu
