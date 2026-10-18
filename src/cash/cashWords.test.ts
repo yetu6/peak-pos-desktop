@@ -15,18 +15,18 @@ function problem(code: string, detail: string): Error {
 }
 
 describe("closing a shift: the backend's refusals in words", () => {
-  // fbc-peak internal/pos/controls.go CloseShift, returned as CONFLICT with these details.
+  // fbc-peak internal/pos/controls.go CloseShift: a code for each since S5b, except a refused approval (CONFLICT).
   it("names each refusal and what to do", () => {
-    expect(closeShiftProblem(problem("CONFLICT", "shift has open orders"))).toEqual({
+    expect(closeShiftProblem(problem("SHIFT_HAS_OPEN_ORDERS", "shift has open orders"))).toEqual({
       kind: "open-orders",
       words: "Some orders on this till are still open. Take payment for them or void them, then close the shift.",
     });
-    expect(closeShiftProblem(problem("CONFLICT", "shift has unresolved offline cash"))?.kind).toBe("offline-cash");
+    expect(closeShiftProblem(problem("SHIFT_OFFLINE_CASH_UNRESOLVED", "shift has unresolved offline cash"))?.kind).toBe("offline-cash");
     expect(closeShiftProblem(problem("CONFLICT", "supervisor approval failed"))).toEqual({
       kind: "supervisor",
       words: "The drawer doesn't match what Yetu expects, so a manager must approve. Their PIN wasn't accepted, or they can't approve this.",
     });
-    expect(closeShiftProblem(problem("CONFLICT", "shift is not open"))?.kind).toBe("not-open");
+    expect(closeShiftProblem(problem("SHIFT_NOT_OPEN", "shift is not open"))?.kind).toBe("not-open");
   });
 
   it("never shows the backend's own words or a code", () => {
@@ -50,7 +50,7 @@ describe("refusals that aren't about cash keep the till's own words", () => {
   it.each(cases)("%s on closing a shift, cash in or out, and closing the day", (code, words) => {
     const refusal = problem(code, "detail from the backend");
     expect(closeShiftProblem(refusal)?.words).toBe(words);
-    expect(cashMovementProblem(refusal)?.words).toBe(words);
+    expect(cashMovementProblem(refusal, "CASH_OUT")?.words).toBe(words);
     expect(dayCloseProblem(refusal)?.words).toBe(words);
   });
 });
@@ -88,12 +88,12 @@ describe("closing the day: what blocks it, in words", () => {
 describe("cash in and out: the backend's refusals in words", () => {
   it("says a cash-out needs a different supervisor", () => {
     expect(
-      cashMovementProblem(problem("FORBIDDEN", "Taking cash out of the drawer needs a supervisor's approval: their name and PIN.")),
+      cashMovementProblem(problem("FORBIDDEN", "Taking cash out of the drawer needs a supervisor's approval: their name and PIN."), "CASH_OUT"),
     ).toEqual({
       kind: "supervisor",
       words: "A different supervisor must approve taking cash out. Their PIN wasn't accepted, or they can't approve this.",
     });
-    expect(cashMovementProblem(problem("CONFLICT", "no open shift on this terminal"))?.kind).toBe("no-shift");
+    expect(cashMovementProblem(problem("SHIFT_NOT_OPEN", "no open shift on this terminal"), "CASH_IN")?.kind).toBe("no-shift");
   });
 });
 

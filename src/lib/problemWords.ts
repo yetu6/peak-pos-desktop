@@ -53,11 +53,11 @@ export function otherWords(problem: ProblemLike, actionWords: string): string {
 
 /**
  * A refused step on an order or a ticket (send it, move it on), read for
- * what to do next. Yetu answers a step from the wrong state with a plain
- * error today (fbc-peak operations.go TransitionOrder and SendOrder: HTTP 500),
- * so anything that isn't the connection, the person or the till is taken to
- * mean the order or ticket may have moved: the screen reloads it and the next
- * press is a new request.
+ * what to do next. Yetu answers a step from the wrong state with a 409 of its
+ * own (ORDER_STATE_CHANGED, TICKET_STATE_CHANGED, STALE_VERSION since S5b), so
+ * anything that isn't the connection, the person or the till is taken to mean
+ * the order or ticket may have moved: the screen reloads it and the next press
+ * is a new request.
  */
 export type StepRefusal = "network" | "permission" | "session" | "moved";
 

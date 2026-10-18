@@ -58,7 +58,7 @@ describe("a refusal for a role without the permission (403)", () => {
 
   it("cash in or out", () => {
     render(<CashMovementSheetView onClose={nothing} currency={CURRENCY} roster={[]} requesterId="staff-amina" pending={false} error={FORBIDDEN} onRecord={nothing} />);
-    expect(cashMovementProblem(FORBIDDEN)?.kind).toBe("permission");
+    expect(cashMovementProblem(FORBIDDEN, "CASH_IN")?.kind).toBe("permission");
     expectPermissionNotice("Only a cashier or manager can put cash in or take it out. Ask one to help.");
   });
 

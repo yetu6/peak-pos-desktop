@@ -17,6 +17,7 @@ const SAMPLE: Record<PosErrorKind, unknown> = {
   VALIDATION_ERROR: problem("VALIDATION_FAILED", { status: 422, detail: undefined }),
   BUSINESS_CONFLICT: problem("CONFLICT", { status: 409 }),
   NOT_FOUND: problem("NOT_FOUND", { status: 404 }),
+  NO_APPROVER: problem("NO_APPROVER_SET", { status: 409 }),
   RATE_LIMITED: problem("RATE_LIMITED", { status: 429, detail: "Too many requests. Try again in 31 seconds.", retryAfterSeconds: 31 }),
   SERVER_UNAVAILABLE: problem("SERVICE_UNAVAILABLE", { status: 503 }),
   NETWORK_ERROR: new TypeError("Failed to fetch"),

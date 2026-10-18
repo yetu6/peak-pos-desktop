@@ -1,29 +1,41 @@
 /**
  * Plain words for the register's refusals: discount and void (fbc-peak
- * internal/pos commerce.go ApplyDiscount, controls.go VoidOrder). Words for
- * refusals that aren't about the action come from the till's own (otherWords).
+ * internal/pos commerce.go ApplyDiscount, controls.go VoidOrder), payment and
+ * room charge. Each refusal is worded by its code (fbc-peak errors.go since
+ * S5b), never by the sentence Yetu writes. Words for refusals that aren't
+ * about the action come from the till's own (otherWords).
  */
 import { describePosError } from "../lib/posErrors";
 import { otherWords, problemOf, READ_AFTER_RECORD_FAILED, UNREACHABLE } from "../lib/problemWords";
 
 export interface RegisterProblem {
-  kind: "supervisor" | "paid" | "stale" | "network" | "permission" | "other";
+  kind: "supervisor" | "no-approver" | "paid" | "stale" | "network" | "permission" | "other";
   words: string;
+}
+
+/** Nobody is chosen to approve this kind here (fbc-peak #258, 409 NO_APPROVER_SET): the owner chooses. */
+export function noApproverWords(what: string): string {
+  return `No one is set to approve ${what} here yet. The owner chooses who approves in Team rules.`;
 }
 
 export function discountProblem(error: unknown): RegisterProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
-  const detail = problem.detail ?? "";
-  // A refused supervisor PIN or role is written as FORBIDDEN (ErrPOSPermissionDenied).
-  if (problem.code === "FORBIDDEN") {
-    return {
-      kind: "supervisor",
-      words: "A different supervisor must approve the discount. Their PIN wasn't accepted, or they can't approve discounts.",
-    };
+  switch (problem.code) {
+    // A refused supervisor PIN or role is written as FORBIDDEN (ErrPOSPermissionDenied).
+    case "FORBIDDEN":
+      return {
+        kind: "supervisor",
+        words: "A different supervisor must approve the discount. Their PIN wasn't accepted, or they can't approve discounts.",
+      };
+    case "NO_APPROVER_SET":
+      return { kind: "no-approver", words: noApproverWords("discounts") };
+    case "ORDER_HAS_PAYMENT":
+      return { kind: "paid", words: "A discount can't be added once part of the bill is paid." };
+    case "ORDER_STATE_CHANGED":
+      return { kind: "paid", words: "This order is paid or voided, so it can't take a discount." };
   }
-  if (/after a tender/i.test(detail)) return { kind: "paid", words: "A discount can't be added once part of the bill is paid." };
   return { kind: "other", words: otherWords(problem, "The discount wasn't applied. Try again.") };
 }
 
@@ -31,21 +43,23 @@ export function voidProblem(error: unknown): RegisterProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
-  const detail = problem.detail ?? "";
-  // A refused supervisor PIN or role: 403 FORBIDDEN since fbc-peak #252 (it was a 409 before).
-  if (problem.code === "FORBIDDEN") {
-    return {
-      kind: "supervisor",
-      words: "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
-    };
-  }
-  // Another till changed the order first; the screen asks Yetu for it again (onStale).
-  if (problem.code === "STALE_VERSION") {
-    return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then ask a supervisor again." };
-  }
-  // A part-paid order: INVALID_STATE (ErrOrderHasPayment); a paid or voided one: CONFLICT.
-  if (problem.code === "INVALID_STATE" || /refund workflow/i.test(detail)) {
-    return { kind: "paid", words: "This order has already taken payment, so it can't be voided." };
+  switch (problem.code) {
+    // A refused supervisor PIN or role: 403 FORBIDDEN since fbc-peak #252 (it was a 409 before).
+    case "FORBIDDEN":
+      return {
+        kind: "supervisor",
+        words: "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
+      };
+    case "NO_APPROVER_SET":
+      return { kind: "no-approver", words: noApproverWords("voids") };
+    // Another till changed the order first; the screen asks Yetu for it again (onStale).
+    case "STALE_VERSION":
+      return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then ask a supervisor again." };
+    // Part of it is paid: INVALID_STATE (ErrOrderHasPayment, unchanged by S5b).
+    case "INVALID_STATE":
+      return { kind: "paid", words: "This order has already taken payment, so it can't be voided." };
+    case "ORDER_STATE_CHANGED":
+      return { kind: "paid", words: "This order is already paid or voided, so it can't be voided." };
   }
   return { kind: "other", words: otherWords(problem, "The order wasn't voided. Try again.") };
 }
@@ -55,17 +69,19 @@ export function tenderProblem(error: unknown): RegisterProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
-  const detail = problem.detail ?? "";
-  // Another till changed the order first; the sheet gets Yetu's latest figures (PaySheet).
-  if (problem.code === "STALE_VERSION") {
-    return { kind: "stale", words: "This order changed on another till. The amounts here are Yetu's latest: check them, then try again." };
+  switch (problem.code) {
+    // Another till changed the order first; the sheet gets Yetu's latest figures (PaySheet).
+    case "STALE_VERSION":
+      return { kind: "stale", words: "This order changed on another till. The amounts here are Yetu's latest: check them, then try again." };
+    case "TENDER_EXCEEDS_BALANCE":
+      return { kind: "other", words: "That's more than is still owed. Check the amount, then try again." };
+    case "ORDER_ALREADY_PAID":
+      return { kind: "paid", words: "This order is already paid." };
+    case "ORDER_STATE_CHANGED":
+      return { kind: "paid", words: "This order is closed, so it can't take a payment." };
+    case "FORBIDDEN":
+      return { kind: "permission", words: "Only a cashier or manager can take payment. Ask one to help." };
   }
-  if (detail === "tender exceeds remaining balance") {
-    return { kind: "other", words: "That's more than is still owed. Check the amount, then try again." };
-  }
-  if (detail === "order remaining balance is already settled") return { kind: "paid", words: "This order is already paid." };
-  if (/closed or voided order/i.test(detail)) return { kind: "paid", words: "This order is closed, so it can't take a payment." };
-  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a cashier or manager can take payment. Ask one to help." };
   return { kind: "other", words: otherWords(problem, "The payment wasn't recorded. Try again.") };
 }
 
@@ -74,12 +90,15 @@ export function roomChargeProblem(error: unknown): RegisterProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
-  const detail = problem.detail ?? "";
-  if (detail === "room charge cannot follow a partial tender") {
-    return { kind: "paid", words: "Charge to room isn't possible once part of the bill is paid." };
+  switch (problem.code) {
+    case "ORDER_HAS_PAYMENT":
+      return { kind: "paid", words: "Charge to room isn't possible once part of the bill is paid." };
+    case "FOLIO_NOT_OPEN":
+      return { kind: "other", words: "That guest's bill isn't open. Ask the front desk." };
+    // Only an order sent to the kitchen and not paid can go on a room bill.
+    case "ORDER_STATE_CHANGED":
+      return { kind: "other", words: "This order can't go on a room bill." };
   }
-  if (detail === "active stay with open folio not found") return { kind: "other", words: "That guest's bill isn't open. Ask the front desk." };
-  if (detail === "order is not eligible for room charge") return { kind: "other", words: "This order can't go on a room bill." };
   return { kind: "other", words: otherWords(problem, "The room charge didn't go through. Try again.") };
 }
 
@@ -105,11 +124,28 @@ export function sellProblem(error: unknown, step: keyof typeof SELL_STEPS): Regi
   if (problem.code === "FORBIDDEN") {
     return { kind: "permission", words: `Only staff who take orders can ${SELL_STEPS[step]}. Ask one to help.` };
   }
+  const words = SELL_REFUSALS[step][problem.code ?? ""];
+  if (words) return { kind: "other", words };
   const described = describePosError(problem);
   if (described.kind === "NETWORK_ERROR" || described.kind === "SERVER_UNAVAILABLE") return { kind: "network", words: described.message };
   if (described.kind === "STALE_VERSION") return { kind: "stale", words: described.message };
   return { kind: "other", words: described.message };
 }
+
+/** Each step's own refusals on Sell, by code (fbc-peak operations.go since S5b). */
+const SELL_REFUSALS: Record<keyof typeof SELL_STEPS, Readonly<Record<string, string>>> = {
+  create: { SHIFT_NOT_OPEN: "No shift is open on this till. Open a shift first." },
+  add: {
+    PRODUCT_UNAVAILABLE: "That item is sold out or not on the menu now.",
+    ORDER_STATE_CHANGED: "This order has gone to the kitchen. Start a new sale to add more.",
+  },
+  remove: { ITEM_NOT_REMOVABLE: "This item has gone to the kitchen, so it can't be removed." },
+  send: {
+    ORDER_EMPTY: "Add something to the order before sending it.",
+    ORDER_STATE_CHANGED: "This order was already sent, paid or voided.",
+  },
+  availability: {},
+};
 
 /**
  * The refusals that say the order moved on before this request: another till

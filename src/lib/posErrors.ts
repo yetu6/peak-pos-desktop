@@ -27,6 +27,7 @@ export const POS_ERROR_KINDS = [
   "VALIDATION_ERROR",
   "BUSINESS_CONFLICT",
   "NOT_FOUND",
+  "NO_APPROVER",
   "RATE_LIMITED",
   "SERVER_UNAVAILABLE",
   "NETWORK_ERROR",
@@ -70,6 +71,31 @@ const CODE_TO_KIND: Record<string, PosErrorKind> = {
   RATE_LIMITED: "RATE_LIMITED",
   SERVICE_UNAVAILABLE: "SERVER_UNAVAILABLE",
   INTERNAL_ERROR: "RETRYABLE_INFRASTRUCTURE_ERROR",
+  // fbc-peak #258: the owner has chosen nobody to approve this kind here.
+  NO_APPROVER_SET: "NO_APPROVER",
+  // S5b (fbc-peak #257, internal/pos/errors.go): each state conflict has a code of its own.
+  ORDER_STATE_CHANGED: "BUSINESS_CONFLICT",
+  ORDER_EMPTY: "BUSINESS_CONFLICT",
+  ORDER_ALREADY_PAID: "BUSINESS_CONFLICT",
+  ORDER_HAS_PAYMENT: "BUSINESS_CONFLICT",
+  ORDER_ON_ANOTHER_SHIFT: "BUSINESS_CONFLICT",
+  ITEM_NOT_REMOVABLE: "BUSINESS_CONFLICT",
+  TICKET_STATE_CHANGED: "BUSINESS_CONFLICT",
+  PRODUCT_UNAVAILABLE: "BUSINESS_CONFLICT",
+  SHIFT_NOT_OPEN: "BUSINESS_CONFLICT",
+  SHIFT_HAS_OPEN_ORDERS: "BUSINESS_CONFLICT",
+  SHIFT_OFFLINE_CASH_UNRESOLVED: "BUSINESS_CONFLICT",
+  SHIFT_FROM_EARLIER_DAY: "BUSINESS_CONFLICT",
+  OFFLINE_SIGN_IN_REQUIRED: "BUSINESS_CONFLICT",
+  FOLIO_NOT_OPEN: "BUSINESS_CONFLICT",
+  PRINT_JOB_STATE_CHANGED: "BUSINESS_CONFLICT",
+  TENDER_EXCEEDS_BALANCE: "VALIDATION_ERROR",
+};
+
+/** A code the till doesn't know yet, read by its status: what kind of refusal it can only be. */
+const STATUS_TO_KIND: Record<number, PosErrorKind> = {
+  409: "BUSINESS_CONFLICT",
+  422: "VALIDATION_ERROR",
 };
 
 const CALL_SUPPORT = "Try again. If it keeps happening, call support.";
@@ -85,6 +111,7 @@ const WORDS: Record<PosErrorKind, { sentence: string; nextStep: string }> = {
   VALIDATION_ERROR: { sentence: "Some of the details aren't right.", nextStep: "Check them, then try again." },
   BUSINESS_CONFLICT: { sentence: "Yetu couldn't do that with things as they are now.", nextStep: "Check the order, then try again." },
   NOT_FOUND: { sentence: "Yetu can't find that any more. It may have changed on another till.", nextStep: "Go back to the list and open it again." },
+  NO_APPROVER: { sentence: "No one is set to approve this here yet.", nextStep: "The owner chooses who approves in Team rules." },
   RATE_LIMITED: { sentence: "Too many attempts.", nextStep: "Wait a minute and try again." },
   SERVER_UNAVAILABLE: { sentence: "Yetu isn't answering right now.", nextStep: "Wait a moment, then try again." },
   NETWORK_ERROR: { sentence: "Can't reach Yetu.", nextStep: "Check the internet connection, then try again." },
@@ -136,7 +163,7 @@ export function describePosError(error: unknown): PosError {
       ? safeParseProblem(error)
       : undefined;
   if (problem?.code) {
-    const kind = CODE_TO_KIND[problem.code] ?? "UNKNOWN";
+    const kind = CODE_TO_KIND[problem.code] ?? (problem.status ? STATUS_TO_KIND[problem.status] : undefined) ?? "UNKNOWN";
     const extra = { code: problem.code, requestId: problem.request_id };
     if (kind === "RATE_LIMITED") {
       const retryAfterSeconds = retryAfterOf(problem);

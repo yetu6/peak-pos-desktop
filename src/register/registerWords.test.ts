@@ -22,7 +22,7 @@ describe("discount and void refusals in words", () => {
   });
 
   it("says a paid order can't take a discount or be voided", () => {
-    expect(discountProblem(problem("CONFLICT", "discount cannot be changed after a tender has been recorded"))?.words).toBe(
+    expect(discountProblem(problem("ORDER_HAS_PAYMENT", "discount cannot be changed after a tender has been recorded"))?.words).toBe(
       "A discount can't be added once part of the bill is paid.",
     );
     expect(voidProblem(problem("INVALID_STATE", "This order has already taken payment, so it can no longer be voided or have items removed."))?.words).toBe(
@@ -44,11 +44,11 @@ describe("discount and void refusals in words", () => {
 describe("payment and room charge refusals in words", () => {
   it("names the tender refusals", async () => {
     const { tenderProblem } = await import("./registerWords");
-    expect(tenderProblem(problem("CONFLICT", "tender exceeds remaining balance"))?.words).toBe(
+    expect(tenderProblem(problem("TENDER_EXCEEDS_BALANCE", "tender exceeds remaining balance"))?.words).toBe(
       "That's more than is still owed. Check the amount, then try again.",
     );
-    expect(tenderProblem(problem("CONFLICT", "order remaining balance is already settled"))?.words).toBe("This order is already paid.");
-    expect(tenderProblem(problem("CONFLICT", "tender cannot be recorded on a closed or voided order"))?.words).toBe(
+    expect(tenderProblem(problem("ORDER_ALREADY_PAID", "order remaining balance is already settled"))?.words).toBe("This order is already paid.");
+    expect(tenderProblem(problem("ORDER_STATE_CHANGED", "tender cannot be recorded on a closed or voided order"))?.words).toBe(
       "This order is closed, so it can't take a payment.",
     );
     expect(tenderProblem(problem("FORBIDDEN", "x"))).toEqual({ kind: "permission", words: "Only a cashier or manager can take payment. Ask one to help." });
@@ -58,13 +58,13 @@ describe("payment and room charge refusals in words", () => {
 
   it("names the room charge refusals", async () => {
     const { roomChargeProblem } = await import("./registerWords");
-    expect(roomChargeProblem(problem("CONFLICT", "room charge cannot follow a partial tender"))?.words).toBe(
+    expect(roomChargeProblem(problem("ORDER_HAS_PAYMENT", "room charge cannot follow a partial tender"))?.words).toBe(
       "Charge to room isn't possible once part of the bill is paid.",
     );
-    expect(roomChargeProblem(problem("CONFLICT", "active stay with open folio not found"))?.words).toBe(
+    expect(roomChargeProblem(problem("FOLIO_NOT_OPEN", "active stay with open folio not found"))?.words).toBe(
       "That guest's bill isn't open. Ask the front desk.",
     );
-    expect(roomChargeProblem(problem("CONFLICT", "order is not eligible for room charge"))?.words).toBe(
+    expect(roomChargeProblem(problem("ORDER_STATE_CHANGED", "order is not eligible for room charge"))?.words).toBe(
       "This order can't go on a room bill.",
     );
     expect(roomChargeProblem(problem("CAPABILITY_NOT_ENABLED", "x"))?.words).toBe("This isn't switched on for your business. Ask a manager to switch it on in Yetu.");

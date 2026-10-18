@@ -91,7 +91,7 @@ export function CashMovementSheetView({
   const [reason, setReason] = useState(initialReason);
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
   const [pin, setPin] = useState("");
-  const problem = cashMovementProblem(error);
+  const problem = cashMovementProblem(error, movementType);
   const amountMinor = toMinor(amount);
   const cashOut = movementType === "CASH_OUT";
   // Choosing yourself keeps the PIN keypad closed (SupervisorApproval), and choosing anyone clears the PIN,

@@ -347,7 +347,7 @@ describe("PaySheet", () => {
     const lost = (_vars: unknown, opts?: { onError?: (error: Error) => void }) => opts?.onError?.(new TypeError("Failed to fetch"));
     /** Yetu's refusal of a tender for more than is owed (controls.go RecordTender). */
     const tooMuch = (_vars: unknown, opts?: { onError?: (error: Error) => void }) =>
-      opts?.onError?.(new Error(JSON.stringify({ status: 409, code: "CONFLICT", detail: "tender exceeds remaining balance" })));
+      opts?.onError?.(new Error(JSON.stringify({ status: 422, code: "TENDER_EXCEEDS_BALANCE", detail: "tender exceeds remaining balance" })));
 
     it("a lost answer is asked again as the same request: same key, same version, same body", async () => {
       recordTenderMutate.mockImplementationOnce(lost);
@@ -434,7 +434,7 @@ describe("PaySheet", () => {
   });
 
   it("says why a payment was refused, in words", () => {
-    refs.tender = { isPending: false, error: new Error(JSON.stringify({ code: "CONFLICT", detail: "tender exceeds remaining balance" })) };
+    refs.tender = { isPending: false, error: new Error(JSON.stringify({ status: 422, code: "TENDER_EXCEEDS_BALANCE", detail: "tender exceeds remaining balance" })) };
     renderPay();
     expect(screen.getByTestId("settle-error")).toHaveTextContent("That's more than is still owed. Check the amount, then try again.");
   });
@@ -730,7 +730,7 @@ describe("PaySheet", () => {
       refs.roomAvailable = true;
       refs.candidates = [{ stayId: "stay-12", roomId: "room-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true }];
       refs.refetchOrder.mockResolvedValue({ status: "success", data: { ...CLOSED, version: 4 } });
-      chargeToRoomMutate.mockImplementationOnce(lost).mockImplementationOnce(refused({ status: 409, code: "CONFLICT", detail: "order is not eligible for room charge" }));
+      chargeToRoomMutate.mockImplementationOnce(lost).mockImplementationOnce(refused({ status: 409, code: "ORDER_STATE_CHANGED", detail: "order is not eligible for room charge" }));
       const { onPaid } = renderPay();
       await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
       await userEvent.type(screen.getByTestId("room-query"), "12");

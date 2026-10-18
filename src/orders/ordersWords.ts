@@ -101,16 +101,17 @@ export interface OrderProblem {
 }
 
 /**
- * Sending an open order to the kitchen. Yetu answers a send of an order that
- * is no longer open with a plain error (HTTP 500, operations.go SendOrder),
- * so any refusal that isn't the connection, the person or the till means the
- * order may have changed: the screen reloads it.
+ * Sending an open order to the kitchen (operations.go SendOrder). Nothing on
+ * it is ORDER_EMPTY; any other refusal that isn't the connection, the person
+ * or the till (ORDER_STATE_CHANGED, STALE_VERSION) means the order may have
+ * changed: the screen reloads it.
  */
 export function sendProblem(error: unknown): OrderProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
   const kind = stepRefusal(problem);
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  if (problem.code === "ORDER_EMPTY") return { kind: "other", words: "Add something to the order before sending it." };
   if (kind === "network") return { kind, words: otherWords(problem, UNREACHABLE) };
   if (kind === "permission") return { kind, words: "Only staff who take orders can send them to the kitchen. Ask one to help." };
   if (kind === "session") return { kind, words: otherWords(problem, "The order wasn't sent. Try again.") };
@@ -134,6 +135,10 @@ export function removeProblem(error: unknown): OrderProblem | null {
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
   // ErrOrderHasPayment: INVALID_STATE (migration 00090 refuses it in the database too).
   if (problem.code === "INVALID_STATE") return { kind: "paid", words: "This order has taken payment, so its items can't be removed." };
+  // It went to the kitchen meanwhile (sent on another till): reloaded, so the screen shows it as Yetu has it.
+  if (problem.code === "ITEM_NOT_REMOVABLE") {
+    return { kind: "stale", words: "This item has gone to the kitchen, so it can't be removed. The order has been reloaded." };
+  }
   if (problem.code === "STALE_VERSION") {
     return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then try again." };
   }
