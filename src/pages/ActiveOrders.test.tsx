@@ -7,6 +7,7 @@ import { RealtimeProvider } from "../realtime/RealtimeProvider";
 import { ActiveOrders } from "./ActiveOrders";
 import { ORDERS_REFRESH_SECONDS } from "../orders/ordersSettings";
 import { idleLockHeld } from "../lib/idleLock";
+import { clockTime } from "../lib/words";
 import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
 import type { POSCatalog, POSOrder, POSReceipt, POSShift, POSStationTicket } from "../lib/posContracts";
 
@@ -36,8 +37,14 @@ const SHIFT: POSShift = {
 };
 
 const spies = vi.hoisted(() => ({
-  listOrders: vi.fn(async (active?: boolean): Promise<Result> => ({
-    data: Array.from(ordersStore.values()).filter((order) => !active || (order.status !== "CLOSED" && order.status !== "VOIDED")),
+  // Yetu's two views, one page each (fbc-peak orders_list.go): open = not paid or voided; paid = paid that day.
+  listOrderPage: vi.fn(async ({ view }: { view: "open" | "paid"; businessDate?: string; cursor?: string }): Promise<Result> => ({
+    data: {
+      items: Array.from(ordersStore.values()).filter((order) =>
+        view === "paid" ? order.status === "CLOSED" : order.status !== "CLOSED" && order.status !== "VOIDED",
+      ),
+      nextCursor: null,
+    },
     error: null,
   })),
   getOrder: vi.fn(async (orderId: string): Promise<Result> => {
@@ -77,7 +84,7 @@ function catalogFixture(currency: string): POSCatalog {
 
 vi.mock("../lib/posApi", () => ({
   createPosApi: () => ({
-    listOrders: spies.listOrders,
+    listOrderPage: spies.listOrderPage,
     getOrder: spies.getOrder,
     sendOrder: spies.sendOrder,
     removeItem: spies.removeItem,
@@ -188,6 +195,10 @@ const OPEN_ORDER: POSOrder = {
   id: "order-1",
   shiftId: "shift-1",
   orderNumber: "1042",
+  dailyNumber: 42,
+  createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  closedAt: null,
+  payments: [],
   status: "OPEN",
   serviceType: "DINE_IN",
   initiatedById: "staff-1",
@@ -205,7 +216,19 @@ const OPEN_ORDER: POSOrder = {
   items: [{ id: "item-1", productId: "p1", name: "Lunch", quantity: 1, unitPriceMinor: 100_000, taxMinor: 18_000, totalMinor: 118_000, status: "ADDED" }],
 };
 
-const PAID_ORDER: POSOrder = { ...OPEN_ORDER, id: "order-0", orderNumber: "1041", status: "CLOSED", paidMinor: 118_000, remainingMinor: 0, version: 5 };
+const PAID_AT = new Date(Date.now() - 5 * 60_000).toISOString();
+const PAID_ORDER: POSOrder = {
+  ...OPEN_ORDER,
+  id: "order-0",
+  orderNumber: "1041",
+  dailyNumber: 41,
+  status: "CLOSED",
+  paidMinor: 118_000,
+  remainingMinor: 0,
+  closedAt: PAID_AT,
+  payments: [{ id: "pay-0", paymentMethod: "CASH", amountMinor: 118_000, createdAt: PAID_AT, recordedByName: "Grace Mushi" }],
+  version: 5,
+};
 
 function receiptFor(order: POSOrder): POSReceipt {
   return {
@@ -281,7 +304,7 @@ describe("Orders", () => {
     socket.open();
     await flush();
     socket.emit(announce(1, "pos.order.item_added", "order-1"));
-    await waitFor(() => expect(spies.listOrders.mock.calls.filter(([active]) => active === true).length).toBeGreaterThan(1));
+    await waitFor(() => expect(spies.listOrderPage.mock.calls.filter(([query]) => query.view === "open").length).toBeGreaterThan(1));
   });
 
   it("follows a kitchen display: when a station ticket moves, the open orders reload, row and open detail alike", async () => {
@@ -338,24 +361,25 @@ describe("Orders", () => {
     expect(await screen.findByText("No open orders")).toBeInTheDocument();
   });
 
-  it("asks Yetu for paid orders only when the Paid tab is opened, and shows this shift's", async () => {
+  it("asks Yetu for paid orders only when the Paid tab is opened: the shift's business day, every till at the outlet", async () => {
     ordersStore.set("order-0", PAID_ORDER);
-    ordersStore.set("order-9", { ...PAID_ORDER, id: "order-9", orderNumber: "0999", shiftId: "shift-0" });
+    // Paid on another till's shift the same day: listed too (a refund or a copy can be given from any till).
+    ordersStore.set("order-9", { ...PAID_ORDER, id: "order-9", orderNumber: "POS-MR-261012-9", dailyNumber: 9, shiftId: "shift-0" });
     ordersStore.set("order-1", OPEN_ORDER);
     renderOrders();
     await screen.findByTestId("order-row-order-1");
-    expect(spies.listOrders.mock.calls.some(([active]) => active === false)).toBe(false);
-    await userEvent.click(screen.getByRole("tab", { name: /Paid this shift/ }));
+    expect(spies.listOrderPage.mock.calls.some(([query]) => query.view === "paid")).toBe(false);
+    await userEvent.click(screen.getByRole("tab", { name: /Paid today/ }));
     expect(await screen.findByTestId("order-row-order-0")).toHaveTextContent("Paid");
-    expect(screen.queryByTestId("order-row-order-9")).toBeNull();
-    expect(spies.listOrders).toHaveBeenCalledWith(false);
+    expect(screen.getByTestId("order-row-order-9")).toBeInTheDocument();
+    expect(spies.listOrderPage).toHaveBeenCalledWith({ view: "paid", businessDate: SHIFT.businessDate });
   });
 
   it("an open order's detail: lines, totals, and Send, Pay and Void", async () => {
     ordersStore.set("order-1", OPEN_ORDER);
     renderOrders();
     const sheet = await openDetail("order-1");
-    expect(sheet).toHaveAccessibleName("Order 1042");
+    expect(sheet).toHaveAccessibleName("Order 42");
     expect(within(sheet).getByTestId("order-detail-lines")).toHaveTextContent("Lunch");
     expect(within(sheet).getByTestId("detail-pay")).toHaveTextContent("Pay TSh 1,180");
     expect(within(sheet).getByTestId("detail-pay")).toHaveFocus();
@@ -411,12 +435,12 @@ describe("Orders", () => {
     spies.sendOrder.mockResolvedValueOnce({ data: undefined, error: { code: "INTERNAL_ERROR", detail: "only a non-empty open order can be sent" } });
     renderOrders();
     const sheet = await openDetail("order-1");
-    const listedBefore = spies.listOrders.mock.calls.filter(([active]) => active === true).length;
+    const listedBefore = spies.listOrderPage.mock.calls.filter(([query]) => query.view === "open").length;
     await userEvent.click(within(sheet).getByTestId("detail-send"));
     expect(await within(sheet).findByRole("alert")).toHaveTextContent(
       "This order changed on another till, or was already sent. It's been reloaded: check it before sending it again.",
     );
-    await waitFor(() => expect(spies.listOrders.mock.calls.filter(([active]) => active === true).length).toBeGreaterThan(listedBefore));
+    await waitFor(() => expect(spies.listOrderPage.mock.calls.filter(([query]) => query.view === "open").length).toBeGreaterThan(listedBefore));
     await userEvent.click(within(sheet).getByTestId("detail-send"));
     await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledTimes(2));
     expect(spies.sendOrder.mock.calls[1][2]).not.toBe(spies.sendOrder.mock.calls[0][2]);
@@ -437,11 +461,11 @@ describe("Orders", () => {
     spies.removeItem.mockResolvedValueOnce({ data: undefined, error: { code: "STALE_VERSION" } });
     renderOrders();
     const sheet = await openDetail("order-1");
-    const listedBefore = spies.listOrders.mock.calls.filter(([active]) => active === true).length;
+    const listedBefore = spies.listOrderPage.mock.calls.filter(([query]) => query.view === "open").length;
     await userEvent.click(within(sheet).getByRole("button", { name: /1 × Tea/ }));
     await userEvent.click(within(sheet).getByRole("button", { name: "Remove Tea" }));
     expect(await within(sheet).findByRole("alert")).toHaveTextContent("It's been reloaded");
-    await waitFor(() => expect(spies.listOrders.mock.calls.filter(([active]) => active === true).length).toBeGreaterThan(listedBefore));
+    await waitFor(() => expect(spies.listOrderPage.mock.calls.filter(([query]) => query.view === "open").length).toBeGreaterThan(listedBefore));
     await userEvent.click(within(sheet).getByRole("button", { name: "Remove Tea" }));
     await waitFor(() => expect(spies.removeItem).toHaveBeenCalledTimes(2));
     expect(spies.removeItem.mock.calls[1][3]).not.toBe(spies.removeItem.mock.calls[0][3]);
@@ -455,7 +479,7 @@ describe("Orders", () => {
     const pay = await screen.findByTestId("settle-dialog");
     expect(within(pay).getByTestId("amount-due")).toHaveTextContent("TSh 1,180");
     await userEvent.click(within(pay).getByRole("button", { name: "Cancel" }));
-    expect(await screen.findByRole("dialog", { name: "Order 1042" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Order 42" })).toBeInTheDocument();
   });
 
   it("opens Void with a supervisor and comes back to the order on Cancel", async () => {
@@ -465,7 +489,7 @@ describe("Orders", () => {
     await userEvent.click(within(sheet).getByRole("button", { name: "Void order" }));
     const voiding = await screen.findByTestId("void-order-dialog");
     await userEvent.click(within(voiding).getByRole("button", { name: "Cancel" }));
-    expect(await screen.findByRole("dialog", { name: "Order 1042" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Order 42" })).toBeInTheDocument();
   });
 
   it("a void refused because the order changed reloads it, and the supervisor is asked again for the order as it is now", async () => {
@@ -495,9 +519,9 @@ describe("Orders", () => {
     spies.reprintReceipt.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     renderOrders();
     await screen.findByText("No open orders");
-    await userEvent.click(screen.getByRole("tab", { name: /Paid this shift/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Paid today/ }));
     const sheet = await openDetail("order-0");
-    expect(await within(sheet).findByTestId("order-detail-payment")).toHaveTextContent("Paid by Cash · Payment taken by Grace Mushi");
+    expect(await within(sheet).findByTestId("order-detail-payment")).toHaveTextContent(`Cash · TSh 1,180Taken by Grace Mushi at ${clockTime(PAID_AT)}`);
     const print = within(sheet).getByTestId("detail-reprint");
     await waitFor(() => expect(print).toBeEnabled());
     await userEvent.click(print);
@@ -522,7 +546,7 @@ describe("Orders", () => {
     ordersStore.set("order-1", { ...OPEN_ORDER, status: "CLOSED", paidMinor: 118_000, remainingMinor: 0, version: 3 });
     socket.emit(announce(3, "pos.order.payment_recorded", "order-1"));
     await waitFor(() => expect(within(sheet).getByTestId("order-detail-status")).toHaveTextContent("Paid"));
-    expect(screen.getByRole("dialog", { name: "Order 1042" })).toBe(sheet);
+    expect(screen.getByRole("dialog", { name: "Order 42" })).toBe(sheet);
     expect(await within(sheet).findByTestId("detail-reprint")).toBeInTheDocument();
   });
 
@@ -532,7 +556,7 @@ describe("Orders", () => {
     spies.reprintReceipt.mockResolvedValueOnce({ data: undefined, error: { code: "FORBIDDEN" } });
     renderOrders();
     await screen.findByText("No open orders");
-    await userEvent.click(screen.getByRole("tab", { name: /Paid this shift/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Paid today/ }));
     const sheet = await openDetail("order-0");
     const print = within(sheet).getByTestId("detail-reprint");
     await waitFor(() => expect(print).toBeEnabled());

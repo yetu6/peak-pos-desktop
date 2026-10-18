@@ -22,7 +22,7 @@ describe("discount and void refusals in words", () => {
   });
 
   it("says a paid order can't take a discount or be voided", () => {
-    expect(discountProblem(problem("CONFLICT", "discount cannot be changed after a tender has been recorded"))?.words).toBe(
+    expect(discountProblem(problem("ORDER_HAS_PAYMENT", "discount cannot be changed after a tender has been recorded"))?.words).toBe(
       "A discount can't be added once part of the bill is paid.",
     );
     expect(voidProblem(problem("INVALID_STATE", "This order has already taken payment, so it can no longer be voided or have items removed."))?.words).toBe(
@@ -44,11 +44,11 @@ describe("discount and void refusals in words", () => {
 describe("payment and room charge refusals in words", () => {
   it("names the tender refusals", async () => {
     const { tenderProblem } = await import("./registerWords");
-    expect(tenderProblem(problem("CONFLICT", "tender exceeds remaining balance"))?.words).toBe(
+    expect(tenderProblem(problem("TENDER_EXCEEDS_BALANCE", "tender exceeds remaining balance"))?.words).toBe(
       "That's more than is still owed. Check the amount, then try again.",
     );
-    expect(tenderProblem(problem("CONFLICT", "order remaining balance is already settled"))?.words).toBe("This order is already paid.");
-    expect(tenderProblem(problem("CONFLICT", "tender cannot be recorded on a closed or voided order"))?.words).toBe(
+    expect(tenderProblem(problem("ORDER_ALREADY_PAID", "order remaining balance is already settled"))?.words).toBe("This order is already paid.");
+    expect(tenderProblem(problem("ORDER_STATE_CHANGED", "tender cannot be recorded on a closed or voided order"))?.words).toBe(
       "This order is closed, so it can't take a payment.",
     );
     expect(tenderProblem(problem("FORBIDDEN", "x"))).toEqual({ kind: "permission", words: "Only a cashier or manager can take payment. Ask one to help." });
@@ -58,16 +58,68 @@ describe("payment and room charge refusals in words", () => {
 
   it("names the room charge refusals", async () => {
     const { roomChargeProblem } = await import("./registerWords");
-    expect(roomChargeProblem(problem("CONFLICT", "room charge cannot follow a partial tender"))?.words).toBe(
+    expect(roomChargeProblem(problem("ORDER_HAS_PAYMENT", "room charge cannot follow a partial tender"))?.words).toBe(
       "Charge to room isn't possible once part of the bill is paid.",
     );
-    expect(roomChargeProblem(problem("CONFLICT", "active stay with open folio not found"))?.words).toBe(
+    expect(roomChargeProblem(problem("FOLIO_NOT_OPEN", "active stay with open folio not found"))?.words).toBe(
       "That guest's bill isn't open. Ask the front desk.",
     );
-    expect(roomChargeProblem(problem("CONFLICT", "order is not eligible for room charge"))?.words).toBe(
+    expect(roomChargeProblem(problem("ORDER_STATE_CHANGED", "order is not eligible for room charge"))?.words).toBe(
       "This order can't go on a room bill.",
     );
     expect(roomChargeProblem(problem("CAPABILITY_NOT_ENABLED", "x"))?.words).toBe("This isn't switched on for your business. Ask a manager to switch it on in Yetu.");
     expect(roomChargeProblem(problem("CONFLICT", "pq: new"))?.words).toBe("The room charge didn't go through. Try again.");
+  });
+});
+
+/**
+ * Yetu's refusals of a payment or room charge since S5b (fbc-peak #257, errors.go), as the till receives them:
+ * each is Yetu looking at the request and refusing it, so a replay that gets one was not recorded.
+ */
+const s5b = (status: number, code: string, title: string, detail: string) =>
+  new Error(JSON.stringify({ type: "about:blank", status, code, title, detail, request_id: "req-1" }));
+
+const TENDER_REFUSED_S5B = {
+  alreadyPaid: s5b(409, "ORDER_ALREADY_PAID", "Nothing is left to pay on this order.", "order remaining balance is already settled"),
+  closed: s5b(409, "ORDER_STATE_CHANGED", "This order is not at the step this needs.", "tender cannot be recorded on a closed or voided order"),
+  tooMuch: s5b(422, "TENDER_EXCEEDS_BALANCE", "That is more than is still owed.", "tender exceeds remaining balance"),
+};
+const ROOM_REFUSED_S5B = {
+  partPaid: s5b(409, "ORDER_HAS_PAYMENT", "Part of this order is already paid.", "room charge cannot follow a partial tender"),
+  notEligible: s5b(409, "ORDER_STATE_CHANGED", "This order is not at the step this needs.", "order is not eligible for room charge"),
+  folio: s5b(409, "FOLIO_NOT_OPEN", "The guest's bill is not open.", "active stay with open folio not found"),
+};
+
+describe("a lost payment answer, settled by Yetu's S5b refusals", () => {
+  it("takes each S5b refusal of a payment as proof it was not recorded", async () => {
+    const { afterLostAnswer } = await import("./registerWords");
+    for (const [name, error] of Object.entries(TENDER_REFUSED_S5B)) expect(afterLostAnswer(error), name).toBe("refused");
+  });
+
+  it("takes each S5b refusal of a room charge as proof it was not recorded", async () => {
+    const { afterLostAnswer } = await import("./registerWords");
+    for (const [name, error] of Object.entries(ROOM_REFUSED_S5B)) expect(afterLostAnswer(error), name).toBe("refused");
+  });
+
+  it("says the order was paid or changed on another till when that is why", async () => {
+    const { lostAnswerRefusalWords } = await import("./registerWords");
+    const moved = "This order was paid or changed on another till, so this payment wasn't recorded. The amounts here are Yetu's latest: check them before taking any money.";
+    expect(lostAnswerRefusalWords(TENDER_REFUSED_S5B.alreadyPaid, false)).toBe(moved);
+    expect(lostAnswerRefusalWords(TENDER_REFUSED_S5B.closed, false)).toBe(moved);
+    expect(lostAnswerRefusalWords(TENDER_REFUSED_S5B.tooMuch, false)).toBe(moved);
+    expect(lostAnswerRefusalWords(ROOM_REFUSED_S5B.partPaid, true)).toBe(moved.replace("this payment", "this charge"));
+  });
+
+  it("says the guest's bill isn't open when that is why, not that the order moved", async () => {
+    const { lostAnswerRefusalWords } = await import("./registerWords");
+    expect(lostAnswerRefusalWords(ROOM_REFUSED_S5B.folio, true)).toBe("That guest's bill isn't open. Ask the front desk.");
+  });
+
+  it("still keeps asking when Yetu's answer proves nothing", async () => {
+    const { afterLostAnswer } = await import("./registerWords");
+    expect(afterLostAnswer(s5b(500, "INTERNAL_ERROR", "Internal error", "x"))).toBe("unsure");
+    expect(afterLostAnswer(s5b(404, "NOT_FOUND", "Not found", "x"))).toBe("unsure");
+    expect(afterLostAnswer(s5b(409, "IDEMPOTENT_REQUEST_IN_PROGRESS", "In progress", "x"))).toBe("unsure");
+    expect(afterLostAnswer(s5b(409, "SOMETHING_NEW", "New", "x"))).toBe("unsure");
   });
 });

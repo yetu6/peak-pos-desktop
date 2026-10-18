@@ -46,6 +46,7 @@ export function CashMovementDialog({
       pending={record.isPending}
       waiting={waiting}
       error={record.error}
+      errorMovementType={record.variables?.movementType}
       onRecord={(args) => record.mutate({ ...args, idempotencyKey: idempotencyKey.next() }, { onSuccess: onClose })}
     />
   );
@@ -61,6 +62,8 @@ export interface CashMovementSheetViewProps {
   /** Yetu asked the till to wait before the next attempt (too many attempts). */
   waiting?: boolean;
   error: unknown;
+  /** Which way the refused request went: its refusal is worded for it, whatever the sheet shows now. */
+  errorMovementType?: CashMovementType;
   onRecord: (args: {
     movementType: CashMovementType;
     amountMinor: number;
@@ -82,6 +85,7 @@ export function CashMovementSheetView({
   pending,
   waiting = false,
   error,
+  errorMovementType,
   onRecord,
   initialAmount = "",
   initialReason = "",
@@ -91,7 +95,7 @@ export function CashMovementSheetView({
   const [reason, setReason] = useState(initialReason);
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
   const [pin, setPin] = useState("");
-  const problem = cashMovementProblem(error);
+  const problem = cashMovementProblem(error, errorMovementType ?? movementType);
   const amountMinor = toMinor(amount);
   const cashOut = movementType === "CASH_OUT";
   // Choosing yourself keeps the PIN keypad closed (SupervisorApproval), and choosing anyone clears the PIN,

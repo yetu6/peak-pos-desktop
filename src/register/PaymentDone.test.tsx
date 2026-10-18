@@ -8,6 +8,10 @@ const ORDER: POSOrder = {
   id: "order-1",
   shiftId: "shift-1",
   orderNumber: "0142",
+  dailyNumber: 42,
+  createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  closedAt: null,
+  payments: [],
   status: "CLOSED",
   serviceType: "DINE_IN",
   initiatedById: "staff-amina",
@@ -44,13 +48,13 @@ describe("PaymentDone", () => {
 
   it("says Split payment when more than one tender paid it", () => {
     renderDone({ paid: { order: ORDER, method: "EXTERNAL_CARD", changeMinor: 0, split: true } });
-    expect(screen.getByRole("dialog", { name: "Paid" })).toHaveTextContent("Split payment · Order 0142");
+    expect(screen.getByRole("dialog", { name: "Paid" })).toHaveTextContent("Split payment · Order 42");
   });
 
   it("tells a screen reader the change with the dialog itself", () => {
     renderDone();
     expect(screen.getByRole("dialog", { name: "Paid" })).toHaveAccessibleDescription(
-      "Change to give TSh 7,500. Cash · Order 0142.",
+      "Change to give TSh 7,500. Cash · Order 42.",
     );
   });
 

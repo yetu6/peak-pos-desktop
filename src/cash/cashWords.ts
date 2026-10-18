@@ -5,7 +5,9 @@
  * own count, which is input.
  */
 import { formatMoney, MINOR_PER_MAJOR } from "../lib/money";
+import type { CashMovementType } from "../lib/posContracts";
 import { otherWords, problemOf, UNREACHABLE } from "../lib/problemWords";
+import { noApproverWords } from "../register/registerWords";
 
 export interface CashProblem<K extends string> {
   kind: K | "network" | "permission" | "other";
@@ -13,42 +15,41 @@ export interface CashProblem<K extends string> {
 }
 
 /**
- * Closing a shift. fbc-peak internal/pos/controls.go CloseShift refuses with
- * CONFLICT and one of these details.
+ * Closing a shift (fbc-peak internal/pos/controls.go CloseShift), by code.
+ * One refusal still has no code of its own: a drawer that doesn't match whose
+ * approval wasn't accepted is a 409 CONFLICT "supervisor approval failed"
+ * (http.go CloseShift keeps it as it was), so that one is read by its words.
  */
 export function closeShiftProblem(
   error: unknown,
-): CashProblem<"open-orders" | "offline-cash" | "supervisor" | "not-open"> | null {
+): CashProblem<"open-orders" | "offline-cash" | "supervisor" | "no-approver" | "not-open"> | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
-  const detail = problem.detail ?? "";
-  if (detail === "shift has open orders") {
-    return {
-      kind: "open-orders",
-      words: "Some orders on this till are still open. Take payment for them or void them, then close the shift.",
-    };
+  switch (problem.code) {
+    case "SHIFT_HAS_OPEN_ORDERS":
+      return {
+        kind: "open-orders",
+        words: "Some orders on this till are still open. Take payment for them or void them, then close the shift.",
+      };
+    case "SHIFT_OFFLINE_CASH_UNRESOLVED":
+      return {
+        kind: "offline-cash",
+        words: "Cash taken without internet hasn't been settled yet. Reconnect so it can be sent, or ask a manager to sort it out in Yetu.",
+      };
+    case "SHIFT_NOT_OPEN":
+      return { kind: "not-open", words: "This shift is already closed." };
+    case "NO_APPROVER_SET":
+      return { kind: "no-approver", words: noApproverWords("a count that doesn't match") };
+    case "FORBIDDEN":
+      return { kind: "permission", words: "Only a cashier or manager can close the shift. Ask one to close it." };
   }
-  if (detail === "shift has unresolved offline cash") {
-    return {
-      kind: "offline-cash",
-      words: "Cash taken without internet hasn't been settled yet. Reconnect so it can be sent, or ask a manager to sort it out in Yetu.",
-    };
-  }
-  if (detail === "supervisor approval failed") {
+  if (problem.code === "CONFLICT" && problem.detail === "supervisor approval failed") {
     return {
       kind: "supervisor",
       words: "The drawer doesn't match what Yetu expects, so a manager must approve. Their PIN wasn't accepted, or they can't approve this.",
     };
   }
-  if (detail === "shift is not open") return { kind: "not-open", words: "This shift is already closed." };
-  // Today this never matches: fbc-peak internal/pos/http.go CloseShift writes
-  // every error from the close, the pos.shift.close permission check
-  // included, as CONFLICT with the error text as detail. A missing permission
-  // therefore arrives as a CONFLICT we don't name and gets the action's own
-  // words. Kept for when the backend answers FORBIDDEN (recorded as a backend
-  // follow-up).
-  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a cashier or manager can close the shift. Ask one to close it." };
   return { kind: "other", words: otherWords(problem, "The shift couldn't be closed. Try again.") };
 }
 
@@ -87,21 +88,30 @@ export function dayCloseProblem(
   return { kind: "other", words: otherWords(problem, "The day couldn't be closed. Try again.") };
 }
 
-/** Cash in and out. fbc-peak internal/pos/cash.go. */
-export function cashMovementProblem(error: unknown): CashProblem<"supervisor" | "no-shift"> | null {
+/**
+ * Cash in and out (fbc-peak internal/pos/cash.go), by code. Every refusal of
+ * the approval is FORBIDDEN, as is a role that may not move cash: taking cash
+ * out always asks a supervisor, so there it is the supervisor's approval.
+ */
+export function cashMovementProblem(
+  error: unknown,
+  movementType: CashMovementType,
+): CashProblem<"supervisor" | "no-approver" | "no-shift"> | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
-  const detail = problem.detail ?? "";
-  if (/supervisor/i.test(detail)) {
-    return {
-      kind: "supervisor",
-      words: "A different supervisor must approve taking cash out. Their PIN wasn't accepted, or they can't approve this.",
-    };
-  }
-  if (detail === "no open shift on this terminal") return { kind: "no-shift", words: "No shift is open on this till." };
-  if (problem.code === "FORBIDDEN") {
-    return { kind: "permission", words: "Only a cashier or manager can put cash in or take it out. Ask one to help." };
+  switch (problem.code) {
+    case "SHIFT_NOT_OPEN":
+      return { kind: "no-shift", words: "No shift is open on this till." };
+    case "NO_APPROVER_SET":
+      return { kind: "no-approver", words: noApproverWords("taking cash out") };
+    case "FORBIDDEN":
+      return movementType === "CASH_OUT"
+        ? {
+            kind: "supervisor",
+            words: "A different supervisor must approve taking cash out. Their PIN wasn't accepted, or they can't approve this.",
+          }
+        : { kind: "permission", words: "Only a cashier or manager can put cash in or take it out. Ask one to help." };
   }
   return { kind: "other", words: otherWords(problem, "That wasn't recorded. Try again.") };
 }

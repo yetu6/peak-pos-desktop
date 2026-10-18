@@ -94,6 +94,27 @@ export async function ensurePlainDish(web: WebSession, seeded: SeededProperty): 
   return web.call<CatalogProduct>(`${base}/products`, { method: "POST", body: { outletId: seeded.outletId, ...PLAIN_DISH } });
 }
 
+/**
+ * The owner chooses who approves at the till, as in Team rules (fbc-peak #258): since then a new business has
+ * nobody chosen for any kind (void, refund, discount, cash out, a shift's cash difference), and the till is told
+ * "No one is set to approve … here yet". cmd/e2e-seed makes a new business, so the owner allows the seeded
+ * manager's role (`roleCode`) to approve every kind at the seeded property, through Yetu's own route.
+ */
+export async function chooseApprovers(web: WebSession, seeded: SeededProperty, roleCode: string): Promise<string[]> {
+  const path = `/api/v1/organizations/${seeded.organizationId}/team-rules/approvals`;
+  const rules = await web.call<{ kinds: Array<{ code: string }> }>(path);
+  for (const kind of rules.kinds) {
+    await web.call(path, { method: "PUT", body: { approvalKind: kind.code, roleCode, propertyId: seeded.propertyId, allowed: true } });
+  }
+  const after = await web.call<{ policies: Array<{ approvalKind: string; roleCode: string; propertyId: string | null; allowed: boolean }> }>(path);
+  return rules.kinds
+    .map((kind) => kind.code)
+    .filter((code) => after.policies.some((policy) => policy.approvalKind === code && policy.roleCode === roleCode && policy.allowed));
+}
+
+/** The seeded manager's role (cmd/e2e-seed: FNB_MANAGER at the seeded property). */
+export const SEEDED_MANAGER_ROLE = "FNB_MANAGER";
+
 /** The plain dish's own settings: a code, a name and a price (minor units) with 18% VAT. */
 export const PLAIN_DISH = { code: "CHIPS", name: "Chips", priceMinor: 500_000, taxRateBp: 1800 } as const;
 

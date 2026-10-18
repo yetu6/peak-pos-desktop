@@ -1,11 +1,11 @@
 import { Plus, ReceiptText, SearchX } from "lucide-react";
-import { useState, type KeyboardEvent } from "react";
+import type { KeyboardEvent } from "react";
 import { Banner, Button, EmptyState, Money, SearchField, Skeleton, StatusChip, Tabs } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSOrder } from "../lib/posContracts";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, serviceTypeWords } from "../lib/words";
-import { PAID_ROWS_SHOWN } from "./ordersSettings";
 import { orderMatches } from "./ordersWords";
+import { orderNumberWords } from "../lib/orderNumber";
 
 export type OrdersTab = "open" | "paid";
 
@@ -15,13 +15,29 @@ interface ListState {
   onRetry: () => void;
 }
 
+/** Yetu pages the day's paid orders (S5b): what has been read, and asking for the next page. */
+interface PaidPaging {
+  /** Yetu has more of today's paid orders than have been read. */
+  hasMore: boolean;
+  /** The next page is with Yetu (Show more, or a search reading the rest of the day). */
+  loadingMore: boolean;
+  /** Every paid order of the day has been read, so a search covered them all. */
+  searchedAll: boolean;
+  /** A search is still reading the rest of the day, between pages too: "no match" isn't its answer yet. */
+  reading: boolean;
+  onMore: () => void;
+}
+
+const ALL_READ: PaidPaging = { hasMore: false, loadingMore: false, searchedAll: true, reading: false, onMore: () => {} };
+
 export interface OrdersViewProps {
   tab: OrdersTab;
   onTab: (tab: OrdersTab) => void;
   /** Orders not yet paid or voided, as Yetu lists them. */
   openOrders: readonly POSOrder[];
-  /** This shift's paid orders, latest first; null until they have been asked for. */
+  /** Today's paid orders at this outlet read so far, the latest paid first; null until asked for. */
   paidOrders: readonly POSOrder[] | null;
+  paidPaging?: PaidPaging;
   query: string;
   onQuery: (query: string) => void;
   currency: string | undefined;
@@ -57,7 +73,7 @@ function moveBetweenRows(event: KeyboardEvent<HTMLElement>) {
 }
 
 /**
- * Orders: the open ones and this shift's paid ones, found by number, table,
+ * Orders: the open ones and today's paid ones, found by number, table,
  * room or amount. Each row shows the number, where it goes, who took it,
  * when it was sent (when Yetu has the time), its status in words and its
  * total; a press opens the order.
@@ -75,17 +91,21 @@ export function OrdersView({
   onNewSale,
   openState,
   paidState,
+  paidPaging = ALL_READ,
   notice = null,
 }: OrdersViewProps) {
   const list = tab === "open" ? openOrders : (paidOrders ?? []);
   const state = tab === "open" ? openState : paidState;
-  const found = list.filter((order) => orderMatches(order, query));
-  // The paid list can be long: a page at a time ("Show more"); the search covers them all.
-  const [paidRows, setPaidRows] = useState(PAID_ROWS_SHOWN);
+  const shown = list.filter((order) => orderMatches(order, query));
   const paged = tab === "paid";
-  const shown = paged ? found.slice(0, paidRows) : found;
   const searching = query.trim().length > 0;
-  const status = [notice, searching && !state.loading ? matchWords(shown.length) : null].filter(Boolean).join(" ");
+  // A search on Paid reads the rest of the day first (usePaidOrders): until then it isn't the answer.
+  const stillReading = paged && searching && paidPaging.reading;
+  const searchWords = stillReading ? "Looking through today's paid orders…" : matchWords(shown.length);
+  const status = [notice, searching && !state.loading ? searchWords : null].filter(Boolean).join(" ");
+  // A search that stopped at its ceiling says how far it looked.
+  const searchedWhat =
+    paged && !paidPaging.searchedAll ? `Only the latest ${list.length} paid orders today were searched.` : "Check the number, table, room or amount.";
 
   function focusFirstRow(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== "ArrowDown") return;
@@ -105,7 +125,8 @@ export function OrdersView({
           onChange={onTab}
           tabs={[
             { value: "open", label: "Open", count: openState.loading ? undefined : openOrders.length },
-            { value: "paid", label: "Paid this shift", count: paidOrders === null ? undefined : paidOrders.length },
+            // Today's count is known only once every page is read.
+            { value: "paid", label: "Paid today", count: paidOrders === null || paidPaging.hasMore ? undefined : paidOrders.length },
           ]}
         />
         <SearchField
@@ -121,7 +142,7 @@ export function OrdersView({
         {status}
       </p>
 
-      <div className="y-orders__list" aria-label={tab === "open" ? "Open orders" : "Paid this shift"} role="region">
+      <div className="y-orders__list" aria-label={tab === "open" ? "Open orders" : "Paid today"} role="region">
         {state.failed ? (
           <Banner
             inline
@@ -157,32 +178,34 @@ export function OrdersView({
               }
             />
           ) : (
-            <EmptyState icon={<ReceiptText />} title="No paid orders on this shift yet" description="Orders appear here once they're paid." />
+            <EmptyState icon={<ReceiptText />} title="No paid orders today yet" description="Orders appear here once they're paid." />
           )
-        ) : shown.length === 0 ? (
+        ) : shown.length === 0 && !stillReading ? (
           <EmptyState
             icon={<SearchX />}
             title={`No order matches “${query.trim()}”`}
-            description="Check the number, table, room or amount."
+            description={searchedWhat}
             action={<Button onClick={() => onQuery("")}>Show all orders</Button>}
           />
         ) : (
           <>
-            {paged ? (
+            {paged && !searching ? (
               <p className="y-orders__caption" data-testid="orders-caption">
-                Most recent orders first · showing {shown.length} of {found.length}
+                Latest paid first · {shown.length} shown
               </p>
             ) : null}
             <ul className="y-orders__rows" onKeyDown={moveBetweenRows}>
               {shown.map((order) => (
                 <li key={order.id}>
-                  <OrderRow order={order} currency={currency} sentAt={sentTimes.get(order.id)} onOpen={onOpen} />
+                  <OrderRow order={order} currency={currency} sentAt={paged ? undefined : sentTimes.get(order.id)} onOpen={onOpen} />
                 </li>
               ))}
             </ul>
-            {paged && shown.length < found.length ? (
+            {paged && !searching && paidPaging.hasMore ? (
               <div className="y-orders__more">
-                <Button onClick={() => setPaidRows((rows) => rows + PAID_ROWS_SHOWN)}>Show more</Button>
+                <Button disabled={paidPaging.loadingMore} onClick={paidPaging.onMore}>
+                  {paidPaging.loadingMore ? "Loading more…" : "Show more"}
+                </Button>
               </div>
             ) : null}
           </>
@@ -204,8 +227,13 @@ function OrderRow({
   onOpen: (order: POSOrder) => void;
 }) {
   const sent = sentAt ? clockTime(sentAt) : "";
+  const paidAt = order.status === "CLOSED" && order.closedAt ? clockTime(order.closedAt) : "";
   const partPaid = order.paidMinor > 0 && order.remainingMinor > 0;
-  const meta = [order.initiatedByName, sent ? `Sent ${sent}` : "", partPaid ? `${formatMoney(order.remainingMinor, currency)} still to pay` : ""]
+  const meta = [
+    order.initiatedByName,
+    paidAt ? `Paid ${paidAt}` : sent ? `Sent ${sent}` : "",
+    partPaid ? `${formatMoney(order.remainingMinor, currency)} still to pay` : "",
+  ]
     .filter(Boolean)
     .join(" · ");
   return (
@@ -218,7 +246,7 @@ function OrderRow({
       onClick={() => onOpen(order)}
     >
       <span className="y-orow__number" data-whole="">
-        {order.orderNumber}
+        {orderNumberWords(order)}
       </span>
       <span className="y-orow__main">
         <span className="y-orow__place">{placeWords(order)}</span>

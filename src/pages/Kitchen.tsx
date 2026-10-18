@@ -15,6 +15,7 @@ import { kitchenProblem, nextStepFor, stationWords, stepDoneWords } from "../kit
 import { normalizeMode } from "../lib/displayDefaults";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { isDisplayMode } from "../lib/workspace";
+import { orderNumberWords } from "../lib/orderNumber";
 
 const ALL_STATIONS = "ALL";
 
@@ -164,7 +165,7 @@ export function Kitchen() {
         keys.current.delete(request);
         setHeld((current) => new Map(current).set(ticket.id, { version: ticket.version, taken: true }));
         setProblem(null);
-        setResult(stepDoneWords(step.target, ticket.orderNumber, ticket.kind === "station" ? ticket.station : undefined));
+        setResult(stepDoneWords(step.target, orderNumberWords(ticket), ticket.kind === "station" ? ticket.station : undefined));
       } catch (error) {
         setHeld((current) => {
           const next = new Map(current);

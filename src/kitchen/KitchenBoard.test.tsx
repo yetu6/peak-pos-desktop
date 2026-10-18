@@ -29,7 +29,9 @@ function ticket(id: string, status: BoardTicket["status"], sentAgoMs: number, ex
     id,
     kind: "station",
     orderId: `order-${id}`,
-    orderNumber: id.toUpperCase(),
+    orderNumber: `POS-MR-261012-${id.toUpperCase()}`,
+    // a1 is order 11, b1 order 21, c1 order 31: the number the kitchen calls out.
+    dailyNumber: (id.charCodeAt(0) - 96) * 10 + Number(id.slice(1)),
     status,
     version: 2,
     serviceType: "DINE_IN",
@@ -74,7 +76,9 @@ describe("KitchenBoard", () => {
     const sentAt = ago(12 * MINUTE);
     renderBoard({ tickets: [ticket("a1", "PREPARING", 12 * MINUTE, { sentAt, station: "GRILL" })] });
     const card = screen.getByTestId("kitchen-ticket-a1");
-    expect(within(card).getByRole("heading", { name: "A1" })).toBeInTheDocument();
+    expect(within(card).getByRole("heading", { name: "11" })).toBeInTheDocument();
+    // The long reference is not what the kitchen calls it.
+    expect(card).not.toHaveTextContent("POS-MR-261012-A1");
     expect(card).toHaveTextContent(`Table 12 · Amina Hassan · Sent ${clockTime(sentAt)} · Grill`);
     expect(within(card).getByTestId("kitchen-age-a1")).toHaveTextContent("Getting late · 12 min");
   });
@@ -123,9 +127,9 @@ describe("KitchenBoard", () => {
     const { onNextStep } = renderBoard({
       tickets: [ticket("a1", "SENT", MINUTE), ticket("b1", "PREPARING", MINUTE), ticket("c1", "READY", MINUTE)],
     });
-    expect(screen.getByTestId("kitchen-next-a1")).toHaveAccessibleName("Start order A1");
-    expect(screen.getByTestId("kitchen-next-b1")).toHaveAccessibleName("Ready order B1");
-    expect(screen.getByTestId("kitchen-next-c1")).toHaveAccessibleName("Served order C1");
+    expect(screen.getByTestId("kitchen-next-a1")).toHaveAccessibleName("Start order 11");
+    expect(screen.getByTestId("kitchen-next-b1")).toHaveAccessibleName("Ready order 21");
+    expect(screen.getByTestId("kitchen-next-c1")).toHaveAccessibleName("Served order 31");
     expect(screen.getByTestId("kitchen-next-a1")).toHaveClass("y-button--primary", "y-button--64");
     await userEvent.click(screen.getByTestId("kitchen-next-b1"));
     expect(onNextStep).toHaveBeenCalledWith(expect.objectContaining({ id: "b1", status: "PREPARING" }));

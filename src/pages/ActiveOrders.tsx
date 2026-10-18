@@ -19,6 +19,7 @@ import { ORDERS_REFRESH_SECONDS } from "../orders/ordersSettings";
 import { usePaidOrders } from "../orders/usePaidOrders";
 import { PaymentDone } from "../register/PaymentDone";
 import { PaySheet, type PaidInfo } from "../register/PaySheet";
+import { orderName } from "../lib/orderNumber";
 
 /** What is open over the list: an order, its Pay or Void sheet, payment done, or a receipt. */
 type Overlay =
@@ -30,9 +31,10 @@ type Overlay =
   | null;
 
 /**
- * Orders against the live API: the open orders (GET /pos/orders?active=true,
- * kept fresh by live updates) and this shift's paid ones (asked for only when
- * that tab is opened). An order opens in its detail; Pay is Sell's Pay sheet,
+ * Orders against the live API: the open orders (GET /pos/orders?view=open,
+ * kept fresh by live updates) and today's paid ones at this outlet
+ * (view=paid for the shift's business day, asked for only when that tab is
+ * opened, a page at a time). An order opens in its detail; Pay is Sell's Pay sheet,
  * Void is the supervisor's void, and a paid order prints a copy of its receipt.
  */
 export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
@@ -48,7 +50,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
   const [query, setQuery] = useState("");
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const paid = usePaidOrders(shift?.id, tab === "paid");
+  const paid = usePaidOrders(shift ?? undefined, tab === "paid", query.trim().length > 0);
   const voided = useRef(false);
   // The order whose row gets focus back once nothing is open over the list.
   const returnFocusTo = useRef<string | null>(null);
@@ -73,7 +75,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
   const overlayOrderId = overlay && overlay.kind !== "done" ? overlay.orderId : undefined;
   // The order as Yetu has it now: from the lists, or asked for on its own when it has left them.
   const listed = overlayOrderId
-    ? (open.find((order) => order.id === overlayOrderId) ?? paid.data?.find((order) => order.id === overlayOrderId))
+    ? (open.find((order) => order.id === overlayOrderId) ?? paid.orders?.find((order) => order.id === overlayOrderId))
     : undefined;
   const fetched = useOrder(overlayOrderId && !listed ? overlayOrderId : undefined);
   // While it is being asked for, the sheet keeps the order as it last was, so it never closes under the person.
@@ -123,7 +125,8 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
         tab={tab}
         onTab={setTab}
         openOrders={open}
-        paidOrders={paid.data ?? null}
+        paidOrders={paid.orders}
+        paidPaging={{ hasMore: paid.hasMore, loadingMore: paid.loadingMore, searchedAll: paid.searchedAll, reading: paid.reading, onMore: paid.loadMore }}
         query={query}
         onQuery={setQuery}
         currency={currency}
@@ -131,7 +134,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
         onOpen={openOrder}
         onNewSale={onNewOrder}
         openState={{ loading: orders.isLoading, failed: orders.isError, onRetry: () => void orders.refetch() }}
-        paidState={{ loading: paid.isLoading, failed: paid.isError, onRetry: () => void paid.refetch() }}
+        paidState={{ loading: paid.isLoading, failed: paid.isError, onRetry: paid.refetch }}
         notice={notice}
       />
 
@@ -164,7 +167,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
           currency={currency}
           onVoided={() => {
             voided.current = true;
-            setNotice(`Order ${current.orderNumber} was voided. The kitchen has been told.`);
+            setNotice(`${orderName(current)} was voided. The kitchen has been told.`);
           }}
           onClose={() => {
             if (voided.current) close();

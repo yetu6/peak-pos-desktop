@@ -8,6 +8,7 @@ import { useRateLimitWait } from "../lib/useRateLimitWait";
 import type { POSOrder } from "../lib/posContracts";
 import { voidProblem } from "../register/registerWords";
 import { Banner, Button, Field, Sheet, SupervisorApproval, type KeypadKey } from "./system";
+import { orderNumberWords } from "../lib/orderNumber";
 
 /**
  * `POST /pos/orders/{orderId}/void`: the one certified correction for a sent
@@ -121,8 +122,8 @@ export function VoidOrderDialog({
         <SupervisorApproval
           request={
             reason.trim()
-              ? `Void order ${order.orderNumber}${currency ? ` (${formatMoney(order.totalMinor, currency)})` : ""}: ${reason.trim()}`
-              : `Void order ${order.orderNumber}`
+              ? `Void order ${orderNumberWords(order)}${currency ? ` (${formatMoney(order.totalMinor, currency)})` : ""}: ${reason.trim()}`
+              : `Void order ${orderNumberWords(order)}`
           }
           supervisors={roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }))}
           requesterId={requesterId}

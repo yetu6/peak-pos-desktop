@@ -26,6 +26,34 @@ const KITCHEN_JOB: POSPrintJob = {
   document: { ticketNumber: "KDS-1", orderNumber: "POS-1", items: [{ id: "i1", name: "Stew", quantity: 1 }] },
 };
 
+describe("printJobs: the order's number for the day (S5b)", () => {
+  it("a kitchen ticket says the number the kitchen calls out, not the reference", () => {
+    const formatted = formatPrintDocument({
+      ...KITCHEN_JOB,
+      document: { orderNumber: "POS-MR-261012-42", dailyNumber: 42, station: "GRILL", items: [{ id: "i1", name: "Stew", quantity: 1 }] },
+    });
+    expect(formatted.text).toContain("Order 42");
+    expect(formatted.text).not.toContain("POS-MR-261012-42");
+  });
+
+  it("a receipt says the number, with the reference beside it for finding it again", () => {
+    const formatted = formatPrintDocument({
+      ...KITCHEN_JOB,
+      id: "job-r",
+      jobType: "RECEIPT",
+      document: { orderNumber: "POS-MR-261012-42", dailyNumber: 42, totalMinor: 2360, items: [{ name: "Stew", quantity: 1, totalMinor: 2360 }] },
+    });
+    expect(formatted.text).toContain("Order 42");
+    expect(formatted.text).toContain("Ref POS-MR-261012-42");
+  });
+
+  it("a receipt made before S5b (no number) goes by its reference", () => {
+    const formatted = formatPrintDocument({ ...KITCHEN_JOB, id: "job-r", jobType: "RECEIPT", document: { orderNumber: "POS-a3f90c14", items: [] } });
+    expect(formatted.text).toContain("Order POS-a3f90c14");
+    expect(formatted.text).not.toContain("Ref ");
+  });
+});
+
 describe("printJobs", () => {
   it("formats a Peak kitchen ticket without prices", () => {
     const copy = ticketCopyFromPrintDocument(KITCHEN_JOB.document);

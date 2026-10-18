@@ -7,6 +7,7 @@ import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRequestKey } from "../lib/useRequestKey";
 import { businessDayWords, clockTime, orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { Banner, Button, Dialog, RefusalNotice, Skeleton, type Refusal } from "./system";
+import { orderName, orderReference } from "../lib/orderNumber";
 
 /** How the order was settled: one method, or SPLIT when more than one tender paid it. */
 function settledWords(method: string): string {
@@ -110,10 +111,15 @@ export function ReceiptSheet({
             </div>
             <div className="y-receipt__meta-block">
               <p className="y-receipt__order">
-                {[`Order ${doc.orderNumber}`, serviceTypeWords(doc.serviceType), orderPlaceWords(doc.serviceType, doc.tableLabel)]
+                {[orderName(doc), serviceTypeWords(doc.serviceType), orderPlaceWords(doc.serviceType, doc.tableLabel)]
                   .filter(Boolean)
                   .join(" · ")}
               </p>
+              {orderReference(doc) ? (
+                <p className="y-receipt__meta" data-testid="receipt-reference">
+                  Reference {orderReference(doc)}
+                </p>
+              ) : null}
               <p className="y-receipt__meta">
                 {businessDayWords(doc.businessDate)} · {clockTime(doc.settledAt)}
               </p>

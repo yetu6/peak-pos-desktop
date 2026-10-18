@@ -90,7 +90,7 @@ function Detail({ order, tab = "open", ...props }: { order: POSOrder; tab?: Orde
       <OrderDetailView
         order={order}
         currency={CURRENCY}
-        timeline={orderTimeline({ order, tickets: STATION_TICKETS.filter((ticket) => ticket.orderId === order.id), receipt })}
+        timeline={orderTimeline({ order, tickets: STATION_TICKETS.filter((ticket) => ticket.orderId === order.id), currency: CURRENCY })}
         receipt={receipt}
         canSend
         canPay

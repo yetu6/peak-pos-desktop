@@ -1,4 +1,4 @@
-import type { POSCatalogProduct, POSCategory, POSOrder, POSOrderItem, POSReceipt, POSRoomChargeCandidate } from "../lib/posContracts";
+import type { POSCatalogProduct, POSCategory, POSOrder, POSOrderItem, POSOrderPayment, POSReceipt, POSRoomChargeCandidate } from "../lib/posContracts";
 
 /**
  * The Sell fixtures' data in the backend's shapes: one menu and one order
@@ -110,7 +110,8 @@ export function order(items: POSOrderItem[], extra: Partial<POSOrder> = {}): POS
   return {
     id: "order-1",
     shiftId: "shift-1",
-    orderNumber: "POS-7c41e09b",
+    orderNumber: "POS-MR-261012-42",
+    dailyNumber: 42,
     status: "OPEN",
     serviceType: "DINE_IN",
     tableLabel: "12",
@@ -120,6 +121,9 @@ export function order(items: POSOrderItem[], extra: Partial<POSOrder> = {}): POS
     discountKind: "NONE",
     discountInput: 0,
     version: 4,
+    createdAt: new Date(2026, 9, 12, 14, 18).toISOString(),
+    closedAt: null,
+    payments: [],
     ...extra,
     items,
     subtotalMinor,
@@ -145,11 +149,25 @@ export const SENT_ORDER: POSOrder = order(
   { status: "SENT" },
 );
 
-/** The same order with TSh 20,000 paid. */
-export const SPLIT_ORDER: POSOrder = order(SENT_ORDER.items, { status: "SENT", paidMinor: 2_000_000 });
+/** A payment as Yetu lists it on an order (S5b). */
+export function payment(id: string, paymentMethod: POSOrderPayment["paymentMethod"], amountMinor: number, createdAt: string, recordedByName: string): POSOrderPayment {
+  return { id, paymentMethod, amountMinor, createdAt, recordedByName };
+}
 
-/** The same order paid in full. */
-export const PAID_ORDER: POSOrder = order(SENT_ORDER.items, { status: "CLOSED", paidMinor: SENT_ORDER.totalMinor });
+/** The same order with TSh 20,000 paid in cash. */
+export const SPLIT_ORDER: POSOrder = order(SENT_ORDER.items, {
+  status: "SENT",
+  paidMinor: 2_000_000,
+  payments: [payment("pay-1", "CASH", 2_000_000, new Date(2026, 9, 12, 14, 25).toISOString(), "Amina Hassan")],
+});
+
+/** The same order paid in full, in cash, at 14:32. */
+export const PAID_ORDER: POSOrder = order(SENT_ORDER.items, {
+  status: "CLOSED",
+  paidMinor: SENT_ORDER.totalMinor,
+  closedAt: new Date(2026, 9, 12, 14, 32).toISOString(),
+  payments: [payment("pay-1", "CASH", SENT_ORDER.totalMinor, new Date(2026, 9, 12, 14, 32).toISOString(), "Grace Mushi")],
+});
 
 /** Cash handed over for the paid order (TSh 50,000), and the change given back. */
 export const CASH_RECEIVED = 5_000_000;
@@ -170,6 +188,7 @@ export const RECEIPT: POSReceipt = {
   document: {
     orderId: PAID_ORDER.id,
     orderNumber: PAID_ORDER.orderNumber,
+    dailyNumber: PAID_ORDER.dailyNumber,
     businessDate: "2026-10-12",
     propertyName: "Jacaranda Lodge",
     outletId: "o",

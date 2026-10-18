@@ -84,8 +84,9 @@
   display: grid;
   width: 100%;
   min-height: 72px;
-  /* The number column fits Yetu's numbers whole: POS- and eight letters and digits. */
-  grid-template-columns: 9.5em minmax(0, 1fr) auto minmax(132px, auto);
+  /* The number column fits the order's number for the day (up to four digits, so rows line up); a
+     reference standing in for one (no number yet) widens only its own row, never cut. */
+  grid-template-columns: max-content minmax(0, 1fr) auto minmax(132px, auto);
   align-items: center;
   gap: var(--space-4);
   border: 0;
@@ -105,6 +106,7 @@
 .y-orow:focus-visible { outline-offset: -3px; }
 
 .y-orow__number {
+  min-width: 4ch;
   font-family: var(--font-display);
   font-size: var(--type-title);
   font-variant-numeric: tabular-nums;
@@ -186,6 +188,25 @@
 
 .y-detail__line { margin: 0; }
 .y-detail__muted { color: var(--text-muted); }
+
+/* Each payment on the order: how and how much, then who took it and when. */
+.y-detail__payments {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.y-detail__payment { display: grid; gap: 2px; }
+
+/* The order's reference: small, for finding it again; staff call it by its number. */
+.y-detail__reference {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  overflow-wrap: anywhere;
+}
 
 /* The actions: Void and Send on one row, Pay below them, full width. */
 .y-detail__actions {

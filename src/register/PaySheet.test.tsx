@@ -10,6 +10,10 @@ const ORDER: POSOrder = {
   id: "order-1",
   shiftId: "shift-1",
   orderNumber: "0142",
+  dailyNumber: 42,
+  createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  closedAt: null,
+  payments: [],
   status: "SENT",
   serviceType: "DINE_IN",
   tableLabel: "12",
@@ -81,7 +85,7 @@ afterEach(() => {
 describe("PaySheet", () => {
   it("shows the amount still to pay, large, and only the methods Yetu takes", () => {
     renderPay();
-    expect(screen.getByRole("dialog", { name: "Take payment" })).toHaveAccessibleDescription("Order 0142 · Dine in · Table 12");
+    expect(screen.getByRole("dialog", { name: "Take payment" })).toHaveAccessibleDescription("Order 42 · Dine in · Table 12");
     expect(screen.getByTestId("amount-due")).toHaveTextContent("TSh 42,500");
     const methods = within(screen.getByRole("radiogroup", { name: "How the guest pays" })).getAllByRole("radio");
     expect(methods.map((method) => method.textContent)).toEqual([
@@ -347,7 +351,7 @@ describe("PaySheet", () => {
     const lost = (_vars: unknown, opts?: { onError?: (error: Error) => void }) => opts?.onError?.(new TypeError("Failed to fetch"));
     /** Yetu's refusal of a tender for more than is owed (controls.go RecordTender). */
     const tooMuch = (_vars: unknown, opts?: { onError?: (error: Error) => void }) =>
-      opts?.onError?.(new Error(JSON.stringify({ status: 409, code: "CONFLICT", detail: "tender exceeds remaining balance" })));
+      opts?.onError?.(new Error(JSON.stringify({ status: 422, code: "TENDER_EXCEEDS_BALANCE", detail: "tender exceeds remaining balance" })));
 
     it("a lost answer is asked again as the same request: same key, same version, same body", async () => {
       recordTenderMutate.mockImplementationOnce(lost);
@@ -434,7 +438,7 @@ describe("PaySheet", () => {
   });
 
   it("says why a payment was refused, in words", () => {
-    refs.tender = { isPending: false, error: new Error(JSON.stringify({ code: "CONFLICT", detail: "tender exceeds remaining balance" })) };
+    refs.tender = { isPending: false, error: new Error(JSON.stringify({ status: 422, code: "TENDER_EXCEEDS_BALANCE", detail: "tender exceeds remaining balance" })) };
     renderPay();
     expect(screen.getByTestId("settle-error")).toHaveTextContent("That's more than is still owed. Check the amount, then try again.");
   });
@@ -478,6 +482,23 @@ describe("PaySheet", () => {
       expect(onPaid).not.toHaveBeenCalled();
       // Nothing is put down to this till: no part payment recorded for it either.
       expect(screen.getByTestId("tender-recorded")).toHaveTextContent("");
+    });
+
+    it.each([
+      [409, "ORDER_ALREADY_PAID", "order remaining balance is already settled"],
+      [409, "ORDER_STATE_CHANGED", "tender cannot be recorded on a closed or voided order"],
+      [422, "TENDER_EXCEEDS_BALANCE", "tender exceeds remaining balance"],
+    ])("(a) S5b: a replay refused %s %s stops asking, claims nothing for this till and shows Yetu's latest", async (status, code, detail) => {
+      refs.refetchOrder.mockResolvedValue({ status: "success", data: { ...CLOSED, version: 4 } });
+      recordTenderMutate.mockImplementationOnce(lost).mockImplementationOnce(refused({ status, code, detail }));
+      const { onPaid } = renderPay();
+      await userEvent.click(screen.getByRole("button", { name: /^Exact/ }));
+      await userEvent.click(pay());
+      expect(await screen.findByTestId("settle-error")).toHaveTextContent(CHANGED_ELSEWHERE);
+      expect(screen.queryByTestId("pay-unsure")).not.toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId("amount-due")).toHaveTextContent("TSh 0"));
+      expect(recordTenderMutate).toHaveBeenCalledTimes(2);
+      expect(onPaid).not.toHaveBeenCalled();
     });
 
     it("(b) another till recorded part of it meanwhile: no 'Recorded' for this till, Yetu's amount still to pay", async () => {
@@ -713,7 +734,7 @@ describe("PaySheet", () => {
       refs.roomAvailable = true;
       refs.candidates = [{ stayId: "stay-12", roomId: "room-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true }];
       refs.refetchOrder.mockResolvedValue({ status: "success", data: { ...CLOSED, version: 4 } });
-      chargeToRoomMutate.mockImplementationOnce(lost).mockImplementationOnce(refused({ status: 409, code: "CONFLICT", detail: "order is not eligible for room charge" }));
+      chargeToRoomMutate.mockImplementationOnce(lost).mockImplementationOnce(refused({ status: 409, code: "ORDER_STATE_CHANGED", detail: "order is not eligible for room charge" }));
       const { onPaid } = renderPay();
       await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
       await userEvent.type(screen.getByTestId("room-query"), "12");

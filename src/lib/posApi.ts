@@ -7,6 +7,7 @@ import type {
   POSCashMovement,
   POSCatalog,
   POSOrder,
+  POSOrderPage,
   POSReceipt,
   POSRoomChargeCandidate,
   POSShift,
@@ -96,8 +97,14 @@ export function createPosApi() {
     },
 
     // ---- Orders ----------------------------------------------------------
-    listOrders(active = true): Promise<ApiResult<POSOrder[]>> {
-      return client.GET<POSOrder[]>("/api/v1/pos/orders", { params: { query: { active } } });
+    /**
+     * One page of the till's orders (S5b): view=open (not paid or voided,
+     * oldest first) or view=paid (closed on one business day, latest paid
+     * first). Keep asking with cursor=nextCursor until it is null. No limit
+     * is sent: Yetu's own page size applies (YETU_POS_ORDERS_PAGE_DEFAULT).
+     */
+    listOrderPage(query: { view: "open" | "paid"; businessDate?: string; cursor?: string }): Promise<ApiResult<POSOrderPage>> {
+      return client.GET<POSOrderPage>("/api/v1/pos/orders", { params: { query } });
     },
     getOrder(orderId: string): Promise<ApiResult<POSOrder>> {
       return client.GET<POSOrder>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}`);

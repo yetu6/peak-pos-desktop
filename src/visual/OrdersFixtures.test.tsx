@@ -37,13 +37,14 @@ describe("OrdersFixtures", () => {
     expect(screen.getByTestId("detail-send")).toBeEnabled();
     open.unmount();
     const kitchen = render(<OrderKitchenFixture />);
-    expect(screen.getByTestId("order-detail-timeline")).toHaveTextContent("Now: Grill preparing");
+    expect(screen.getByTestId("order-detail-timeline")).toHaveTextContent("Grill: preparing");
     kitchen.unmount();
     const part = render(<OrderPartPaidFixture />);
     expect(screen.getByRole("button", { name: "Void order" })).toBeDisabled();
     part.unmount();
     const paid = render(<OrderPaidFixture />);
-    expect(within(screen.getByTestId("order-detail-payment")).getByText(/Paid by Cash/)).toBeInTheDocument();
+    expect(within(screen.getByTestId("order-detail-payments")).getByText(/^Cash · TSh/)).toBeInTheDocument();
+    expect(screen.getByTestId("order-detail-payments")).toHaveTextContent("Taken by Grace Mushi");
     paid.unmount();
     render(<OrderLimitedFixture />);
     expect(screen.getAllByRole("note")).toHaveLength(2);

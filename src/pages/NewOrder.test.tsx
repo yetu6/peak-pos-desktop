@@ -104,6 +104,10 @@ const CATALOG: POSCatalog = {
 const OPEN_ORDER: POSOrder = {
   id: "order-1",
   orderNumber: "POS-1",
+  dailyNumber: 1,
+  createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  closedAt: null,
+  payments: [],
   version: 2,
   shiftId: "shift-1",
   status: "OPEN",
@@ -465,10 +469,13 @@ describe("NewOrder", () => {
     await waitFor(() => expect(burger).not.toHaveAttribute("aria-disabled"));
     await userEvent.click(burger);
     const sheet = await screen.findByRole("dialog", { name: "House burger" });
-    addItemSpy.mockResolvedValueOnce({ data: null, error: { code: "CONFLICT", detail: "product is unavailable" } } as never);
+    addItemSpy.mockResolvedValueOnce({
+      data: null,
+      error: { status: 409, code: "PRODUCT_UNAVAILABLE", detail: "That item is sold out or not on this outlet's menu." },
+    } as never);
     await userEvent.click(within(sheet).getByRole("radio", { name: /Medium/ }));
     await userEvent.click(within(sheet).getByTestId("modifier-confirm-add"));
-    expect(await within(sheet).findByRole("alert")).toHaveTextContent(/./);
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent("That item is sold out or not on the menu now.");
     expect(screen.getByRole("dialog", { name: "House burger" })).toBeInTheDocument();
     await userEvent.click(within(sheet).getByRole("button", { name: "Cancel" }));
     await userEvent.click(screen.getByTestId("menu-House burger"));

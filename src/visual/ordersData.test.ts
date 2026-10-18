@@ -27,18 +27,19 @@ describe("the Orders and Kitchen fixtures' data", () => {
     },
   );
 
-  it("numbers each order once, as Yetu writes numbers (POS- and eight letters and digits), all on this shift", () => {
+  it("numbers each order once for the day, and references it as Yetu does (S5b), all on this shift", () => {
     const all = [...OPEN_ORDERS, ...PAID_ORDERS, LONG_ORDER];
+    expect(new Set(all.map((entry) => entry.dailyNumber)).size).toBe(all.length);
     expect(new Set(all.map((entry) => entry.orderNumber)).size).toBe(all.length);
-    // fbc-peak operations.go CreateOrder: "POS-" + the first eight characters of a new UUID.
-    for (const entry of all) expect(entry.orderNumber).toMatch(/^POS-[0-9a-f]{8}$/);
+    // fbc-peak order_numbers.go orderReference: POS-<outlet code>-<YYMMDD>-<daily number>.
+    for (const entry of all) expect(entry.orderNumber).toBe(`POS-MR-261012-${entry.dailyNumber}`);
     expect(all.every((entry) => entry.shiftId === SHIFT_ID)).toBe(true);
   });
 
   it("gives each sent order one ticket per station it uses, holding exactly that station's lines", () => {
     for (const ticket of [...STATION_TICKETS, ...LONG_TICKETS]) {
       const owner = [...OPEN_ORDERS, LONG_ORDER].find((entry) => entry.id === ticket.orderId)!;
-      expect(ticket.orderNumber).toBe(owner.orderNumber);
+      expect([ticket.orderNumber, ticket.dailyNumber]).toEqual([owner.orderNumber, owner.dailyNumber]);
       expect([ticket.serviceType, ticket.tableLabel, ticket.waiterName]).toEqual([owner.serviceType, owner.tableLabel, owner.initiatedByName]);
       expect(ticket.items).toEqual(owner.items.filter((item) => item.prepStation === ticket.station));
     }

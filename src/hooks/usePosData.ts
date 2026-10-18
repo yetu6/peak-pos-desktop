@@ -8,6 +8,8 @@ import { useRealtimeEvents } from "../realtime/RealtimeProvider";
 import { isOrderEvent } from "../realtime/subscriptions";
 import { processPendingPrintJobs } from "../lib/printJobs";
 import { getOperationalSession } from "../lib/operationalSession";
+import { listEveryPage } from "../orders/orderPages";
+import { OPEN_MOST_PAGES } from "../orders/ordersSettings";
 import type {
   CashMovementType,
   DiscountKind,
@@ -278,13 +280,21 @@ export function useRecordCashMovement(shiftId: string | undefined) {
 // Orders
 // ---------------------------------------------------------------------------
 
-/** Authoritative outlet-bound orders. REST is the source of truth on load and
- *  reconnect; realtime events only tell this hook which order to re-fetch. */
+/** Authoritative outlet-bound open orders (GET /pos/orders?view=open, every
+ *  page, oldest first: S5b). REST is the source of truth on load and
+ *  reconnect; realtime events only tell this hook to ask again. */
 export function useActiveOrders() {
   const outletId = useOutletId();
   const query = useQuery({
     queryKey: ["pos", "orders", "active", outletId],
-    queryFn: () => unwrap(createPosApi().listOrders(true)),
+    queryFn: async () => {
+      const api = createPosApi();
+      const { orders } = await listEveryPage(
+        (cursor) => unwrap(api.listOrderPage({ view: "open", ...(cursor ? { cursor } : {}) })),
+        OPEN_MOST_PAGES,
+      );
+      return orders;
+    },
     retry: false,
   });
   const queryClient = useQueryClient();

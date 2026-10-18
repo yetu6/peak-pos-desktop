@@ -41,7 +41,7 @@
  * till paired and its shift closed.
  */
 import { expect, test, type Response } from "@playwright/test";
-import { WebSession, ensurePlainDish, loadSeededProperty, tsh, typed } from "./liveApi";
+import { WebSession, ensurePlainDish, loadSeededProperty, tsh, typed, chooseApprovers, SEEDED_MANAGER_ROLE } from "./liveApi";
 import { LIVE_API_URL } from "./liveSettings";
 import { body, nextApi, openShift, pairTill, setServerAddress, signInWithPin, tapper, type Shift } from "./liveTill";
 
@@ -57,6 +57,8 @@ const THOUSAND_TSH = 100_000;
 interface Order {
   id: string;
   orderNumber: string;
+  /** S5b: the order's number for the day, what the till shows ("Order 42"). */
+  dailyNumber: number;
   status: string;
   totalMinor: number;
   paidMinor: number;
@@ -78,6 +80,10 @@ test("a cashier's shift on the redesigned till, against the live API", async ({ 
   const web = new WebSession();
   await web.signIn(seeded.ownerEmail);
   const plainDish = await ensurePlainDish(web, seeded);
+  // Since fbc-peak #258 a new business has nobody chosen to approve at the till: the owner chooses, here for the
+  // seeded manager's role, every kind.
+  const approves = await chooseApprovers(web, seeded, SEEDED_MANAGER_ROLE);
+  expect(approves, "the manager's role may approve every kind").toEqual(expect.arrayContaining(["VOID", "DISCOUNT", "CASH_OUT", "SHIFT_VARIANCE"]));
 
   const { tap, pin, swallowed } = tapper(page);
 
@@ -203,7 +209,7 @@ test("a cashier's shift on the redesigned till, against the live API", async ({ 
     await expect(done).toBeVisible();
     await expect(page.getByTestId("payment-done-dialog")).toContainText("Paid");
     await expect(done).toContainText(tsh(order.totalMinor));
-    await expect(done).toContainText(`Split payment · Order ${order.orderNumber}`);
+    await expect(done).toContainText(`Split payment · Order ${order.dailyNumber}`);
     // The last tender was mobile money: no change to give.
     await expect(page.getByTestId("done-change")).toHaveCount(0);
     await tap(done.getByRole("button", { name: "New sale" }));
@@ -226,7 +232,7 @@ test("a cashier's shift on the redesigned till, against the live API", async ({ 
     expect(cash.orderClosed).toBe(true);
     expect(cash.paidMinor).toBe(order.totalMinor); // Yetu records what was owed, never the note handed over
     const done = page.getByTestId("payment-done");
-    await expect(done).toContainText(`Cash · Order ${order.orderNumber}`);
+    await expect(done).toContainText(`Cash · Order ${order.dailyNumber}`);
     await expect(page.getByTestId("done-change")).toHaveText(`Change to give ${tsh(receivedMinor - order.totalMinor)}`);
     await tap(done.getByRole("button", { name: "New sale" }));
     secondOrder = order;

@@ -1,3 +1,4 @@
+import { orderName } from "./orderNumber";
 export interface KitchenTicketLine {
   name: string;
   quantity: string;
@@ -7,7 +8,10 @@ export interface KitchenTicketLine {
 /** Device copy of a Peak kitchen ticket. No prices — Peak already owns those. */
 export interface KitchenTicketCopy {
   ticketNumber?: string;
+  /** The order's reference; printed only when it has no number for the day. */
   orderNumber?: string;
+  /** S5b: the number the kitchen calls out ("Order 42"). */
+  dailyNumber?: number;
   tableNumber?: string;
   serviceType?: string;
   notes?: string;
@@ -26,7 +30,7 @@ export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
   const header = [
     "KITCHEN TICKET",
     ticket.ticketNumber ? ticket.ticketNumber : null,
-    ticket.orderNumber ? `Order ${ticket.orderNumber}` : null,
+    ticket.dailyNumber || ticket.orderNumber ? orderName(ticket) : null,
     [
       ticket.tableNumber ? `Table ${ticket.tableNumber}` : null,
       ticket.serviceType ? ticket.serviceType.replaceAll("_", " ") : null,
@@ -54,6 +58,7 @@ export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
 
 export function ticketCopyFromOrder(order: {
   orderNumber?: string | null;
+  dailyNumber?: number | null;
   tableNumber?: string | null;
   tableLabel?: string | null;
   serviceType?: string | null;
@@ -68,6 +73,7 @@ export function ticketCopyFromOrder(order: {
 }): KitchenTicketCopy {
   return {
     orderNumber: order.orderNumber ?? undefined,
+    dailyNumber: order.dailyNumber ?? undefined,
     tableNumber: order.tableNumber ?? order.tableLabel ?? undefined,
     serviceType: order.serviceType ?? undefined,
     notes: order.notes ?? undefined,

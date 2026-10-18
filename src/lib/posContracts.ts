@@ -41,6 +41,8 @@ export interface POSStationTicket {
   id: string;
   orderId: string;
   orderNumber: string;
+  /** S5b: the order's short number for its outlet and business day ("Order 42"). */
+  dailyNumber: number;
   station: PrepStation;
   status: "SENT" | "PREPARING" | "READY" | "SERVED";
   serviceType: ServiceType;
@@ -49,13 +51,29 @@ export interface POSStationTicket {
   waiterName?: string;
   version: number;
   createdAt: string;
+  /** S5b: when the ticket last moved a step (when it was sent, until it moves). */
+  lastStepAt: string;
   items: POSOrderItem[];
+}
+
+/** S5b: one payment on an order, with what the till may see (never a reference, card or guest data). */
+export interface POSOrderPayment {
+  id: string;
+  paymentMethod: PaymentMethod | "ROOM_CHARGE";
+  amountMinor: number;
+  /** When it was recorded. */
+  createdAt: string;
+  /** Who recorded it. */
+  recordedByName: string;
 }
 
 export interface POSOrder {
   id: string;
   shiftId: string;
+  /** The order's reference: unique at the property, searchable, shown small. */
   orderNumber: string;
+  /** S5b: the order's short number for its outlet and business day, from 1: what staff call out ("Order 42"). */
+  dailyNumber: number;
   status: OrderStatus;
   serviceType: ServiceType;
   tableLabel?: string;
@@ -75,7 +93,22 @@ export interface POSOrder {
   /** Optimistic concurrency token. Every mutation must echo the value the
    *  desktop last saw; a stale value is refused with STALE_VERSION. */
   version: number;
+  /** S5b: when the order was opened on the till. */
+  createdAt: string;
+  /** S5b: when it was paid in full or charged to a room (for a voided order, when it was voided); null while open. */
+  closedAt: string | null;
+  /** S5b: the money recorded against it, oldest first. */
+  payments: POSOrderPayment[];
   items: POSOrderItem[];
+}
+
+/** S5b: one page of the till's orders list (GET /pos/orders?view=open|paid). */
+export interface POSOrderPage {
+  items: POSOrder[];
+  /** Pass back as `cursor` for the next page; null on the last page. */
+  nextCursor: string | null;
+  /** view=paid: the business day listed. */
+  businessDate?: string;
 }
 
 export type DiscountKind = "AMOUNT" | "PERCENT";
@@ -178,6 +211,8 @@ export interface POSReceiptLine {
 export interface POSReceiptDocument {
   orderId: string;
   orderNumber: string;
+  /** S5b: the order's short number, on receipts made from S5b on (absent on earlier ones). */
+  dailyNumber?: number;
   businessDate: string;
   propertyName: string;
   outletId: string;

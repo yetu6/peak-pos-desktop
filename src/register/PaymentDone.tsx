@@ -5,6 +5,7 @@ import { formatMoney } from "../lib/money";
 import { paymentMethodWords } from "../lib/words";
 import type { PaidInfo } from "./PaySheet";
 import { REGISTER_AUTO_RETURN_SECONDS } from "./registerSettings";
+import { orderName } from "../lib/orderNumber";
 
 /**
  * The moment a sale is paid: a tick, Paid (or Charged to room 12), the
@@ -58,8 +59,8 @@ export function PaymentDone({
   const title = room ? `Charged to room ${paid.roomNumber ?? ""}`.trim() : "Paid";
   const how = paid.split ? "Split payment" : paymentMethodWords(paid.method);
   const said = room
-    ? `Order ${paid.order.orderNumber} is on the guest's bill.`
-    : [paid.changeMinor > 0 ? `Change to give ${formatMoney(paid.changeMinor, currency)}.` : "", `${how} · Order ${paid.order.orderNumber}.`]
+    ? `${orderName(paid.order)} is on the guest's bill.`
+    : [paid.changeMinor > 0 ? `Change to give ${formatMoney(paid.changeMinor, currency)}.` : "", `${how} · ${orderName(paid.order)}.`]
         .filter(Boolean)
         .join(" ");
 
@@ -84,7 +85,7 @@ export function PaymentDone({
         <CircleCheck className="y-done__tick" aria-hidden="true" />
         <Money minor={paid.order.totalMinor} currency={currency} size="display" />
         <p className="y-done__how">
-          {room ? `Order ${paid.order.orderNumber} is on the guest's bill.` : `${how} · Order ${paid.order.orderNumber}`}
+          {room ? `${orderName(paid.order)} is on the guest's bill.` : `${how} · ${orderName(paid.order)}`}
         </p>
         {paid.changeMinor > 0 ? (
           <p className="y-done__change" data-testid="done-change">

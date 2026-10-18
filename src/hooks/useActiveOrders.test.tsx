@@ -16,8 +16,11 @@ vi.mock("../lib/env", () => ({
   devIdentityFromEnv: () => ({ tenantId: "t1", userId: "u1", propertyId: "property-1", outletId: "outlet-1" }),
 }));
 
-const listOrders = vi.hoisted(() => vi.fn(async () => ({ data: [], response: new Response(null, { status: 200 }) })));
-vi.mock("../lib/posApi", () => ({ createPosApi: () => ({ listOrders }) }));
+type PageQuery = { view: "open" | "paid"; cursor?: string };
+const listOrderPage = vi.hoisted(() =>
+  vi.fn(async (_query: PageQuery) => ({ data: { items: [] as unknown[], nextCursor: null as string | null }, response: new Response(null, { status: 200 }) })),
+);
+vi.mock("../lib/posApi", () => ({ createPosApi: () => ({ listOrderPage }) }));
 
 class FakeSocket {
   static OPEN = 1;
@@ -54,8 +57,37 @@ function stationTicketEnvelope(sequence: number) {
 
 function Orders() {
   const orders = useActiveOrders();
-  return <p data-testid="orders">{orders.isSuccess ? "loaded" : "loading"}</p>;
+  return (
+    <>
+      <p data-testid="orders">{orders.isSuccess ? "loaded" : "loading"}</p>
+      <p data-testid="ids">{(orders.data ?? []).map((order) => order.id).join(",")}</p>
+    </>
+  );
 }
+
+describe("useActiveOrders: Yetu's open view (S5b)", () => {
+  it("reads every page of the open orders, oldest first, past the old 50-order cut", async () => {
+    const pages: Record<string, { items: Array<{ id: string }>; nextCursor: string | null }> = {
+      first: { items: Array.from({ length: 50 }, (_, index) => ({ id: `o${index + 1}` })), nextCursor: "c50" },
+      c50: { items: [{ id: "o51" }, { id: "o52" }], nextCursor: null },
+    };
+    listOrderPage.mockImplementation(async ({ cursor }: PageQuery) => ({ data: pages[cursor ?? "first"], response: new Response(null, { status: 200 }) }));
+    const client = new RealtimeClient({ createSocket: () => new FakeSocket() as unknown as WebSocket });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <RealtimeProvider client={client} queryClient={new QueryClient()}>
+          <Orders />
+        </RealtimeProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("orders")).toHaveTextContent("loaded"));
+    expect(listOrderPage.mock.calls.map(([query]) => query)).toEqual([{ view: "open" }, { view: "open", cursor: "c50" }]);
+    expect(screen.getByTestId("ids").textContent?.split(",")).toHaveLength(52);
+    expect(screen.getByTestId("ids")).toHaveTextContent(/^o1,o2,.*,o52$/);
+    listOrderPage.mockReset();
+    listOrderPage.mockImplementation(async () => ({ data: { items: [], nextCursor: null }, response: new Response(null, { status: 200 }) }));
+  });
+});
 
 describe("useActiveOrders", () => {
   it("asks Yetu again when a station ticket moves", async () => {
@@ -73,8 +105,8 @@ describe("useActiveOrders", () => {
       await Promise.resolve();
       socket.open();
     });
-    const before = listOrders.mock.calls.length;
+    const before = listOrderPage.mock.calls.length;
     act(() => socket.onmessage?.({ data: JSON.stringify(stationTicketEnvelope(7)) }));
-    await waitFor(() => expect(listOrders.mock.calls.length).toBe(before + 1));
+    await waitFor(() => expect(listOrderPage.mock.calls.length).toBe(before + 1));
   });
 });

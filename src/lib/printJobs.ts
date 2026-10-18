@@ -98,6 +98,7 @@ export function ticketCopyFromPrintDocument(document: Record<string, unknown>): 
   return {
     ticketNumber: typeof document.ticketNumber === "string" ? document.ticketNumber : undefined,
     orderNumber: typeof document.orderNumber === "string" ? document.orderNumber : undefined,
+    dailyNumber: typeof document.dailyNumber === "number" ? document.dailyNumber : undefined,
     tableNumber:
       typeof document.tableLabel === "string"
         ? document.tableLabel

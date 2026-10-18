@@ -84,7 +84,7 @@ const DONE: Record<NextStatus, string> = {
   SERVED: "is served",
 };
 
-/** What a step did, said back to the person: "Order 0142 is ready." */
+/** What a step did, said back to the person: "Order 42 is ready." (the number as staff say it: orderNumberWords). */
 export function stepDoneWords(target: NextStatus, orderNumber: string, station?: string): string {
   const which = station ? `Order ${orderNumber} (${stationWords(station)})` : `Order ${orderNumber}`;
   return `${which} ${DONE[target]}.`;

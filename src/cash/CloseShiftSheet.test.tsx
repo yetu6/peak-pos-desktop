@@ -317,7 +317,7 @@ describe("CloseShiftSheet: check", () => {
   });
 
   it("says why Yetu would not close it, in words", async () => {
-    closeAsync.mockRejectedValueOnce(problem("CONFLICT", "shift has open orders"));
+    closeAsync.mockRejectedValueOnce(problem("SHIFT_HAS_OPEN_ORDERS", "shift has open orders"));
     renderSheet();
     await count("74000");
     await userEvent.click(screen.getByTestId("close-shift"));

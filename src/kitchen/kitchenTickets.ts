@@ -21,7 +21,9 @@ export interface BoardTicket {
   id: string;
   kind: "station" | "order";
   orderId: string;
+  /** The order's reference; the board shows its number for the day (orderNumberWords). */
   orderNumber: string;
+  dailyNumber?: number;
   status: BoardStep;
   /** Yetu's version of what moves, echoed back with the step. */
   version: number;
@@ -68,6 +70,7 @@ export function ticketsFromOrders(orders: readonly POSOrder[], stationTickets: r
         kind: "order" as const,
         orderId: order.id,
         orderNumber: order.orderNumber,
+        dailyNumber: order.dailyNumber,
         status,
         version: order.version,
         serviceType: order.serviceType,
@@ -91,6 +94,7 @@ export function ticketsFromStations(tickets: readonly POSStationTicket[]): Board
         kind: "station" as const,
         orderId: ticket.orderId,
         orderNumber: ticket.orderNumber,
+        dailyNumber: ticket.dailyNumber,
         status,
         version: ticket.version,
         serviceType: ticket.serviceType,
