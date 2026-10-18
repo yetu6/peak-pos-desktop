@@ -480,6 +480,23 @@ describe("PaySheet", () => {
       expect(screen.getByTestId("tender-recorded")).toHaveTextContent("");
     });
 
+    it.each([
+      [409, "ORDER_ALREADY_PAID", "order remaining balance is already settled"],
+      [409, "ORDER_STATE_CHANGED", "tender cannot be recorded on a closed or voided order"],
+      [422, "TENDER_EXCEEDS_BALANCE", "tender exceeds remaining balance"],
+    ])("(a) S5b: a replay refused %s %s stops asking, claims nothing for this till and shows Yetu's latest", async (status, code, detail) => {
+      refs.refetchOrder.mockResolvedValue({ status: "success", data: { ...CLOSED, version: 4 } });
+      recordTenderMutate.mockImplementationOnce(lost).mockImplementationOnce(refused({ status, code, detail }));
+      const { onPaid } = renderPay();
+      await userEvent.click(screen.getByRole("button", { name: /^Exact/ }));
+      await userEvent.click(pay());
+      expect(await screen.findByTestId("settle-error")).toHaveTextContent(CHANGED_ELSEWHERE);
+      expect(screen.queryByTestId("pay-unsure")).not.toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId("amount-due")).toHaveTextContent("TSh 0"));
+      expect(recordTenderMutate).toHaveBeenCalledTimes(2);
+      expect(onPaid).not.toHaveBeenCalled();
+    });
+
     it("(b) another till recorded part of it meanwhile: no 'Recorded' for this till, Yetu's amount still to pay", async () => {
       const partElsewhere = { ...ORDER, paidMinor: 1_000_000, remainingMinor: 3_250_000, version: 3 };
       refs.refetchOrder.mockResolvedValue({ status: "success", data: partElsewhere });
