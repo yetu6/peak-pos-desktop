@@ -16,7 +16,7 @@ import type {
   POSRefundTenderRequest,
 } from "../lib/posContracts";
 import type { PrintResult } from "../lib/kitchenTicketPrint";
-import { processPendingPrintJobs } from "../lib/printJobs";
+import { printFor } from "../print/printFor";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRateLimitWait } from "../lib/useRateLimitWait";
 import { useRequestKey } from "../lib/useRequestKey";
@@ -187,7 +187,8 @@ export function RefundItemsSheet({
     setDone({ refund, print: { kind: "printing" } });
     setStage("done");
     onRefunded?.(refund);
-    void processPendingPrintJobs(propertyId, refund.id).then(
+    // The refund slip, on the receipt printer; a cash refund opens the drawer (S8b).
+    void printFor(propertyId, refund.id).then(
       (results) => setDone((current) => (current ? { ...current, print: printOutcome(results) } : current)),
       () => setDone((current) => (current ? { ...current, print: { kind: "failed", words: "" } } : current)),
     );

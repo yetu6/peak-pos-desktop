@@ -235,6 +235,9 @@ export interface POSReceiptDocument {
   tableLabel?: string;
   items: POSReceiptLine[];
   subtotalMinor: number;
+  /** S8b: what came off the order (absent when nothing did), and why. */
+  discountMinor?: number;
+  discountReason?: string;
   taxMinor: number;
   totalMinor: number;
   currency: string;
@@ -270,6 +273,8 @@ export interface POSPrintJob {
   attempts: number;
   lastError?: string;
   createdAt: string;
+  /** S8b: on a copy, its original (a till opens no cash drawer for a copy). */
+  reprintedFromId?: string;
 }
 
 /** S8a: a round's kitchen tickets printed again, each marked COPY (reprintPOSKitchenTickets). */

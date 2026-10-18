@@ -494,7 +494,7 @@ describe("Refund items: done", () => {
     expect(within(done).getByText("Refunded TSh 5,900")).toBeInTheDocument();
     expect(within(done).getByText("Give TSh 5,900 back in cash from the drawer.")).toBeInTheDocument();
     expect(onRefunded).toHaveBeenCalledWith(expect.objectContaining({ id: "refund-1" }));
-    expect(printJobs).toHaveBeenCalledWith("property-1", "refund-1");
+    expect(printJobs).toHaveBeenCalledWith("property-1", "refund-1", undefined, expect.objectContaining({ settings: expect.any(Object) }));
     await waitFor(() => expect(screen.getByTestId("refund-print")).toHaveTextContent("The refund slip was printed."));
   });
 

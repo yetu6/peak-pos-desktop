@@ -367,9 +367,11 @@ pub fn load_printer_settings(app: tauri::AppHandle) -> Result<Option<serde_json:
 fn saved_targets(settings: &serde_json::Value) -> Result<Vec<crate::raw_print::RawTarget>, String> {
     let bad = || "Those printer settings couldn't be read. Choose the printers again.".to_string();
     let mut choices = Vec::new();
-    match settings.get("kitchen") {
-        None | Some(serde_json::Value::Null) => {}
-        Some(choice) => choices.push(choice),
+    for key in ["kitchen", "receipt"] {
+        match settings.get(key) {
+            None | Some(serde_json::Value::Null) => {}
+            Some(choice) => choices.push(choice),
+        }
     }
     match settings.get("stations") {
         None | Some(serde_json::Value::Null) => {}

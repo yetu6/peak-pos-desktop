@@ -118,7 +118,7 @@ vi.mock("../lib/printJobs", () => ({
 // This till's printer settings (Manager, Printers), as the till app holds them.
 const tillPrinters = vi.hoisted(() => ({ kitchenTickets: true }));
 vi.mock("../print/printerStore", () => ({
-  loadPrinterSettings: async () => ({ kitchenTickets: tillPrinters.kitchenTickets, kitchen: null, stations: {} }),
+  loadPrinterSettings: async () => ({ kitchenTickets: tillPrinters.kitchenTickets, kitchen: null, stations: {}, receipt: null, cashDrawer: false }),
   printRawToPrinter: async () => undefined,
 }));
 

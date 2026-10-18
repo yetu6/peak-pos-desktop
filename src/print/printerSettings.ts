@@ -23,10 +23,14 @@ export interface PrinterSettings {
   kitchen: PrinterChoice | null;
   /** A station's own printer: the bar's, the grill's. */
   stations: Partial<Record<PrepStation, PrinterChoice>>;
+  /** S8b: the receipt printer, a thermal one (null: this computer's own printer, as plain text). */
+  receipt: PrinterChoice | null;
+  /** S8b: a cash drawer is plugged into the receipt printer: open it for cash taken or paid out. */
+  cashDrawer: boolean;
 }
 
 /** Paper kitchen tickets on, sent to this till's own printer until a kitchen printer is chosen. */
-export const DEFAULT_PRINTER_SETTINGS: PrinterSettings = { kitchenTickets: true, kitchen: null, stations: {} };
+export const DEFAULT_PRINTER_SETTINGS: PrinterSettings = { kitchenTickets: true, kitchen: null, stations: {}, receipt: null, cashDrawer: false };
 
 /** The usual port a network receipt printer takes raw jobs on. */
 export const RAW_PRINT_PORT = 9100;
@@ -100,5 +104,8 @@ export function settingsFrom(raw: unknown): PrinterSettings {
     kitchenTickets: typeof value.kitchenTickets === "boolean" ? value.kitchenTickets : DEFAULT_PRINTER_SETTINGS.kitchenTickets,
     kitchen: choice(value.kitchen),
     stations,
+    receipt: choice(value.receipt),
+    // A drawer opens only from a thermal receipt printer: with none chosen there is nothing to open it.
+    cashDrawer: value.cashDrawer === true && choice(value.receipt) !== null,
   };
 }

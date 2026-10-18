@@ -5,6 +5,7 @@ import { stationWords } from "../kitchen/kitchenWords";
 import type { PrepStation } from "../lib/posContracts";
 import { PAPER_58MM, PAPER_80MM, type PaperWidth } from "./escpos";
 import { kitchenTicketBytes } from "./kitchenTicket";
+import { receiptBytes } from "./receipt";
 import {
   DEFAULT_PRINTER_SETTINGS, parseNetworkAddress, printerWords, type PrinterChoice, type PrinterSettings,
 } from "./printerSettings";
@@ -25,6 +26,21 @@ const TEST_TICKET = {
   sentAt: new Date().toISOString(),
   lines: [{ quantity: 1, name: "Test ticket: this printer works", options: ["Nothing to make"] }],
 };
+
+/** A sample receipt for "Print a test receipt": the layout, no amounts, nothing sold. */
+const TEST_RECEIPT = {
+  propertyName: "Test receipt",
+  lines: [{ name: "Test: this printer works", quantity: "1" }],
+};
+
+/** What the saved settings do, in words. */
+function savedWords(settings: PrinterSettings): string {
+  const kitchen = settings.kitchenTickets
+    ? `Kitchen tickets print at ${printerWords(settings.kitchen)}.`
+    : "This till won't print kitchen tickets.";
+  const receipts = `Receipts print at ${printerWords(settings.receipt)}${settings.cashDrawer ? ", and its cash drawer opens for cash" : ""}.`;
+  return `Saved. ${kitchen} ${receipts}`;
+}
 
 /**
  * Manager → Printers (S8a): paper kitchen tickets for a kitchen or bar
@@ -48,9 +64,7 @@ export function PrintersCard() {
     setWords(null);
     try {
       await savePrinterSettings(settings);
-      setWords({ ok: true, text: settings.kitchenTickets
-        ? `Saved. Kitchen tickets print at ${printerWords(settings.kitchen)}.`
-        : "Saved. This till won't print kitchen tickets." });
+      setWords({ ok: true, text: savedWords(settings) });
     } catch (error) {
       setWords({ ok: false, text: error instanceof Error ? error.message : String(error) });
     } finally {
@@ -58,7 +72,7 @@ export function PrintersCard() {
     }
   }
 
-  async function test(choice: PrinterChoice | null) {
+  async function test(choice: PrinterChoice | null, what: "kitchen" | "receipt" = "kitchen") {
     if (!choice) {
       setWords({ ok: false, text: "Choose the kitchen printer first, then print a test ticket." });
       return;
@@ -66,7 +80,12 @@ export function PrintersCard() {
     setBusy(true);
     setWords(null);
     try {
-      await printRawToPrinter(choice.target, kitchenTicketBytes(TEST_TICKET, choice.width));
+      await printRawToPrinter(
+        choice.target,
+        what === "receipt"
+          ? receiptBytes(TEST_RECEIPT, choice.width, { drawer: settings.cashDrawer })
+          : kitchenTicketBytes(TEST_TICKET, choice.width),
+      );
       setWords({ ok: true, text: `A test ticket went to ${printerWords(choice)}. If nothing came out, check the printer is on and has paper.` });
     } catch (error) {
       setWords({ ok: false, text: error instanceof Error ? error.message : String(error) });
@@ -122,6 +141,26 @@ export function PrintersCard() {
           </details>
         </>
       ) : null}
+      <h3 className="y-printers__subtitle">Receipts</h3>
+      <PrinterPicker
+        label="Receipt printer"
+        value={settings.receipt}
+        printers={printers}
+        allowOwn
+        onChange={(receipt) => setSettings({ ...settings, receipt, cashDrawer: receipt ? settings.cashDrawer : false })}
+        testId="receipt-printer"
+      />
+      {settings.receipt ? (
+        <label className="y-printers__switch">
+          <input
+            type="checkbox"
+            checked={settings.cashDrawer}
+            onChange={(event) => setSettings({ ...settings, cashDrawer: event.target.checked })}
+            data-testid="cash-drawer-on"
+          />
+          <span>A cash drawer is plugged into this printer: open it for cash</span>
+        </label>
+      ) : null}
       <div className="y-printers__actions">
         <Button variant="primary" size={56} disabled={busy} onClick={() => void save()} data-testid="save-printers">
           Save printers
@@ -129,6 +168,11 @@ export function PrintersCard() {
         <Button variant="quiet" size={56} icon={<Printer />} disabled={busy || !settings.kitchenTickets} onClick={() => void test(settings.kitchen)} data-testid="test-kitchen-printer">
           Print a test ticket
         </Button>
+        {settings.receipt ? (
+          <Button variant="quiet" size={56} icon={<Printer />} disabled={busy} onClick={() => void test(settings.receipt, "receipt")} data-testid="test-receipt-printer">
+            Print a test receipt
+          </Button>
+        ) : null}
       </div>
       {words ? (
         <p role={words.ok ? "status" : "alert"} className={words.ok ? "y-cash__muted" : "y-printers__error"} data-testid="printers-words">

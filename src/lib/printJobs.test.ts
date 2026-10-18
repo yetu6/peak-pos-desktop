@@ -340,7 +340,7 @@ describe("printJobs: kitchen tickets on paper (S8a)", () => {
     const raw: { target: unknown; bytes: Uint8Array }[] = [];
     const printFn = vi.fn();
     const results = await processPendingPrintJobs("prop", "order-1", printFn, {
-      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: {} },
+      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: {}, receipt: null, cashDrawer: false },
       printRaw: async (target, bytes) => void raw.push({ target, bytes }),
       tagsOf: (productId) => (productId === "p-satay" ? "Contains nuts" : undefined),
     });
@@ -372,7 +372,7 @@ describe("printJobs: kitchen tickets on paper (S8a)", () => {
       }),
     );
     await processPendingPrintJobs("prop", "order-1", vi.fn(), {
-      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: {} },
+      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: {}, receipt: null, cashDrawer: false },
       printRaw: async (_target, bytes) => void raw.push(bytes),
     });
     expect(text(raw[0])).toContain("*** COPY: printed again ***");
@@ -385,7 +385,7 @@ describe("printJobs: kitchen tickets on paper (S8a)", () => {
     const printRaw = vi.fn();
     const printFn = vi.fn();
     const results = await processPendingPrintJobs("prop", "order-1", printFn, {
-      settings: { kitchenTickets: false, kitchen: KITCHEN, stations: {} }, printRaw,
+      settings: { kitchenTickets: false, kitchen: KITCHEN, stations: {}, receipt: null, cashDrawer: false }, printRaw,
     });
     expect(results).toEqual([{ ok: true }]);
     expect(requests.some((url) => url.endsWith("/claim"))).toBe(false);
@@ -398,7 +398,7 @@ describe("printJobs: kitchen tickets on paper (S8a)", () => {
     const printRaw = vi.fn();
     const printed: string[] = [];
     await processPendingPrintJobs("prop", "order-1", async (_title, body) => void printed.push(body), {
-      settings: { kitchenTickets: true, kitchen: null, stations: {} }, printRaw,
+      settings: { kitchenTickets: true, kitchen: null, stations: {}, receipt: null, cashDrawer: false }, printRaw,
     });
     expect(printRaw).not.toHaveBeenCalled();
     expect(printed[0]).toContain("Order 42");
@@ -408,10 +408,78 @@ describe("printJobs: kitchen tickets on paper (S8a)", () => {
     const requests: string[] = [];
     yetu(requests);
     const results = await processPendingPrintJobs("prop", "order-1", vi.fn(), {
-      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: {} },
+      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: {}, receipt: null, cashDrawer: false },
       printRaw: async () => { throw new Error("The kitchen printer didn't answer"); },
     });
     expect(results).toEqual([{ ok: false, error: "The kitchen printer didn't answer" }]);
     expect(requests.some((url) => url.endsWith("/failed"))).toBe(true);
+  });
+});
+
+describe("printJobs: receipts on a thermal printer, the cash drawer (S8b)", () => {
+  const RECEIPT_PRINTER = { target: { kind: "system" as const, name: "EPSON TM-T20" }, width: 48 as const };
+  const DRAWER = [0x1b, 0x70, 0, 25, 250].join(",");
+  // Yetu's receipt document (receipts.go ReceiptDocument).
+  const SALE = {
+    orderId: "order-7", orderNumber: "POS-a3f90c14", dailyNumber: 7, propertyName: "Kilima View", outletName: "Pool bar",
+    initiatedByName: "Amina Hassan", operatorName: "Amina Hassan", serviceType: "DINE_IN", currency: "TZS",
+    items: [{ name: "Kilimanjaro lager", quantity: 2, unitPriceMinor: 600_000, taxMinor: 183_051, totalMinor: 1_200_000 }],
+    subtotalMinor: 1_016_949, discountMinor: 100_000, discountReason: "Regular guest", taxMinor: 165_051, totalMinor: 1_082_000,
+    tenderMethod: "CASH", cashMinor: 1_082_000, settledAt: "2026-10-19T10:05:00Z",
+  };
+  const job = (jobType: string, document: Record<string, unknown>, extra: Partial<POSPrintJob> = {}): POSPrintJob =>
+    ({ ...KITCHEN_JOB, id: `job-${jobType}`, sourceId: "order-7", jobType, document, ...extra });
+
+  async function printed(printJob: POSPrintJob, cashDrawer = true, receipt: typeof RECEIPT_PRINTER | null = RECEIPT_PRINTER) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = String(input);
+        if (url.endsWith("/claim")) return json({ ...printJob, status: "CLAIMED" });
+        if (url.endsWith("/printed")) return json({ ...printJob, status: "PRINTED" });
+        if (url.includes("/pos/print-jobs")) return json([printJob]);
+        return json({}, 500);
+      }),
+    );
+    const raw: { target: unknown; bytes: Uint8Array }[] = [];
+    const text: string[] = [];
+    await processPendingPrintJobs("prop", "order-7", async (_title, body) => void text.push(body), {
+      settings: { kitchenTickets: true, kitchen: null, stations: {}, receipt, cashDrawer },
+      printRaw: async (target, bytes) => void raw.push({ target, bytes }),
+    });
+    return { raw, text, drawer: raw.length === 1 && Array.from(raw[0].bytes).join(",").includes(DRAWER) };
+  }
+  const words = (bytes: Uint8Array) => Array.from(bytes, (b) => ((b >= 0x20 && b < 0x7f) || b === 0x0a ? String.fromCharCode(b) : "")).join("");
+
+  it("a cash sale prints on the receipt printer, with its discount, and opens the drawer", async () => {
+    const { raw, text, drawer } = await printed(job("RECEIPT", SALE));
+    expect(text).toEqual([]);
+    expect(raw[0].target).toEqual(RECEIPT_PRINTER.target);
+    expect(words(raw[0].bytes)).toContain("Discount (Regular guest)");
+    expect(drawer).toBe(true);
+  });
+
+  it("a card sale opens no drawer; a split with a cash part does", async () => {
+    expect((await printed(job("RECEIPT", { ...SALE, tenderMethod: "CARD", cashMinor: undefined }))).drawer).toBe(false);
+    expect((await printed(job("RECEIPT", { ...SALE, tenderMethod: "SPLIT", cashMinor: 500_000 }))).drawer).toBe(true);
+  });
+
+  it("a copy printed again says COPY and opens no drawer", async () => {
+    const { raw, drawer } = await printed(job("RECEIPT", SALE, { reprintedFromId: "job-original" }));
+    expect(words(raw[0].bytes)).toContain("*** COPY ***");
+    expect(drawer).toBe(false);
+  });
+
+  it("a refund paid out in cash opens the drawer; with the drawer setting off, nothing does", async () => {
+    const refund = { refundId: "refund-1", orderNumber: "POS-a3f90c14", dailyNumber: 7, currency: "TZS", totalMinor: 600_000,
+      items: [], tenders: [{ paymentMethod: "CASH", amountMinor: 600_000 }] };
+    expect((await printed(job("REFUND_RECEIPT", refund))).drawer).toBe(true);
+    expect((await printed(job("RECEIPT", SALE), false)).drawer).toBe(false);
+  });
+
+  it("with no receipt printer chosen, receipts print as text on this computer's printer, as before", async () => {
+    const { raw, text } = await printed(job("RECEIPT", SALE), true, null);
+    expect(raw).toEqual([]);
+    expect(text[0]).toContain("Discount (Regular guest)  -TSh");
   });
 });

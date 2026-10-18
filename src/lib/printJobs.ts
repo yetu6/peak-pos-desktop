@@ -13,6 +13,7 @@ import type { POSPrintJob, PrintJobStatus } from "./posContracts";
 import { kitchenTicketBytes } from "../print/kitchenTicket";
 import { paperFromPrintDocument, type KitchenPrintRoutes } from "../print/kitchenRouting";
 import { printerFor } from "../print/printerSettings";
+import { receiptPaperFor } from "../print/receiptRouting";
 
 /**
  * The `pos_print_jobs.job_type` values Yetu writes: a kitchen ticket at
@@ -210,9 +211,13 @@ export async function processPrintJob(
   try {
     const station = typeof claimed.document.station === "string" ? claimed.document.station : undefined;
     const printer = kitchen ? printerFor(routes.settings, station) : null;
+    const receiptPrinter = (claimed.jobType === RECEIPT || claimed.jobType === REFUND_RECEIPT) ? routes?.settings.receipt : null;
     if (kitchen && printer) {
       // A thermal printer of the kitchen's: the ticket in large type, with a cut (S8a).
       await routes.printRaw(printer.target, kitchenTicketBytes(paperFromPrintDocument(claimed.document, routes.tagsOf), printer.width));
+    } else if (routes && receiptPrinter) {
+      // The thermal receipt printer: columns, a cut, and the cash drawer for cash on an original (S8b).
+      await routes.printRaw(receiptPrinter.target, receiptPaperFor(claimed, receiptPrinter.width, routes.settings.cashDrawer, formatted.text));
     } else {
       await printFn(formatted.title, formatted.text);
     }

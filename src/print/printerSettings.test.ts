@@ -6,7 +6,7 @@ const BAR = { target: { kind: "system" as const, name: "Bar EPSON TM-T20" }, wid
 
 describe("printers on the till (S8a)", () => {
   it("a station's ticket goes to its own printer, else the kitchen's, else this till's own", () => {
-    const settings: PrinterSettings = { kitchenTickets: true, kitchen: KITCHEN, stations: { BAR } };
+    const settings: PrinterSettings = { kitchenTickets: true, kitchen: KITCHEN, stations: { BAR }, receipt: null, cashDrawer: false };
     expect(printerFor(settings, "BAR")).toEqual(BAR);
     expect(printerFor(settings, "HOT")).toEqual(KITCHEN);
     expect(printerFor(DEFAULT_PRINTER_SETTINGS, "HOT")).toBeNull();
@@ -36,7 +36,14 @@ describe("printers on the till (S8a)", () => {
     expect(settingsFrom({ kitchenTickets: false })).toEqual({ ...DEFAULT_PRINTER_SETTINGS, kitchenTickets: false });
     expect(settingsFrom({ kitchen: { target: { kind: "network", host: "999.1.1.1", port: 9100 }, width: 48 } }).kitchen).toBeNull();
     expect(settingsFrom({ kitchen: KITCHEN, stations: { BAR, HOT: { target: { kind: "system", name: " " } } } })).toEqual({
-      kitchenTickets: true, kitchen: KITCHEN, stations: { BAR },
+      kitchenTickets: true, kitchen: KITCHEN, stations: { BAR }, receipt: null, cashDrawer: false,
     });
+  });
+
+  it("a cash drawer opens only from a receipt printer that was chosen (S8b)", () => {
+    const RECEIPT = { target: { kind: "system" as const, name: "EPSON TM-T20" }, width: 48 as const };
+    expect(settingsFrom({ receipt: RECEIPT, cashDrawer: true })).toMatchObject({ receipt: RECEIPT, cashDrawer: true });
+    expect(settingsFrom({ receipt: null, cashDrawer: true })).toMatchObject({ receipt: null, cashDrawer: false });
+    expect(settingsFrom({ receipt: { target: { kind: "network", host: "8.8.8.8", port: 9100 } }, cashDrawer: true })).toMatchObject({ receipt: null, cashDrawer: false });
   });
 });

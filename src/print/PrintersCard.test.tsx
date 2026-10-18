@@ -32,7 +32,7 @@ describe("Manager → Printers (S8a)", () => {
     await userEvent.selectOptions(await picker.findByRole("combobox"), "system:EPSON TM-T20");
     await userEvent.click(screen.getByTestId("save-printers"));
     await waitFor(() => expect(till.saved).toHaveLength(1));
-    expect(till.saved[0]).toEqual({ kitchenTickets: true, kitchen: { target: { kind: "system", name: "EPSON TM-T20" }, width: 48 }, stations: {} });
+    expect(till.saved[0]).toEqual({ kitchenTickets: true, kitchen: { target: { kind: "system", name: "EPSON TM-T20" }, width: 48 }, stations: {}, receipt: null, cashDrawer: false });
     expect(screen.getByTestId("printers-words")).toHaveTextContent("Saved. Kitchen tickets print at EPSON TM-T20 (80 mm).");
   });
 
@@ -48,11 +48,11 @@ describe("Manager → Printers (S8a)", () => {
     await userEvent.click(within(screen.getByTestId("kitchen-printer")).getByRole("radio", { name: "58 mm paper" }));
     await userEvent.click(screen.getByTestId("save-printers"));
     await waitFor(() => expect(till.saved).toHaveLength(1));
-    expect(till.saved[0]).toEqual({ kitchenTickets: true, kitchen: { target: { kind: "network", host: "192.168.1.50", port: 9100 }, width: 32 }, stations: {} });
+    expect(till.saved[0]).toEqual({ kitchenTickets: true, kitchen: { target: { kind: "network", host: "192.168.1.50", port: 9100 }, width: 32 }, stations: {}, receipt: null, cashDrawer: false });
   });
 
   it("prints a test ticket to the chosen printer", async () => {
-    till.settings = { kitchenTickets: true, kitchen: { target: { kind: "system", name: "EPSON TM-T20" }, width: 48 }, stations: {} };
+    till.settings = { kitchenTickets: true, kitchen: { target: { kind: "system", name: "EPSON TM-T20" }, width: 48 }, stations: {}, receipt: null, cashDrawer: false };
     render(<PrintersCard />);
     await waitFor(() => expect(within(screen.getByTestId("kitchen-printer")).getByRole("combobox")).toHaveValue("system:EPSON TM-T20"));
     await userEvent.click(screen.getByTestId("test-kitchen-printer"));
@@ -69,5 +69,26 @@ describe("Manager → Printers (S8a)", () => {
     await waitFor(() => expect(till.saved).toHaveLength(1));
     expect(till.saved[0]).toEqual({ ...DEFAULT_PRINTER_SETTINGS, kitchenTickets: false });
     expect(screen.getByTestId("printers-words")).toHaveTextContent("Saved. This till won't print kitchen tickets.");
+  });
+
+  it("sends receipts to the receipt printer and opens its cash drawer for cash; a test receipt opens it too (S8b)", async () => {
+    render(<PrintersCard />);
+    const picker = within(screen.getByTestId("receipt-printer"));
+    expect(screen.queryByTestId("cash-drawer-on")).toBeNull();
+    await userEvent.selectOptions(await picker.findByRole("combobox"), "system:EPSON TM-T20");
+    await userEvent.click(screen.getByTestId("cash-drawer-on"));
+    await userEvent.click(screen.getByTestId("save-printers"));
+    await waitFor(() => expect(till.saved).toHaveLength(1));
+    expect(till.saved[0]).toMatchObject({ receipt: { target: { kind: "system", name: "EPSON TM-T20" }, width: 48 }, cashDrawer: true });
+    expect(screen.getByTestId("printers-words")).toHaveTextContent("Receipts print at EPSON TM-T20 (80 mm), and its cash drawer opens for cash.");
+    await userEvent.click(screen.getByTestId("test-receipt-printer"));
+    await waitFor(() => expect(till.raw).toHaveLength(1));
+    expect(Array.from(till.raw[0].bytes).join(",")).toContain([0x1b, 0x70, 0, 25, 250].join(","));
+    // Back to this till's own printer: no drawer to open.
+    await userEvent.selectOptions(picker.getByRole("combobox"), "own");
+    expect(screen.queryByTestId("cash-drawer-on")).toBeNull();
+    await userEvent.click(screen.getByTestId("save-printers"));
+    await waitFor(() => expect(till.saved).toHaveLength(2));
+    expect(till.saved[1]).toMatchObject({ receipt: null, cashDrawer: false });
   });
 });
