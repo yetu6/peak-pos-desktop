@@ -1,3 +1,4 @@
+import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { FIXTURE_PATH, LIVE_API_URL } from "./liveSettings";
 
@@ -7,6 +8,8 @@ export interface SeededProperty {
   propertyId: string;
   outletId: string;
   ownerEmail: string;
+  /** The F&B Manager's own sign-in (cmd/e2e-seed): who runs the menus, as in real life. */
+  managerEmail: string;
   managerStaffId: string;
   managerPin: string;
   cashierStaffId: string;
@@ -31,10 +34,10 @@ export function loadSeededProperty(): SeededProperty {
  * is the owner, who holds pos_terminal.pair.
  */
 export class WebSession {
-  private cookies = new Map<string, string>();
-  private csrf = "";
+  protected cookies = new Map<string, string>();
+  protected csrf = "";
 
-  private keep(response: Response): void {
+  protected keep(response: Response): void {
     for (const entry of response.headers.getSetCookie()) {
       const [pair] = entry.split(";");
       const at = pair.indexOf("=");
@@ -135,4 +138,70 @@ export function tsh(minor: number): string {
 /** What a person types into a money field for an amount: major units. */
 export function typed(minor: number): string {
   return minor % 100 === 0 ? String(minor / 100) : (minor / 100).toFixed(2);
+}
+
+/**
+ * A person signed in on a property's desk computer with their PIN, as staff
+ * who run a property sign in on the web since fbc-peak 00084 (the F&B
+ * Manager, the GM): the computer is paired with its own key, the owner
+ * approves it under Property → Sign-in devices, and the person signs in on
+ * it. The same steps as fbc-peak's cmd/loadtest-desk, through Yetu's routes.
+ */
+export class DeskSession extends WebSession {
+  /**
+   * `pin` is the person's PIN, or their setup code: then `newPin` is the PIN
+   * they choose on this first sign-in (the desk asks for it, as the till
+   * does). Desk and till share the one PIN.
+   */
+  async signInAtDesk(
+    owner: WebSession, seeded: SeededProperty, staffId: string, pin: string, deviceName: string, newPin?: string,
+  ): Promise<void> {
+    const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    const spki = publicKey.export({ type: "spki", format: "der" }).toString("base64");
+    const begun = await deskCall<{ pairingRequestId: string; pairingCode: string; claimToken: string }>(
+      "/api/v1/desk/pairing-requests", { publicKey: spki });
+    await owner.call(`/api/v1/organizations/${seeded.organizationId}/properties/${seeded.propertyId}/desk-devices`, {
+      method: "POST", body: { pairingCode: begun.pairingCode, name: deviceName },
+    });
+    const status = await fetch(`${LIVE_API_URL}/api/v1/desk/pairing-requests/${begun.pairingRequestId}`, {
+      headers: { "X-Peak-Pairing-Token": begun.claimToken },
+    }).then((r) => r.json() as Promise<{ status: string; deviceId?: string }>);
+    if (status.status !== "APPROVED" || !status.deviceId) throw new Error(`the desk was not approved: ${JSON.stringify(status)}`);
+    const challenge = await deskCall<{ challengeId: string; nonce: string }>("/api/v1/desk/challenges", { deviceId: status.deviceId });
+    const signature = signNonce(privateKey, challenge.nonce);
+    const response = await fetch(`${LIVE_API_URL}/api/v1/desk/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challengeId: challenge.challengeId, signature, staffId, pin, ...(newPin ? { newPin } : {}) }),
+    });
+    this.keep(response);
+    if (response.status !== 201) throw new Error(`desk sign-in: HTTP ${response.status} ${await response.text()}`);
+    const csrf = [...this.cookies].find(([name]) => name.toLowerCase().includes("csrf"));
+    if (!csrf) throw new Error("the desk sign-in set no CSRF cookie");
+    this.csrf = decodeURIComponent(csrf[1]);
+  }
+}
+
+async function deskCall<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${LIVE_API_URL}${path}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`POST ${path} -> HTTP ${response.status}: ${text}`);
+  return JSON.parse(text) as T;
+}
+
+/** The device's answer to a challenge: ECDSA P-256 over SHA-256 of the nonce, r||s, base64url (as cmd/loadtest-desk). */
+function signNonce(privateKey: KeyObject, nonceB64Url: string): string {
+  const nonce = Buffer.from(nonceB64Url, "base64url");
+  return sign("sha256", nonce, { key: privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+}
+
+/** A six-digit PIN nobody could guess: not one digit repeated, not a run up or down. */
+export function choosePin(): string {
+  for (;;) {
+    const digits = Array.from(crypto.getRandomValues(new Uint8Array(6)), (byte) => byte % 10);
+    const steps = new Set(digits.slice(1).map((digit, i) => digit - digits[i]));
+    if (!(steps.size === 1 && [0, 1, -1].includes([...steps][0]))) return digits.join("");
+  }
 }

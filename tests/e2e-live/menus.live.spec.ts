@@ -5,18 +5,18 @@
  * database. Nothing is mocked and no price is written here as the till's:
  * every amount checked is one Yetu returned.
  *
- * Steps: the owner switches menus on, puts the seeded dish's category in
+ * Steps: the F&B Manager switches menus on, puts the seeded dish's category in
  * Food and a new Beers category in Drinks, sells Tusker in two sizes and
  * tags the dish Halal -> the till shows Food and Drinks first, the tag on
  * the dish, the sizes on the beer -> a Pint is added and Yetu prices it as
- * the Pint -> the owner renames Food and sells out the Pint: the open till
+ * the Pint -> the manager renames Food and sells out the Pint: the open till
  * shows both without a restart.
  *
  * Run as the other live suites (tests/e2e-live/live-api.sh), on a freshly
  * seeded restaurant, with FBC_PEAK_DIR at a checkout that has the module.
  */
 import { expect, test, type Response } from "@playwright/test";
-import { WebSession, loadSeededProperty, tsh } from "./liveApi";
+import { DeskSession, WebSession, choosePin, loadSeededProperty, tsh } from "./liveApi";
 import { LIVE_API_URL } from "./liveSettings";
 import { body, nextApi, openShift, pairTill, setServerAddress, signInWithPin, tapper } from "./liveTill";
 
@@ -34,31 +34,37 @@ interface Order { id: string; items: Array<{ productId: string; unitPriceMinor: 
 
 test("the till sells by the module's menu, in sizes, against the live API", async ({ page }, testInfo) => {
   const seeded = loadSeededProperty();
+  // The owner approves the till (pos_terminal.pair) and the restaurant's desk computer;
+  // the F&B Manager runs the menus from that desk (fnb_menu.manage is the GM's, the PM's
+  // and the F&B Manager's, not the owner's; property staff sign in on a desk since 00084).
   const web = new WebSession();
   await web.signIn(seeded.ownerEmail);
+  const manager = new DeskSession();
+  // The seeded PIN is a setup code: the manager chooses their own here (nothing later in this suite uses the seeded one).
+  await manager.signInAtDesk(web, seeded, seeded.managerStaffId, seeded.managerPin, `Menu desk ${crypto.randomUUID().slice(0, 4)}`, choosePin());
   const base = `/api/v1/organizations/${seeded.organizationId}/properties/${seeded.propertyId}`;
   const run = crypto.randomUUID().slice(0, 4).toUpperCase();
 
-  // The owner arranges the menu through Yetu's own routes, as Restaurant → Menu does.
-  const menu = await web.call<Menu>(`${base}/fnb/outlets/${seeded.outletId}/settings`, { method: "PUT", body: { menusEnabled: true } });
+  // The F&B Manager arranges the menu through Yetu's own routes, as Restaurant → Menu does.
+  const menu = await manager.call<Menu>(`${base}/fnb/outlets/${seeded.outletId}/settings`, { method: "PUT", body: { menusEnabled: true } });
   expect(menu.menusEnabled).toBe(true);
   const food = menu.groups.find((group) => group.name === "Food")!;
   const drinks = menu.groups.find((group) => group.name === "Drinks")!;
   expect(food && drinks, "switching menus on gives Food and Drinks").toBeTruthy();
-  const dish = (await web.call<{ items: Product[] }>(`${base}/products?outletId=${seeded.outletId}`)).items.find((p) => p.id === seeded.productId)!;
-  await web.call(`${base}/fnb/menu-groups/${food.id}/categories`, { method: "PUT", body: { categoryIds: [dish.categoryId] } });
-  const beers = await web.call<Category>(`${base}/categories`, {
+  const dish = (await manager.call<{ items: Product[] }>(`${base}/products?outletId=${seeded.outletId}`)).items.find((p) => p.id === seeded.productId)!;
+  await manager.call(`${base}/fnb/menu-groups/${food.id}/categories`, { method: "PUT", body: { categoryIds: [dish.categoryId] } });
+  const beers = await manager.call<Category>(`${base}/categories`, {
     method: "POST", body: { outletId: seeded.outletId, code: `BEERS_${run}`, name: `Beers ${run}`, prepStation: "BAR" },
   });
-  await web.call(`${base}/fnb/menu-groups/${drinks.id}/categories`, { method: "PUT", body: { categoryIds: [beers.id] } });
-  const beer = await web.call<Product>(`${base}/products`, {
+  await manager.call(`${base}/fnb/menu-groups/${drinks.id}/categories`, { method: "PUT", body: { categoryIds: [beers.id] } });
+  const beer = await manager.call<Product>(`${base}/products`, {
     method: "POST", body: { outletId: seeded.outletId, categoryId: beers.id, code: `TUSK_${run}`, name: `Tusker ${run}`, priceMinor: 500_000, taxRateBp: 1800 },
   });
-  const bottle = await web.call<Size>(`${base}/fnb/products/${beer.id}/sizes`, { method: "POST", body: { code: "BOTTLE", name: "Bottle", priceMinor: 500_000 } });
-  const pint = await web.call<Size>(`${base}/fnb/products/${beer.id}/sizes`, { method: "POST", body: { code: "PINT", name: "Pint", priceMinor: 700_000 } });
+  const bottle = await manager.call<Size>(`${base}/fnb/products/${beer.id}/sizes`, { method: "POST", body: { code: "BOTTLE", name: "Bottle", priceMinor: 500_000 } });
+  const pint = await manager.call<Size>(`${base}/fnb/products/${beer.id}/sizes`, { method: "POST", body: { code: "PINT", name: "Pint", priceMinor: 700_000 } });
   expect(bottle.isDefault, "the first size is the default").toBe(true);
-  const halal = (await web.call<{ items: Tag[] }>(`${base}/fnb/tags`)).items.find((tag) => tag.code === "HALAL")!;
-  await web.call(`${base}/fnb/products/${dish.id}/details`, { method: "PUT", body: { description: "Slow-cooked, with chips.", tagIds: [halal.id] } });
+  const halal = (await manager.call<{ items: Tag[] }>(`${base}/fnb/tags`)).items.find((tag) => tag.code === "HALAL")!;
+  await manager.call(`${base}/fnb/products/${dish.id}/details`, { method: "PUT", body: { description: "Slow-cooked, with chips.", tagIds: [halal.id] } });
 
   const { tap, pin } = tapper(page);
   const calls: string[] = [];
@@ -106,14 +112,14 @@ test("the till sells by the module's menu, in sizes, against the live API", asyn
     expect(line.unitPriceMinor, "Yetu priced the Pint").toBe(pint.priceMinor);
   });
 
-  await test.step("4. The owner renames Food and sells out the Pint: the open till shows both", async () => {
+  await test.step("4. The manager renames Food and sells out the Pint: the open till shows both", async () => {
     const reread = nextApi(page, "GET", /^\/api\/v1\/fnb\/pos\/menu$/);
-    await web.call(`${base}/fnb/menu-groups/${food.id}`, { method: "PATCH", body: { name: `Kitchen ${run}` } });
+    await manager.call(`${base}/fnb/menu-groups/${food.id}`, { method: "PATCH", body: { name: `Kitchen ${run}` } });
     await body(reread);
     const groupTabs = page.getByRole("tablist", { name: "Menu", exact: true });
     await expect(groupTabs.getByRole("tab", { name: `Kitchen ${run}` })).toBeVisible();
     const again = nextApi(page, "GET", /^\/api\/v1\/fnb\/pos\/menu$/);
-    await web.call(`${base}/fnb/sizes/${pint.id}`, { method: "PATCH", body: { isAvailable: false } });
+    await manager.call(`${base}/fnb/sizes/${pint.id}`, { method: "PATCH", body: { isAvailable: false } });
     await body(again);
     await tap(groupTabs.getByRole("tab", { name: "Drinks" }));
     await tap(page.getByTestId(`menu-${beer.name}`));
