@@ -323,7 +323,9 @@ impl From<PrintTarget> for crate::raw_print::RawTarget {
     fn from(target: PrintTarget) -> Self {
         match target {
             PrintTarget::System { name } => crate::raw_print::RawTarget::System { name },
-            PrintTarget::Network { host, port } => crate::raw_print::RawTarget::Network { host, port },
+            PrintTarget::Network { host, port } => {
+                crate::raw_print::RawTarget::Network { host, port }
+            }
         }
     }
 }
@@ -361,9 +363,45 @@ pub fn load_printer_settings(app: tauri::AppHandle) -> Result<Option<serde_json:
     Ok(serde_json::from_str(raw.trim()).ok())
 }
 
-/// Saves this till's printer settings (the screen made them whole first).
+/// Every printer named in the settings (the kitchen's and each station's).
+fn saved_targets(settings: &serde_json::Value) -> Result<Vec<crate::raw_print::RawTarget>, String> {
+    let bad = || "Those printer settings couldn't be read. Choose the printers again.".to_string();
+    let mut choices = Vec::new();
+    match settings.get("kitchen") {
+        None | Some(serde_json::Value::Null) => {}
+        Some(choice) => choices.push(choice),
+    }
+    match settings.get("stations") {
+        None | Some(serde_json::Value::Null) => {}
+        Some(serde_json::Value::Object(stations)) => choices.extend(stations.values()),
+        Some(_) => return Err(bad()),
+    }
+    choices
+        .into_iter()
+        .map(|choice| {
+            let target = choice.get("target").cloned().ok_or_else(bad)?;
+            serde_json::from_value::<PrintTarget>(target)
+                .map(Into::into)
+                .map_err(|_| bad())
+        })
+        .collect()
+}
+
+/// Saves this till's printer settings, each printer checked first: a printer
+/// in this building on a printing port, never an address elsewhere.
 #[tauri::command]
-pub fn save_printer_settings(app: tauri::AppHandle, settings: serde_json::Value) -> Result<(), String> {
+pub fn save_printer_settings(
+    app: tauri::AppHandle,
+    settings: serde_json::Value,
+) -> Result<(), String> {
+    if !settings.is_object() {
+        return Err(
+            "Those printer settings couldn't be read. Choose the printers again.".to_string(),
+        );
+    }
+    for target in saved_targets(&settings)? {
+        crate::raw_print::check_saved_target(&target)?;
+    }
     let path = printer_settings_path(&app)?;
     let mut file = std::fs::File::create(&path).map_err(|err| err.to_string())?;
     file.write_all(settings.to_string().as_bytes())

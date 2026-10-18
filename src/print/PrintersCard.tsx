@@ -191,7 +191,7 @@ function PrinterPicker({
             const ok = parseNetworkAddress(next);
             onChange(ok ? { target: { kind: "network", ...ok }, width } : null);
           }}
-          error={address && !parsed ? "That isn't a printer's address. Write it as on its test page, such as 192.168.1.50." : undefined}
+          error={address && !parsed ? "That isn't a printer in this building. Write its address as on its test page, such as 192.168.1.50." : undefined}
           autoComplete="off"
         />
       ) : null}

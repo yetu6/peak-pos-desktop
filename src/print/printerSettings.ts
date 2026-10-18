@@ -30,6 +30,14 @@ export const DEFAULT_PRINTER_SETTINGS: PrinterSettings = { kitchenTickets: true,
 
 /** The usual port a network receipt printer takes raw jobs on. */
 export const RAW_PRINT_PORT = 9100;
+/** The last port a print server with several printers uses (9100 to 9109): the till prints to no other (raw_print.rs RAW_PORTS). */
+export const RAW_PRINT_PORT_LAST = 9109;
+
+/** A numbered address on this building's network: private, link-local or this computer. */
+function localIPv4(parts: number[]): boolean {
+  const [a, b] = parts;
+  return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+}
 
 /** The printer a station's kitchen ticket goes to; null: this till's own printer, as before. */
 export function printerFor(settings: PrinterSettings, station: string | undefined): PrinterChoice | null {
@@ -39,7 +47,8 @@ export function printerFor(settings: PrinterSettings, station: string | undefine
 
 /**
  * A network printer's address as a person types it ("192.168.1.50" or
- * "kitchen-printer.local:9100"); null when it isn't one.
+ * "kitchen-printer.local:9100"); null when it isn't one, or isn't a printer
+ * in this building (a printing port, a local address).
  */
 export function parseNetworkAddress(text: string): { host: string; port: number } | null {
   const trimmed = text.trim();
@@ -47,9 +56,10 @@ export function parseNetworkAddress(text: string): { host: string; port: number 
   if (!match) return null;
   const host = match[1];
   const port = match[2] ? Number(match[2]) : RAW_PRINT_PORT;
-  if (port < 1 || port > 65535) return null;
+  if (port < RAW_PRINT_PORT || port > RAW_PRINT_PORT_LAST) return null;
   const ipv4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
-  if (ipv4 && host.split(".").some((part) => Number(part) > 255)) return null;
+  const parts = host.split(".").map(Number);
+  if (ipv4 && (parts.some((part) => part > 255) || !localIPv4(parts))) return null;
   if (!ipv4 && (host.startsWith(".") || host.endsWith(".") || host.startsWith("-"))) return null;
   return { host, port };
 }

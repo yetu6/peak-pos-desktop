@@ -17,6 +17,10 @@ describe("printers on the till (S8a)", () => {
     expect(parseNetworkAddress(" kitchen-printer.local:9101 ")).toEqual({ host: "kitchen-printer.local", port: 9101 });
     expect(parseNetworkAddress("192.168.1.300")).toBeNull();
     expect(parseNetworkAddress("192.168.1.5:70000")).toBeNull();
+    // Only a printer in this building, on a printing port (as raw_print.rs).
+    expect(parseNetworkAddress("192.168.1.5:22")).toBeNull();
+    expect(parseNetworkAddress("8.8.8.8")).toBeNull();
+    expect(parseNetworkAddress("10.0.0.7:9109")).toEqual({ host: "10.0.0.7", port: 9109 });
     expect(parseNetworkAddress("http://printer")).toBeNull();
     expect(parseNetworkAddress("")).toBeNull();
   });

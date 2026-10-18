@@ -42,7 +42,7 @@ describe("Manager → Printers (S8a)", () => {
     await userEvent.selectOptions(await picker.findByRole("combobox"), "network");
     const address = picker.getByLabelText(/Its address/);
     await userEvent.type(address, "192.168.1.300");
-    expect(picker.getByText(/That isn't a printer's address/)).toBeInTheDocument();
+    expect(picker.getByText(/That isn't a printer in this building/)).toBeInTheDocument();
     await userEvent.clear(address);
     await userEvent.type(address, "192.168.1.50");
     await userEvent.click(within(screen.getByTestId("kitchen-printer")).getByRole("radio", { name: "58 mm paper" }));
