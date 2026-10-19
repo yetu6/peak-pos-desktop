@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { POSOrder, POSOrderPayment, POSStationTicket } from "../lib/posContracts";
 import { clockTime } from "../lib/words";
-import { orderMatches, orderTimeline, quantityProblem, removeProblem, reprintProblem, sendProblem } from "./ordersWords";
+import { orderMatches, orderTimeline, quantityProblem, removeProblem, reprintProblem, sendProblem, voidedWords } from "./ordersWords";
 
 function order(extra: Partial<POSOrder> = {}): POSOrder {
   return {
@@ -224,5 +224,41 @@ describe("refusals", () => {
     expect(removeProblem(refused({ code: "CONFLICT", detail: "only an unsent item on an open order can be removed" }))?.words).toBe(
       "The item wasn't removed. Try again.",
     );
+  });
+});
+
+// F-243: the kitchen is told of a void only when it had heard of the order.
+describe("voidedWords", () => {
+  it("an order never sent was only on this till", () => {
+    expect(voidedWords(order({ status: "OPEN", roundsSent: 0 }))).toBe("Order 42 was voided.");
+    expect(voidedWords(order({ status: "OPEN" }))).toBe("Order 42 was voided.");
+  });
+  it("an order the kitchen has says it was told", () => {
+    expect(voidedWords(order({ status: "SENT", roundsSent: 1 }))).toBe("Order 42 was voided. The kitchen has been told.");
+    // Round 2 being taken on an order whose first round went: still the kitchen's.
+    expect(voidedWords(order({ status: "OPEN", roundsSent: 1 }))).toBe("Order 42 was voided. The kitchen has been told.");
+    // A Yetu before rounds: sent is a status.
+    expect(voidedWords(order({ status: "PREPARING" }))).toBe("Order 42 was voided. The kitchen has been told.");
+  });
+});
+
+// F-239: Order 3 had a Vegetable curry added and taken off; its history said nothing of it.
+describe("orderTimeline: lines taken off before they were sent (F-239)", () => {
+  it("says what was taken off, when and by whom", () => {
+    const removedAt = new Date(Date.now() - 5 * 60_000).toISOString();
+    const timeline = orderTimeline({
+      order: order({
+        status: "OPEN",
+        items: [
+          { id: "l1", productId: "p1", name: "Vegetable curry", quantity: 1, unitPriceMinor: 1_800_000, taxMinor: 0, totalMinor: 1_800_000, status: "VOIDED", removedAt, removedByName: "Zawadi Said" },
+          { id: "l2", productId: "p2", name: "Soda", quantity: 2, unitPriceMinor: 150_000, taxMinor: 0, totalMinor: 300_000, status: "VOIDED" },
+        ],
+      }),
+      tickets: [],
+      currency: "TZS",
+    });
+    expect(timeline).toContainEqual({ time: clockTime(removedAt), words: "1 × Vegetable curry taken off before it was sent by Zawadi Said" });
+    // A line voided without a removal (a Yetu before F-239) says nothing new.
+    expect(timeline.map((entry) => entry.words).join(" ")).not.toContain("Soda");
   });
 });

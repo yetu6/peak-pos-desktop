@@ -125,7 +125,7 @@ export function ticketCopyFromKitchenTicket(ticket: {
 
 async function defaultInvoke(command: string, args: Record<string, unknown>): Promise<void> {
   if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
-    throw new Error("No kitchen printer is configured");
+    throw new Error("No printer is set up on this till");
   }
   const { invoke } = await import("@tauri-apps/api/core");
   await invoke(command, args);
@@ -144,6 +144,6 @@ export async function printKitchenTicket(
     return { ok: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { ok: false, error: message || "No kitchen printer is configured" };
+    return { ok: false, error: message || "No printer is set up on this till" };
   }
 }

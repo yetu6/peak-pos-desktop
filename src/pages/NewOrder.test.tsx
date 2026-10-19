@@ -1,10 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NewOrder } from "./NewOrder";
-import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
+import { REGISTER_AUTO_RETURN_SECONDS, REGISTER_QUIET_AFTER_RETURN_MS } from "../register/registerSettings";
+import { clearOperationalSession, getOperationalSession, setOperationalSession } from "../lib/operationalSession";
 import type { POSCatalog, POSOrder } from "../lib/posContracts";
+
+// The printer: done at once unless a test holds it.
+const { printForSpy } = vi.hoisted(() => ({ printForSpy: vi.fn(async () => [] as unknown[]) }));
+vi.mock("../print/printFor", () => ({ printFor: printForSpy }));
+
+// Supervisors at this till, for Void and Discount.
+vi.mock("../auth/DeviceSessionProvider", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../auth/DeviceSessionProvider")>()),
+  useDeviceSessionOptional: () => ({
+    session: { staffId: "staff-1" },
+    roster: [
+      { fullName: "Amina Hassan", staffNumber: "staff-1" },
+      { fullName: "Grace Mushi", staffNumber: "staff-2" },
+    ],
+  }),
+}));
 
 // The Restaurant & Bar module's menu for the outlet: none unless a test sets one.
 const { tillMenu } = vi.hoisted(() => ({ tillMenu: { data: undefined as unknown } }));
@@ -153,7 +170,9 @@ const {
   setItemQuantitySpy,
   getOrderSpy,
   recordTenderSpy,
+  voidOrderSpy,
 } = vi.hoisted(() => ({
+  voidOrderSpy: vi.fn(async () => ({ data: undefined, error: null })),
   getCurrentShiftSpy: vi.fn(async () => ({
     data: {
       id: "shift-1",
@@ -244,14 +263,15 @@ vi.mock("../lib/posApi", () => ({
     listPrintJobs: vi.fn(async () => ({ data: [], error: null })),
     removeItem: removeItemSpy,
     setItemQuantity: setItemQuantitySpy,
+    voidOrder: voidOrderSpy,
   }),
 }));
 
-function renderNewOrder() {
+function renderNewOrder(props: Parameters<typeof NewOrder>[0] = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
-      <NewOrder />
+      <NewOrder {...props} />
     </QueryClientProvider>,
   );
 }
@@ -442,6 +462,40 @@ describe("NewOrder", () => {
     expect(ticket().getByText("Tap an item to start an order.")).toBeInTheDocument();
   });
 
+  // F-232: reaching for View receipt as Paid went by itself rang up the tile beneath.
+  it("a tap on the menu just as Paid goes by itself starts no order; a moment later it does", async () => {
+    await startOrder();
+    getOrderSpy.mockImplementation(async () => ({
+      data: recordTenderSpy.mock.calls.length
+        ? { ...OPEN_ORDER, status: "CLOSED" as const, paidMinor: 1200000, remainingMinor: 0, version: 3 }
+        : OPEN_ORDER,
+      error: null,
+    }));
+    await userEvent.click(screen.getByTestId("pay-order"));
+    await userEvent.type(await screen.findByTestId("amount-received"), "15000");
+    createOrderSpy.mockClear();
+    // Paid's countdown runs on these clocks from the moment it opens.
+    vi.useFakeTimers({ toFake: ["setInterval", "Date"] });
+    try {
+      fireEvent.click(screen.getByTestId("confirm-settle"));
+      await screen.findByRole("dialog", { name: "Paid" });
+      act(() => vi.advanceTimersByTime(REGISTER_AUTO_RETURN_SECONDS * 1000));
+      expect(screen.queryByRole("dialog", { name: "Paid" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("menu-Tusker Lager"));
+      // A tap's add starts on the next turn: give it that turn before looking.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(createOrderSpy).not.toHaveBeenCalled();
+      act(() => vi.advanceTimersByTime(REGISTER_QUIET_AFTER_RETURN_MS));
+      fireEvent.click(screen.getByTestId("menu-Tusker Lager"));
+    } finally {
+      vi.useRealTimers();
+    }
+    await waitFor(() => expect(createOrderSpy).toHaveBeenCalledTimes(1));
+  });
+
   it("Space presses a focused Send to kitchen and Pay", async () => {
     await startOrder();
     screen.getByTestId("send-order").focus();
@@ -594,13 +648,31 @@ describe("NewOrder: the Restaurant & Bar module's menu (S16-B4)", () => {
     expect((addItemSpy.mock.calls[0] as unknown[])[1]).toEqual(expect.objectContaining({ productId: TL, variantId: "sz-pint", quantity: 1 }));
   });
 
-  it("says staff's tags on the order's line too", async () => {
-    tillMenu.data = sized();
+  // F-231: sizes don't wait for the menu to be grouped.
+  it("with menus off, still asks which size, and says staff's tags on the line", async () => {
+    tillMenu.data = { ...sized(), enabled: false };
     renderNewOrder();
-    const tile = await screen.findByTestId("menu-Nyama Choma");
+    const tile = await screen.findByTestId("menu-Tusker Lager");
     await waitFor(() => expect(tile).toBeEnabled());
+    addItemSpy.mockClear();
     await userEvent.click(tile);
-    expect(await within(screen.getByTestId("ticket-panel")).findByTestId("cart-Nyama Choma")).toHaveTextContent("Halal");
+    const sheet = await screen.findByTestId("modifier-dialog");
+    await userEvent.click(within(sheet).getByTestId("size-option-sz-pint"));
+    await userEvent.click(within(sheet).getByTestId("modifier-confirm-add"));
+    await waitFor(() => expect(addItemSpy).toHaveBeenCalled());
+    expect((addItemSpy.mock.calls[0] as unknown[])[1]).toEqual(expect.objectContaining({ productId: TL, variantId: "sz-pint" }));
+  });
+
+  it("says staff's tags on the order's line too, menus on or off (F-231)", async () => {
+    for (const enabled of [true, false]) {
+      cleanup();
+      tillMenu.data = { ...sized(), enabled };
+      renderNewOrder();
+      const tile = await screen.findByTestId("menu-Nyama Choma");
+      await waitFor(() => expect(tile).toBeEnabled());
+      await userEvent.click(tile);
+      expect(await within(screen.getByTestId("ticket-panel")).findByTestId("cart-Nyama Choma")).toHaveTextContent("Halal");
+    }
   });
 
   it("won't take a size that is sold out today", async () => {
@@ -664,5 +736,158 @@ describe("NewOrder: rounds (S17a)", () => {
     await ringUp();
     await userEvent.click(screen.getByTestId("send-order"));
     expect(await screen.findByText("This order has gone to the kitchen. Start a new sale to add more.")).toBeInTheDocument();
+  });
+});
+
+describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tillMenu.data = undefined;
+    localStorage.clear();
+    setOperationalSession({
+      token: "t",
+      expiresAt: "2099-01-01T00:00:00Z",
+      tenantId: "tenant-1",
+      propertyId: "property-1",
+      outletId: "outlet-1",
+      terminalId: "terminal-1",
+      staffId: "staff-1",
+      assurance: "RESTRICTED",
+      capabilities: ["CORE", "POS"],
+      permissions: ["pos.shift.open", "pos.order.create", "pos.order.item.add", "pos.order.send", "pos.payment.record"],
+    });
+  });
+  afterEach(() => {
+    vi.clearAllMocks();
+    getOrderSpy.mockImplementation(async () => ({ data: OPEN_ORDER, error: null }));
+    addItemSpy.mockImplementation(async () => ({ data: OPEN_ORDER, error: null }));
+    printForSpy.mockImplementation(async () => []);
+    clearOperationalSession();
+  });
+
+  // Table 4's order after its first round: sent, and taking more.
+  const TABLE_4: POSOrder = {
+    ...OPEN_ORDER,
+    id: "order-4",
+    dailyNumber: 4,
+    status: "SENT",
+    tableLabel: "4",
+    version: 5,
+    roundsSent: 1,
+    items: OPEN_ORDER.items.map((item) => ({ ...item, status: "SENT" as const, roundNumber: 1 })),
+  };
+
+  it("carries on with an order brought back to Sell: its lines, its table, and the next tap adds to it", async () => {
+    getOrderSpy.mockImplementation(async () => ({ data: TABLE_4, error: null }));
+    addItemSpy.mockImplementation(async () => ({
+      data: { ...TABLE_4, version: 6, items: [...TABLE_4.items, { ...OPEN_ORDER.items[0], id: "item-2", name: "Tusker Lager" }] },
+      error: null,
+    }));
+    const onTicket = vi.fn();
+    renderNewOrder({ resume: TABLE_4, onTicket });
+
+    const ticket = within(screen.getByTestId("ticket-panel"));
+    expect(await ticket.findByRole("button", { name: /Nyama Choma/ })).toBeInTheDocument();
+    expect(screen.getByTestId("table-label")).toHaveTextContent("4");
+    await waitFor(() => expect(getOrderSpy).toHaveBeenCalledWith("order-4"));
+
+    const tile = await screen.findByTestId("menu-Tusker Lager");
+    await waitFor(() => expect(tile).toBeEnabled());
+    await userEvent.click(tile);
+    await waitFor(() => expect(addItemSpy).toHaveBeenCalledTimes(1));
+    expect(createOrderSpy).not.toHaveBeenCalled();
+    expect(addItemSpy.mock.calls[0]).toEqual(expect.arrayContaining(["order-4"]));
+    // The shell hears of the order on the ticket, so it is still there after a look at Orders.
+    await waitFor(() => expect(onTicket).toHaveBeenLastCalledWith(expect.objectContaining({ id: "order-4", version: 6 })));
+  });
+
+  it("an order brought back that another till has paid starts an empty ticket, and says why", async () => {
+    getOrderSpy.mockImplementation(async () => ({ data: { ...TABLE_4, status: "CLOSED", version: 9, remainingMinor: 0 }, error: null }));
+    const onTicket = vi.fn();
+    renderNewOrder({ resume: TABLE_4, onTicket });
+    expect(await screen.findByText("Order 4 is paid already. Start a new sale.")).toBeInTheDocument();
+    expect(within(screen.getByTestId("ticket-panel")).queryByRole("button", { name: /Nyama Choma/ })).toBeNull();
+    expect(onTicket).toHaveBeenLastCalledWith(null);
+  });
+
+  it("two quick taps on one beer are two beers, in turn, on one order", async () => {
+    let version = 1;
+    const lines: POSOrder["items"] = [];
+    // The first beer is still with Yetu when the second tap comes.
+    let answerFirst = () => {};
+    const firstHeld = new Promise<void>((resolve) => (answerFirst = resolve));
+    addItemSpy.mockImplementation(async () => {
+      if (version === 1) await firstHeld;
+      version += 1;
+      lines.push({ ...OPEN_ORDER.items[0], id: `item-${version}`, name: "Tusker Lager" });
+      return { data: { ...OPEN_ORDER, version, items: [...lines] }, error: null } as never;
+    });
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Tusker Lager");
+    await waitFor(() => expect(tile).toBeEnabled());
+    fireEvent.click(tile);
+    await waitFor(() => expect(addItemSpy).toHaveBeenCalledTimes(1));
+    fireEvent.click(tile);
+    answerFirst();
+    await waitFor(() => expect(addItemSpy).toHaveBeenCalledTimes(2));
+    expect(createOrderSpy).toHaveBeenCalledTimes(1);
+    // The second waited for the first, and was sent on the order as the first left it.
+    const versions = addItemSpy.mock.calls.map((call) => (call as unknown[]).find((arg) => typeof arg === "object" && arg !== null && "version" in arg));
+    expect(versions.map((body) => (body as { version: number }).version)).toEqual([1, 2]);
+  });
+
+  it("Send and pay opens the payment as soon as the send is taken, while the ticket is still printing", async () => {
+    printForSpy.mockImplementation(() => new Promise<unknown[]>(() => {}));
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Nyama Choma");
+    await waitFor(() => expect(tile).toBeEnabled());
+    await userEvent.click(tile);
+    await within(screen.getByTestId("ticket-panel")).findByRole("button", { name: /Nyama Choma/ });
+    await userEvent.click(screen.getByTestId("pay-order"));
+    await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledTimes(1));
+    expect(await screen.findByTestId("amount-received")).toBeInTheDocument();
+    expect(printForSpy).toHaveBeenCalled();
+  });
+
+  it("a void says the kitchen was told only of an order it had (F-243)", async () => {
+    async function voidTheTicket() {
+      await userEvent.click(screen.getByRole("button", { name: "More" }));
+      await userEvent.click(await screen.findByRole("button", { name: /Void the order/ }));
+      const voiding = await screen.findByTestId("void-order-dialog");
+      await userEvent.type(within(voiding).getByTestId("void-reason"), "Wrong table");
+      await userEvent.click(within(voiding).getByRole("radio", { name: /Grace Mushi/ }));
+      for (const digit of "123456") await userEvent.click(within(voiding).getByTestId(`void-pin-key-${digit}`));
+      await userEvent.click(within(voiding).getByTestId("confirm-void-order"));
+      await waitFor(() => expect(voidOrderSpy).toHaveBeenCalled());
+    }
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Nyama Choma");
+    await waitFor(() => expect(tile).toBeEnabled());
+    await userEvent.click(tile);
+    await within(screen.getByTestId("ticket-panel")).findByRole("button", { name: /Nyama Choma/ });
+    await voidTheTicket();
+    expect(await screen.findByText("Order 1 was voided.")).toBeInTheDocument();
+
+    cleanup();
+    vi.clearAllMocks();
+    renderNewOrder({ resume: TABLE_4 });
+    await within(screen.getByTestId("ticket-panel")).findByRole("button", { name: /Nyama Choma/ });
+    await voidTheTicket();
+    expect(await screen.findByText("Order 4 was voided. The kitchen has been told.")).toBeInTheDocument();
+  });
+
+  // F-233: no printer, and the till said nothing.
+  it("a kitchen ticket that didn't print is said on Sell", async () => {
+    printForSpy.mockImplementation(async () => [{ ok: false, error: "No printer is set up on this till" }]);
+    setOperationalSession({ ...getOperationalSession()!, token: "f233-session" });
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Nyama Choma");
+    await waitFor(() => expect(tile).toBeEnabled());
+    await userEvent.click(tile);
+    await within(screen.getByTestId("ticket-panel")).findByRole("button", { name: /Nyama Choma/ });
+    await userEvent.click(screen.getByTestId("send-order"));
+    expect(
+      await screen.findByText("The kitchen ticket didn't print: no printer is set up on this till. A manager sets up printers in Manager, Printers."),
+    ).toBeInTheDocument();
   });
 });

@@ -54,12 +54,12 @@ describe("kitchen ticket print", () => {
     const result = await printKitchenTicket(
       { lines: [{ name: "Uji", quantity: "1" }] },
       async () => {
-        throw new Error("No kitchen printer is configured");
+        throw new Error("No printer is set up on this till");
       },
     );
     expect(result).toEqual({
       ok: false,
-      error: "No kitchen printer is configured",
+      error: "No printer is set up on this till",
     });
   });
 

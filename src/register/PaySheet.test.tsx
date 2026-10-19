@@ -216,6 +216,8 @@ describe("PaySheet", () => {
   it("mobile money: a reference goes with it when given, and a smaller amount splits the bill", async () => {
     renderPay();
     await userEvent.click(screen.getByRole("radio", { name: "Mobile money" }));
+    // Paid to the outlet's number, not taken on a machine (F-236).
+    expect(screen.getByText("Check the money has reached your mobile money number, then confirm here.")).toBeInTheDocument();
     await userEvent.type(screen.getByTestId("tender-reference"), "MP-1234");
     await userEvent.type(screen.getByTestId("tender-amount"), "10000");
     expect(pay()).toHaveTextContent("Confirm TSh 10,000 received");
@@ -248,6 +250,25 @@ describe("PaySheet", () => {
     expect(chargeToRoomMutate).toHaveBeenCalledWith(expect.objectContaining({ orderId: "order-1", stayId: "stay-12" }), expect.anything());
     expect(JSON.stringify(chargeToRoomMutate.mock.calls)).not.toMatch(/folio/i);
     expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ method: "ROOM_CHARGE", roomNumber: "12" }));
+  });
+
+  // F-239: room service already says which room; the search started empty.
+  it("charge to room on a room-service order starts the search at its room", async () => {
+    refs.roomAvailable = true;
+    refs.candidates = [
+      { stayId: "stay-201", roomId: "room-201", roomNumber: "201", guestDisplayName: "Grace Mollel", postingEligible: true },
+    ];
+    renderPay({ ...ORDER, serviceType: "ROOM_SERVICE", tableLabel: "201" });
+    await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
+    expect(screen.getByTestId("room-query")).toHaveValue("201");
+    expect(await screen.findByTestId("room-candidate-stay-201")).toBeInTheDocument();
+  });
+
+  it("charge to room on a table's order starts with an empty search", async () => {
+    refs.roomAvailable = true;
+    renderPay({ ...ORDER, serviceType: "DINE_IN", tableLabel: "4" });
+    await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
+    expect(screen.getByTestId("room-query")).toHaveValue("");
   });
 
   it("charge to room isn't offered without lodging", () => {

@@ -50,7 +50,8 @@ type Method = PaymentMethod | "ROOM_CHARGE";
 
 /** What a recorded (not processed) method asks the person to do first. */
 const RECORDED_STEP: Record<Exclude<PaymentMethod, "CASH">, string> = {
-  MOBILE_MONEY: "Take payment on your own machine, then confirm here.",
+  // F-236: mobile money is paid to the outlet's number, not taken on a machine.
+  MOBILE_MONEY: "Check the money has reached your mobile money number, then confirm here.",
   EXTERNAL_CARD: "Take payment on your own machine, then confirm here.",
   BANK_TRANSFER: "Check the transfer has reached the account, then confirm here.",
   OTHER: "Write how it was paid in the reference, then confirm here.",
@@ -388,6 +389,10 @@ export function PaySheetView({
     setMethod(next);
     setAmountText("");
     setReference("");
+    // Room service already says which room: the search starts there (F-239).
+    if (next === "ROOM_CHARGE" && !roomQuery.trim() && order.serviceType === "ROOM_SERVICE" && order.tableLabel?.trim()) {
+      onRoomQuery(order.tableLabel.trim());
+    }
   }
 
   useEffect(() => {

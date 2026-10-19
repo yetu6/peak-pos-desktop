@@ -135,7 +135,7 @@ export function formatPrintDocument(job: POSPrintJob): { title: string; text: st
 
 async function defaultPrint(title: string, text: string): Promise<void> {
   if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
-    throw new Error("No printer is configured");
+    throw new Error("No printer is set up on this till");
   }
   const { invoke } = await import("@tauri-apps/api/core");
   await invoke("print_document", { document: { title, text } });
@@ -228,11 +228,11 @@ export async function processPrintJob(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     try {
-      await ackFailed(claimed.id, message || "No printer is configured");
+      await ackFailed(claimed.id, message || "No printer is set up on this till");
     } catch {
       // Peak already owns the job; a second ack failure must not look like a send failure.
     }
-    return { ok: false, error: message || "No printer is configured" };
+    return { ok: false, error: message || "No printer is set up on this till" };
   }
 }
 

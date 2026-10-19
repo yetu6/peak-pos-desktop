@@ -224,9 +224,13 @@ describe("MenuPanel with the Restaurant & Bar module's menu (S16-B4)", () => {
     expect(tileNames()).toEqual(["menu-Tusker Lager", "menu-Soda"]);
   });
 
-  it("menus off: the categories as before, nothing said of sizes or tags", () => {
+  // F-231: with grouping off a wine sold by the glass or the bottle sold as a
+  // glass with no question; its tile said nothing of its sizes.
+  it("menus off: the categories as before, and the tiles still say the sizes and staff's tags", () => {
     render(<Menu menu={{ ...MENU, enabled: false }} />);
     expect(screen.queryByRole("tablist", { name: "Menu" })).toBeNull();
-    expect(screen.getByTestId("menu-Nyama Choma")).not.toHaveTextContent("Halal");
+    expect(screen.getByRole("tablist", { name: "Menu categories" })).toBeInTheDocument();
+    expect(screen.getByTestId("menu-Nyama Choma")).toHaveTextContent("Halal");
+    expect(plain(screen.getByTestId("menu-Tusker Lager").textContent)).toContain("TSh 5,000 · 2 sizes");
   });
 });

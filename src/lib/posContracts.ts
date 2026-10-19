@@ -37,6 +37,9 @@ export interface POSOrderItem {
   modifiers?: POSOrderItemModifier[];
   /** S17a: the round the line was sent in; absent while it is not yet sent. */
   roundNumber?: number;
+  /** F-239: taken off before it was sent (status VOIDED): when, and by whom. */
+  removedAt?: string;
+  removedByName?: string;
 }
 
 export interface POSStationTicket {
@@ -90,6 +93,8 @@ export interface POSOrder {
   discountKind: "NONE" | "AMOUNT" | "PERCENT";
   discountInput: number;
   discountReason?: string;
+  /** F-229: the order's prices hold their VAT (the property writes them so); absent from a Yetu before it: VAT on top. */
+  pricesIncludeTax?: boolean;
   taxMinor: number;
   totalMinor: number;
   paidMinor: number;
@@ -255,6 +260,8 @@ export interface POSReceiptDocument {
   discountReason?: string;
   taxMinor: number;
   totalMinor: number;
+  /** F-229: the receipt's prices hold their VAT. */
+  pricesIncludeTax?: boolean;
   currency: string;
   tenderMethod: string;
   settledAt: string;

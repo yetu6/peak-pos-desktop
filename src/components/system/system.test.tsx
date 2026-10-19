@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { PIN_LENGTH } from "../../access/accessSettings";
 import {
   Banner,
   Button,
@@ -340,6 +341,15 @@ describe("SupervisorApproval", () => {
     );
     return handlers;
   }
+
+  // F-242: staff PINs are six digits; the pad drew four places for them.
+  it("draws a place for each digit of a PIN, filled as they are keyed", () => {
+    renderApproval({ selectedId: "staff-grace", pinLength: 2 });
+    const dots = document.querySelectorAll(".y-pin-dots__dot");
+    expect(dots).toHaveLength(PIN_LENGTH);
+    expect(PIN_LENGTH).toBe(6);
+    expect(document.querySelectorAll(".y-pin-dots__dot--filled")).toHaveLength(2);
+  });
 
   it("states the request in words and lists the supervisors", async () => {
     const { onSelect } = renderApproval();

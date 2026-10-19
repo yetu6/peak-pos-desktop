@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RealtimeClient } from "../realtime/RealtimeClient";
@@ -80,6 +80,10 @@ const spies = vi.hoisted(() => ({
   // S8a: Yetu's copies of a round's kitchen tickets.
   reprintKitchenTickets: vi.fn(async (..._args: unknown[]): Promise<Result> => ({ data: { roundNumber: 2, printJobs: [] }, error: null })),
   processPendingPrintJobs: vi.fn(async (..._args: unknown[]): Promise<{ ok: boolean; error?: string }[]> => [{ ok: false, error: "No printer is configured" }]),
+  listPOSOrderRefunds: vi.fn(async (): Promise<Result> => ({
+    data: { status: "CLOSED", refundedMinor: 0, remainingMinor: 118_000, lastRefundDate: "2099-12-31", refunds: [], lines: [] },
+    error: null,
+  })),
 }));
 
 function catalogFixture(currency: string): POSCatalog {
@@ -106,7 +110,22 @@ vi.mock("../lib/posApi", () => ({
     reprintKitchenTickets: spies.reprintKitchenTickets,
     takeOverTab: spies.takeOverTab,
     voidOrder: spies.voidOrder,
+    listPOSOrderRefunds: spies.listPOSOrderRefunds,
   }),
+}));
+
+// Refund items stands in here: it has its own tests; these are about where Orders goes after it.
+vi.mock("../orders/RefundItemsSheet", () => ({
+  RefundItemsSheet: ({ onRefunded, onClose }: { onRefunded?: (refund: unknown) => void; onClose: () => void }) => (
+    <div role="dialog" aria-label="Refund items" data-state="open">
+      <button type="button" onClick={() => onRefunded?.({ totalMinor: 118_000, currency: "TZS" })}>
+        Give the refund
+      </button>
+      <button type="button" onClick={onClose}>
+        Done
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("../auth/DeviceSessionProvider", () => ({
@@ -175,7 +194,7 @@ async function flush(): Promise<void> {
   for (let i = 0; i < 30; i++) await Promise.resolve();
 }
 
-function renderOrders(onNewOrder = vi.fn()) {
+function renderOrders(onNewOrder = vi.fn(), onAddItems?: (order: POSOrder) => void) {
   const socket = new FakeSocket();
   const client = new RealtimeClient({
     createSocket: () => socket as unknown as WebSocket,
@@ -185,7 +204,7 @@ function renderOrders(onNewOrder = vi.fn()) {
   render(
     <QueryClientProvider client={queryClient}>
       <RealtimeProvider client={client} queryClient={queryClient}>
-        <ActiveOrders onNewOrder={onNewOrder} />
+        <ActiveOrders onNewOrder={onNewOrder} onAddItems={onAddItems} />
       </RealtimeProvider>
     </QueryClientProvider>,
   );
@@ -290,6 +309,8 @@ afterEach(() => {
   ticketsStore.length = 0;
   receiptsStore.clear();
   vi.clearAllMocks();
+  // A test that gave this till a printer (or another failure) gives it back as it was: none.
+  spies.processPendingPrintJobs.mockImplementation(async () => [{ ok: false, error: "No printer is configured" }]);
   clearOperationalSession();
 });
 
@@ -547,6 +568,8 @@ describe("Orders", () => {
     ordersStore.set("order-0", PAID_ORDER);
     receiptsStore.set("order-0", receiptFor(PAID_ORDER));
     spies.reprintReceipt.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    // This till's printer prints.
+    spies.processPendingPrintJobs.mockResolvedValue([{ ok: true }]);
     renderOrders();
     await screen.findByText("No open orders");
     await userEvent.click(screen.getByRole("tab", { name: /Paid today/ }));
@@ -566,6 +589,24 @@ describe("Orders", () => {
     expect(keys[2]).not.toBe(keys[1]);
     // The copy is printed here: its jobs are the order's (the copy's own id found none).
     expect(spies.processPendingPrintJobs).toHaveBeenCalledWith("property-1", "order-0", undefined, expect.objectContaining({ settings: expect.any(Object) }));
+  });
+
+  // F-233: with no printer the copy failed and the till said it was sent to the printer.
+  it("a copy the printer didn't print says so, and why", async () => {
+    ordersStore.set("order-0", PAID_ORDER);
+    receiptsStore.set("order-0", receiptFor(PAID_ORDER));
+    spies.processPendingPrintJobs.mockResolvedValue([{ ok: false, error: "No printer is set up on this till" }]);
+    renderOrders();
+    await screen.findByText("No open orders");
+    await userEvent.click(screen.getByRole("tab", { name: /Paid today/ }));
+    const sheet = await openDetail("order-0");
+    const print = within(sheet).getByTestId("detail-reprint");
+    await waitFor(() => expect(print).toBeEnabled());
+    await userEvent.click(print);
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent(
+      "The copy didn't print: no printer is set up on this till. Yetu has the receipt; try again once the printer is ready.",
+    );
+    expect(within(sheet).queryByText("A copy of the receipt was sent to the printer.")).toBeNull();
   });
 
   it("keeps an open order's detail when another till takes payment for it, now showing it paid", async () => {
@@ -775,5 +816,97 @@ describe("Orders: Pay sends what isn't sent first (Toast, Square)", () => {
     await userEvent.click(within(sheet).getByTestId("detail-pay"));
     expect(await within(sheet).findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByTestId("settle-dialog")).toBeNull();
+  });
+});
+
+// F-236, found on Bahari QA Hotel's first day: once the cashier left Sell,
+// table 4 could never get a second round or a discount.
+describe("Orders: carrying on with an open order (F-236)", () => {
+  const TABLE_4: POSOrder = {
+    ...OPEN_ORDER,
+    status: "SENT",
+    roundsSent: 1,
+    items: [{ ...OPEN_ORDER.items[0], status: "SENT", roundNumber: 1 }],
+  };
+
+  it("Add items hands the order, as Yetu has it, to Sell", async () => {
+    ordersStore.set("order-1", TABLE_4);
+    const onAddItems = vi.fn();
+    renderOrders(vi.fn(), onAddItems);
+    const sheet = await openDetail("order-1");
+    await userEvent.click(within(sheet).getByTestId("detail-add-items"));
+    expect(onAddItems).toHaveBeenCalledWith(expect.objectContaining({ id: "order-1", roundsSent: 1 }));
+  });
+
+  it("a tab waiting for a shift is taken over first: no Add items", async () => {
+    ordersStore.set("order-1", { ...TABLE_4, waitingForShift: true, handedOverAt: new Date().toISOString() });
+    renderOrders(vi.fn(), vi.fn());
+    const sheet = await openDetail("order-1");
+    expect(within(sheet).queryByTestId("detail-add-items")).toBeNull();
+  });
+
+  it("opens Discount with a supervisor and comes back to the order on Cancel", async () => {
+    ordersStore.set("order-1", TABLE_4);
+    renderOrders(vi.fn(), vi.fn());
+    const sheet = await openDetail("order-1");
+    await userEvent.click(within(sheet).getByTestId("detail-discount"));
+    const discount = await screen.findByTestId("discount-dialog");
+    await userEvent.click(within(discount).getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByRole("dialog", { name: "Order 42" })).toBeInTheDocument();
+  });
+
+  it("a void says the kitchen was told only of an order it had (F-243)", async () => {
+    async function voidIt() {
+      const sheet = await openDetail("order-1");
+      await userEvent.click(within(sheet).getByRole("button", { name: "Void order" }));
+      const voiding = await screen.findByTestId("void-order-dialog");
+      await userEvent.type(within(voiding).getByTestId("void-reason"), "Wrong table");
+      await userEvent.click(within(voiding).getByRole("radio", { name: /Grace Mushi/ }));
+      for (const digit of "123456") await userEvent.click(within(voiding).getByTestId(`void-pin-key-${digit}`));
+      spies.voidOrder.mockImplementationOnce(async () => {
+        ordersStore.delete("order-1");
+        return { data: undefined, error: null };
+      });
+      await userEvent.click(within(voiding).getByTestId("confirm-void-order"));
+    }
+    ordersStore.set("order-1", OPEN_ORDER);
+    renderOrders();
+    await voidIt();
+    expect(await screen.findByText("Order 42 was voided.")).toBeInTheDocument();
+
+    cleanup();
+    ordersStore.set("order-1", TABLE_4);
+    renderOrders();
+    await voidIt();
+    expect(await screen.findByText("Order 42 was voided. The kitchen has been told.")).toBeInTheDocument();
+  });
+});
+
+// F-237: after "Refund given" and Done, the till seemed stuck: Done went back
+// to the order's sheet, which holds the rail until it is closed.
+describe("Orders: after a refund (F-237)", () => {
+  it("Done after a refund goes back to the list, which says what was given back; Cancel goes back to the order", async () => {
+    ordersStore.set("order-0", PAID_ORDER);
+    receiptsStore.set("order-0", receiptFor(PAID_ORDER));
+    renderOrders();
+    await screen.findByText("No open orders");
+    await userEvent.click(screen.getByRole("tab", { name: /Paid today/ }));
+    let sheet = await openDetail("order-0");
+    await waitFor(() => expect(within(sheet).getByTestId("detail-refund")).toBeEnabled());
+
+    // Given: back to the list.
+    await userEvent.click(within(sheet).getByTestId("detail-refund"));
+    const giving = await screen.findByRole("dialog", { name: "Refund items" });
+    await userEvent.click(within(giving).getByRole("button", { name: "Give the refund" }));
+    await userEvent.click(within(giving).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByText("Order 41: TSh 1,180 refunded.")).toBeInTheDocument();
+
+    // Opened again and left without giving one: back to the order.
+    sheet = await openDetail("order-0");
+    await waitFor(() => expect(within(sheet).getByTestId("detail-refund")).toBeEnabled());
+    await userEvent.click(within(sheet).getByTestId("detail-refund"));
+    await userEvent.click(within(await screen.findByRole("dialog", { name: "Refund items" })).getByRole("button", { name: "Done" }));
+    expect(await screen.findByRole("dialog", { name: /^Order / })).toBeInTheDocument();
   });
 });

@@ -48,9 +48,9 @@ export function receiptBytes(receipt: ReceiptCopy, width: PaperWidth, options: R
   for (const line of receipt.lines) columns(out, `${line.quantity.trim() || "1"} x ${line.name}`, line.total ?? "", width);
   out.rule();
 
-  if (receipt.subtotal) columns(out, "Subtotal", receipt.subtotal, width);
+  if (receipt.subtotal) columns(out, receipt.vatIncluded ? "Items" : "Subtotal", receipt.subtotal, width);
   if (receipt.discount) columns(out, receipt.discountReason ? `Discount (${receipt.discountReason})` : "Discount", `-${receipt.discount}`, width);
-  if (receipt.taxAmount) columns(out, "VAT", receipt.taxAmount, width);
+  if (receipt.taxAmount) columns(out, receipt.vatIncluded ? "VAT included" : "VAT", receipt.taxAmount, width);
   if (receipt.totalAmount) {
     out.bold(true).size(1, 2);
     columns(out, "TOTAL", receipt.totalAmount, width);

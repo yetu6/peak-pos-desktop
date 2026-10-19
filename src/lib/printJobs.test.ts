@@ -255,9 +255,9 @@ describe("printJobs", () => {
     );
 
     const results = await processPendingPrintJobs("prop", "order-1", async () => {
-      throw new Error("No printer is configured");
+      throw new Error("No printer is set up on this till");
     });
-    expect(results).toEqual([{ ok: false, error: "No printer is configured" }]);
+    expect(results).toEqual([{ ok: false, error: "No printer is set up on this till" }]);
   });
 
   // YQA-10: a job still PENDING on a later poll -- because the previous

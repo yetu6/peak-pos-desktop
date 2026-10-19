@@ -1,4 +1,5 @@
 import { CircleCheck, CircleX, LoaderCircle, ShieldCheck } from "lucide-react";
+import { PIN_LENGTH } from "../../access/accessSettings";
 import { cn } from "../../lib/utils";
 import { Button } from "./Button";
 import { Banner } from "./containers";
@@ -171,7 +172,8 @@ export function SupervisorApproval({
           role="img"
           aria-label={`${pinLength} ${pinLength === 1 ? "digit" : "digits"} entered`}
         >
-          {Array.from({ length: Math.max(4, pinLength) }, (_, index) => (
+          {/* One dot for each digit of a PIN (F-242: it drew four for six). */}
+          {Array.from({ length: Math.max(PIN_LENGTH, pinLength) }, (_, index) => (
             <span key={index} className={cn("y-pin-dots__dot", index < pinLength && "y-pin-dots__dot--filled")} />
           ))}
         </div>

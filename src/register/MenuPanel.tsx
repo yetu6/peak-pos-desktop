@@ -32,8 +32,9 @@ export interface MenuPanelProps {
   /**
    * The Restaurant & Bar module's menu for this outlet (S16-B4). When it is
    * on, its groups (Food, Drinks, ...) are the first tabs and the categories
-   * the second; tiles carry staff's tags and the sizes. Off or absent: the
-   * menu is exactly as before.
+   * the second. Its tiles carry staff's tags and the sizes on or off (F-231:
+   * an item's sizes don't wait for the menu to be grouped). Absent: the menu
+   * is exactly as before.
    */
   menu?: FnbTillMenu;
   /** The offline register: an item with sizes sells as its default size, said on its tile. */
@@ -229,8 +230,8 @@ export function MenuPanel({
                 data-testid={`menu-${item.name}`}
                 name={item.name}
                 offer={offered?.offer}
-                price={offered ? offered.price : grouped ? tilePriceWords(item.priceMinor, sizesOf(menu, item.id), currency ?? item.currency, offline) : formatMoney(item.priceMinor, currency ?? item.currency)}
-                note={grouped ? tileNote(menu, item.id, offline) : undefined}
+                price={offered ? offered.price : menu ? tilePriceWords(item.priceMinor, sizesOf(menu, item.id), currency ?? item.currency, offline) : formatMoney(item.priceMinor, currency ?? item.currency)}
+                note={menu ? tileNote(menu, item.id, offline) : undefined}
                 soldOut={item.isAvailable === false}
                 disabled={Boolean(addBlocked)}
                 mark={item.categoryId ? markOf.get(item.categoryId) : undefined}

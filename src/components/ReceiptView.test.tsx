@@ -9,12 +9,12 @@ const { reprintMutate, receiptRef, keys, reprintState } = vi.hoisted(() => ({
   reprintMutate: vi.fn(),
   receiptRef: { data: undefined as POSReceipt | undefined, isLoading: false, isError: false },
   keys: { minted: 0 },
-  reprintState: { isPending: false },
+  reprintState: { isPending: false, data: undefined as undefined | { failed?: string } },
 }));
 
 vi.mock("../hooks/usePosData", () => ({
   useReceipt: () => receiptRef,
-  useReprintReceipt: () => ({ mutate: reprintMutate, isPending: reprintState.isPending, error: null }),
+  useReprintReceipt: () => ({ mutate: reprintMutate, isPending: reprintState.isPending, error: null, data: reprintState.data }),
   useIdempotencyKey: () => ({ current: "", next: () => `key-${++keys.minted}` }),
   useMutationMessage: () => null,
 }));
@@ -70,6 +70,46 @@ describe("ReceiptView", () => {
     );
     expect(sheet).not.toHaveTextContent(/invoice/i);
     expect(screen.queryByTestId("receipt-error")).not.toBeInTheDocument();
+  });
+
+  // F-229: a TSh 22,000 biryani at a hotel whose prices include VAT.
+  it("a receipt whose prices include VAT reads the menu price, VAT included", () => {
+    receiptRef.data = {
+      ...RECEIPT,
+      document: {
+        ...RECEIPT.document,
+        pricesIncludeTax: true,
+        items: [{ name: "Chicken biryani", quantity: 1, unitPriceMinor: 2_200_000, taxMinor: 335_593, totalMinor: 2_200_000 }],
+        subtotalMinor: 1_864_407,
+        taxMinor: 335_593,
+        totalMinor: 2_200_000,
+      },
+    };
+    receiptRef.isLoading = false;
+    receiptRef.isError = false;
+    render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+    const doc = screen.getByTestId("receipt-document");
+    expect(doc).toHaveTextContent("Items");
+    expect(doc).toHaveTextContent("VAT included");
+    expect(doc).toHaveTextContent("TSh 3,355.93");
+    expect(doc).not.toHaveTextContent("Subtotal");
+    expect(doc).not.toHaveTextContent("TSh 18,644.07");
+  });
+
+  // F-233: Yetu made the copy; the printer didn't print it.
+  it("a copy the printer didn't print says so", () => {
+    receiptRef.data = RECEIPT;
+    receiptRef.isLoading = false;
+    receiptRef.isError = false;
+    reprintState.data = { failed: "No printer is set up on this till" };
+    try {
+      render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+      expect(screen.getByTestId("reprint-error")).toHaveTextContent(
+        "The copy didn't print: no printer is set up on this till. Yetu has the receipt; try again once the printer is ready.",
+      );
+    } finally {
+      reprintState.data = undefined;
+    }
   });
 
   it("says where the order went and who took the payment, when someone else did", () => {

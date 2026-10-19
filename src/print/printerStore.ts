@@ -39,6 +39,6 @@ export async function listSystemPrinters(): Promise<string[]> {
 }
 
 export async function printRawToPrinter(target: PrinterTarget, bytes: Uint8Array): Promise<void> {
-  if (!inTill()) throw new Error("No printer is configured");
+  if (!inTill()) throw new Error("No printer is set up on this till");
   await invoke("print_raw", { target, bytes: Array.from(bytes) });
 }

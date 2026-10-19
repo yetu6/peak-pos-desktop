@@ -100,7 +100,7 @@ fn send_to_os_printer(title: &str, body: &str) -> Result<(), String> {
 
 #[cfg(not(windows))]
 fn send_unix_lp(title: &str, body: &str) -> Result<(), String> {
-    let lp = which("lp").ok_or_else(|| "No kitchen printer is configured".to_string())?;
+    let lp = which("lp").ok_or_else(|| "No printer is set up on this till".to_string())?;
     let printer = configured_printer_name();
 
     let mut command = Command::new(lp);
@@ -114,12 +114,12 @@ fn send_unix_lp(title: &str, body: &str) -> Result<(), String> {
 
     let mut child = command
         .spawn()
-        .map_err(|_| "No kitchen printer is configured".to_string())?;
+        .map_err(|_| "No printer is set up on this till".to_string())?;
     {
         let stdin = child
             .stdin
             .as_mut()
-            .ok_or_else(|| "No kitchen printer is configured".to_string())?;
+            .ok_or_else(|| "No printer is set up on this till".to_string())?;
         stdin
             .write_all(body.as_bytes())
             .map_err(|err| format!("Printer write failed: {err}"))?;
@@ -134,7 +134,7 @@ fn send_unix_lp(title: &str, body: &str) -> Result<(), String> {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let detail = stderr.trim();
         if detail.is_empty() {
-            return Err("No kitchen printer is configured".to_string());
+            return Err("No printer is set up on this till".to_string());
         }
         return Err(format!("Print failed: {detail}"));
     }
@@ -166,7 +166,7 @@ fn send_windows(title: &str, body: &str) -> Result<(), String> {
 
     let powershell = which("powershell")
         .or_else(|| which("powershell.exe"))
-        .ok_or_else(|| "No kitchen printer is configured".to_string())?;
+        .ok_or_else(|| "No printer is set up on this till".to_string())?;
 
     let output = Command::new(powershell)
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
@@ -174,7 +174,7 @@ fn send_windows(title: &str, body: &str) -> Result<(), String> {
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()
-        .map_err(|_| "No kitchen printer is configured".to_string())?;
+        .map_err(|_| "No printer is set up on this till".to_string())?;
 
     let _ = std::fs::remove_file(&path);
 
@@ -182,7 +182,7 @@ fn send_windows(title: &str, body: &str) -> Result<(), String> {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let detail = stderr.trim();
         if detail.is_empty() {
-            return Err("No kitchen printer is configured".to_string());
+            return Err("No printer is set up on this till".to_string());
         }
         return Err(format!("Print failed: {detail}"));
     }
@@ -263,7 +263,7 @@ mod tests {
             text: "body".to_string(),
         })
         .unwrap_err();
-        assert_eq!(error, "No kitchen printer is configured");
+        assert_eq!(error, "No printer is set up on this till");
         std::env::set_var("PATH", original);
     }
 

@@ -17,17 +17,26 @@ export const PIN_PAUSE_AFTER_FAILURES = 5;
 /** The roster offers a search when more people than this work at the till. */
 export const ROSTER_SEARCH_AFTER = 12;
 
+/**
+ * access.rosterRefreshSeconds: while the till waits on its sign-in screen it
+ * asks Yetu for its names this often (and whenever its window comes back to
+ * the front), so staff added or given a PIN meanwhile appear without a
+ * restart (F-227).
+ */
+export const ROSTER_REFRESH_SECONDS = 30;
+
 /** Opening the till normally takes a few seconds; after this it says what to do. */
 export const SPLASH_SLOW_AFTER_MS = 20_000;
 
 /**
- * Where a manager approves a till in the hotel web app today (POS, then
- * Registers & Devices, then Connect POS, which asks for the pairing code).
- * Change these together with that app's words (slice S10 renames them).
+ * Where a manager approves a till in the hotel web app: Restaurant, then
+ * Tills and screens, then Connect a till, which asks for the pairing code
+ * (F-225: the hotel app's own words; change these together with
+ * peak-hospitality-web's navigation and its Connect a till dialog).
  */
 export const PAIRING_STEPS: readonly string[] = [
-  "In Yetu, open POS, then Registers & Devices.",
-  "Press Connect POS.",
+  "In Yetu, open Restaurant, then Tills and screens.",
+  "Press Connect a till.",
   "Type this code where it asks for the pairing code.",
 ];
 

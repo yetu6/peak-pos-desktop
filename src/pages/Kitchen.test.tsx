@@ -383,6 +383,22 @@ describe("Kitchen on a kitchen or bar display (station tickets)", () => {
     tillMenuAnswer.current = null;
   });
 
+  // F-231: an allergy is said whether or not the menu is grouped.
+  it("says staff's tags with menus off too", async () => {
+    identity.current = { mode: "KITCHEN_DISPLAY", terminalName: "Grill screen", prepStations: ["GRILL"] };
+    tillMenuAnswer.current = {
+      enabled: false, groups: [], unplacedCategoryIds: [], sizes: {},
+      products: { p1: { tags: [{ label: "Contains nuts", kind: "ALLERGEN" }] } },
+    };
+    try {
+      ticketsStore.set("t-1", stationTicket("t-1", "GRILL"));
+      renderKitchen();
+      expect(await screen.findByTestId("kitchen-tags")).toHaveTextContent("Contains nuts");
+    } finally {
+      tillMenuAnswer.current = null;
+    }
+  });
+
   it("is the Bar on a bar display", async () => {
     identity.current = { mode: "BAR_DISPLAY", terminalName: "Bar", prepStations: [] };
     renderKitchen();

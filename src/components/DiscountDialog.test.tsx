@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { idleLockHeld } from "../lib/idleLock";
 import { DiscountDialog } from "./DiscountDialog";
@@ -65,6 +65,19 @@ beforeEach(() => {
 });
 
 describe("DiscountDialog", () => {
+  // F-229: with VAT inside the prices, a discount comes off what the guest pays.
+  it("says where the discount comes off: before VAT, or off what the guest pays when the prices include VAT", () => {
+    render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
+    expect(screen.getByRole("dialog", { name: "Discount" })).toHaveAccessibleDescription(
+      "On order 42, before VAT. A different supervisor approves with their PIN.",
+    );
+    cleanup();
+    render(<DiscountDialog order={{ ...ORDER, pricesIncludeTax: true }} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
+    expect(screen.getByRole("dialog", { name: "Discount" })).toHaveAccessibleDescription(
+      "On order 42, off what the guest pays. A different supervisor approves with their PIN.",
+    );
+  });
+
   it("takes an amount off with a reason and a different supervisor's PIN", async () => {
     const onApplied = vi.fn();
     render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={onApplied} />);

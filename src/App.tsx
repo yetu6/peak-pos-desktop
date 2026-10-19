@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DeviceSessionProvider, useDeviceSession } from "./auth/DeviceSessionProvider";
 import { AccessFrame } from "./access/AccessLayout";
@@ -19,6 +19,7 @@ import { Diagnostics } from "./pages/Diagnostics";
 import { RealtimeClient } from "./realtime/RealtimeClient";
 import { RealtimeProvider } from "./realtime/RealtimeProvider";
 import { usePosShift } from "./hooks/usePosData";
+import type { POSOrder } from "./lib/posContracts";
 import { REALTIME_BRIDGE_URL } from "./lib/env";
 import { createRealtimeSocket } from "./lib/peakSocket";
 import { getApiBaseUrl } from "./lib/peakConfig";
@@ -74,6 +75,10 @@ function PosShell() {
   const { shift } = usePosShift();
   const person = personLabel(session?.staffId, roster);
   const sync = useSyncCenter();
+  // The order on Sell's ticket, kept while the person looks at Orders or the
+  // kitchen and back (F-236); Orders' "Add items" puts an open order here.
+  // It goes with the person: locking the till starts the next one empty.
+  const [sellOrder, setSellOrder] = useState<POSOrder | null>(null);
 
   if (!nav.some((item) => item.page === page)) {
     setPage(nav[0]?.page ?? "orders");
@@ -96,9 +101,15 @@ function PosShell() {
       workspaceVariant={page === "new" || page === "orders" || page === "kitchen" ? "full" : "padded"}
     >
       {page === "orders" ? (
-        <ActiveOrders onNewOrder={() => setPage("new")} />
+        <ActiveOrders
+          onNewOrder={() => setPage("new")}
+          onAddItems={(order) => {
+            setSellOrder(order);
+            setPage("new");
+          }}
+        />
       ) : page === "new" ? (
-        offlineCash ? <OfflineNewOrder /> : <NewOrder />
+        offlineCash ? <OfflineNewOrder /> : <NewOrder resume={sellOrder} onTicket={setSellOrder} />
       ) : page === "kitchen" ? (
         <Kitchen />
       ) : page === "manager" ? (
@@ -145,9 +156,20 @@ function RealtimeSession({ children }: { children: ReactNode }) {
  * conditionally within one component, honoring the Rules of Hooks.
  */
 function ReadyGate() {
-  const { session, identity } = useDeviceSession();
+  const { session, identity, prepareOffline } = useDeviceSession();
   const offlineCash = session?.mode === "offline-cash";
   const { shift, isLoading: shiftLoading } = usePosShift();
+  // Yetu gives a till its offline start-up only while a shift is open (409
+  // before), so one signed in before opening the shift asks again once it
+  // opens (F-228); one that signed in to an open shift had it at sign-in.
+  const opensShiftHere = useRef(false);
+  if (!offlineCash && !shiftLoading && !shift) opensShiftHere.current = true;
+  const shiftId = shift?.id;
+  useEffect(() => {
+    if (!shiftId || !opensShiftHere.current) return;
+    opensShiftHere.current = false;
+    void prepareOffline?.();
+  }, [shiftId, prepareOffline]);
   // Offline cash resumes a lease-bound shift locally — never open a new one
   // while Peak is unreachable (ONLINE REQUIRED for OpenShift). A kitchen or
   // bar display takes no cash, so it needs no shift (owner, 2026-10-12; Yetu's

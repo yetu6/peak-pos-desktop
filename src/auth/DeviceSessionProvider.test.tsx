@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { ROSTER_REFRESH_SECONDS } from "../access/accessSettings";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { generateDeviceKeyPair } from "../lib/deviceCrypto";
@@ -300,6 +301,59 @@ describe("DeviceSessionProvider", () => {
     renderSession(store);
     expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
     await waitFor(() => expect(screen.getByTestId("roster")).toHaveTextContent("Amina Hassan"));
+  });
+
+  // F-227: Baraka and Zawadi chose their PINs while the till sat on its
+  // sign-in screen, and it never offered them.
+  it("asks again for the names while it waits on the sign-in screen, and when its window comes back", async () => {
+    const keys = await generateDeviceKeyPair();
+    const store = memoryStore(
+      JSON.stringify({
+        ...keys,
+        deviceCode: "dev_abc",
+        terminalId: "11111111-1111-1111-1111-111111111111",
+        deviceCredential: "device-secret",
+        approved: true,
+        terminalName: "Bar 1",
+      }),
+    );
+    const staff = [{ id: "00001", displayName: "Amina Hassan", staffSuffix: "001" }];
+    const challenges = vi.fn(async () =>
+      jsonResponse({ challengeId: "11111111-1111-1111-1111-111111111111", nonce: btoa("n".repeat(32)), expiresAt: "2099-01-01T00:00:00Z", staff: [...staff] }),
+    );
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/pos/device/challenges")) return challenges();
+      throw new Error(`unexpected fetch: ${String(input)}`);
+    }));
+    // The sign-in screen's own refresh, caught so the test can make it come round.
+    const realSetInterval = window.setInterval.bind(window);
+    const refreshes: Array<() => void> = [];
+    const intervals = vi.spyOn(window, "setInterval").mockImplementation(((fn: () => void, ms?: number) => {
+      if (ms === ROSTER_REFRESH_SECONDS * 1000) {
+        refreshes.push(fn);
+        return 0;
+      }
+      return realSetInterval(fn, ms);
+    }) as typeof window.setInterval);
+    try {
+      renderSession(store);
+      await waitFor(() => expect(screen.getByTestId("roster")).toHaveTextContent("Amina Hassan"));
+      expect(refreshes.length).toBeGreaterThan(0);
+
+      // Zawadi chooses her PIN at the desk; the refresh comes round.
+      staff.push({ id: "00002", displayName: "Zawadi Said", staffSuffix: "002" });
+      act(() => refreshes.at(-1)?.());
+      await waitFor(() => expect(screen.getByTestId("roster")).toHaveTextContent("Zawadi Said"));
+
+      // Baraka too; the till's window is brought back to the front.
+      staff.push({ id: "00003", displayName: "Baraka Mushi", staffSuffix: "003" });
+      act(() => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      await waitFor(() => expect(screen.getByTestId("roster")).toHaveTextContent("Baraka Mushi"));
+    } finally {
+      intervals.mockRestore();
+    }
   });
 
   it("unpairs when Peak withholds a challenge from a till that was already trusted", async () => {

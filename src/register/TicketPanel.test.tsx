@@ -278,3 +278,29 @@ describe("TicketPanel: a line holds what Yetu takes", () => {
     expect(screen.getByRole("button", { name: "One more Cappuccino" })).toBeDisabled();
   });
 });
+
+// F-229: with VAT inside the prices the ticket reads the menu prices.
+describe("TicketPanel: prices that include VAT", () => {
+  it("reads Items at the menu prices, TSh 2,000 off them, VAT included and the total", () => {
+    renderTicket({
+      order: {
+        ...ORDER,
+        pricesIncludeTax: true,
+        subtotalMinor: 1_271_186,
+        discountMinor: 169_491,
+        taxMinor: 198_305,
+        totalMinor: 1_300_000,
+        remainingMinor: 1_300_000,
+        items: [line("l1", "Cappuccino", 3, 1_500_000)],
+      },
+    });
+    const totals = screen.getByTestId("ticket-totals");
+    expect(totals).toHaveTextContent("Items");
+    expect(totals).toHaveTextContent("TSh 15,000");
+    expect(screen.getByTestId("cart-discount")).toHaveTextContent("TSh 2,000");
+    expect(totals).toHaveTextContent("VAT included");
+    expect(totals).toHaveTextContent("TSh 1,983.05");
+    expect(totals).not.toHaveTextContent("Subtotal");
+    expect(screen.getByTestId("cart-preview-total")).toHaveTextContent("TSh 13,000");
+  });
+});

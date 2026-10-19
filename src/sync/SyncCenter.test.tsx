@@ -118,7 +118,7 @@ describe("the Sync Center", () => {
     expect(within(sheet).getByTestId("sync-waiting")).toHaveTextContent("3 sales waiting to send");
     expect(within(sheet).getByTestId("sync-waiting")).toHaveTextContent("They go to Yetu by themselves when the connection returns.");
     expect(within(sheet).getByTestId("sync-sent")).toHaveTextContent("12 sales sent to Yetu");
-    expect(within(sheet).getByTestId("sync-sent")).toHaveTextContent("Last sent 14:02");
+    expect(within(sheet).getByTestId("sync-sent")).toHaveTextContent("Last checked with Yetu at 14:02");
     expect(within(sheet).getByTestId("sync-attention")).toHaveTextContent("2 sales need a manager to check them.");
     expect(within(sheet).getByTestId("sync-attention")).toHaveTextContent("A manager checks them in Yetu.");
     const technical = within(sheet).getByText("Technical details").closest("details")!;
@@ -139,6 +139,22 @@ describe("the Sync Center", () => {
     expect(await within(sheet).findByTestId("sync-result")).toHaveTextContent("Everything is sent.");
     expect(within(sheet).getByTestId("sync-result")).toHaveAttribute("role", "status");
     expect(within(sheet).getByTestId("sync-waiting")).toHaveTextContent("Nothing waiting to send.");
+  });
+
+  // F-228: a new till read "No sales sent from this till yet." beside "Last
+  // sent 11:57", and Try again said "Everything is sent." with nothing to send.
+  it("a till that has never had a sale to send says so, and when it last reached Yetu", async () => {
+    const idle = { ...LIVE, queuedOperations: 0, reconciledOperations: 0, exceptionOperations: 0 };
+    core.syncState.mockResolvedValue(idle);
+    core.retrySync.mockResolvedValue(idle);
+    renderCenter();
+    await userEvent.click(await screen.findByTestId("connectivity"));
+    const sheet = await screen.findByRole("dialog", { name: "Sync" });
+    const sent = within(sheet).getByTestId("sync-sent");
+    expect(sent).toHaveTextContent("No sales sent from this till yet.");
+    expect(sent).not.toHaveTextContent("Last sent");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Try again" }));
+    expect(await within(sheet).findByTestId("sync-result")).toHaveTextContent("Connected to Yetu. Nothing is waiting to send.");
   });
 
   it("when Yetu still can't be reached, says so as a failure; the sales stay", async () => {
