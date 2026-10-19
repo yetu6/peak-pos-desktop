@@ -58,7 +58,8 @@ describe("TicketActions", () => {
   it("keeps Send to kitchen and Pay apart: place, colour, icon, size and words", () => {
     renderActions();
     const send = screen.getByRole("button", { name: /Send to kitchen/ });
-    const pay = screen.getByRole("button", { name: /Pay TSh 40,120/ });
+    // Nothing is sent yet: Pay sends it first, and says so.
+    const pay = screen.getByRole("button", { name: /Send and pay TSh 40,120/ });
     expect(send.compareDocumentPosition(pay) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(send).toHaveClass("y-button--secondary", "y-button--56");
     expect(pay).toHaveClass("y-button--primary", "y-button--64");
@@ -119,7 +120,7 @@ describe("TicketActions", () => {
 
   it("Discount and Void wait until there is an order not yet paid, and say why", async () => {
     renderActions({ order: { ...ORDER, paidMinor: 1_000_000, remainingMinor: 3_012_000 } });
-    expect(screen.getByRole("button", { name: /Pay TSh 30,120/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Send and pay TSh 30,120/ })).toBeEnabled();
     await userEvent.click(screen.getByRole("button", { name: "More" }));
     const more = screen.getByRole("dialog", { name: "More for this order" });
     expect(within(more).getByRole("button", { name: /Discount/ })).toBeDisabled();
@@ -140,15 +141,23 @@ describe("TicketActions: rounds (S17a)", () => {
     ],
   };
 
-  it("sends what was added after a round as the next round, and Pay waits for it in Yetu's words", async () => {
+  it("sends what was added after a round as the next round; Pay sends it first", async () => {
     const handlers = renderActions({ order: served });
     const send = screen.getByTestId("send-order");
     expect(send).toHaveTextContent("Send round 2");
     expect(send).toBeEnabled();
-    expect(screen.getByTestId("pay-order")).toBeDisabled();
-    expect(screen.getByTestId("pay-waits")).toHaveTextContent("Send or remove what isn't sent yet, then take payment.");
+    const pay = screen.getByTestId("pay-order");
+    expect(pay).toBeEnabled();
+    expect(pay).toHaveTextContent("Send and pay TSh");
+    expect(screen.queryByTestId("pay-waits")).toBeNull();
     await userEvent.click(send);
     expect(handlers.onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("someone who can't send waits for someone who can, in Yetu's words", () => {
+    renderActions({ order: served, canSend: false });
+    expect(screen.getByTestId("pay-order")).toBeDisabled();
+    expect(screen.getByTestId("pay-waits")).toHaveTextContent("Send or remove what isn't sent yet, then take payment.");
   });
 
   it("a Yetu before rounds sends an order once: nothing to send after it", () => {

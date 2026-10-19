@@ -1,4 +1,5 @@
 import { ChefHat, Printer, Trash2, Undo2, Wallet } from "lucide-react";
+import { sendWords, takesMore } from "../register/rounds";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, PermissionNotice, RefusalNotice, Sheet, StatusChip, TicketLine, type Refusal } from "../components/system";
 import {
@@ -131,8 +132,12 @@ export function OrderDetailView({
   const voided = order.status === "VOIDED";
   const owing = !paid && !voided;
   const partPaid = order.paidMinor > 0;
-  const sendable = open && lines.some((line) => line.status === "ADDED");
+  // Rounds (S17a): an order takes more until it is paid, so what isn't sent can be sent.
+  const takesLines = takesMore(order);
+  const sendable = takesLines && lines.some((line) => line.status === "ADDED");
   const payable = owing && lines.length > 0 && order.remainingMinor > 0;
+  // Pay sends what isn't sent first (as Sell does): the kitchen hears of everything paid for.
+  const sendsOnPay = canSend && sendable;
   const reference = orderReference(order);
   const payments = order.payments ?? [];
   const refunded = paid && refunds !== undefined && refunds.refundedMinor > 0;
@@ -209,7 +214,7 @@ export function OrderDetailView({
                 >
                   Void order
                 </Button>
-                {open ? (
+                {takesLines ? (
                   canSend ? (
                     <Button
                       size={56}
@@ -219,7 +224,7 @@ export function OrderDetailView({
                       disabled={busy || !sendable}
                       onClick={onSend}
                     >
-                      {pending === "send" ? "Sending…" : "Send to kitchen"}
+                      {pending === "send" ? "Sending…" : sendWords(order)}
                     </Button>
                   ) : (
                     <PermissionNotice who="staff who take orders" action="send them to the kitchen" next="Ask one to help." />
@@ -255,7 +260,7 @@ export function OrderDetailView({
                   disabled={busy || !payable}
                   onClick={onPay}
                 >
-                  {payable ? `Pay ${formatMoney(order.remainingMinor, currency)}` : "Pay"}
+                  {payable ? `${sendsOnPay ? "Send and pay" : "Pay"} ${formatMoney(order.remainingMinor, currency)}` : "Pay"}
                 </Button>
               ) : (
                 <PermissionNotice who="a cashier or manager" action="take payment" next="Ask one to help." />
@@ -550,6 +555,32 @@ export function OrderDetail({
     setResult(null);
   }
 
+  /** Pay: what isn't sent goes to the kitchen first, then the payment opens. */
+  function payAfterSending() {
+    const unsent = order.items.some((line) => line.status === "ADDED");
+    if (pending !== null) return;
+    if (!(canSend && takesMore(order) && unsent)) {
+      onPay();
+      return;
+    }
+    begin();
+    sendOrder.mutate(
+      { orderId: order.id, version: order.version, idempotencyKey: sendKey.keyFor([order.id, order.version].join("|")) },
+      {
+        onSuccess: (updated) => {
+          void printAfter(updated.id);
+          onPay();
+        },
+        onError: (error) => {
+          const refusal = sendProblem(error);
+          setProblem(refusal ?? { kind: "other", words: "The order wasn't sent, so payment didn't open. Try again." });
+          if (refusal?.kind !== "network") sendKey.forget();
+          if (refusal?.kind === "moved") onReload();
+        },
+      },
+    );
+  }
+
   function send() {
     if (pending !== null) return;
     begin();
@@ -677,7 +708,7 @@ export function OrderDetail({
       selectedLineId={selectedLineId}
       onSelectLine={setSelectedLineId}
       onSend={send}
-      onPay={onPay}
+      onPay={payAfterSending}
       onVoid={onVoid}
       onRemoveLine={remove}
       onReprint={printCopy}

@@ -436,6 +436,14 @@ describe("NewOrder", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
+  it("Send and pay: a send Yetu refuses keeps the payment closed, and says why", async () => {
+    await startOrder();
+    sendOrderSpy.mockResolvedValueOnce({ data: undefined, error: { code: "FORBIDDEN", detail: "x" } } as never);
+    await userEvent.click(screen.getByTestId("pay-order"));
+    await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("amount-received")).toBeNull();
+  });
+
   it("after payment shows Paid with the change, and New sale clears the ticket", async () => {
     await startOrder();
     // The order reads back closed once the payment is recorded (the Pay sheet also reads it on opening).
@@ -445,8 +453,10 @@ describe("NewOrder", () => {
         : OPEN_ORDER,
       error: null,
     }));
+    // Not sent yet: Pay sends it to the kitchen, then takes payment.
     await userEvent.click(screen.getByTestId("pay-order"));
-    await userEvent.type(screen.getByTestId("amount-received"), "15000");
+    await userEvent.type(await screen.findByTestId("amount-received"), "15000");
+    expect(sendOrderSpy).toHaveBeenCalledTimes(1);
     await userEvent.click(screen.getByTestId("confirm-settle"));
     const done = await screen.findByRole("dialog", { name: "Paid" });
     expect(within(done).getByTestId("done-change")).toHaveTextContent("Change to give TSh 3,000");

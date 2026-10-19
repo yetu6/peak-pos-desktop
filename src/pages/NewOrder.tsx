@@ -18,7 +18,7 @@ import {
 import { ReceiptView } from "../components/ReceiptView";
 import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OptionsSheet } from "../register/OptionsSheet";
-import { takesMore } from "../register/rounds";
+import { takesMore, unsentLines } from "../register/rounds";
 import { useTillMenu } from "../fnb/useTillMenu";
 import { sizesOf, tagNote } from "../fnb/fnbWords";
 import { PaymentDone } from "../register/PaymentDone";
@@ -219,8 +219,8 @@ export function NewOrder() {
     }
   }
 
-  async function sendToKitchen() {
-    if (!order || order.items.length === 0) return;
+  async function sendToKitchen(): Promise<boolean> {
+    if (!order || order.items.length === 0) return false;
     setActionError(null);
     try {
       const next = await sendOrder.mutateAsync({
@@ -231,10 +231,20 @@ export function NewOrder() {
       setOrder(next);
       setSentAt(new Date());
       await printAfter(next.id);
+      return true;
     } catch (error) {
       // The words come from sendOrder.error. Yetu refused it: the next press is a new request.
       if (sellProblem(error, "send")?.kind !== "network") sendRequest.forget();
+      return false;
     }
+  }
+
+  /** Pay: what isn't sent goes to the kitchen first (Send and pay), then the payment opens. */
+  async function pay() {
+    if (order && canSend && takesMore(order) && unsentLines(order) > 0) {
+      if (!(await sendToKitchen())) return;
+    }
+    setSettleOpen(true);
   }
 
   function clearTicket() {
@@ -307,7 +317,7 @@ export function NewOrder() {
                 canSend={canSend}
                 canPay={canPay}
                 onSend={() => void sendToKitchen()}
-                onPay={() => setSettleOpen(true)}
+                onPay={() => void pay()}
                 onDiscount={() => setDiscountOpen(true)}
                 onVoid={() => setVoidOpen(true)}
                 onNote={() => setNoteOpen(true)}

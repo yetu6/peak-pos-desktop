@@ -410,7 +410,8 @@ describe("Orders", () => {
     const sheet = await openDetail("order-1");
     expect(sheet).toHaveAccessibleName("Order 42");
     expect(within(sheet).getByTestId("order-detail-lines")).toHaveTextContent("Lunch");
-    expect(within(sheet).getByTestId("detail-pay")).toHaveTextContent("Pay TSh 1,180");
+    // Not sent yet: Pay sends it to the kitchen first.
+    expect(within(sheet).getByTestId("detail-pay")).toHaveTextContent("Send and pay TSh 1,180");
     expect(within(sheet).getByTestId("detail-pay")).toHaveFocus();
     expect(within(sheet).getByRole("button", { name: "Void order" })).toBeEnabled();
   });
@@ -730,5 +731,47 @@ describe("Orders: a tab handed over to the next shift (S17b)", () => {
     const sheet = await openDetail("order-1");
     await within(sheet).findByTestId("detail-waiting");
     expect(within(sheet).queryByTestId("detail-take-over")).toBeNull();
+  });
+});
+
+describe("Orders: Pay sends what isn't sent first (Toast, Square)", () => {
+  // Round 1 went; a tart was added after: Send round 2 here, and Pay sends it first.
+  const ROUND2: POSOrder = {
+    ...OPEN_ORDER,
+    status: "SERVED",
+    roundsSent: 1,
+    items: [
+      { ...OPEN_ORDER.items[0], status: "SENT", roundNumber: 1 },
+      { id: "item-2", productId: "p1", name: "Chocolate tart", quantity: 1, unitPriceMinor: 50_000, taxMinor: 9_000, totalMinor: 59_000, status: "ADDED" },
+    ],
+  };
+
+  it("an order with a line added after its round sends round 2 from here", async () => {
+    ordersStore.set("order-1", ROUND2);
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    expect(within(sheet).getByTestId("detail-send")).toHaveTextContent("Send round 2");
+    expect(within(sheet).getByTestId("detail-send")).toBeEnabled();
+  });
+
+  it("Send and pay sends the round, then opens the payment", async () => {
+    ordersStore.set("order-1", ROUND2);
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    const pay = within(sheet).getByTestId("detail-pay");
+    expect(pay).toHaveTextContent("Send and pay TSh");
+    await userEvent.click(pay);
+    await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledWith("order-1", ROUND2.version, expect.any(String)));
+    expect(await screen.findByTestId("settle-dialog")).toBeInTheDocument();
+  });
+
+  it("when the send is refused, the payment doesn't open and the till says why", async () => {
+    ordersStore.set("order-1", ROUND2);
+    spies.sendOrder.mockResolvedValueOnce({ data: undefined, error: { code: "FORBIDDEN", detail: "x" } });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(within(sheet).getByTestId("detail-pay"));
+    expect(await within(sheet).findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByTestId("settle-dialog")).toBeNull();
   });
 });
