@@ -101,6 +101,41 @@ export function OpenShiftView({
     onOpen(openingMinor);
   }
 
+  // The last shift's figures: under Open shift when Close the day fills the
+  // other column, so the screen fits a 768px-high till without scrolling.
+  const closedSummary = closed ? (
+    <section className="y-cash__card" data-testid="closed-shift-summary" aria-labelledby="closed-title">
+      <h2 id="closed-title" className="y-cash__card-title">
+        Shift closed at {clockTime(closed.at)}
+      </h2>
+      <dl className="y-cash__summary y-cash__summary--compact">
+        <div>
+          <dt>Expected</dt>{" "}
+          <dd>
+            <Money minor={closed.shift.expectedCashMinor} currency={closed.currency} size="lead" />
+          </dd>
+        </div>
+        <div>
+          <dt>Counted</dt>{" "}
+          <dd>
+            <Money minor={closed.shift.countedCashMinor} currency={closed.currency} size="lead" />
+          </dd>
+        </div>
+      </dl>
+      <p className="y-cash__result">
+        {closed.shift.varianceMinor != null && closed.currency
+          ? differenceWords(closed.shift.varianceMinor, closed.currency)
+          : "Closed"}
+      </p>
+      {handedOverWords(closed.shift.handedOverTabs, closed.shift.handedOverOwedMinor, closed.currency) ? (
+        <p className="y-cash__muted" data-testid="closed-shift-tabs">
+          {handedOverWords(closed.shift.handedOverTabs, closed.shift.handedOverOwedMinor, closed.currency)}
+        </p>
+      ) : null}
+    </section>
+  
+  ) : null;
+
   return (
     <AccessLayout
       testId="open-shift-screen"
@@ -171,41 +206,12 @@ export function OpenShiftView({
               <PermissionNotice who="a cashier or manager" action="open the shift" next="Ask one to open it." />
             </div>
           )}
+          {closeDay ? closedSummary : null}
         </div>
 
         {aside ? (
           <div className="y-access__column">
-            {closed ? (
-              <section className="y-cash__card" data-testid="closed-shift-summary" aria-labelledby="closed-title">
-                <h2 id="closed-title" className="y-cash__card-title">
-                  Shift closed at {clockTime(closed.at)}
-                </h2>
-                <dl className="y-cash__summary y-cash__summary--compact">
-                  <div>
-                    <dt>Expected</dt>{" "}
-                    <dd>
-                      <Money minor={closed.shift.expectedCashMinor} currency={closed.currency} size="lead" />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Counted</dt>{" "}
-                    <dd>
-                      <Money minor={closed.shift.countedCashMinor} currency={closed.currency} size="lead" />
-                    </dd>
-                  </div>
-                </dl>
-                <p className="y-cash__result">
-                  {closed.shift.varianceMinor != null && closed.currency
-                    ? differenceWords(closed.shift.varianceMinor, closed.currency)
-                    : "Closed"}
-                </p>
-                {handedOverWords(closed.shift.handedOverTabs, closed.shift.handedOverOwedMinor, closed.currency) ? (
-                  <p className="y-cash__muted" data-testid="closed-shift-tabs">
-                    {handedOverWords(closed.shift.handedOverTabs, closed.shift.handedOverOwedMinor, closed.currency)}
-                  </p>
-                ) : null}
-              </section>
-            ) : null}
+            {closeDay ? null : closedSummary}
             {closeDay}
           </div>
         ) : null}

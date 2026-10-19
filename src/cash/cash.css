@@ -240,7 +240,38 @@
 
 /* Status → Printers (S8a). */
 .y-printers__switch { display: flex; min-height: 48px; align-items: center; gap: var(--space-3); font-weight: 600; }
-.y-printers__switch input { width: 24px; height: 24px; }
+/* An on/off switch with a full 56x48 touch target: a track and a knob, Yetu Blue when on. */
+.y-printers__switch input {
+  position: relative;
+  width: 56px;
+  height: 48px;
+  flex: none;
+  margin: 0;
+  appearance: none;
+  cursor: pointer;
+}
+.y-printers__switch input::before {
+  position: absolute;
+  inset: 9px 0;
+  border-radius: 999px;
+  background: var(--line-control);
+  content: "";
+  transition: background-color var(--motion-press);
+}
+.y-printers__switch input::after {
+  position: absolute;
+  top: 13px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #ffffff;
+  content: "";
+  transition: transform var(--motion-press);
+}
+.y-printers__switch input:checked::before { background: var(--action); }
+.y-printers__switch input:checked::after { transform: translateX(26px); }
+.y-printers__switch input:focus-visible { border-radius: 999px; outline: var(--focus-width) solid var(--focus); outline-offset: 2px; }
 .y-printers__picker { display: grid; gap: var(--space-2); padding-block: var(--space-2); }
 .y-printers__label { font-weight: 600; }
 .y-printers__subtitle { margin: var(--space-3) 0 0; font-size: inherit; font-weight: 700; }
