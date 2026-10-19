@@ -329,3 +329,9 @@
   list-style: none;
   font-size: var(--type-lead);
 }
+
+/* S17b: a tab waiting for a shift: what happened, then the one thing to do. */
+.y-detail__waiting {
+  display: grid;
+  gap: var(--space-3);
+}

@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NewOrder } from "./NewOrder";
 import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
 import type { POSCatalog, POSOrder } from "../lib/posContracts";
+
+// The Restaurant & Bar module's menu for the outlet: none unless a test sets one.
+const { tillMenu } = vi.hoisted(() => ({ tillMenu: { data: undefined as unknown } }));
+vi.mock("../fnb/useTillMenu", () => ({ useTillMenu: () => ({ data: tillMenu.data }) }));
 
 vi.mock("../lib/env", () => ({
   API_BASE_URL: "http://peak.test",
@@ -146,6 +150,7 @@ const {
   addItemSpy,
   sendOrderSpy,
   removeItemSpy,
+  setItemQuantitySpy,
   getOrderSpy,
   recordTenderSpy,
 } = vi.hoisted(() => ({
@@ -219,6 +224,7 @@ const {
   addItemSpy: vi.fn(async () => ({ data: OPEN_ORDER, error: null })),
   sendOrderSpy: vi.fn(async () => ({ data: { ...OPEN_ORDER, status: "SENT", version: 3 }, error: null })),
   removeItemSpy: vi.fn(async () => ({ data: { ...OPEN_ORDER, items: [], version: 3 }, error: null })),
+  setItemQuantitySpy: vi.fn(async () => ({ data: OPEN_ORDER, error: null })),
   getOrderSpy: vi.fn(async () => ({ data: OPEN_ORDER, error: null })),
   recordTenderSpy: vi.fn(async () => ({ data: { paymentId: "pay-1", orderClosed: true, paidMinor: 1200000, remainingMinor: 0, version: 3 }, error: null })),
 }));
@@ -237,6 +243,7 @@ vi.mock("../lib/posApi", () => ({
     recordTender: recordTenderSpy,
     listPrintJobs: vi.fn(async () => ({ data: [], error: null })),
     removeItem: removeItemSpy,
+    setItemQuantity: setItemQuantitySpy,
   }),
 }));
 
@@ -251,6 +258,7 @@ function renderNewOrder() {
 
 describe("NewOrder", () => {
   beforeEach(() => {
+    tillMenu.data = undefined;
     localStorage.clear();
     setOperationalSession({
       token: "t",
@@ -343,51 +351,25 @@ describe("NewOrder", () => {
 
   const ticket = () => within(screen.getByTestId("ticket-panel"));
 
-  it("Add another repeats the selected line", async () => {
+  it("One more raises the chosen line's quantity in Yetu, at the line's price; no new line", async () => {
     const line = await startOrder();
     addItemSpy.mockClear();
     await userEvent.click(line);
-    await userEvent.click(screen.getByRole("button", { name: "Add another" }));
-    await waitFor(() =>
-      expect(addItemSpy).toHaveBeenCalledWith(
-        "order-1",
-        expect.objectContaining({ productId: "00000000-0000-0000-0000-000000000001", quantity: 1, modifierOptionIds: [] }),
-        expect.any(String),
-      ),
-    );
+    await userEvent.click(ticket().getByRole("button", { name: "One more Nyama Choma" }));
+    await waitFor(() => expect(setItemQuantitySpy).toHaveBeenCalledWith("order-1", "item-1", 2, 2, expect.any(String)));
+    expect(addItemSpy).not.toHaveBeenCalled();
+    // One is the least: Remove takes it off.
+    expect(ticket().getByRole("button", { name: "One fewer Nyama Choma" })).toBeDisabled();
   });
 
-  it("Add another keeps the line's options", async () => {
-    addItemSpy.mockResolvedValueOnce({
-      data: {
-        ...OPEN_ORDER,
-        items: [
-          {
-            id: "item-9",
-            productId: "00000000-0000-0000-0000-000000000009",
-            name: "House burger",
-            quantity: 1,
-            unitPriceMinor: 800000,
-            taxMinor: 144000,
-            totalMinor: 944000,
-            status: "ADDED",
-            modifiers: [{ id: "row-1", groupName: "Cooked", optionName: "Well done", priceDeltaMinor: 0 }],
-          },
-        ],
-      },
-      error: null,
-    });
-    const burger = await startOrder("House burger");
-    addItemSpy.mockClear();
-    await userEvent.click(burger);
-    await userEvent.click(screen.getByRole("button", { name: "Add another" }));
-    await waitFor(() =>
-      expect(addItemSpy).toHaveBeenCalledWith(
-        "order-1",
-        expect.objectContaining({ productId: "00000000-0000-0000-0000-000000000009", quantity: 1, modifierOptionIds: ["opt-well"] }),
-        expect.any(String),
-      ),
-    );
+  it("a refused change says why in words", async () => {
+    setItemQuantitySpy.mockResolvedValueOnce({
+      data: undefined,
+      error: { status: 409, code: "ITEM_NOT_CHANGEABLE", title: "This item can no longer be changed.", detail: "Only an item not yet sent to the kitchen can be changed, and only before the order is paid." },
+    } as never);
+    await userEvent.click(await startOrder());
+    await userEvent.click(ticket().getByRole("button", { name: "One more Nyama Choma" }));
+    expect(await ticket().findByText("This item can't be changed now. If it hasn't gone to the kitchen, remove it and add it again.")).toBeInTheDocument();
   });
 
   it("Remove takes an unsent line off the order", async () => {
@@ -431,6 +413,14 @@ describe("NewOrder", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
+  it("Send and pay: a send Yetu refuses keeps the payment closed, and says why", async () => {
+    await startOrder();
+    sendOrderSpy.mockResolvedValueOnce({ data: undefined, error: { code: "FORBIDDEN", detail: "x" } } as never);
+    await userEvent.click(screen.getByTestId("pay-order"));
+    await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("amount-received")).toBeNull();
+  });
+
   it("after payment shows Paid with the change, and New sale clears the ticket", async () => {
     await startOrder();
     // The order reads back closed once the payment is recorded (the Pay sheet also reads it on opening).
@@ -440,8 +430,10 @@ describe("NewOrder", () => {
         : OPEN_ORDER,
       error: null,
     }));
+    // Not sent yet: Pay sends it to the kitchen, then takes payment.
     await userEvent.click(screen.getByTestId("pay-order"));
-    await userEvent.type(screen.getByTestId("amount-received"), "15000");
+    await userEvent.type(await screen.findByTestId("amount-received"), "15000");
+    expect(sendOrderSpy).toHaveBeenCalledTimes(1);
     await userEvent.click(screen.getByTestId("confirm-settle"));
     const done = await screen.findByRole("dialog", { name: "Paid" });
     expect(within(done).getByTestId("done-change")).toHaveTextContent("Change to give TSh 3,000");
@@ -481,34 +473,6 @@ describe("NewOrder", () => {
     await userEvent.click(screen.getByTestId("menu-House burger"));
     const again = await screen.findByRole("dialog", { name: "House burger" });
     expect(within(again).queryByRole("alert")).not.toBeInTheDocument();
-  });
-
-  it("Add another asks for the options again rather than guess between groups with the same name", async () => {
-    addItemSpy.mockResolvedValueOnce({
-      data: {
-        ...OPEN_ORDER,
-        items: [
-          {
-            id: "item-10",
-            productId: "00000000-0000-0000-0000-000000000010",
-            name: "Double burger",
-            quantity: 1,
-            unitPriceMinor: 1200000,
-            taxMinor: 0,
-            totalMinor: 1200000,
-            status: "ADDED",
-            modifiers: [{ id: "row-1", groupName: "Extras", optionName: "Cheese", priceDeltaMinor: 0 }],
-          },
-        ],
-      },
-      error: null,
-    });
-    const line = await startOrder("Double burger");
-    addItemSpy.mockClear();
-    await userEvent.click(line);
-    await userEvent.click(ticket().getByRole("button", { name: "Add another" }));
-    expect(await screen.findByRole("dialog", { name: "Double burger" })).toBeInTheDocument();
-    expect(addItemSpy).not.toHaveBeenCalled();
   });
 
   describe("refusals and recovery (S6)", () => {
@@ -569,5 +533,136 @@ describe("NewOrder", () => {
       const [first, second] = sendOrderSpy.mock.calls as unknown as Array<[string, number, string]>;
       expect(second[2]).not.toBe(first[2]);
     });
+  });
+});
+
+describe("NewOrder: the Restaurant & Bar module's menu (S16-B4)", () => {
+  const NC = "00000000-0000-0000-0000-000000000001";
+  const TL = "00000000-0000-0000-0000-000000000006";
+  const sized = (pintAvailable = true) => ({
+    enabled: true,
+    groups: [{ id: "g-food", name: "Food", categoryIds: ["cat-1"] }],
+    unplacedCategoryIds: [],
+    sizes: {
+      [TL]: [
+        { id: "sz-bottle", name: "Bottle", priceMinor: 500000, isDefault: true, isAvailable: true },
+        { id: "sz-pint", name: "Pint", priceMinor: 700000, isDefault: false, isAvailable: pintAvailable },
+      ],
+    },
+    products: { [NC]: { tags: [{ label: "Halal", kind: "DIETARY" }] }, [TL]: { description: "Cold, from the tap or the bottle.", tags: [] } },
+  });
+
+  beforeEach(() => {
+    localStorage.clear();
+    setOperationalSession({
+      token: "t",
+      expiresAt: "2099-01-01T00:00:00Z",
+      tenantId: "tenant-1",
+      propertyId: "property-1",
+      outletId: "outlet-1",
+      staffId: "staff-1",
+      terminalId: "terminal-1",
+    } as never);
+  });
+  afterEach(() => {
+    tillMenu.data = undefined;
+    clearOperationalSession();
+  });
+
+  it("puts the groups first and says staff's tags on the tiles", async () => {
+    tillMenu.data = sized();
+    renderNewOrder();
+    expect(await screen.findByRole("tab", { name: "Food" })).toBeInTheDocument();
+    expect(await screen.findByTestId("menu-Nyama Choma")).toHaveTextContent("Halal");
+    expect(screen.getByTestId("menu-Tusker Lager")).toHaveTextContent("TSh 5,000 · 2 sizes");
+  });
+
+  it("asks which size, and asks Yetu for that size (Yetu prices it)", async () => {
+    tillMenu.data = sized();
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Tusker Lager");
+    await waitFor(() => expect(tile).toBeEnabled());
+    addItemSpy.mockClear();
+    await userEvent.click(tile);
+    const sheet = await screen.findByTestId("modifier-dialog");
+    expect(within(sheet).getByTestId("options-description")).toHaveTextContent("Cold, from the tap or the bottle.");
+    expect(within(sheet).getByTestId("size-option-sz-bottle")).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(within(sheet).getByTestId("size-option-sz-pint"));
+    expect(within(sheet).getByTestId("modifier-confirm-add")).toHaveTextContent("Add to order · TSh 7,000");
+    await userEvent.click(within(sheet).getByTestId("modifier-confirm-add"));
+    await waitFor(() => expect(addItemSpy).toHaveBeenCalled());
+    expect((addItemSpy.mock.calls[0] as unknown[])[1]).toEqual(expect.objectContaining({ productId: TL, variantId: "sz-pint", quantity: 1 }));
+  });
+
+  it("says staff's tags on the order's line too", async () => {
+    tillMenu.data = sized();
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Nyama Choma");
+    await waitFor(() => expect(tile).toBeEnabled());
+    await userEvent.click(tile);
+    expect(await within(screen.getByTestId("ticket-panel")).findByTestId("cart-Nyama Choma")).toHaveTextContent("Halal");
+  });
+
+  it("won't take a size that is sold out today", async () => {
+    tillMenu.data = sized(false);
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Tusker Lager");
+    await waitFor(() => expect(tile).toBeEnabled());
+    await userEvent.click(tile);
+    const sheet = await screen.findByTestId("modifier-dialog");
+    const pint = within(sheet).getByTestId("size-option-sz-pint");
+    expect(pint).toHaveAttribute("aria-disabled", "true");
+    expect(pint).toHaveTextContent("Sold out");
+    await userEvent.click(pint);
+    expect(pint).toHaveAttribute("aria-checked", "false");
+  });
+});
+
+describe("NewOrder: rounds (S17a)", () => {
+  beforeEach(() => {
+    tillMenu.data = undefined;
+    localStorage.clear();
+    setOperationalSession({
+      token: "t",
+      expiresAt: "2099-01-01T00:00:00Z",
+      tenantId: "tenant-1",
+      propertyId: "property-1",
+      outletId: "outlet-1",
+      terminalId: "terminal-1",
+      staffId: "staff-1",
+      assurance: "RESTRICTED",
+      capabilities: ["CORE", "POS"],
+      permissions: ["pos.shift.open", "pos.order.create", "pos.order.item.add", "pos.order.send", "pos.payment.record"],
+    });
+  });
+  afterEach(() => clearOperationalSession());
+
+  async function ringUp() {
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Nyama Choma");
+    await waitFor(() => expect(tile).toBeEnabled());
+    await userEvent.click(tile);
+    await within(screen.getByTestId("ticket-panel")).findByRole("button", { name: /Nyama Choma/ });
+  }
+
+  it("takes more after a send from a Yetu with rounds, and says so for one without", async () => {
+    const sentLines = OPEN_ORDER.items.map((item) => ({ ...item, status: "SENT" as const, roundNumber: 1 }));
+    // Sell reads the order again after sending it: Yetu's sent order, with its round.
+    getOrderSpy.mockResolvedValueOnce({ data: { ...OPEN_ORDER, status: "SENT", version: 3, roundsSent: 1, items: sentLines }, error: null } as never);
+    await ringUp();
+    await userEvent.click(screen.getByTestId("send-order"));
+    await waitFor(() => expect(sendOrderSpy).toHaveBeenCalled());
+    // The order is Yetu's sent one now (its line says so), and the menu still takes more.
+    expect(await within(screen.getByTestId("ticket-panel")).findByTestId("ticket-sent")).toBeInTheDocument();
+    const tile = await screen.findByTestId("menu-Tusker Lager");
+    await waitFor(() => expect(tile).toBeEnabled());
+    expect(screen.queryByText("This order has gone to the kitchen. Start a new sale to add more.")).toBeNull();
+
+    getOrderSpy.mockResolvedValueOnce({ data: { ...OPEN_ORDER, status: "SENT", version: 3, items: sentLines }, error: null } as never);
+    cleanup();
+    localStorage.clear();
+    await ringUp();
+    await userEvent.click(screen.getByTestId("send-order"));
+    expect(await screen.findByText("This order has gone to the kitchen. Start a new sale to add more.")).toBeInTheDocument();
   });
 });

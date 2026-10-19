@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { POSOrder, POSOrderPayment, POSStationTicket } from "../lib/posContracts";
 import { clockTime } from "../lib/words";
-import { orderMatches, orderTimeline, removeProblem, reprintProblem, sendProblem } from "./ordersWords";
+import { orderMatches, orderTimeline, quantityProblem, removeProblem, reprintProblem, sendProblem } from "./ordersWords";
 
 function order(extra: Partial<POSOrder> = {}): POSOrder {
   return {
@@ -204,6 +204,17 @@ describe("refusals", () => {
     expect(reprintProblem(refused({ code: "FORBIDDEN" }))?.words).toBe("Only a cashier or manager can print a copy of the receipt. Ask one to help.");
     expect(reprintProblem(refused({ code: "NOT_FOUND" }))?.words).toBe("Yetu has no receipt for this order.");
     expect(reprintProblem(refused({ code: "CONFLICT" }))?.words).toBe("The copy wasn't printed. Try again.");
+  });
+
+  it("change how many of an item: gone to the kitchen, paid, another till, anything else", () => {
+    expect(quantityProblem(refused({ code: "ITEM_NOT_CHANGEABLE" }))).toEqual({
+      kind: "stale",
+      words: "This item can't be changed now. The order has been reloaded: if it hasn't gone to the kitchen, remove it and add it again.",
+    });
+    expect(quantityProblem(refused({ code: "INVALID_STATE" }))).toEqual({ kind: "paid", words: "This order has taken payment, so its items can't be changed." });
+    expect(quantityProblem(refused({ code: "STALE_VERSION" }))?.kind).toBe("stale");
+    expect(quantityProblem(refused({ code: "CONFLICT" }))?.words).toBe("The quantity wasn't changed. Try again.");
+    expect(quantityProblem(new TypeError("Failed to fetch"))?.kind).toBe("network");
   });
 
   it("remove an item: an order that has taken money, anything else", () => {

@@ -41,6 +41,7 @@ vi.mock("../hooks/usePosData", () => ({
   useHasPermission: (action: string) => permissionsRef.permissions.includes(action),
   useHasCapability: (code: string) => capabilitiesRef.capabilities.includes(code),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
+  useOpenTabsOf: () => ({ count: 0, owedMinor: 0 }),
   useMutationMessage: () => null,
 }));
 

@@ -95,7 +95,7 @@ describe("OpenShiftScreen", () => {
     await userEvent.click(within(counter).getByRole("button", { name: "One more TSh 5,000" }));
     expect(within(counter).getByTestId("note-count-total")).toHaveTextContent("TSh 25,000");
     await userEvent.click(within(counter).getByRole("button", { name: "Use TSh 25,000" }));
-    expect(screen.getByTestId("opening-float")).toHaveValue("25000");
+    expect(screen.getByTestId("opening-float")).toHaveValue("25,000");
     await userEvent.click(screen.getByTestId("open-shift"));
     expect(openMutate).toHaveBeenCalledWith({ openingCashMinor: 2_500_000, idempotencyKey: "key-1" });
   });
@@ -149,6 +149,13 @@ describe("OpenShiftScreen after a shift closes", () => {
     expect(summary).toHaveTextContent("Expected TSh 74,000");
     expect(summary).toHaveTextContent("Counted TSh 74,500");
     expect(summary).toHaveTextContent("Over by TSh 500");
+    expect(screen.queryByTestId("closed-shift-tabs")).toBeNull();
+  });
+
+  it("says the tabs it handed over to the next shift, and what they owe (S17b)", () => {
+    rememberClosedShift({ shift: { ...CLOSED, handedOverTabs: 3, handedOverOwedMinor: 4_520_000 }, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) });
+    render(<OpenShiftScreen />);
+    expect(screen.getByTestId("closed-shift-tabs")).toHaveTextContent("3 tabs handed over to the next shift, owing TSh 45,200.");
   });
 });
 
@@ -158,6 +165,8 @@ describe("Close the day", () => {
     render(<OpenShiftScreen />);
     const card = screen.getByTestId("close-day");
     expect(within(card).getByRole("list", { name: "Before the day closes" })).toHaveTextContent("This till's shift is closed");
+    // S17b: the day closes once its tabs are settled.
+    expect(within(card).getByRole("list", { name: "Before the day closes" })).toHaveTextContent("Today's tabs are paid, charged to a room or voided");
     await userEvent.click(screen.getByTestId("close-business-day"));
     expect(dayCloseMutate).toHaveBeenCalledWith("key-1");
   });

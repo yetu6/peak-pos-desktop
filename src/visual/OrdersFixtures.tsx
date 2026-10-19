@@ -103,6 +103,7 @@ function Detail({ order, tab = "open", ...props }: { order: POSOrder; tab?: Orde
         onPay={nothing}
         onVoid={nothing}
         onRemoveLine={nothing}
+        onQuantity={nothing}
         onReprint={nothing}
         onClose={nothing}
         {...props}
@@ -114,6 +115,16 @@ function Detail({ order, tab = "open", ...props }: { order: POSOrder; tab?: Orde
 /** An open order, one line chosen: Remove, Send to kitchen, Pay, Void. */
 export function OrderOpenFixture() {
   return <Detail order={ORDER} selectedLineId={ORDER.items[1].id} />;
+}
+
+/** A tab handed over at the last shift's close (S17b): it waits; Take over this tab. */
+export function OrderWaitingFixture() {
+  return (
+    <Detail
+      order={{ ...ROOM_ORDER, waitingForShift: true, handedOverAt: new Date(2026, 9, 12, 18, 2).toISOString() }}
+      onTakeOver={() => undefined}
+    />
+  );
 }
 
 /** An order in the kitchen: sent at, where each station is now; Pay and Void. */

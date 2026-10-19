@@ -236,6 +236,8 @@ describe("printJobs", () => {
       printed.push(`${title}\n${text}`);
     });
     expect(requestedUrls[0]).toContain("status=PENDING");
+    // S8a: only this order's jobs, however many others wait at the outlet.
+    expect(requestedUrls[0]).toContain("sourceId=order-1");
     expect(results).toEqual([{ ok: true }]);
     expect(printed[0]).toContain("POS-1");
   });
@@ -303,5 +305,212 @@ describe("printJobs", () => {
     });
     expect(results).toEqual([{ ok: true }]);
     expect(printed).toEqual([]);
+  });
+});
+
+describe("printJobs: kitchen tickets on paper (S8a)", () => {
+  // Yetu's kitchen print document, as createStationTicketsAndPrintJobs writes it.
+  const DOC = {
+    orderId: "order-1", orderNumber: "POS-MR-261019-42", dailyNumber: 42, roundNumber: 2, station: "HOT",
+    tableLabel: "12", serviceType: "DINE_IN", waiterName: "Amina Hassan", sentAt: "2026-10-19T09:40:00Z",
+    items: [{ id: "i1", productId: "p-satay", name: "Satay", quantity: 2, modifiers: [{ name: "Extra sauce" }] }],
+  };
+  const JOB: POSPrintJob = { ...KITCHEN_JOB, document: DOC };
+  const KITCHEN = { target: { kind: "network" as const, host: "192.168.1.50", port: 9100 }, width: 48 as const };
+
+  function yetu(requests: string[]) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = String(input);
+        requests.push(url);
+        if (url.endsWith("/claim")) return json({ ...JOB, status: "CLAIMED" });
+        if (url.endsWith("/printed")) return json({ ...JOB, status: "PRINTED" });
+        if (url.endsWith("/failed")) return json({ ...JOB, status: "FAILED" });
+        if (url.includes("/pos/print-jobs")) return json([JOB]);
+        return json({}, 500);
+      }),
+    );
+  }
+  const text = (bytes: Uint8Array) => Array.from(bytes, (b) => (b >= 0x20 && b < 0x7f) || b === 0x0a ? String.fromCharCode(b) : "").join("");
+
+  it("goes to the kitchen's printer as a ticket, with who took it and staff's tags", async () => {
+    const requests: string[] = [];
+    yetu(requests);
+    const raw: { target: unknown; bytes: Uint8Array }[] = [];
+    const printFn = vi.fn();
+    const results = await processPendingPrintJobs("prop", "order-1", printFn, {
+      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: {}, receipt: null, cashDrawer: false },
+      printRaw: async (target, bytes) => void raw.push({ target, bytes }),
+      tagsOf: (productId) => (productId === "p-satay" ? "Contains nuts" : undefined),
+    });
+    expect(results).toEqual([{ ok: true }]);
+    expect(printFn).not.toHaveBeenCalled();
+    expect(raw).toHaveLength(1);
+    expect(raw[0].target).toEqual(KITCHEN.target);
+    const paper = text(raw[0].bytes);
+    expect(paper).toContain("ORDER 42");
+    expect(paper).toContain("ROUND 2");
+    expect(paper).toContain("Taken by Amina Hassan");
+    expect(paper).toContain("2 x Satay");
+    expect(paper).toContain("! Contains nuts");
+    expect(requests.some((url) => url.endsWith("/printed"))).toBe(true);
+  });
+
+  it("a copy printed again says COPY and who printed it", async () => {
+    yetu([]);
+    const raw: Uint8Array[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = String(input);
+        const copy = { ...JOB, document: { ...DOC, copy: true, printedAgainByName: "Grace Mushi" } };
+        if (url.endsWith("/claim")) return json({ ...copy, status: "CLAIMED" });
+        if (url.endsWith("/printed")) return json({ ...copy, status: "PRINTED" });
+        if (url.includes("/pos/print-jobs")) return json([copy]);
+        return json({}, 500);
+      }),
+    );
+    await processPendingPrintJobs("prop", "order-1", vi.fn(), {
+      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: {}, receipt: null, cashDrawer: false },
+      printRaw: async (_target, bytes) => void raw.push(bytes),
+    });
+    expect(text(raw[0])).toContain("*** COPY: printed again ***");
+    expect(text(raw[0])).toContain("by Grace Mushi");
+  });
+
+  it("a till with paper kitchen tickets off leaves the job for one that prints them", async () => {
+    const requests: string[] = [];
+    yetu(requests);
+    const printRaw = vi.fn();
+    const printFn = vi.fn();
+    const results = await processPendingPrintJobs("prop", "order-1", printFn, {
+      settings: { kitchenTickets: false, kitchen: KITCHEN, stations: {}, receipt: null, cashDrawer: false }, printRaw,
+    });
+    expect(results).toEqual([{ ok: true }]);
+    expect(requests.some((url) => url.endsWith("/claim"))).toBe(false);
+    expect(printRaw).not.toHaveBeenCalled();
+    expect(printFn).not.toHaveBeenCalled();
+  });
+
+  it("with no kitchen printer chosen, this till's own printer prints it, as before", async () => {
+    yetu([]);
+    const printRaw = vi.fn();
+    const printed: string[] = [];
+    await processPendingPrintJobs("prop", "order-1", async (_title, body) => void printed.push(body), {
+      settings: { kitchenTickets: true, kitchen: null, stations: {}, receipt: null, cashDrawer: false }, printRaw,
+    });
+    expect(printRaw).not.toHaveBeenCalled();
+    expect(printed[0]).toContain("Order 42");
+  });
+
+  it("a kitchen printer that doesn't answer is said to Yetu as failed", async () => {
+    const requests: string[] = [];
+    yetu(requests);
+    const results = await processPendingPrintJobs("prop", "order-1", vi.fn(), {
+      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: {}, receipt: null, cashDrawer: false },
+      printRaw: async () => { throw new Error("The kitchen printer didn't answer"); },
+    });
+    expect(results).toEqual([{ ok: false, error: "The kitchen printer didn't answer" }]);
+    expect(requests.some((url) => url.endsWith("/failed"))).toBe(true);
+  });
+});
+
+describe("printJobs: receipts on a thermal printer, the cash drawer (S8b)", () => {
+  const RECEIPT_PRINTER = { target: { kind: "system" as const, name: "EPSON TM-T20" }, width: 48 as const };
+  const DRAWER = [0x1b, 0x70, 0, 25, 250].join(",");
+  // Yetu's receipt document (receipts.go ReceiptDocument).
+  const SALE = {
+    orderId: "order-7", orderNumber: "POS-a3f90c14", dailyNumber: 7, propertyName: "Kilima View", outletName: "Pool bar",
+    initiatedByName: "Amina Hassan", operatorName: "Amina Hassan", serviceType: "DINE_IN", currency: "TZS",
+    items: [{ name: "Kilimanjaro lager", quantity: 2, unitPriceMinor: 600_000, taxMinor: 183_051, totalMinor: 1_200_000 }],
+    subtotalMinor: 1_016_949, discountMinor: 100_000, discountReason: "Regular guest", taxMinor: 165_051, totalMinor: 1_082_000,
+    tenderMethod: "CASH", cashMinor: 1_082_000, settledAt: "2026-10-19T10:05:00Z",
+  };
+  const job = (jobType: string, document: Record<string, unknown>, extra: Partial<POSPrintJob> = {}): POSPrintJob =>
+    ({ ...KITCHEN_JOB, id: `job-${jobType}`, sourceId: "order-7", jobType, document, ...extra });
+
+  async function printed(printJob: POSPrintJob, cashDrawer = true, receipt: typeof RECEIPT_PRINTER | null = RECEIPT_PRINTER) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = String(input);
+        if (url.endsWith("/claim")) return json({ ...printJob, status: "CLAIMED" });
+        if (url.endsWith("/printed")) return json({ ...printJob, status: "PRINTED" });
+        if (url.includes("/pos/print-jobs")) return json([printJob]);
+        return json({}, 500);
+      }),
+    );
+    const raw: { target: unknown; bytes: Uint8Array }[] = [];
+    const text: string[] = [];
+    await processPendingPrintJobs("prop", "order-7", async (_title, body) => void text.push(body), {
+      settings: { kitchenTickets: true, kitchen: null, stations: {}, receipt, cashDrawer },
+      printRaw: async (target, bytes) => void raw.push({ target, bytes }),
+    });
+    return { raw, text, drawer: raw.length === 1 && Array.from(raw[0].bytes).join(",").includes(DRAWER) };
+  }
+  const words = (bytes: Uint8Array) => Array.from(bytes, (b) => ((b >= 0x20 && b < 0x7f) || b === 0x0a ? String.fromCharCode(b) : "")).join("");
+
+  it("a cash sale prints on the receipt printer, with its discount, and opens the drawer", async () => {
+    const { raw, text, drawer } = await printed(job("RECEIPT", SALE));
+    expect(text).toEqual([]);
+    expect(raw[0].target).toEqual(RECEIPT_PRINTER.target);
+    expect(words(raw[0].bytes)).toContain("Discount (Regular guest)");
+    expect(drawer).toBe(true);
+  });
+
+  it("a card sale opens no drawer; a split with a cash part does", async () => {
+    expect((await printed(job("RECEIPT", { ...SALE, tenderMethod: "CARD", cashMinor: undefined }))).drawer).toBe(false);
+    expect((await printed(job("RECEIPT", { ...SALE, tenderMethod: "SPLIT", cashMinor: 500_000 }))).drawer).toBe(true);
+  });
+
+  it("a copy printed again says COPY and opens no drawer", async () => {
+    const { raw, drawer } = await printed(job("RECEIPT", SALE, { reprintedFromId: "job-original" }));
+    expect(words(raw[0].bytes)).toContain("*** COPY ***");
+    expect(drawer).toBe(false);
+  });
+
+  it("a refund paid out in cash opens the drawer; with the drawer setting off, nothing does", async () => {
+    const refund = { refundId: "refund-1", orderNumber: "POS-a3f90c14", dailyNumber: 7, currency: "TZS", totalMinor: 600_000,
+      items: [], tenders: [{ paymentMethod: "CASH", amountMinor: 600_000 }] };
+    expect((await printed(job("REFUND_RECEIPT", refund))).drawer).toBe(true);
+    expect((await printed(job("RECEIPT", SALE), false)).drawer).toBe(false);
+  });
+
+  it("with no receipt printer chosen, receipts print as text on this computer's printer, as before", async () => {
+    const { raw, text } = await printed(job("RECEIPT", SALE), true, null);
+    expect(raw).toEqual([]);
+    expect(text[0]).toContain("Discount (Regular guest)  -TSh");
+  });
+});
+
+describe("printJobs: no paper for a station on this till", () => {
+  const job = (station: string): POSPrintJob => ({ ...KITCHEN_JOB, id: `job-${station}`, document: { dailyNumber: 7, station, items: [{ name: "Tusker lager", quantity: 2 }] } });
+  const KITCHEN = { target: { kind: "network" as const, host: "192.168.1.50", port: 9100 }, width: 48 as const };
+
+  async function run(printJob: POSPrintJob) {
+    const requests: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = String(input);
+        requests.push(url);
+        if (url.endsWith("/claim")) return json({ ...printJob, status: "CLAIMED" });
+        if (url.endsWith("/printed")) return json({ ...printJob, status: "PRINTED" });
+        if (url.includes("/pos/print-jobs")) return json([printJob]);
+        return json({}, 500);
+      }),
+    );
+    const printRaw = vi.fn();
+    await processPendingPrintJobs("prop", "order-1", vi.fn(), {
+      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: { BAR: "none" }, receipt: null, cashDrawer: false },
+      printRaw,
+    });
+    return { claimed: requests.some((url) => url.endsWith("/claim")), printed: printRaw.mock.calls.length };
+  }
+
+  it("the bar's ticket is left, never claimed; the kitchen's still prints", async () => {
+    expect(await run(job("BAR"))).toEqual({ claimed: false, printed: 0 });
+    expect(await run(job("HOT"))).toEqual({ claimed: true, printed: 1 });
   });
 });

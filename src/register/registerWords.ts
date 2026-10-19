@@ -112,6 +112,7 @@ export const SELL_STEPS = {
   create: "start a new order",
   add: "add items to an order",
   remove: "remove items from an order",
+  quantity: "change how many of an item",
   send: "send them to the kitchen",
   availability: "mark items sold out",
 } as const;
@@ -140,6 +141,10 @@ const SELL_REFUSALS: Record<keyof typeof SELL_STEPS, Readonly<Record<string, str
     ORDER_STATE_CHANGED: "This order has gone to the kitchen. Start a new sale to add more.",
   },
   remove: { ITEM_NOT_REMOVABLE: "This item has gone to the kitchen, so it can't be removed." },
+  quantity: {
+    ITEM_NOT_CHANGEABLE: "This item can't be changed now. If it hasn't gone to the kitchen, remove it and add it again.",
+    INVALID_STATE: "This order has taken payment, so its items can't be changed.",
+  },
   send: {
     ORDER_EMPTY: "Add something to the order before sending it.",
     ORDER_STATE_CHANGED: "This order was already sent, paid or voided.",

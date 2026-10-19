@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { POSOrder, POSOrderItem } from "../lib/posContracts";
@@ -43,12 +43,35 @@ const ORDER: POSOrder = {
   ],
 };
 
+/** The ticket as an element, for rerendering with a new order. */
+function ticketElement(props: Partial<TicketPanelProps> = {}) {
+  return (
+    <TicketPanel
+      order={ORDER}
+      currency="TZS"
+      serviceType="DINE_IN"
+      label=""
+      selectedLineId={null}
+      lineBusy={false}
+      sentAt={null}
+      error={null}
+      actions={null}
+      onServiceType={vi.fn()}
+      onLabel={vi.fn()}
+      onSelectLine={vi.fn()}
+      onQuantity={vi.fn()}
+      onRemoveLine={vi.fn()}
+      {...props}
+    />
+  );
+}
+
 function renderTicket(props: Partial<TicketPanelProps> = {}) {
   const handlers = {
     onServiceType: vi.fn(),
     onLabel: vi.fn(),
     onSelectLine: vi.fn(),
-    onAddAnother: vi.fn(),
+    onQuantity: vi.fn(),
     onRemoveLine: vi.fn(),
   };
   render(
@@ -92,7 +115,7 @@ describe("TicketPanel", () => {
         onLabel={vi.fn()}
         selectedLineId={null}
         onSelectLine={vi.fn()}
-        onAddAnother={vi.fn()}
+        onQuantity={vi.fn()}
         onRemoveLine={vi.fn()}
         lineBusy={false}
         sentAt={null}
@@ -142,17 +165,20 @@ describe("TicketPanel", () => {
     expect(screen.getByTestId("cart-remaining")).toHaveTextContent("TSh 20,120");
   });
 
-  it("selecting an unsent line offers Add another and Remove", async () => {
+  it("selecting an unsent line offers its quantity and Remove", async () => {
     const { onSelectLine } = renderTicket();
     await userEvent.click(screen.getByRole("button", { name: /Cappuccino/ }));
     expect(onSelectLine).toHaveBeenCalledWith("l1");
   });
 
-  it("for a selected unsent line, Add another and Remove act on that line", async () => {
+  it("for a selected unsent line, its stepper and Remove act on that line", async () => {
     const handlers = renderTicket({ selectedLineId: "l1" });
     const actions = screen.getByRole("group", { name: "Cappuccino" });
-    await userEvent.click(within(actions).getByRole("button", { name: "Add another" }));
-    expect(handlers.onAddAnother).toHaveBeenCalledWith(ORDER.items[0]);
+    expect(within(actions).getByRole("group", { name: "Cappuccino quantity" })).toHaveTextContent("2");
+    await userEvent.click(within(actions).getByRole("button", { name: "One more Cappuccino" }));
+    expect(handlers.onQuantity).toHaveBeenCalledWith(ORDER.items[0], 3);
+    await userEvent.click(within(actions).getByRole("button", { name: "One fewer Cappuccino" }));
+    expect(handlers.onQuantity).toHaveBeenCalledWith(ORDER.items[0], 1);
     await userEvent.click(within(actions).getByRole("button", { name: "Remove" }));
     expect(handlers.onRemoveLine).toHaveBeenCalledWith(ORDER.items[0]);
   });
@@ -178,5 +204,77 @@ describe("TicketPanel", () => {
   it("starts empty with what to do", () => {
     renderTicket({ order: null });
     expect(screen.getByText("Tap an item to start an order.")).toBeInTheDocument();
+  });
+});
+
+describe("TicketPanel: rounds (S17a)", () => {
+  it("groups the lines by round under one heading each, never a chip on every line", () => {
+    const rounds = {
+      ...ORDER,
+      status: "SERVED" as const,
+      roundsSent: 2,
+      items: [line("l1", "Cappuccino", 2, 1_534_000, { status: "SENT", roundNumber: 1 }), line("l2", "Cake", 1, 590_000, { status: "SENT", roundNumber: 2 })],
+    };
+    renderTicket({ order: rounds });
+    const first = screen.getByTestId("ticket-group-round-1");
+    expect(within(first).getByRole("heading", { name: "Round 1" })).toBeInTheDocument();
+    expect(within(first).getByTestId("cart-Cappuccino")).toBeInTheDocument();
+    expect(within(screen.getByTestId("ticket-group-round-2")).getByTestId("cart-Cake")).toBeInTheDocument();
+    expect(screen.getByTestId("cart-Cappuccino")).not.toHaveTextContent("Round");
+    cleanup();
+    // One round, all sent: no headings; the ticket's own chip says it went.
+    renderTicket({ order: { ...rounds, roundsSent: 1, items: [rounds.items[0]] } });
+    expect(screen.queryByRole("heading", { name: /Round/ })).toBeNull();
+    expect(screen.getByTestId("cart-Cappuccino")).not.toHaveTextContent("Sent");
+  });
+
+  it("keeps what isn't sent yet apart and last, under Not sent yet", () => {
+    const added = {
+      ...ORDER,
+      status: "SERVED" as const,
+      roundsSent: 1,
+      items: [line("l1", "Cappuccino", 2, 1_534_000, { status: "SENT", roundNumber: 1 }), line("l2", "Cake", 1, 590_000, { status: "ADDED" })],
+    };
+    renderTicket({ order: added });
+    const groups = screen.getAllByTestId(/^ticket-group-/).map((group) => group.getAttribute("data-testid"));
+    expect(groups).toEqual(["ticket-group-round-1", "ticket-group-unsent"]);
+    expect(within(screen.getByTestId("ticket-group-unsent")).getByRole("heading", { name: "Not sent yet" })).toBeInTheDocument();
+    expect(within(screen.getByTestId("ticket-group-unsent")).getByTestId("cart-Cake")).toBeInTheDocument();
+  });
+});
+
+describe("TicketPanel: the newest line in view", () => {
+  it("scrolls to the line just added", () => {
+    const scrolled: Element[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      const one = { ...ORDER, items: [line("l1", "Cappuccino", 2, 1_534_000)] };
+      const { rerender } = render(ticketElement({ order: one }));
+      scrolled.length = 0;
+      rerender(ticketElement({ order: { ...one, items: [...one.items, line("l2", "Cake", 1, 590_000)] } }));
+      expect(scrolled.at(-1)).toBe(screen.getByTestId("cart-Cake"));
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+});
+
+describe("TicketPanel: an everyday removal is not a red block", () => {
+  it("a chosen line's Remove is outlined in red, beside its stepper", () => {
+    renderTicket({ selectedLineId: "l1" });
+    const remove = screen.getByRole("button", { name: /Remove/ });
+    expect(remove).toHaveClass("y-button--danger-outline");
+    expect(remove).not.toHaveClass("y-button--danger");
+  });
+});
+
+describe("TicketPanel: a line holds what Yetu takes", () => {
+  it("one more stops at the most of an item a line holds", () => {
+    const full = { ...ORDER, items: [{ ...ORDER.items[0], quantity: 999 }, ORDER.items[1]] };
+    renderTicket({ order: full, selectedLineId: "l1" });
+    expect(screen.getByRole("button", { name: "One more Cappuccino" })).toBeDisabled();
   });
 });

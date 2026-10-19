@@ -13,6 +13,8 @@
 #   tests/e2e-live/live-api.sh db     # create peak_e2e_pos and migrate it to fbc-peak's head
 #   tests/e2e-live/live-api.sh seed   # cmd/e2e-seed -> Mama Rose + Savannah Crest fixture files
 #   tests/e2e-live/live-api.sh api    # build and run cmd/api on 127.0.0.1:18080 (foreground)
+#   tests/e2e-live/live-api.sh worker # build and run cmd/worker beside it (foreground): it relays
+#                                     # Yetu's events to the till's live connection, as in production
 #   tests/e2e-live/live-api.sh env    # print the variables the suites read (no secrets)
 #   tests/e2e-live/live-api.sh reset-limits  # start this API's per-address rate limits again
 #   tests/e2e-live/live-api.sh payments <orderId>  # how many pos_payments rows an order has (read-only)
@@ -133,6 +135,25 @@ cmd_api() {
     "$work/peak-api"
 }
 
+# The events worker for this API: what it publishes reaches the till's
+# realtime connection through the same Redis database, as the production
+# worker does for the production API. Without it a till hears nothing live.
+cmd_worker() {
+  if [ "${E2E_SKIP_BUILD:-}" != 1 ] || [ ! -x "$work/peak-worker" ]; then
+    (cd "$backend" && go build -o "$work/peak-worker" ./cmd/worker)
+  fi
+  local database_url
+  database_url="$(runtime_url peak-worker worker_dev_password)"
+  echo "worker for http://127.0.0.1:${port} (database ${db}, Redis db ${redis_db})"
+  exec env -i PATH="$PATH" HOME="$HOME" \
+    YETU_ENV=development YETU_RUNTIME_MODE=hospitality YETU_OIDC_ENABLED=false \
+    YETU_METRICS_ADDR="127.0.0.1:$((port + 1001))" YETU_PUBLIC_URL="http://127.0.0.1:${port}" \
+    YETU_DATABASE_URL="$database_url" YETU_WORKER_ID="e2e-live-worker" \
+    YETU_REDIS_ADDR=127.0.0.1:6379 YETU_REDIS_PASSWORD="$(value PEAK_LOCAL_REDIS_PASSWORD)" YETU_REDIS_DB="$redis_db" \
+    YETU_SEARCH_ENABLED=false YETU_GEOCODE_PROVIDER=none YETU_LOG_FORMAT=text \
+    "$work/peak-worker"
+}
+
 # The API's per-address limits (dev-login 30 an hour, pairing requests 30 an
 # hour, ...) count every run from this machine. They live in this API's own
 # Redis database, which nothing else uses, so a new run may start them again.
@@ -168,8 +189,9 @@ case "${1:-}" in
   db) cmd_db ;;
   seed) cmd_seed ;;
   api) cmd_api ;;
+  worker) cmd_worker ;;
   env) cmd_env ;;
   reset-limits) cmd_reset_limits ;;
   payments) cmd_payments "${2:-}" ;;
-  *) echo "usage: $0 db|seed|api|env|reset-limits|payments" >&2; exit 2 ;;
+  *) echo "usage: $0 db|seed|api|worker|env|reset-limits|payments" >&2; exit 2 ;;
 esac

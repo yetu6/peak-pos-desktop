@@ -1,10 +1,11 @@
-import { Plus, ReceiptText, SearchX } from "lucide-react";
+import { orderStatusIcon } from "./orderStatusIcon";
+import { Plus, ReceiptText, SearchX, Undo2 } from "lucide-react";
 import type { KeyboardEvent } from "react";
 import { Banner, Button, EmptyState, Money, SearchField, Skeleton, StatusChip, Tabs } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSOrder } from "../lib/posContracts";
-import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, serviceTypeWords } from "../lib/words";
-import { orderMatches } from "./ordersWords";
+import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
+import { orderMatches, orderStateWords } from "./ordersWords";
 import { orderNumberWords } from "../lib/orderNumber";
 
 export type OrdersTab = "open" | "paid";
@@ -252,9 +253,22 @@ function OrderRow({
         <span className="y-orow__place">{placeWords(order)}</span>
         {meta ? <span className="y-orow__meta">{meta}</span> : null}
       </span>
-      <StatusChip tone={orderStatusTone(order.status)} className="y-orow__status">
-        {orderStatusWords(order.status)}
-      </StatusChip>
+      {order.waitingForShift ? (
+        // S17b: handed over at a shift close; nothing is done to it until a shift takes it.
+        <StatusChip tone="warning" className="y-orow__status" data-testid={`order-waiting-${order.id}`}>
+          Waiting for a shift
+        </StatusChip>
+      ) : (
+        // S10a: a paid order refunded says so (Partly refunded, Refunded), with money going back as its icon.
+        <StatusChip
+          tone={orderStateWords(order).tone}
+          icon={(order.refundedMinor ?? 0) > 0 ? <Undo2 aria-hidden="true" /> : orderStatusIcon(order.status)}
+          className="y-orow__status"
+          data-testid={`order-state-${order.id}`}
+        >
+          {orderStateWords(order).words}
+        </StatusChip>
+      )}
       <Money minor={order.totalMinor} currency={currency} size="lead" className="y-orow__total" />
     </button>
   );

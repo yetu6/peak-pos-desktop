@@ -82,6 +82,8 @@ export interface CashViewProps {
   showExpected: boolean;
   /** The Close the day card, for managers on a restaurant-only property. */
   closeDay: ReactNode;
+  /** Manager → Printers (S8a): shown to a manager. */
+  printers?: ReactNode;
   onCashIn: () => void;
   onCashOut: () => void;
   onCloseShift: () => void;
@@ -98,6 +100,7 @@ export function CashView({
   canCloseShift,
   showExpected,
   closeDay,
+  printers = null,
   onCashIn,
   onCashOut,
   onCloseShift,
@@ -229,6 +232,7 @@ export function CashView({
           </section>
 
           {closeDay}
+          {printers}
         </div>
       </div>
 

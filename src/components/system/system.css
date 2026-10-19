@@ -106,6 +106,17 @@
   color: var(--on-danger);
 }
 
+/* An everyday removal: red in its words and edge, not a red block beside the ticket. */
+.y-button--danger-outline {
+  border-color: var(--danger-line);
+  background: var(--surface-raised);
+  color: var(--danger);
+}
+
+.y-button--danger-outline:hover:not(:disabled) {
+  background: var(--danger-subtle);
+}
+
 .y-button:active:not(:disabled) { transform: translateY(1px); }
 
 .y-button:disabled {
@@ -487,6 +498,40 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A price rule in force (happy hour): its name, the price now, the price it had struck through. */
+.y-tile__offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--space-2);
+}
+
+.y-tile__offer-label {
+  flex-basis: 100%;
+  color: var(--accent-text);
+  font-size: var(--type-small);
+  font-weight: 700;
+}
+
+.y-tile__offer .y-tile__price {
+  font-weight: 700;
+}
+
+.y-tile__was {
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Staff's tags on a tile wrap and are never cut short: an allergy is read in full. */
+.y-tile__note {
+  max-width: 100%;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .y-tile--sold-out {
   border-style: dashed;
   background: var(--surface-hover);
@@ -549,6 +594,7 @@ button.y-ticket-line:hover { background: var(--surface-hover); }
 .y-ticket-line__name { font-weight: 600; }
 
 .y-ticket-line__option,
+.y-ticket-line__tags,
 .y-ticket-line__note {
   padding-left: var(--space-3);
   color: var(--text-muted);

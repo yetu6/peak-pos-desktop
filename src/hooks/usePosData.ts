@@ -1,3 +1,7 @@
+import type { FnbTillMenu } from "../fnb/fnbContracts";
+import { tagNote } from "../fnb/fnbWords";
+import { printFor } from "../print/printFor";
+import { loadPrinterSettings } from "../print/printerStore";
 import { useMemo, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPosApi } from "../lib/posApi";
@@ -6,7 +10,6 @@ import { READ_AFTER_RECORD_FAILED } from "../lib/problemWords";
 import { devIdentityFromEnv } from "../lib/env";
 import { useRealtimeEvents } from "../realtime/RealtimeProvider";
 import { isOrderEvent } from "../realtime/subscriptions";
-import { processPendingPrintJobs } from "../lib/printJobs";
 import { getOperationalSession } from "../lib/operationalSession";
 import { listEveryPage } from "../orders/orderPages";
 import { OPEN_MOST_PAGES } from "../orders/ordersSettings";
@@ -207,6 +210,8 @@ export function usePosShift() {
       countedCashMinor: number;
       supervisorStaffId?: string;
       supervisorPin?: string;
+      /** S17b: hand the shift's open tabs over to the next shift. */
+      handOver?: boolean;
       idempotencyKey: string;
     }) => {
       const currentId =
@@ -221,6 +226,7 @@ export function usePosShift() {
             countedCashMinor: args.countedCashMinor,
             supervisorStaffId: args.supervisorStaffId,
             supervisorPin: args.supervisorPin,
+            ...(args.handOver ? { handOver: true } : {}),
           },
           args.idempotencyKey,
         ),
@@ -301,8 +307,9 @@ export function useActiveOrders() {
   });
   const queryClient = useQueryClient();
   useRealtimeEvents({ kind: "outletOrders", outletId }, async (event) => {
-    if (event.type === "pos.shift.closed") {
-      queryClient.setQueryData(["pos", "orders", "active", outletId], []);
+    // A shift closing may leave its tabs open, handed over (S17b): ask Yetu again.
+    if (event.type === "pos.shift.closed" || event.type === "pos.shift.opened") {
+      queryClient.invalidateQueries({ queryKey: ["pos", "orders", "active", outletId] });
       return;
     }
     // A station ticket's step moves its order too (Yetu syncs the order's
@@ -385,6 +392,8 @@ export function useAddOrderItem() {
     mutationFn: async (args: {
       orderId: string;
       productId: string;
+      /** A size of the item (the Restaurant & Bar module's); left out, its default size. Yetu prices it. */
+      variantId?: string;
       quantity: number;
       modifierOptionIds?: string[];
       version: number;
@@ -396,6 +405,7 @@ export function useAddOrderItem() {
             args.orderId,
             {
               productId: args.productId,
+              ...(args.variantId ? { variantId: args.variantId } : {}),
               quantity: args.quantity,
               modifierOptionIds: args.modifierOptionIds,
               version: args.version,
@@ -424,6 +434,19 @@ export function useRemoveOrderItem() {
   return useMutation({
     mutationFn: (args: { orderId: string; itemId: string; version: number; idempotencyKey: string }) =>
       unwrap(createPosApi().removeItem(args.orderId, args.itemId, args.version, args.idempotencyKey)),
+    onSuccess: (order: POSOrder) => {
+      queryClient.setQueryData(["pos", "order", order.id], order);
+      invalidateOrders(queryClient);
+    },
+  });
+}
+
+/** How many of an unsent line (the stepper); Yetu prices the line as it was added. */
+export function useSetLineQuantity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { orderId: string; itemId: string; quantity: number; version: number; idempotencyKey: string }) =>
+      unwrap(createPosApi().setItemQuantity(args.orderId, args.itemId, args.quantity, args.version, args.idempotencyKey)),
     onSuccess: (order: POSOrder) => {
       queryClient.setQueryData(["pos", "order", order.id], order);
       invalidateOrders(queryClient);
@@ -685,7 +708,9 @@ export function useReprintReceipt() {
       const receipt = await unwrap(createPosApi().reprintReceipt(args.orderId, args.idempotencyKey));
       // The reprint is a chained pos_print_jobs row; the terminal claims and
       // physically prints it exactly like the original and kitchen tickets.
-      await processPendingPrintJobs(propertyId, receipt.id);
+      // Its source is the order (receipt.id is the copy's own id: asking for
+      // that printed nothing).
+      await printFor(propertyId, args.orderId);
       return receipt;
     },
     onSuccess: (_data, variables) =>
@@ -739,13 +764,80 @@ export function useCloseBusinessDay() {
 // Print jobs (kitchen tickets, receipts) already sent for a source id.
 // ---------------------------------------------------------------------------
 
+/** Staff's tags for an item, from the menu Yetu last sent this till (none while menus are off). */
+function menuTags(queryClient: ReturnType<typeof useQueryClient>, outletId: string | undefined) {
+  const menu = queryClient.getQueryData<FnbTillMenu>(["fnb", "menu", outletId]);
+  return (productId: string) => (menu?.enabled ? tagNote(menu, productId) : undefined);
+}
+
+/** This till prints no kitchen tickets (Manager, Printers): a copy would print nowhere. */
+export class KitchenPaperOff extends Error {
+  constructor() {
+    super("This till doesn't print kitchen tickets. A manager can turn them on in Manager, Printers.");
+    this.name = "KitchenPaperOff";
+  }
+}
+
+/**
+ * S8a: prints the latest round's kitchen ticket again (or a round named),
+ * marked COPY, on this till's kitchen printer. Yetu makes the copy; this till
+ * prints it. `failed` is what the printer said when it didn't.
+ */
+export function useReprintKitchenTickets() {
+  const queryClient = useQueryClient();
+  const propertyId = usePropertyId();
+  const outletId = useOutletId();
+  return useMutation({
+    mutationFn: async (args: { orderId: string; idempotencyKey: string; roundNumber?: number }) => {
+      const settings = await loadPrinterSettings();
+      if (!settings.kitchenTickets) throw new KitchenPaperOff();
+      const reprint = await unwrap(createPosApi().reprintKitchenTickets(args.orderId, args.idempotencyKey, args.roundNumber));
+      const results = await printFor(propertyId, args.orderId, menuTags(queryClient, outletId), settings);
+      return { reprint, failed: results.find((result) => !result.ok)?.error };
+    },
+  });
+}
+
+/** S17b: the open tabs of a shift, from the outlet's open orders: how many, and what they owe. */
+export interface OpenTabs {
+  count: number;
+  owedMinor: number;
+  /** Each tab going over, as the close lists it. */
+  tabs?: readonly POSOrder[];
+}
+
+export function useOpenTabsOf(shiftId: string | undefined): OpenTabs {
+  const { data: orders = [] } = useActiveOrders();
+  return useMemo(() => {
+    const mine = orders.filter((order) => order.shiftId === shiftId && order.status !== "CLOSED" && order.status !== "VOIDED");
+    return { count: mine.length, owedMinor: mine.reduce((sum, order) => sum + order.remainingMinor, 0), tabs: mine };
+  }, [orders, shiftId]);
+}
+
+/** S17b: takes a tab handed over to the next shift onto this till's open shift. */
+export function useTakeOverTab() {
+  const queryClient = useQueryClient();
+  const outletId = useOutletId();
+  return useMutation({
+    mutationFn: (args: { orderId: string; idempotencyKey: string }) =>
+      unwrap(createPosApi().takeOverTab(args.orderId, args.idempotencyKey)),
+    onSuccess: (order) => {
+      queryClient.setQueryData(["pos", "order", order.id], order);
+      queryClient.invalidateQueries({ queryKey: ["pos", "orders", "active", outletId] });
+    },
+  });
+}
+
 export function usePrintAfter(propertyId: string) {
   const printing = useRef(false);
+  const queryClient = useQueryClient();
+  const outletId = useOutletId();
   return async (sourceId: string | undefined): Promise<void> => {
     if (!sourceId || printing.current) return;
     printing.current = true;
     try {
-      await processPendingPrintJobs(propertyId, sourceId);
+      // Kitchen tickets to the kitchen's printer, with staff's tags from the menu Yetu last sent (S8a).
+      await printFor(propertyId, sourceId, menuTags(queryClient, outletId));
     } finally {
       printing.current = false;
     }

@@ -28,6 +28,8 @@ export interface KitchenBoardProps {
   failed?: boolean;
   stationFilter?: { options: readonly Choice<string>[]; value: string; onChange: (value: string) => void } | null;
   thresholds?: AgeThresholds;
+  /** What staff say about an item (the Restaurant & Bar module's tags): allergies first of all. */
+  tagsOf?: (productId: string) => string | undefined;
 }
 
 function placeWords(ticket: BoardTicket): string {
@@ -88,6 +90,7 @@ export function KitchenBoard({
   failed = false,
   stationFilter = null,
   thresholds,
+  tagsOf,
 }: KitchenBoardProps) {
   const columns = boardColumns(tickets);
   const empty = tickets.length === 0;
@@ -194,6 +197,7 @@ export function KitchenBoard({
               whyClosedId={canMove ? undefined : whyClosedId}
               onNextStep={onNextStep}
               thresholds={thresholds}
+              tagsOf={tagsOf}
             />
           ))}
         </div>
@@ -211,6 +215,7 @@ function Column({
   whyClosedId,
   onNextStep,
   thresholds,
+  tagsOf,
 }: {
   column: BoardColumn;
   /** The whole board is empty: the New column says so. */
@@ -222,6 +227,7 @@ function Column({
   whyClosedId?: string;
   onNextStep: (ticket: BoardTicket) => void;
   thresholds?: AgeThresholds;
+  tagsOf?: (productId: string) => string | undefined;
 }) {
   const count = column.tickets.length;
   return (
@@ -257,6 +263,7 @@ function Column({
               whyClosedId={whyClosedId}
               onNextStep={onNextStep}
               thresholds={thresholds}
+              tagsOf={tagsOf}
             />
           ))
         )}
@@ -273,6 +280,7 @@ function TicketCard({
   whyClosedId,
   onNextStep,
   thresholds,
+  tagsOf,
 }: {
   ticket: BoardTicket;
   nowMs: number;
@@ -281,6 +289,7 @@ function TicketCard({
   whyClosedId?: string;
   onNextStep: (ticket: BoardTicket) => void;
   thresholds?: AgeThresholds;
+  tagsOf?: (productId: string) => string | undefined;
 }) {
   const headingId = useId();
   const age = ticketAge(ticket.sentAt, nowMs, thresholds);
@@ -301,6 +310,11 @@ function TicketCard({
         <h3 id={headingId} className="y-kticket__number" data-whole="">
           {orderNumberWords(ticket)}
         </h3>
+        {ticket.roundNumber && ticket.roundNumber > 1 ? (
+          <StatusChip tone="info" className="y-kticket__round" data-testid={`kitchen-round-${ticket.id}`}>
+            Round {ticket.roundNumber}
+          </StatusChip>
+        ) : null}
         {fresh ? (
           <StatusChip tone="accent" className="y-kticket__new">
             New
@@ -322,6 +336,11 @@ function TicketCard({
                   {modifier.optionName}
                 </span>
               ))}
+              {tagsOf?.(item.productId) ? (
+                <span className="y-kticket__tags" data-testid="kitchen-tags">
+                  {tagsOf(item.productId)}
+                </span>
+              ) : null}
             </span>
           </li>
         ))}

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { ReceiptSheet } from "../components/ReceiptView";
+import type { FnbTillMenu } from "../fnb/fnbContracts";
 import type { POSOrder } from "../lib/posContracts";
 import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OptionsSheet } from "../register/OptionsSheet";
@@ -16,7 +17,10 @@ import {
   ORDER,
   PAID_ORDER,
   PRODUCTS,
+  HAPPY_MENU,
+  MENU,
   RECEIPT,
+  ROUND2_ORDER,
   SENT_ORDER,
   SPLIT_ORDER,
   STAYS,
@@ -39,6 +43,7 @@ function Sell({
   canPay = true,
   category = ALL_CATEGORIES,
   moreOpen = false,
+  menu,
   children,
 }: {
   order: POSOrder | null;
@@ -48,6 +53,8 @@ function Sell({
   canPay?: boolean;
   category?: string;
   moreOpen?: boolean;
+  /** The outlet's menu (S16): groups, tags and sizes. */
+  menu?: FnbTillMenu;
   children?: ReactNode;
 }) {
   const [activeCategory, setActiveCategory] = useState(category);
@@ -65,7 +72,8 @@ function Sell({
             onCategory={setActiveCategory}
             search={search}
             onSearch={setSearch}
-            addBlocked={order && order.status !== "OPEN" ? "This order has gone to the kitchen. Start a new sale to add more." : null}
+            addBlocked={order && (order.status === "CLOSED" || order.status === "VOIDED") ? "This order has been paid. Start a new sale for more." : null}
+            menu={menu}
             onTap={nothing}
             onSoldOutToggle={nothing}
           />
@@ -80,7 +88,7 @@ function Sell({
             onLabel={nothing}
             selectedLineId={selectedLine}
             onSelectLine={setSelectedLine}
-            onAddAnother={nothing}
+            onQuantity={nothing}
             onRemoveLine={nothing}
             lineBusy={false}
             sentAt={sentAt}
@@ -110,7 +118,7 @@ function Sell({
   );
 }
 
-/** Sell with an order on the ticket, one line chosen: Add another and Remove. */
+/** Sell with an order on the ticket, one line chosen: its quantity and Remove. */
 export function RegisterFixture() {
   return <Sell order={ORDER} selected="line-burger" />;
 }
@@ -133,6 +141,31 @@ export function RegisterLimitedFixture() {
 /** More: discount, void, the order note, a new sale. */
 export function RegisterMoreFixture() {
   return <Sell order={ORDER} moreOpen />;
+}
+
+/** Menus on (S16): Food and Drinks first, staff's tags on the tiles, sizes said. */
+export function RegisterMenusFixture() {
+  return <Sell order={ORDER} menu={MENU} category="mains" />;
+}
+
+/** A lager with sizes: the default chosen, a sold-out size said, a description. */
+export function RegisterSizesFixture() {
+  const tusker = PRODUCTS.find((product) => product.id === "tusker")!;
+  return (
+    <Sell order={ORDER} menu={MENU}>
+      <OptionsSheet product={tusker} currency={CURRENCY} sizes={MENU.sizes.tusker} description={MENU.products.tusker.description} onCancel={nothing} onAdd={nothing} />
+    </Sell>
+  );
+}
+
+/** Happy hour (S17c): the drinks at the rule's price, its name, the price they had struck through. */
+export function RegisterHappyHourFixture() {
+  return <Sell order={ORDER} menu={HAPPY_MENU} category="drinks" />;
+}
+
+/** Round 2 (S17a): round 1 served, a tart added after: Send round 2, and Pay waits for it. */
+export function RegisterRound2Fixture() {
+  return <Sell order={ROUND2_ORDER} menu={MENU} selected={null} />;
 }
 
 /** Choosing options: required first, optional after. */

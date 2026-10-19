@@ -12,15 +12,18 @@ import {
   usePrintAfter,
   usePropertyId,
   useRemoveOrderItem,
+  useSetLineQuantity,
   useSendOrder,
   useSetProductAvailability,
 } from "../hooks/usePosData";
 import { ReceiptView } from "../components/ReceiptView";
 import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OptionsSheet } from "../register/OptionsSheet";
+import { takesMore, unsentLines } from "../register/rounds";
+import { useTillMenu } from "../fnb/useTillMenu";
+import { sizesOf, tagNote } from "../fnb/fnbWords";
 import { PaymentDone } from "../register/PaymentDone";
 import { PaySheet, type PaidInfo } from "../register/PaySheet";
-import { optionIdsFor } from "../register/repeatLine";
 import { NoteSheet } from "../register/NoteSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
 import { TicketActions } from "../register/TicketActions";
@@ -37,6 +40,9 @@ import { orderName } from "../lib/orderNumber";
 export function NewOrder() {
   const { shift } = usePosShift();
   const catalog = useCatalog();
+  // The Restaurant & Bar module's menu (groups, sizes, tags); none: sell as before.
+  const tillMenu = useTillMenu();
+  const menu = tillMenu.data;
   const currency = useCatalogCurrency();
   const [activeCategory, setActiveCategory] = useState<string>(ALL_CATEGORIES);
   const [search, setSearch] = useState("");
@@ -63,6 +69,7 @@ export function NewOrder() {
   const createOrder = useCreateOrder();
   const addItem = useAddOrderItem();
   const removeItem = useRemoveOrderItem();
+  const setLineQuantity = useSetLineQuantity();
   const sendOrder = useSendOrder();
   const setAvailability = useSetProductAvailability();
   const createKey = useIdempotencyKey();
@@ -70,25 +77,30 @@ export function NewOrder() {
   // A send whose answer was lost is the same request again (same key); a refused one is new.
   const sendRequest = useRequestKey();
   const removeKey = useIdempotencyKey();
+  const quantityKey = useIdempotencyKey();
 
   const createProblem = sellProblem(createOrder.error, "create");
   const addProblem = sellProblem(addItem.error, "add");
   const removeProblem = sellProblem(removeItem.error, "remove");
+  const quantityProblem = sellProblem(setLineQuantity.error, "quantity");
   const sendProblem = sellProblem(sendOrder.error, "send");
   const availabilityProblem = sellProblem(setAvailability.error, "availability");
   const createError = createProblem?.words ?? null;
   const addError = addProblem?.words ?? null;
-  const mutationError = createProblem ?? addProblem ?? removeProblem ?? sendProblem ?? availabilityProblem ?? actionError;
+  const mutationError = createProblem ?? addProblem ?? removeProblem ?? quantityProblem ?? sendProblem ?? availabilityProblem ?? actionError;
   // Only a send whose answer was lost is offered again as it was; the order stays on the ticket.
   const retrySend = sendProblem?.kind === "network" && order ? () => void sendToKitchen() : undefined;
 
-  const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || sendOrder.isPending;
+  const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || setLineQuantity.isPending || sendOrder.isPending;
   const canMutate = Boolean(shift) && !busy;
-  // Yetu adds items only to an order that is still open (not yet sent).
+  // An order takes more after it was sent, as the next round (S17a); a Yetu
+  // before rounds takes nothing once sent, and a paid or voided order never.
   const addBlocked = !shift
     ? "Open a shift before taking orders."
-    : order && order.status !== "OPEN"
-      ? "This order has gone to the kitchen. Start a new sale to add more."
+    : order && !takesMore(order)
+      ? order.status === "CLOSED" || order.status === "VOIDED"
+        ? "This order is finished. Start a new sale."
+        : "This order has gone to the kitchen. Start a new sale to add more."
       : null;
 
   async function ensureOrder(): Promise<POSOrder | null> {
@@ -118,7 +130,7 @@ export function NewOrder() {
     if (!canMutate || addBlocked) return;
     if (product.isAvailable === false) return;
     setNotice(null);
-    if ((product.modifierGroups?.length ?? 0) > 0) {
+    if ((product.modifierGroups?.length ?? 0) > 0 || sizesOf(menu, product.id).length > 1) {
       openOptions(product);
       return;
     }
@@ -142,7 +154,7 @@ export function NewOrder() {
     }
   }
 
-  async function addProduct(product: POSCatalogProduct, quantity: number, modifierOptionIds: string[]) {
+  async function addProduct(product: POSCatalogProduct, quantity: number, modifierOptionIds: string[], variantId?: string) {
     const current = await ensureOrder();
     if (!current) return;
     setActionError(null);
@@ -150,6 +162,7 @@ export function NewOrder() {
       const next = await addItem.mutateAsync({
         orderId: current.id,
         productId: product.id,
+        variantId,
         quantity,
         modifierOptionIds,
         version: current.version,
@@ -160,6 +173,7 @@ export function NewOrder() {
         const retried = await addItem.mutateAsync({
           orderId: next.id,
           productId: product.id,
+          variantId,
           quantity,
           modifierOptionIds,
           version: next.version,
@@ -175,20 +189,22 @@ export function NewOrder() {
     }
   }
 
-  /** Another of the same line, with the same options (a new line: Yetu has no quantity change). */
-  async function addAnother(line: POSOrderItem) {
-    if (!canMutate) return;
-    const product = catalog.data?.products.find((candidate) => candidate.id === line.productId);
-    if (!product || product.isAvailable === false) {
-      setActionError(`${line.name} can't be added just now.`);
-      return;
+  /** How many of an unsent line: Yetu keeps the line's price, options and size. */
+  async function changeQuantity(line: POSOrderItem, quantity: number) {
+    if (!order || !canMutate || line.status !== "ADDED" || quantity < 1) return;
+    setActionError(null);
+    try {
+      const next = await setLineQuantity.mutateAsync({
+        orderId: order.id,
+        itemId: line.id,
+        quantity,
+        version: order.version,
+        idempotencyKey: quantityKey.next(),
+      });
+      setOrder(next);
+    } catch {
+      // The words come from setLineQuantity.error.
     }
-    const ids = optionIdsFor(line, product);
-    if (ids === null) {
-      openOptions(product);
-      return;
-    }
-    await addProduct(product, 1, ids);
   }
 
   async function removeLine(line: POSOrderItem) {
@@ -207,8 +223,8 @@ export function NewOrder() {
     }
   }
 
-  async function sendToKitchen() {
-    if (!order || order.items.length === 0) return;
+  async function sendToKitchen(): Promise<boolean> {
+    if (!order || order.items.length === 0) return false;
     setActionError(null);
     try {
       const next = await sendOrder.mutateAsync({
@@ -219,10 +235,20 @@ export function NewOrder() {
       setOrder(next);
       setSentAt(new Date());
       await printAfter(next.id);
+      return true;
     } catch (error) {
       // The words come from sendOrder.error. Yetu refused it: the next press is a new request.
       if (sellProblem(error, "send")?.kind !== "network") sendRequest.forget();
+      return false;
     }
+  }
+
+  /** Pay: what isn't sent goes to the kitchen first (Send and pay), then the payment opens. */
+  async function pay() {
+    if (order && canSend && takesMore(order) && unsentLines(order) > 0) {
+      if (!(await sendToKitchen())) return;
+    }
+    setSettleOpen(true);
   }
 
   function clearTicket() {
@@ -254,6 +280,7 @@ export function NewOrder() {
           <MenuPanel
             categories={catalog.data?.categories ?? []}
             products={catalog.data?.products ?? []}
+            menu={menu}
             currency={currency}
             activeCategory={activeCategory}
             onCategory={setActiveCategory}
@@ -270,13 +297,14 @@ export function NewOrder() {
           <TicketPanel
             order={order}
             currency={currency}
+            tagsOf={(productId) => (menu?.enabled ? tagNote(menu, productId) : undefined)}
             serviceType={serviceType}
             onServiceType={setServiceType}
             label={tableLabel}
             onLabel={setTableLabel}
             selectedLineId={selectedLineId}
             onSelectLine={setSelectedLineId}
-            onAddAnother={(line) => void addAnother(line)}
+            onQuantity={(line, quantity) => void changeQuantity(line, quantity)}
             onRemoveLine={(line) => void removeLine(line)}
             lineBusy={busy}
             sentAt={sentAt}
@@ -293,7 +321,7 @@ export function NewOrder() {
                 canSend={canSend}
                 canPay={canPay}
                 onSend={() => void sendToKitchen()}
-                onPay={() => setSettleOpen(true)}
+                onPay={() => void pay()}
                 onDiscount={() => setDiscountOpen(true)}
                 onVoid={() => setVoidOpen(true)}
                 onNote={() => setNoteOpen(true)}
@@ -311,7 +339,10 @@ export function NewOrder() {
           pending={busy}
           error={createError ?? addError}
           onCancel={() => setConfiguring(null)}
-          onAdd={(choice) => void addProduct(configuring, choice.quantity, choice.modifierOptionIds)}
+          onAdd={(choice) => void addProduct(configuring, choice.quantity, choice.modifierOptionIds, choice.variantId)}
+          sizes={sizesOf(menu, configuring.id)}
+          description={menu?.products[configuring.id]?.description}
+          happy={menu?.prices?.[configuring.id]}
         />
       )}
       {settleOpen && order && currency && (

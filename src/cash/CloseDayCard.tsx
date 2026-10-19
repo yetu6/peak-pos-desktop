@@ -82,6 +82,13 @@ export function CloseDayCardView({
         <li>
           <CircleDot aria-hidden="true" />
           <span>
+            Today's tabs are paid, charged to a room or voided
+            <span className="y-checklist__why">Tabs move between shifts during the day; the day closes once they are settled.</span>
+          </span>
+        </li>
+        <li>
+          <CircleDot aria-hidden="true" />
+          <span>
             Cash taken without internet has been sent
             <span className="y-checklist__why">Yetu checks this too.</span>
           </span>

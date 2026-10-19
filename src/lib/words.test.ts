@@ -65,7 +65,7 @@ describe("plain words for backend codes", () => {
     expect(orderStatusTone("READY")).toBe("success");
     expect(orderStatusTone("CLOSED")).toBe("success");
     expect(orderStatusTone("VOIDED")).toBe("danger");
-    expect(orderStatusTone("PREPARING")).toBe("warning");
+    expect(orderStatusTone("PREPARING")).toBe("info");
     expect(orderStatusTone("OPEN")).toBe("neutral");
   });
 
@@ -176,5 +176,14 @@ describe("orderPlaceWords", () => {
     expect(orderPlaceWords("TAKEAWAY", "12")).toBe("");
     expect(orderPlaceWords("DINE_IN", "  ")).toBe("");
     expect(orderPlaceWords("DINE_IN", undefined)).toBe("");
+  });
+});
+
+describe("order states: progress is not trouble", () => {
+  it("Preparing is progress, never a warning; warning stays for what needs someone", async () => {
+    const { orderStatusTone } = await import("./words");
+    expect(orderStatusTone("PREPARING")).toBe("info");
+    expect(orderStatusTone("SENT")).toBe("info");
+    expect(orderStatusTone("READY")).toBe("success");
   });
 });

@@ -21,6 +21,9 @@ export interface ReceiptCopy {
   settledAt?: string;
   settlementMethod?: string;
   subtotal?: string;
+  /** S8b: what came off the order (follow-up 45), and why. */
+  discount?: string;
+  discountReason?: string;
   taxAmount?: string;
   totalAmount?: string;
   lines: ReceiptLine[];
@@ -101,6 +104,8 @@ export function receiptCopyFromPrintDocument(document: Record<string, unknown>):
           ? paymentMethodWords(document.settlementMethod as SettlementMethod)
           : undefined,
     subtotal: amountWords(document.subtotal, document.subtotalMinor, currency),
+    discount: typeof document.discountMinor === "number" && document.discountMinor > 0 ? formatMoney(document.discountMinor, currency) : undefined,
+    discountReason: typeof document.discountReason === "string" && document.discountReason.trim() ? document.discountReason.trim() : undefined,
     taxAmount: amountWords(document.taxAmount, document.taxMinor, currency),
     totalAmount: amountWords(document.totalAmount, document.totalMinor, currency),
     lines,
@@ -143,6 +148,7 @@ export function formatReceipt(receipt: ReceiptCopy): string {
 
   const totals = [
     receipt.subtotal ? `Subtotal  ${receipt.subtotal}` : null,
+    receipt.discount ? `${receipt.discountReason ? `Discount (${receipt.discountReason})` : "Discount"}  -${receipt.discount}` : null,
     receipt.taxAmount ? `VAT  ${receipt.taxAmount}` : null,
     receipt.totalAmount ? `TOTAL  ${receipt.totalAmount}` : null,
   ]

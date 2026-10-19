@@ -2,13 +2,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { Banner, Button, Money, MoneyField, PermissionNotice, Sheet, SupervisorApproval, type KeypadKey } from "../components/system";
-import { useIdempotencyKey, usePosShift } from "../hooks/usePosData";
+import { useIdempotencyKey, useOpenTabsOf, usePosShift, type OpenTabs } from "../hooks/usePosData";
+import { orderName } from "../lib/orderNumber";
+import { orderPlaceWords } from "../lib/words";
 import type { RosterEntry } from "../lib/deviceAuth";
 import { formatMoney } from "../lib/money";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import type { POSShift } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
-import { closeShiftProblem, countOutcome } from "./cashWords";
+import { closeShiftProblem, countOutcome, openTabsWords } from "./cashWords";
 import { useRateLimitWait } from "../lib/useRateLimitWait";
 import { rememberClosedShift } from "./closedShift";
 import { NoteCounterSheet, denominationsFor, moneyFieldText } from "./NoteCounterSheet";
@@ -32,8 +34,16 @@ const APPROVAL_REASON = {
  * needs pos.report.manager from someone else). Done: closing takes the till
  * to Open shift, which shows the result Yetu returned.
  */
-export function CloseShiftSheet(props: Omit<CloseShiftSheetViewProps, "onClose" | "onRefreshShift">) {
+/** The close button when tabs go over: what pressing it does. */
+function handOverButtonWords(count: number): string {
+  if (count === 0) return "Hand over and close";
+  return count === 1 ? "Hand over 1 tab and close" : `Hand over ${count} tabs and close`;
+}
+
+export function CloseShiftSheet(props: Omit<CloseShiftSheetViewProps, "onClose" | "onRefreshShift" | "openTabs">) {
   const { close } = usePosShift();
+  // S17b: the shift's tabs still open go to the next shift when it closes.
+  const openTabs = useOpenTabsOf(props.shift.id);
   const closeKey = useIdempotencyKey();
   const queryClient = useQueryClient();
   // The lock waits (within its bound) while the close is with Yetu: the mutation's own status.
@@ -41,6 +51,7 @@ export function CloseShiftSheet(props: Omit<CloseShiftSheetViewProps, "onClose" 
   return (
     <CloseShiftSheetView
       {...props}
+      openTabs={openTabs}
       onClose={(args) => close.mutateAsync({ ...args, idempotencyKey: closeKey.next() })}
       // The shift query refetches as usePosData already does after cash in or out ("pos", "shift").
       onRefreshShift={() => queryClient.invalidateQueries({ queryKey: ["pos", "shift"] })}
@@ -55,8 +66,10 @@ export interface CloseShiftSheetViewProps {
   currency: string | undefined;
   requesterId: string;
   roster: readonly RosterEntry[];
+  /** S17b: the shift's tabs still open, and what they owe: closing hands them over to the next shift. */
+  openTabs: OpenTabs;
   /** Closes the shift with Yetu and returns the closed shift it sends back. */
-  onClose: (args: { countedCashMinor: number; supervisorStaffId?: string; supervisorPin?: string }) => Promise<POSShift>;
+  onClose: (args: { countedCashMinor: number; supervisorStaffId?: string; supervisorPin?: string; handOver?: boolean }) => Promise<POSShift>;
   /** Gets the shift from Yetu again; its new figures arrive through `shift`. */
   onRefreshShift?: () => Promise<unknown>;
   /** Fixtures start part-way through. */
@@ -71,6 +84,7 @@ export function CloseShiftSheetView({
   currency,
   requesterId,
   roster,
+  openTabs,
   onClose,
   onRefreshShift,
   initialCounted = "",
@@ -104,6 +118,9 @@ export function CloseShiftSheetView({
     setProblem(null);
   });
   const [refreshing, setRefreshing] = useState(false);
+  // Yetu found open tabs this till didn't know of (another till's order on this shift): hand them over too, when asked.
+  const [handOverFound, setHandOverFound] = useState(false);
+  const handOver = openTabs.count > 0 || handOverFound;
 
   const countedMinor = toMinor(counted);
   const outcome = countedMinor === null ? null : countOutcome(countedMinor, shift.expectedCashMinor);
@@ -155,6 +172,7 @@ export function CloseShiftSheetView({
       const result = await onClose({
         countedCashMinor: countedMinor,
         ...(withSupervisor ? { supervisorStaffId: supervisor, supervisorPin: pin } : {}),
+        ...(handOver ? { handOver: true } : {}),
       });
       rememberClosedShift({ shift: result, currency, at: new Date() });
       onOpenChange(false);
@@ -217,7 +235,7 @@ export function CloseShiftSheetView({
                 Change the count
               </Button>
               <Button variant="primary" size={64} data-testid="close-shift" disabled={!ready} onClick={() => void submit()}>
-                {pending ? "Closing…" : "Close shift"}
+                {pending ? "Closing…" : handOver ? handOverButtonWords(openTabs.count) : "Close shift"}
               </Button>
             </div>
           )
@@ -300,6 +318,45 @@ export function CloseShiftSheetView({
                   actions="none"
                   keyTestIdPrefix="close-pin-key"
                 />
+              ) : null}
+              {openTabs.count > 0 ? (
+                // Money owed changes hands: each tab going over is listed, as a till's close-out lists open checks.
+                <section className="y-cash__tabs" aria-labelledby="close-tabs-title">
+                  <h4 id="close-tabs-title" className="y-cash__tabs-title">
+                    Going to the next shift
+                  </h4>
+                  <p className="y-cash__muted" data-testid="close-open-tabs">
+                    {openTabsWords(openTabs.count, openTabs.owedMinor, currency)}
+                  </p>
+                  {openTabs.tabs?.length ? (
+                    <ul className="y-cash__tabs-list" data-testid="close-tabs-list">
+                      {openTabs.tabs.map((tab) => (
+                        <li key={tab.id}>
+                          <span>
+                            {orderName(tab)}
+                            {tab.tableLabel || tab.serviceType !== "DINE_IN" ? ` · ${orderPlaceWords(tab.serviceType, tab.tableLabel)}` : ""}
+                          </span>
+                          <Money minor={tab.remainingMinor} currency={currency} />
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </section>
+              ) : null}
+              {refusedKind === "open-orders" && !handOverFound ? (
+                <Button
+                  variant="secondary"
+                  size={56}
+                  data-testid="close-hand-over-found"
+                  disabled={pending}
+                  onClick={() => {
+                    setHandOverFound(true);
+                    setRefused(null);
+                    setProblem("They'll be handed over to the next shift. Close the shift to hand them over.");
+                  }}
+                >
+                  Hand them over to the next shift
+                </Button>
               ) : null}
               {problem && refusedKind === "permission" ? (
                 <div data-testid="close-shift-error">

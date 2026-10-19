@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
 import { AccessLayout } from "../access/AccessLayout";
-import { differenceWords, openShiftProblem } from "../cash/cashWords";
+import { differenceWords, handedOverWords, openShiftProblem } from "../cash/cashWords";
 import { CloseDayCard } from "../cash/CloseDayCard";
 import { forgetClosedShift, useLastClosedShift, type ClosedShift } from "../cash/closedShift";
 import { NoteCounterSheet, denominationsFor, moneyFieldText } from "../cash/NoteCounterSheet";
@@ -199,6 +199,11 @@ export function OpenShiftView({
                     ? differenceWords(closed.shift.varianceMinor, closed.currency)
                     : "Closed"}
                 </p>
+                {handedOverWords(closed.shift.handedOverTabs, closed.shift.handedOverOwedMinor, closed.currency) ? (
+                  <p className="y-cash__muted" data-testid="closed-shift-tabs">
+                    {handedOverWords(closed.shift.handedOverTabs, closed.shift.handedOverOwedMinor, closed.currency)}
+                  </p>
+                ) : null}
               </section>
             ) : null}
             {closeDay}

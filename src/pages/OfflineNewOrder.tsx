@@ -11,6 +11,7 @@ import { OptionsSheet } from "../register/OptionsSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
 import { OFFLINE_MENU_MISSING, offlineProblemWords } from "../register/offlineWords";
 import { menuOf } from "../register/offlineMenu";
+import { useCachedTillMenu } from "../fnb/useTillMenu";
 
 /** The order type a new offline sale starts with (the store needs one to make the draft). */
 const FIRST_SERVICE_TYPE = "DINE_IN";
@@ -42,6 +43,8 @@ export function OfflineNewOrder() {
   const order = draft.data;
   const currency = catalog.data?.currency ?? order?.currency ?? "";
   const menu = useMemo(() => menuOf(catalog.data), [catalog.data]);
+  // The groups, tags and sizes Yetu last sent, when the till has them: never asked for offline.
+  const tillMenu = useCachedTillMenu();
   const busy = addItem.isPending || setQuantity.isPending || removeLine.isPending || updateContext.isPending;
   const saving = commit.isPending || settleCash.isPending || cashToTake !== null;
   // The till doesn't lock itself while the sale is being saved on it.
@@ -132,6 +135,8 @@ export function OfflineNewOrder() {
             loading={catalog.isLoading}
             failed={catalog.isError}
             failedWords={OFFLINE_MENU_MISSING}
+            menu={tillMenu}
+            offline
           />
         }
         ticket={

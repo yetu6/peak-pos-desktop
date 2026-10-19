@@ -107,7 +107,8 @@ describe("PaySheet", () => {
   it("cash: works out the change from the cash received, and records only what is owed", async () => {
     const { onPaid } = renderPay();
     await userEvent.click(screen.getByRole("button", { name: "TSh 50,000" }));
-    expect(screen.getByTestId("amount-received")).toHaveValue("50000");
+    // Read as money (50,000), kept as the amount.
+    expect(screen.getByTestId("amount-received")).toHaveValue("50,000");
     expect(screen.getByTestId("change-due")).toHaveTextContent("Change to give TSh 7,500");
     expect(pay()).toHaveTextContent("Take TSh 42,500 cash");
     await userEvent.click(pay());
@@ -121,9 +122,9 @@ describe("PaySheet", () => {
   it("cash: the keypad types the cash received", async () => {
     renderPay();
     for (const key of ["5", "0", "0", "00"]) await userEvent.click(screen.getByTestId(`cash-key-${key}`));
-    expect(screen.getByTestId("amount-received")).toHaveValue("50000");
+    expect(screen.getByTestId("amount-received")).toHaveValue("50,000");
     await userEvent.click(screen.getByTestId("cash-key-delete"));
-    expect(screen.getByTestId("amount-received")).toHaveValue("5000");
+    expect(screen.getByTestId("amount-received")).toHaveValue("5,000");
   });
 
   it("cash: less than owed is a part payment, and says what is still to pay", async () => {

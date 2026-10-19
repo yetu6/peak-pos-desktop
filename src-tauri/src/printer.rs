@@ -308,3 +308,109 @@ mod tests {
         assert_eq!(error, "Print document is empty");
     }
 }
+
+// ------------------------------------------------------------------ raw printing (S8a)
+
+/// A printer as the till's settings name it (src/print/printerSettings.ts).
+#[derive(serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum PrintTarget {
+    System { name: String },
+    Network { host: String, port: u16 },
+}
+
+impl From<PrintTarget> for crate::raw_print::RawTarget {
+    fn from(target: PrintTarget) -> Self {
+        match target {
+            PrintTarget::System { name } => crate::raw_print::RawTarget::System { name },
+            PrintTarget::Network { host, port } => {
+                crate::raw_print::RawTarget::Network { host, port }
+            }
+        }
+    }
+}
+
+/// Sends a ticket the till laid out (ESC/POS) to a thermal printer, as it is.
+/// Like every print here, a failure is the device's: never an unsend.
+#[tauri::command]
+pub fn print_raw(target: PrintTarget, bytes: Vec<u8>) -> Result<(), String> {
+    crate::raw_print::print_raw(&target.into(), &bytes)
+}
+
+/// The printers this computer knows, for choosing a kitchen or bar printer.
+#[tauri::command]
+pub fn list_printers() -> Vec<String> {
+    crate::raw_print::list_system_printers()
+}
+
+const PRINTER_SETTINGS_FILE: &str = "printers.json";
+
+fn printer_settings_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let dir = app.path().app_config_dir().map_err(|err| err.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    Ok(dir.join(PRINTER_SETTINGS_FILE))
+}
+
+/// This till's printer settings, as last saved; none before the first save.
+#[tauri::command]
+pub fn load_printer_settings(app: tauri::AppHandle) -> Result<Option<serde_json::Value>, String> {
+    let path = printer_settings_path(&app)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(path).map_err(|err| err.to_string())?;
+    Ok(serde_json::from_str(raw.trim()).ok())
+}
+
+/// Every printer named in the settings (the kitchen's and each station's).
+fn saved_targets(settings: &serde_json::Value) -> Result<Vec<crate::raw_print::RawTarget>, String> {
+    let bad = || "Those printer settings couldn't be read. Choose the printers again.".to_string();
+    let mut choices = Vec::new();
+    for key in ["kitchen", "receipt"] {
+        match settings.get(key) {
+            None | Some(serde_json::Value::Null) => {}
+            Some(choice) => choices.push(choice),
+        }
+    }
+    match settings.get("stations") {
+        None | Some(serde_json::Value::Null) => {}
+        // "none": no paper for that station; nothing to check.
+        Some(serde_json::Value::Object(stations)) => choices.extend(
+            stations
+                .values()
+                .filter(|value| value.as_str() != Some("none")),
+        ),
+        Some(_) => return Err(bad()),
+    }
+    choices
+        .into_iter()
+        .map(|choice| {
+            let target = choice.get("target").cloned().ok_or_else(bad)?;
+            serde_json::from_value::<PrintTarget>(target)
+                .map(Into::into)
+                .map_err(|_| bad())
+        })
+        .collect()
+}
+
+/// Saves this till's printer settings, each printer checked first: a printer
+/// in this building on a printing port, never an address elsewhere.
+#[tauri::command]
+pub fn save_printer_settings(
+    app: tauri::AppHandle,
+    settings: serde_json::Value,
+) -> Result<(), String> {
+    if !settings.is_object() {
+        return Err(
+            "Those printer settings couldn't be read. Choose the printers again.".to_string(),
+        );
+    }
+    for target in saved_targets(&settings)? {
+        crate::raw_print::check_saved_target(&target)?;
+    }
+    let path = printer_settings_path(&app)?;
+    let mut file = std::fs::File::create(&path).map_err(|err| err.to_string())?;
+    file.write_all(settings.to_string().as_bytes())
+        .map_err(|err| format!("The printer settings couldn't be saved: {err}"))
+}

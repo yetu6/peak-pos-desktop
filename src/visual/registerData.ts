@@ -1,3 +1,4 @@
+import type { FnbTillMenu } from "../fnb/fnbContracts";
 import type { POSCatalogProduct, POSCategory, POSOrder, POSOrderItem, POSOrderPayment, POSReceipt, POSRoomChargeCandidate } from "../lib/posContracts";
 
 /**
@@ -148,6 +149,59 @@ export const SENT_ORDER: POSOrder = order(
   LINES.map(([id, quantity, options]) => line(id, quantity, options, "SENT")),
   { status: "SENT" },
 );
+
+/**
+ * Round 2 (S17a): two coffees and the burger went in round 1; a tart was
+ * added after, not yet sent.
+ */
+export const ROUND2_ORDER: POSOrder = order(
+  [
+    { ...line("capp", 2, [], "SENT"), roundNumber: 1 },
+    { ...line("burger", 1, [["Cooked", "Medium"]], "SENT"), roundNumber: 1 },
+    line("tart", 1),
+  ],
+  { status: "SERVED", roundsSent: 1 },
+);
+
+/**
+ * The outlet's menu (S16): Food and Drinks, staff's tags, sizes for the
+ * lager and the juice, a description.
+ */
+export const MENU: FnbTillMenu = {
+  enabled: true,
+  groups: [
+    { id: "food", name: "Food", categoryIds: ["breakfast", "mains", "desserts"] },
+    { id: "drinks-group", name: "Drinks", categoryIds: ["coffee", "drinks"] },
+  ],
+  unplacedCategoryIds: [],
+  sizes: {
+    tusker: [
+      { id: "tusker-bottle", name: "Bottle 500 ml", priceMinor: 500_000, isDefault: true, isAvailable: true },
+      { id: "tusker-pint", name: "Draught pint", priceMinor: 650_000, isDefault: false, isAvailable: true },
+      { id: "tusker-jug", name: "Jug 1.5 L", priceMinor: 1_600_000, isDefault: false, isAvailable: false },
+    ],
+    juice: [
+      { id: "juice-glass", name: "Glass", priceMinor: 600_000, isDefault: true, isAvailable: true },
+      { id: "juice-jug", name: "Jug", priceMinor: 1_500_000, isDefault: false, isAvailable: true },
+    ],
+  },
+  products: {
+    curry: { description: "Coconut milk, cashew and coriander, with rice or chapati.", tags: [{ label: "Vegan", kind: "DIETARY" }, { label: "Contains nuts", kind: "ALLERGEN" }] },
+    tart: { tags: [{ label: "Contains gluten", kind: "ALLERGEN" }, { label: "Contains eggs", kind: "ALLERGEN" }] },
+    nyama: { description: "Grilled goat, kachumbari and ugali.", tags: [] },
+    tusker: { description: "Kenyan lager, served cold.", tags: [] },
+  },
+};
+
+/** Happy hour in force (S17c): the lager's sizes and the juice at their rule prices. */
+export const HAPPY_MENU: FnbTillMenu = {
+  ...MENU,
+  prices: {
+    tusker: { ruleName: "Happy hour", priceMinor: 400_000, sizes: { "tusker-bottle": 400_000, "tusker-pint": 520_000 } },
+    juice: { ruleName: "Happy hour", priceMinor: 480_000, sizes: { "juice-glass": 480_000, "juice-jug": 1_200_000 } },
+  },
+  pricesChangeInSeconds: 3600,
+};
 
 /** A payment as Yetu lists it on an order (S5b). */
 export function payment(id: string, paymentMethod: POSOrderPayment["paymentMethod"], amountMinor: number, createdAt: string, recordedByName: string): POSOrderPayment {

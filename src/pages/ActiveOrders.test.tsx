@@ -70,7 +70,16 @@ const spies = vi.hoisted(() => ({
     receiptsStore.set(orderId, { ...receipt, reprintCount: receipt.reprintCount + 1 });
     return { data: { ...receipt, id: `copy-${receipt.reprintCount + 1}` }, error: null };
   }),
-  processPendingPrintJobs: vi.fn(async (..._args: unknown[]) => [{ ok: false, error: "No printer is configured" }]),
+  // S17b: a waiting tab taken onto this till's shift.
+  takeOverTab: vi.fn(async (orderId: string, ..._rest: unknown[]): Promise<Result> => {
+    const order = ordersStore.get(orderId)!;
+    const taken = { ...order, waitingForShift: false, shiftId: "shift-1", version: order.version + 1 };
+    ordersStore.set(orderId, taken);
+    return { data: taken, error: null };
+  }),
+  // S8a: Yetu's copies of a round's kitchen tickets.
+  reprintKitchenTickets: vi.fn(async (..._args: unknown[]): Promise<Result> => ({ data: { roundNumber: 2, printJobs: [] }, error: null })),
+  processPendingPrintJobs: vi.fn(async (..._args: unknown[]): Promise<{ ok: boolean; error?: string }[]> => [{ ok: false, error: "No printer is configured" }]),
 }));
 
 function catalogFixture(currency: string): POSCatalog {
@@ -94,6 +103,8 @@ vi.mock("../lib/posApi", () => ({
     getShift: spies.getShift,
     getReceipt: spies.getReceipt,
     reprintReceipt: spies.reprintReceipt,
+    reprintKitchenTickets: spies.reprintKitchenTickets,
+    takeOverTab: spies.takeOverTab,
     voidOrder: spies.voidOrder,
   }),
 }));
@@ -110,6 +121,13 @@ vi.mock("../auth/DeviceSessionProvider", () => ({
 
 vi.mock("../lib/printJobs", () => ({
   processPendingPrintJobs: spies.processPendingPrintJobs,
+}));
+
+// This till's printer settings (Manager, Printers), as the till app holds them.
+const tillPrinters = vi.hoisted(() => ({ kitchenTickets: true }));
+vi.mock("../print/printerStore", () => ({
+  loadPrinterSettings: async () => ({ kitchenTickets: tillPrinters.kitchenTickets, kitchen: null, stations: {}, receipt: null, cashDrawer: false }),
+  printRawToPrinter: async () => undefined,
 }));
 
 class FakeSocket {
@@ -361,6 +379,17 @@ describe("Orders", () => {
     expect(await screen.findByText("No open orders")).toBeInTheDocument();
   });
 
+  it("keeps a tab handed over when the shift closes: Yetu still lists it (S17b)", async () => {
+    ordersStore.set("order-1", OPEN_ORDER);
+    const { socket } = renderOrders();
+    await screen.findByTestId("order-row-order-1");
+    socket.open();
+    await flush();
+    ordersStore.set("order-1", { ...OPEN_ORDER, waitingForShift: true, handedOverAt: new Date().toISOString() });
+    socket.emit(announce(2, "pos.shift.closed", "shift-1"));
+    expect(await screen.findByTestId("order-waiting-order-1")).toHaveTextContent("Waiting for a shift");
+  });
+
   it("asks Yetu for paid orders only when the Paid tab is opened: the shift's business day, every till at the outlet", async () => {
     ordersStore.set("order-0", PAID_ORDER);
     // Paid on another till's shift the same day: listed too (a refund or a copy can be given from any till).
@@ -381,7 +410,8 @@ describe("Orders", () => {
     const sheet = await openDetail("order-1");
     expect(sheet).toHaveAccessibleName("Order 42");
     expect(within(sheet).getByTestId("order-detail-lines")).toHaveTextContent("Lunch");
-    expect(within(sheet).getByTestId("detail-pay")).toHaveTextContent("Pay TSh 1,180");
+    // Not sent yet: Pay sends it to the kitchen first.
+    expect(within(sheet).getByTestId("detail-pay")).toHaveTextContent("Send and pay TSh 1,180");
     expect(within(sheet).getByTestId("detail-pay")).toHaveFocus();
     expect(within(sheet).getByRole("button", { name: "Void order" })).toBeEnabled();
   });
@@ -408,7 +438,7 @@ describe("Orders", () => {
     await userEvent.click(within(sheet).getByTestId("detail-send"));
     await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledWith("order-1", 1, expect.any(String)));
     expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("Sent to the kitchen.");
-    await waitFor(() => expect(spies.processPendingPrintJobs).toHaveBeenCalledWith("property-1", "order-1"));
+    await waitFor(() => expect(spies.processPendingPrintJobs).toHaveBeenCalledWith("property-1", "order-1", undefined, expect.objectContaining({ settings: expect.any(Object) })));
     await waitFor(() => expect(within(sheet).queryByTestId("detail-send")).toBeNull());
     await waitFor(() => expect(within(sheet).getByTestId("detail-pay")).toHaveFocus());
   });
@@ -534,6 +564,8 @@ describe("Orders", () => {
     const keys = spies.reprintReceipt.mock.calls.map((call) => call[1]);
     expect(keys[1]).toBe(keys[0]);
     expect(keys[2]).not.toBe(keys[1]);
+    // The copy is printed here: its jobs are the order's (the copy's own id found none).
+    expect(spies.processPendingPrintJobs).toHaveBeenCalledWith("property-1", "order-0", undefined, expect.objectContaining({ settings: expect.any(Object) }));
   });
 
   it("keeps an open order's detail when another till takes payment for it, now showing it paid", async () => {
@@ -574,5 +606,174 @@ describe("Orders", () => {
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await waitFor(() => expect(screen.getByTestId("order-row-order-1")).toHaveFocus());
+  });
+});
+
+describe("Orders: a kitchen ticket printed again (S8a)", () => {
+  // Round 2 has gone to the kitchen.
+  const SENT_ORDER: POSOrder = {
+    ...OPEN_ORDER,
+    status: "SENT",
+    roundsSent: 2,
+    items: [{ ...OPEN_ORDER.items[0], status: "SENT", roundNumber: 2 }],
+  };
+
+  it("prints the latest round's ticket again on this till, a new copy each press", async () => {
+    ordersStore.set("order-1", SENT_ORDER);
+    spies.processPendingPrintJobs.mockResolvedValueOnce([{ ok: true }]).mockResolvedValueOnce([{ ok: true }]);
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    const again = await within(sheet).findByTestId("detail-kitchen-reprint");
+    await userEvent.click(again);
+    expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("Round 2's kitchen ticket went to the printer again, marked COPY.");
+    expect(spies.reprintKitchenTickets).toHaveBeenCalledWith("order-1", expect.any(String), undefined);
+    expect(spies.processPendingPrintJobs).toHaveBeenCalledWith("property-1", "order-1", undefined, expect.objectContaining({ settings: expect.objectContaining({ kitchenTickets: true }) }));
+    await userEvent.click(again);
+    await waitFor(() => expect(spies.reprintKitchenTickets).toHaveBeenCalledTimes(2));
+    const keys = spies.reprintKitchenTickets.mock.calls.map((call) => call[1]);
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it("says so when the printer didn't print the copy", async () => {
+    ordersStore.set("order-1", SENT_ORDER);
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(await within(sheet).findByTestId("detail-kitchen-reprint"));
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent(
+      "Round 2's kitchen ticket was made again, but the printer didn't print it: No printer is configured",
+    );
+  });
+
+  it("says Yetu's refusal in words", async () => {
+    ordersStore.set("order-1", SENT_ORDER);
+    spies.reprintKitchenTickets.mockResolvedValueOnce({ data: undefined, error: { code: "NOT_FOUND", detail: "This order hasn't gone to the kitchen yet: send it first." } });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(await within(sheet).findByTestId("detail-kitchen-reprint"));
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent("Nothing of this order has gone to the kitchen yet: send it first.");
+    expect(spies.processPendingPrintJobs).not.toHaveBeenCalled();
+  });
+
+  it("isn't offered before the order has gone to the kitchen, or to someone who can't send orders", async () => {
+    ordersStore.set("order-1", OPEN_ORDER);
+    renderOrders();
+    let sheet = await openDetail("order-1");
+    await within(sheet).findByTestId("detail-send");
+    expect(within(sheet).queryByTestId("detail-kitchen-reprint")).toBeNull();
+    await userEvent.click(within(sheet).getByRole("button", { name: "Close" }));
+  });
+
+  it("on a till that prints no kitchen tickets, says so and asks Yetu for no copy", async () => {
+    tillPrinters.kitchenTickets = false;
+    try {
+      ordersStore.set("order-1", SENT_ORDER);
+      renderOrders();
+      const sheet = await openDetail("order-1");
+      await userEvent.click(await within(sheet).findByTestId("detail-kitchen-reprint"));
+      expect(await within(sheet).findByRole("alert")).toHaveTextContent(
+        "This till doesn't print kitchen tickets. A manager can turn them on in Manager, Printers.",
+      );
+      expect(spies.reprintKitchenTickets).not.toHaveBeenCalled();
+    } finally {
+      tillPrinters.kitchenTickets = true;
+    }
+  });
+
+  it("isn't offered to someone who can't send orders", async () => {
+    signIn(EVERYTHING.filter((permission) => permission !== "pos.order.send"));
+    ordersStore.set("order-1", SENT_ORDER);
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await within(sheet).findByTestId("order-detail-status");
+    expect(within(sheet).queryByTestId("detail-kitchen-reprint")).toBeNull();
+  });
+});
+
+describe("Orders: a tab handed over to the next shift (S17b)", () => {
+  const WAITING: POSOrder = {
+    ...OPEN_ORDER,
+    shiftId: "shift-0",
+    status: "SENT",
+    roundsSent: 1,
+    items: [{ ...OPEN_ORDER.items[0], status: "SENT", roundNumber: 1 }],
+    handedOverAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    waitingForShift: true,
+  };
+
+  it("says it waits for a shift, offers only to take it over, and then carries on here", async () => {
+    ordersStore.set("order-1", WAITING);
+    renderOrders();
+    expect(await screen.findByTestId("order-waiting-order-1")).toHaveTextContent("Waiting for a shift");
+    const sheet = await openDetail("order-1");
+    const waiting = await within(sheet).findByTestId("detail-waiting");
+    // The detail says what the list says.
+    expect(within(sheet).getByTestId("order-detail-status")).toHaveTextContent("Waiting for a shift");
+    expect(waiting).toHaveTextContent(`Handed over to the next shift at ${clockTime(WAITING.handedOverAt!)}.`);
+    expect(within(sheet).queryByTestId("detail-pay")).toBeNull();
+    expect(within(sheet).queryByTestId("detail-send")).toBeNull();
+    await userEvent.click(within(sheet).getByTestId("detail-take-over"));
+    expect(spies.takeOverTab).toHaveBeenCalledWith("order-1", expect.any(String));
+    expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("The tab is on this till's shift now.");
+    await waitFor(() => expect(within(sheet).queryByTestId("detail-waiting")).toBeNull());
+  });
+
+  it("says Yetu's refusal in words: no shift open on this till", async () => {
+    ordersStore.set("order-1", WAITING);
+    spies.takeOverTab.mockResolvedValueOnce({ data: undefined, error: { code: "SHIFT_NOT_OPEN", detail: "No shift is open on this till." } });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(await within(sheet).findByTestId("detail-take-over"));
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent("Open a shift on this till, then take the tab over.");
+  });
+
+  it("isn't offered to someone who can't take orders", async () => {
+    signIn(EVERYTHING.filter((permission) => permission !== "pos.order.send"));
+    ordersStore.set("order-1", WAITING);
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await within(sheet).findByTestId("detail-waiting");
+    expect(within(sheet).queryByTestId("detail-take-over")).toBeNull();
+  });
+});
+
+describe("Orders: Pay sends what isn't sent first (Toast, Square)", () => {
+  // Round 1 went; a tart was added after: Send round 2 here, and Pay sends it first.
+  const ROUND2: POSOrder = {
+    ...OPEN_ORDER,
+    status: "SERVED",
+    roundsSent: 1,
+    items: [
+      { ...OPEN_ORDER.items[0], status: "SENT", roundNumber: 1 },
+      { id: "item-2", productId: "p1", name: "Chocolate tart", quantity: 1, unitPriceMinor: 50_000, taxMinor: 9_000, totalMinor: 59_000, status: "ADDED" },
+    ],
+  };
+
+  it("an order with a line added after its round sends round 2 from here", async () => {
+    ordersStore.set("order-1", ROUND2);
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    expect(within(sheet).getByTestId("detail-send")).toHaveTextContent("Send round 2");
+    expect(within(sheet).getByTestId("detail-send")).toBeEnabled();
+  });
+
+  it("Send and pay sends the round, then opens the payment", async () => {
+    ordersStore.set("order-1", ROUND2);
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    const pay = within(sheet).getByTestId("detail-pay");
+    expect(pay).toHaveTextContent("Send and pay TSh");
+    await userEvent.click(pay);
+    await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledWith("order-1", ROUND2.version, expect.any(String)));
+    expect(await screen.findByTestId("settle-dialog")).toBeInTheDocument();
+  });
+
+  it("when the send is refused, the payment doesn't open and the till says why", async () => {
+    ordersStore.set("order-1", ROUND2);
+    spies.sendOrder.mockResolvedValueOnce({ data: undefined, error: { code: "FORBIDDEN", detail: "x" } });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(within(sheet).getByTestId("detail-pay"));
+    expect(await within(sheet).findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByTestId("settle-dialog")).toBeNull();
   });
 });

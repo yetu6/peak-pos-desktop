@@ -224,3 +224,19 @@ describe("OrdersView", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Order 0142 was voided. The kitchen has been told.");
   });
 });
+
+describe("OrdersView: refunds on the paid list (S10a)", () => {
+  it("says Partly refunded or Refunded from Yetu's figure, and the status otherwise", async () => {
+    const total = 4_779_000;
+    const paid = [
+      order("0137", { status: "CLOSED", paidMinor: total, remainingMinor: 0, totalMinor: total, refundedMinor: 590_000 }),
+      order("0138", { status: "CLOSED", paidMinor: total, remainingMinor: 0, totalMinor: total, refundedMinor: total }),
+      order("0139", { status: "CLOSED", paidMinor: total, remainingMinor: 0, totalMinor: total, refundedMinor: 0 }),
+    ];
+    render(<Harness tab="paid" paidOrders={paid} />);
+    expect(screen.getByTestId("order-state-0137")).toHaveTextContent("Partly refunded");
+    expect(screen.getByTestId("order-state-0138")).toHaveTextContent("Refunded");
+    expect(screen.getByTestId("order-state-0138")).not.toHaveTextContent("Partly");
+    expect(screen.getByTestId("order-state-0139")).not.toHaveTextContent(/refunded/i);
+  });
+});

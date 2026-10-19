@@ -8,7 +8,7 @@ import { stationWords } from "../kitchen/kitchenWords";
 import { formatMoney, majorDigits } from "../lib/money";
 import type { POSOrder, POSOrderPayment, POSStationTicket } from "../lib/posContracts";
 import { otherWords, problemOf, stepRefusal, UNREACHABLE } from "../lib/problemWords";
-import { clockTime, orderPlaceWords, orderStatusWords, paymentMethodWords, ticketStepWords } from "../lib/words";
+import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, ticketStepWords, type Tone } from "../lib/words";
 import { orderReference } from "../lib/orderNumber";
 
 const AMOUNT_TYPED = /^\d+(\.\d*)?$/;
@@ -148,6 +148,51 @@ export function reprintProblem(error: unknown): OrderProblem | null {
   return { kind: "other", words: otherWords(problem, "The copy wasn't printed. Try again.") };
 }
 
+/** Printing a kitchen ticket again (S8a; needs pos.order.send, and paper kitchen tickets on this till). */
+export function kitchenReprintProblem(error: unknown): OrderProblem | null {
+  if (error instanceof Error && error.name === "KitchenPaperOff") return { kind: "other", words: error.message };
+  const problem = problemOf(error);
+  if (!problem) return null;
+  if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only staff who take orders can print a kitchen ticket again. Ask one to help." };
+  if (problem.code === "NOT_FOUND") return { kind: "missing", words: "Nothing of this order has gone to the kitchen yet: send it first." };
+  return { kind: "other", words: otherWords(problem, "The kitchen ticket wasn't printed again. Try again.") };
+}
+
+/** What happened when a kitchen ticket was printed again: the round, and whether the printer took it. */
+export function kitchenReprintWords(roundNumber: number, roundsSent: number | undefined, failed: string | undefined): string {
+  const ticket = (roundsSent ?? 0) > 1 ? `Round ${roundNumber}'s kitchen ticket` : "The kitchen ticket";
+  if (failed) return `${ticket} was made again, but the printer didn't print it: ${failed}`;
+  return `${ticket} went to the printer again, marked COPY.`;
+}
+
+/** S17b: taking over a tab handed over to the next shift. */
+export function takeOverProblem(error: unknown): OrderProblem | null {
+  const problem = problemOf(error);
+  if (!problem) return null;
+  if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  if (problem.code === "SHIFT_NOT_OPEN") return { kind: "other", words: "Open a shift on this till, then take the tab over." };
+  if (problem.code === "TAB_NOT_WAITING") return { kind: "moved", words: "Another till has taken this tab over. It's been reloaded." };
+  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only staff who take orders can take a tab over. Ask one to help." };
+  return { kind: "other", words: otherWords(problem, "The tab wasn't taken over. Try again.") };
+}
+
+/** How many of a line that hasn't gone to the kitchen (the stepper). */
+export function quantityProblem(error: unknown): OrderProblem | null {
+  const problem = problemOf(error);
+  if (!problem) return null;
+  if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  if (problem.code === "INVALID_STATE") return { kind: "paid", words: "This order has taken payment, so its items can't be changed." };
+  // It went to the kitchen meanwhile (sent on another till): reloaded, so the screen shows it as Yetu has it.
+  if (problem.code === "ITEM_NOT_CHANGEABLE") {
+    return { kind: "stale", words: "This item can't be changed now. The order has been reloaded: if it hasn't gone to the kitchen, remove it and add it again." };
+  }
+  if (problem.code === "STALE_VERSION") {
+    return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then try again." };
+  }
+  return { kind: "other", words: otherWords(problem, "The quantity wasn't changed. Try again.") };
+}
+
 /** Removing a line that hasn't gone to the kitchen. */
 export function removeProblem(error: unknown): OrderProblem | null {
   const problem = problemOf(error);
@@ -163,4 +208,14 @@ export function removeProblem(error: unknown): OrderProblem | null {
     return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then try again." };
   }
   return { kind: "other", words: otherWords(problem, "The item wasn't removed. Try again.") };
+}
+
+/**
+ * An order's state on a list, in words: Partly refunded or Refunded once
+ * money went back on it (Yetu's refundedMinor, S10a), else its status.
+ */
+export function orderStateWords(order: Pick<POSOrder, "status" | "totalMinor" | "refundedMinor">): { words: string; tone: Tone } {
+  const refunded = order.refundedMinor ?? 0;
+  if (refunded > 0) return { words: refunded >= order.totalMinor ? "Refunded" : "Partly refunded", tone: "danger" };
+  return { words: orderStatusWords(order.status), tone: orderStatusTone(order.status) };
 }

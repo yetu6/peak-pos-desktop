@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -157,5 +157,76 @@ describe("MenuPanel", () => {
     const back = screen.getByRole("dialog", { name: "Mark Chips Mayai back in stock?" });
     await userEvent.click(within(back).getByRole("button", { name: "Back in stock" }));
     expect(onSoldOutToggle).toHaveBeenCalledWith(PRODUCTS[2], true);
+  });
+});
+
+describe("MenuPanel with the Restaurant & Bar module's menu (S16-B4)", () => {
+  const MENU = {
+    enabled: true,
+    groups: [
+      { id: "g-food", name: "Food", categoryIds: ["mains"] },
+      { id: "g-drinks", name: "Drinks", categoryIds: ["drinks"] },
+    ],
+    unplacedCategoryIds: [],
+    sizes: {
+      tusker: [
+        { id: "bottle", name: "Bottle", priceMinor: 500_000, isDefault: true, isAvailable: true },
+        { id: "pint", name: "Pint", priceMinor: 700_000, isDefault: false, isAvailable: true },
+      ],
+    },
+    products: { nyama: { tags: [{ label: "Halal", kind: "DIETARY" as const }] } },
+  };
+  const plain = (text: string | null | undefined) => text?.replace(/ /g, " ");
+
+  it("puts the groups first, the group's categories second, and staff's tags on the tiles", async () => {
+    render(<Menu menu={MENU} />);
+    const groups = within(screen.getByRole("tablist", { name: "Menu" })).getAllByRole("tab");
+    expect(groups.map((tab) => tab.textContent)).toEqual(["Food", "Drinks"]);
+    expect(tileNames()).toEqual(["menu-Nyama Choma", "menu-Chips Mayai"]);
+    expect(screen.getByTestId("menu-Nyama Choma")).toHaveTextContent("Halal");
+    await userEvent.click(within(screen.getByRole("tablist", { name: "Menu" })).getByRole("tab", { name: "Drinks" }));
+    expect(tileNames()).toEqual(["menu-Tusker Lager", "menu-Soda"]);
+    expect(plain(screen.getByTestId("menu-Tusker Lager").textContent)).toContain("TSh 5,000 · 2 sizes");
+  });
+
+  it("offline, an item with sizes says it sells as its default size, and that more sizes need a connection", async () => {
+    render(<Menu menu={MENU} offline />);
+    await userEvent.click(within(screen.getByRole("tablist", { name: "Menu" })).getByRole("tab", { name: "Drinks" }));
+    const tile = plain(screen.getByTestId("menu-Tusker Lager").textContent);
+    expect(tile).toContain("TSh 5,000 · Bottle");
+    expect(tile).toContain("More sizes need a connection");
+    expect(tile).not.toContain("2 sizes");
+    expect(screen.getByTestId("menu-Soda")).not.toHaveTextContent("More sizes need a connection");
+  });
+
+  it("happy hour: the price now, the rule's name and the price it had, menus on or off (S17c)", async () => {
+    const happy = { ...MENU, prices: { tusker: { ruleName: "Happy hour", priceMinor: 400_000, sizes: { bottle: 400_000, pint: 560_000 } } } };
+    render(<Menu menu={happy} />);
+    await userEvent.click(within(screen.getByRole("tablist", { name: "Menu" })).getByRole("tab", { name: "Drinks" }));
+    const tile = plain(screen.getByTestId("menu-Tusker Lager").textContent);
+    expect(tile).toContain("Happy hour");
+    expect(tile).toContain("TSh 4,000 · 2 sizes");
+    expect(within(screen.getByTestId("menu-Tusker Lager")).getByLabelText(/was TSh 5,000/)).toBeInTheDocument();
+    cleanup();
+    // Menus off: the rule still prices the tile.
+    render(<Menu menu={{ ...happy, enabled: false }} />);
+    expect(plain(screen.getByTestId("menu-Tusker Lager").textContent)).toContain("Happy hour");
+    cleanup();
+    // Offline: the item's own price (rules aren't in the offline menu).
+    render(<Menu menu={happy} offline />);
+    await userEvent.click(within(screen.getByRole("tablist", { name: "Menu" })).getByRole("tab", { name: "Drinks" }));
+    expect(screen.getByTestId("menu-Tusker Lager")).not.toHaveTextContent("Happy hour");
+  });
+
+  it("a category chosen before opens on its own group: the tabs never contradict the tiles", () => {
+    render(<Menu menu={MENU} activeCategory="drinks" />);
+    expect(within(screen.getByRole("tablist", { name: "Menu" })).getByRole("tab", { name: "Drinks" })).toHaveAttribute("aria-selected", "true");
+    expect(tileNames()).toEqual(["menu-Tusker Lager", "menu-Soda"]);
+  });
+
+  it("menus off: the categories as before, nothing said of sizes or tags", () => {
+    render(<Menu menu={{ ...MENU, enabled: false }} />);
+    expect(screen.queryByRole("tablist", { name: "Menu" })).toBeNull();
+    expect(screen.getByTestId("menu-Nyama Choma")).not.toHaveTextContent("Halal");
   });
 });

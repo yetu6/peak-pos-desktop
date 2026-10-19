@@ -530,6 +530,23 @@ export function PaySheetView({
             ))}
           </div>
           {roomAvailable && roomBlocked && !nothingDue ? <p className="y-pay__note">{roomBlocked}</p> : null}
+          {/* Cash: the change under what is owed, where the cashier reads the figures; the keypad stays on the right. */}
+          {method === "CASH" ? (
+              <p className="y-pay__change" data-testid="change-due" aria-live="polite">
+                {nothingDue
+                  ? "Nothing left to pay."
+                  : receivedMinor == null || receivedMinor <= 0
+                  ? "Type or pick the cash the guest gives you."
+                  : receivedMinor >= due
+                    ? (
+                        <span className="y-pay__change-due">
+                          <span>Change to give</span>{" "}
+                          <strong>{formatMoney(receivedMinor - due, currency)}</strong>
+                        </span>
+                      )
+                    : `Part payment: ${formatMoney(receivedMinor, currency)} now, ${formatMoney(due - receivedMinor, currency)} still to pay`}
+              </p>
+          ) : null}
         </section>
 
         <section className="y-pay__right" aria-label={paymentMethodWords(method)}>
@@ -554,15 +571,6 @@ export function PaySheetView({
                 inputTestId="amount-received"
               />
               <Keypad label="Cash received" variant="money" onKey={onCashKey} testIdPrefix="cash-key" />
-              <p className="y-pay__change" data-testid="change-due" aria-live="polite">
-                {nothingDue
-                  ? "Nothing left to pay."
-                  : receivedMinor == null || receivedMinor <= 0
-                  ? "Type or pick the cash the guest gives you."
-                  : receivedMinor >= due
-                    ? `Change to give ${formatMoney(receivedMinor - due, currency)}`
-                    : `Part payment: ${formatMoney(receivedMinor, currency)} now, ${formatMoney(due - receivedMinor, currency)} still to pay`}
-              </p>
             </form>
           ) : method === "ROOM_CHARGE" ? (
             <div className="y-pay__pane">

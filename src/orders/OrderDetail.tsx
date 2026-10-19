@@ -1,6 +1,8 @@
 import { ChefHat, Printer, Trash2, Undo2, Wallet } from "lucide-react";
+import { linesByRound, sendWords, takesMore } from "../register/rounds";
+import { orderStatusIcon } from "./orderStatusIcon";
 import { useEffect, useId, useRef, useState } from "react";
-import { Button, PermissionNotice, RefusalNotice, Sheet, StatusChip, TicketLine, type Refusal } from "../components/system";
+import { Button, PermissionNotice, RefusalNotice, Sheet, StatusChip, Stepper, TicketLine, type Refusal } from "../components/system";
 import {
   useOrderRefunds,
   usePosShift,
@@ -8,6 +10,9 @@ import {
   usePropertyId,
   useReceipt,
   useRemoveOrderItem,
+  useSetLineQuantity,
+  useReprintKitchenTickets,
+  useTakeOverTab,
   useReprintReceipt,
   useSendOrder,
   useStationTickets,
@@ -15,15 +20,26 @@ import {
 import { isComposing } from "../lib/keyboard";
 import { formatMoney } from "../lib/money";
 import type { POSOrder, POSOrderItem, POSOrderPayment, POSOrderRefunds, POSReceipt } from "../lib/posContracts";
+import { MAX_LINE_QUANTITY } from "../lib/posContracts";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRequestKey } from "../lib/useRequestKey";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, serviceTypeWords } from "../lib/words";
 import { REGISTER_KEYS } from "../register/TicketActions";
-import { orderTimeline, removeProblem, reprintProblem, sendProblem, type TimelineEntry } from "./ordersWords";
+import {
+  kitchenReprintProblem,
+  kitchenReprintWords,
+  orderTimeline,
+  removeProblem,
+  quantityProblem,
+  reprintProblem,
+  sendProblem,
+  takeOverProblem,
+  type TimelineEntry,
+} from "./ordersWords";
 import { orderName, orderReference } from "../lib/orderNumber";
 import { refundAvailability, refundGivenWords } from "./refundWords";
 
-export type DetailPending = "send" | "remove" | "reprint" | null;
+export type DetailPending = "send" | "remove" | "quantity" | "reprint" | "kitchen" | "take-over" | null;
 
 export interface OrderDetailViewProps {
   order: POSOrder;
@@ -45,7 +61,13 @@ export interface OrderDetailViewProps {
   onPay: () => void;
   onVoid: () => void;
   onRemoveLine: (line: POSOrderItem) => void;
+  /** How many of a line not yet sent (round 2 on): Yetu keeps its price. */
+  onQuantity: (line: POSOrderItem, quantity: number) => void;
   onReprint: () => void;
+  /** S8a: print the latest round's kitchen ticket again, marked COPY; absent when nothing has gone to the kitchen or this person can't send orders. */
+  onKitchenReprint?: () => void;
+  /** S17b: take a tab handed over to the next shift onto this till's shift. */
+  onTakeOver?: () => void;
   onClose: () => void;
   /** A paid order's refunds and what is left to refund (S7); absent until Yetu has sent them. */
   refunds?: POSOrderRefunds;
@@ -53,6 +75,17 @@ export interface OrderDetailViewProps {
   refundOffer?: { offer: boolean; why: string | null };
   /** Opens Refund items (the parent's sheet). */
   onRefund?: () => void;
+}
+
+/** The order has had a round (or, before rounds, left the Open state): it has a kitchen ticket. */
+function sentToKitchen(order: POSOrder): boolean {
+  return (order.roundsSent ?? 0) > 0 || order.status !== "OPEN";
+}
+
+/** S17b: a tab waiting for a shift, as staff read it. */
+function waitingWords(handedOverAt: string | undefined): string {
+  const when = handedOverAt ? clockTime(handedOverAt) : "";
+  return `${when ? `Handed over to the next shift at ${when}.` : "Handed over to the next shift."} Take it over on this till to add to it, send it or take payment.`;
 }
 
 /** Who took a payment and when, saying only what Yetu gave. */
@@ -87,7 +120,10 @@ export function OrderDetailView({
   onPay,
   onVoid,
   onRemoveLine,
+  onQuantity,
   onReprint,
+  onKitchenReprint,
+  onTakeOver,
   onClose,
   refunds,
   refundOffer,
@@ -98,13 +134,16 @@ export function OrderDetailView({
   const primaryRef = useRef<HTMLButtonElement>(null);
   const busy = pending !== null;
   const lines = order.items.filter((line) => line.status !== "VOIDED");
-  const open = order.status === "OPEN";
   const paid = order.status === "CLOSED";
   const voided = order.status === "VOIDED";
   const owing = !paid && !voided;
   const partPaid = order.paidMinor > 0;
-  const sendable = open && lines.some((line) => line.status === "ADDED");
+  // Rounds (S17a): an order takes more until it is paid, so what isn't sent can be sent.
+  const takesLines = takesMore(order);
+  const sendable = takesLines && lines.some((line) => line.status === "ADDED");
   const payable = owing && lines.length > 0 && order.remainingMinor > 0;
+  // Pay sends what isn't sent first (as Sell does): the kitchen hears of everything paid for.
+  const sendsOnPay = canSend && sendable;
   const reference = orderReference(order);
   const payments = order.payments ?? [];
   const refunded = paid && refunds !== undefined && refunds.refundedMinor > 0;
@@ -147,7 +186,29 @@ export function OrderDetailView({
       initialFocus={primaryRef}
       footer={
         <div className="y-detail__actions" data-testid="order-detail-actions">
-          {owing ? (
+          {owing && order.waitingForShift ? (
+            // S17b: a tab handed over waits for a shift; nothing else is done to it until one takes it.
+            <div className="y-detail__waiting" data-testid="detail-waiting">
+              <p className="y-detail__why">
+                {waitingWords(order.handedOverAt)}
+              </p>
+              {onTakeOver ? (
+                <Button
+                  ref={primaryRef}
+                  variant="primary"
+                  size={64}
+                  block
+                  data-testid="detail-take-over"
+                  disabled={busy}
+                  onClick={onTakeOver}
+                >
+                  {pending === "take-over" ? "Taking it over…" : "Take over this tab"}
+                </Button>
+              ) : (
+                <PermissionNotice who="staff who take orders" action="take a tab over" next="Ask one to help." />
+              )}
+            </div>
+          ) : owing ? (
             <>
               <div className="y-detail__row">
                 <Button
@@ -159,7 +220,7 @@ export function OrderDetailView({
                 >
                   Void order
                 </Button>
-                {open ? (
+                {takesLines ? (
                   canSend ? (
                     <Button
                       size={56}
@@ -169,13 +230,25 @@ export function OrderDetailView({
                       disabled={busy || !sendable}
                       onClick={onSend}
                     >
-                      {pending === "send" ? "Sending…" : "Send to kitchen"}
+                      {pending === "send" ? "Sending…" : sendWords(order)}
                     </Button>
                   ) : (
                     <PermissionNotice who="staff who take orders" action="send them to the kitchen" next="Ask one to help." />
                   )
                 ) : null}
               </div>
+              {onKitchenReprint ? (
+                <Button
+                  variant="quiet"
+                  size={56}
+                  icon={<Printer />}
+                  data-testid="detail-kitchen-reprint"
+                  disabled={busy}
+                  onClick={onKitchenReprint}
+                >
+                  {pending === "kitchen" ? "Sending to the printer…" : "Print kitchen ticket again"}
+                </Button>
+              ) : null}
               {partPaid ? (
                 <p className="y-detail__why" id={voidReasonId}>
                   An order can't be voided once part of it is paid.
@@ -193,7 +266,7 @@ export function OrderDetailView({
                   disabled={busy || !payable}
                   onClick={onPay}
                 >
-                  {payable ? `Pay ${formatMoney(order.remainingMinor, currency)}` : "Pay"}
+                  {payable ? `${sendsOnPay ? "Send and pay" : "Pay"} ${formatMoney(order.remainingMinor, currency)}` : "Pay"}
                 </Button>
               ) : (
                 <PermissionNotice who="a cashier or manager" action="take payment" next="Ask one to help." />
@@ -250,8 +323,13 @@ export function OrderDetailView({
             <StatusChip tone="danger" data-testid="order-detail-status">
               {refundedInFull ? "Refunded" : "Partly refunded"}
             </StatusChip>
+          ) : owing && order.waitingForShift ? (
+            // S17b: the list and the detail say the same: it waits for a shift.
+            <StatusChip tone="warning" data-testid="order-detail-status">
+              Waiting for a shift
+            </StatusChip>
           ) : (
-            <StatusChip tone={orderStatusTone(order.status)} data-testid="order-detail-status">
+            <StatusChip tone={orderStatusTone(order.status)} icon={orderStatusIcon(order.status)} data-testid="order-detail-status">
               {orderStatusWords(order.status)}
             </StatusChip>
           )}
@@ -290,38 +368,51 @@ export function OrderDetailView({
           <h3 id="detail-lines" className="y-detail__heading">
             Items
           </h3>
-          <ul className="y-ticket__list" data-testid="order-detail-lines">
-            {lines.map((line) => {
-              const removable = open && line.status === "ADDED";
-              const selected = removable && selectedLineId === line.id;
-              return (
-                <li key={line.id}>
-                  <TicketLine
-                    quantity={line.quantity}
-                    name={line.name}
-                    options={(line.modifiers ?? []).map((modifier) => modifier.optionName)}
-                    amount={formatMoney(line.totalMinor, currency)}
-                    sent={owing && line.status === "SENT"}
-                    selected={selected}
-                    onSelect={removable && !busy ? () => onSelectLine(selected ? null : line.id) : undefined}
-                  />
-                  {selected ? (
-                    <div className="y-ticket__line-actions">
-                      <Button
-                        variant="danger"
-                        icon={<Trash2 />}
-                        aria-label={`Remove ${line.name}`}
-                        disabled={busy}
-                        onClick={() => onRemoveLine(line)}
-                      >
-                        {pending === "remove" ? "Removing…" : "Remove"}
-                      </Button>
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+          <div className="y-ticket__groups" data-testid="order-detail-lines">
+            {linesByRound(lines).map((group) => (
+              <section key={group.key} className="y-ticket__group" aria-label={group.title ?? undefined} data-testid={`detail-group-${group.key}`}>
+                {group.title ? (
+                  <h4 className={group.key === "unsent" ? "y-ticket__group-title y-ticket__group-title--unsent" : "y-ticket__group-title"}>
+                    {group.title}
+                  </h4>
+                ) : null}
+                <ul className="y-ticket__list">
+                  {group.lines.map((line) => {
+                    const removable = takesLines && line.status === "ADDED";
+                    const selected = removable && selectedLineId === line.id;
+                    return (
+                      <li key={line.id}>
+                        <TicketLine
+                          quantity={line.quantity}
+                          name={line.name}
+                          options={(line.modifiers ?? []).map((modifier) => modifier.optionName)}
+                          amount={formatMoney(line.totalMinor, currency)}
+                          sent={owing && line.status === "SENT"}
+                          sentChip={false}
+                          selected={selected}
+                          onSelect={removable && !busy ? () => onSelectLine(selected ? null : line.id) : undefined}
+                        />
+                        {selected ? (
+                          <div className="y-ticket__line-actions" role="group" aria-label={line.name}>
+                            <Stepper label={line.name} value={line.quantity} min={1} max={MAX_LINE_QUANTITY} disabled={busy} onChange={(quantity) => onQuantity(line, quantity)} />
+                            <Button
+                              variant="danger-outline"
+                              icon={<Trash2 />}
+                              aria-label={`Remove ${line.name}`}
+                              disabled={busy}
+                              onClick={() => onRemoveLine(line)}
+                            >
+                              {pending === "remove" ? "Removing…" : "Remove"}
+                            </Button>
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ))}
+          </div>
         </section>
 
         <dl className="y-ticket__totals" data-testid="order-detail-totals">
@@ -445,16 +536,34 @@ export function OrderDetail({
     : undefined;
   const sendOrder = useSendOrder();
   const removeItem = useRemoveOrderItem();
+  const setLineQuantity = useSetLineQuantity();
   const reprint = useReprintReceipt();
+  const kitchenReprint = useReprintKitchenTickets();
+  const takeOver = useTakeOverTab();
+  const takeOverKey = useRequestKey();
   const sendKey = useRequestKey();
   const removeKey = useRequestKey();
+  const quantityKey = useRequestKey();
   const reprintKey = useRequestKey();
+  const kitchenKey = useRequestKey();
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [problem, setProblem] = useState<Refusal | null>(null);
   const focusAfter = useRef(false);
 
-  const pending: DetailPending = sendOrder.isPending ? "send" : removeItem.isPending ? "remove" : reprint.isPending ? "reprint" : null;
+  const pending: DetailPending = sendOrder.isPending
+    ? "send"
+    : removeItem.isPending
+      ? "remove"
+      : setLineQuantity.isPending
+        ? "quantity"
+        : reprint.isPending
+        ? "reprint"
+        : kitchenReprint.isPending
+          ? "kitchen"
+          : takeOver.isPending
+            ? "take-over"
+            : null;
   // The till doesn't lock itself while a request is with Yetu.
   useHoldIdleLock(pending !== null);
 
@@ -472,6 +581,32 @@ export function OrderDetail({
   function begin() {
     setProblem(null);
     setResult(null);
+  }
+
+  /** Pay: what isn't sent goes to the kitchen first, then the payment opens. */
+  function payAfterSending() {
+    const unsent = order.items.some((line) => line.status === "ADDED");
+    if (pending !== null) return;
+    if (!(canSend && takesMore(order) && unsent)) {
+      onPay();
+      return;
+    }
+    begin();
+    sendOrder.mutate(
+      { orderId: order.id, version: order.version, idempotencyKey: sendKey.keyFor([order.id, order.version].join("|")) },
+      {
+        onSuccess: (updated) => {
+          void printAfter(updated.id);
+          onPay();
+        },
+        onError: (error) => {
+          const refusal = sendProblem(error);
+          setProblem(refusal ?? { kind: "other", words: "The order wasn't sent, so payment didn't open. Try again." });
+          if (refusal?.kind !== "network") sendKey.forget();
+          if (refusal?.kind === "moved") onReload();
+        },
+      },
+    );
   }
 
   function send() {
@@ -524,6 +659,29 @@ export function OrderDetail({
     );
   }
 
+  function changeQuantity(line: POSOrderItem, quantity: number) {
+    if (pending !== null || quantity < 1) return;
+    begin();
+    setLineQuantity.mutate(
+      {
+        orderId: order.id,
+        itemId: line.id,
+        quantity,
+        version: order.version,
+        idempotencyKey: quantityKey.keyFor([order.id, line.id, quantity, order.version].join("|")),
+      },
+      {
+        onSuccess: () => setResult(`${line.name}: ${quantity}.`),
+        onError: (error) => {
+          const refusal = quantityProblem(error);
+          setProblem(refusal ?? { kind: "other", words: "The quantity wasn't changed. Try again." });
+          if (refusal?.kind !== "network") quantityKey.forget();
+          if (refusal?.kind === "stale") onReload();
+        },
+      },
+    );
+  }
+
   function printCopy() {
     if (pending !== null || !receipt.data) return;
     begin();
@@ -535,6 +693,49 @@ export function OrderDetail({
           const refusal = reprintProblem(error);
           setProblem(refusal ?? { kind: "other", words: "The copy wasn't printed. Try again." });
           if (refusal?.kind !== "network") reprintKey.forget();
+        },
+      },
+    );
+  }
+
+  function takeTabOver() {
+    if (pending !== null) return;
+    begin();
+    takeOver.mutate(
+      { orderId: order.id, idempotencyKey: takeOverKey.keyFor(order.id) },
+      {
+        onSuccess: () => {
+          takeOverKey.forget();
+          setResult("The tab is on this till's shift now.");
+          onReload();
+        },
+        onError: (error) => {
+          const refusal = takeOverProblem(error);
+          setProblem(refusal ?? { kind: "other", words: "The tab wasn't taken over. Try again." });
+          if (refusal?.kind !== "network") takeOverKey.forget();
+          if (refusal?.kind === "moved") onReload();
+        },
+      },
+    );
+  }
+
+  function printKitchenAgain() {
+    if (pending !== null) return;
+    begin();
+    kitchenReprint.mutate(
+      { orderId: order.id, idempotencyKey: kitchenKey.keyFor([order.id, "kitchen", order.roundsSent ?? 1].join("|")) },
+      {
+        onSuccess: ({ reprint: again, failed }) => {
+          // Each press is another copy: the next press gets its own key.
+          kitchenKey.forget();
+          const words = kitchenReprintWords(again.roundNumber, order.roundsSent, failed);
+          if (failed) setProblem({ kind: "other", words });
+          else setResult(words);
+        },
+        onError: (error) => {
+          const refusal = kitchenReprintProblem(error);
+          setProblem(refusal ?? { kind: "other", words: "The kitchen ticket wasn't printed again. Try again." });
+          if (refusal?.kind !== "network") kitchenKey.forget();
         },
       },
     );
@@ -558,10 +759,13 @@ export function OrderDetail({
       selectedLineId={selectedLineId}
       onSelectLine={setSelectedLineId}
       onSend={send}
-      onPay={onPay}
+      onPay={payAfterSending}
       onVoid={onVoid}
       onRemoveLine={remove}
+      onQuantity={changeQuantity}
       onReprint={printCopy}
+      onKitchenReprint={canSend && sentToKitchen(order) ? printKitchenAgain : undefined}
+      onTakeOver={canSend ? takeTabOver : undefined}
       onClose={onClose}
       refunds={refunds.data}
       refundOffer={refundOffer}

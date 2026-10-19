@@ -9,6 +9,7 @@ import type {
   POSOrder,
   POSOrderPage,
   POSOrderRefunds,
+  POSKitchenReprint,
   POSReceipt,
   POSRefund,
   POSRefundQuote,
@@ -71,7 +72,7 @@ export function createPosApi() {
     },
     closeShift(
       shiftId: string,
-      body: { countedCashMinor: number; supervisorStaffId?: string; supervisorPin?: string },
+      body: { countedCashMinor: number; supervisorStaffId?: string; supervisorPin?: string; handOver?: boolean },
       idempotencyKey: string,
     ): Promise<ApiResult<POSShift>> {
       return client.POST<POSShift>(`/api/v1/pos/shifts/${encodeURIComponent(shiftId)}/close`, {
@@ -122,7 +123,7 @@ export function createPosApi() {
     },
     addItem(
       orderId: string,
-      body: { productId: string; quantity: number; modifierOptionIds?: string[]; version: number },
+      body: { productId: string; variantId?: string; quantity: number; modifierOptionIds?: string[]; version: number },
       idempotencyKey: string,
     ): Promise<ApiResult<POSOrder>> {
       return client.POST<POSOrder>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/items`, {
@@ -140,6 +141,19 @@ export function createPosApi() {
       return client.DELETE<POSOrder>(
         `/api/v1/pos/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`,
         { headers: idempotent(idempotencyKey), body: { version } },
+      );
+    },
+    /** How many of an UNSENT item (the stepper). The line keeps the price it was added at. */
+    setItemQuantity(
+      orderId: string,
+      itemId: string,
+      quantity: number,
+      version: number,
+      idempotencyKey: string,
+    ): Promise<ApiResult<POSOrder>> {
+      return client.PATCH<POSOrder>(
+        `/api/v1/pos/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`,
+        { headers: idempotent(idempotencyKey), body: { quantity, version } },
       );
     },
     sendOrder(orderId: string, version: number, idempotencyKey: string): Promise<ApiResult<void>> {
@@ -248,6 +262,21 @@ export function createPosApi() {
       return client.POST<POSReceipt>(
         `/api/v1/pos/orders/${encodeURIComponent(orderId)}/receipt/reprint`,
         { headers: idempotent(idempotencyKey) },
+      );
+    },
+
+    /** S17b: a tab handed over to the next shift, taken onto this till's open shift. */
+    takeOverTab(orderId: string, idempotencyKey: string): Promise<ApiResult<POSOrder>> {
+      return client.POST<POSOrder>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/take-over`, {
+        headers: idempotent(idempotencyKey),
+      });
+    },
+
+    /** S8a: the latest round's kitchen tickets again (or the round named), marked COPY. */
+    reprintKitchenTickets(orderId: string, idempotencyKey: string, roundNumber?: number): Promise<ApiResult<POSKitchenReprint>> {
+      return client.POST<POSKitchenReprint>(
+        `/api/v1/pos/orders/${encodeURIComponent(orderId)}/kitchen-tickets/reprint`,
+        { headers: idempotent(idempotencyKey), body: roundNumber === undefined ? {} : { roundNumber } },
       );
     },
 

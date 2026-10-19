@@ -35,6 +35,8 @@ export interface POSOrderItem {
   status: OrderItemStatus;
   prepStation?: PrepStation;
   modifiers?: POSOrderItemModifier[];
+  /** S17a: the round the line was sent in; absent while it is not yet sent. */
+  roundNumber?: number;
 }
 
 export interface POSStationTicket {
@@ -44,6 +46,8 @@ export interface POSStationTicket {
   /** S5b: the order's short number for its outlet and business day ("Order 42"). */
   dailyNumber: number;
   station: PrepStation;
+  /** S17a: the round of the order this ticket makes; absent from a Yetu before rounds (round 1). */
+  roundNumber?: number;
   status: "SENT" | "PREPARING" | "READY" | "SERVED";
   serviceType: ServiceType;
   tableLabel?: string;
@@ -90,6 +94,21 @@ export interface POSOrder {
   totalMinor: number;
   paidMinor: number;
   remainingMinor: number;
+  /**
+   * S17a: rounds the order has sent to the kitchen, 0 until the first send.
+   * Absent from a Yetu before rounds: then nothing can be added once sent.
+   */
+  roundsSent?: number;
+  /** S17b: when a shift closing handed this tab over to the next shift. */
+  handedOverAt?: string;
+  /**
+   * S17b: handed over and not yet taken by a shift: nothing is done to it
+   * (TAB_WAITING_FOR_SHIFT) until this till takes it over, or the next
+   * shift opened at the outlet takes it.
+   */
+  waitingForShift?: boolean;
+  /** S10a: money given back on the order by refunds, 0 when none; absent from a Yetu before S10a. */
+  refundedMinor?: number;
   /** Optimistic concurrency token. Every mutation must echo the value the
    *  desktop last saw; a stale value is refused with STALE_VERSION. */
   version: number;
@@ -179,6 +198,11 @@ export interface POSShift {
   /** Snapshotted from the property's authoritative business date at OpenShift. */
   businessDate: string;
   openedAt: string;
+  /** S17b: on a closed shift, the tabs it handed over to the next shift and what they owed. */
+  handedOverTabs?: number;
+  handedOverOwedMinor?: number;
+  /** S17b: on opening, the waiting tabs this shift took over. */
+  takenOverTabs?: number;
 }
 
 export interface POSCashMovement {
@@ -226,6 +250,9 @@ export interface POSReceiptDocument {
   tableLabel?: string;
   items: POSReceiptLine[];
   subtotalMinor: number;
+  /** S8b: what came off the order (absent when nothing did), and why. */
+  discountMinor?: number;
+  discountReason?: string;
   taxMinor: number;
   totalMinor: number;
   currency: string;
@@ -261,6 +288,14 @@ export interface POSPrintJob {
   attempts: number;
   lastError?: string;
   createdAt: string;
+  /** S8b: on a copy, its original (a till opens no cash drawer for a copy). */
+  reprintedFromId?: string;
+}
+
+/** S8a: a round's kitchen tickets printed again, each marked COPY (reprintPOSKitchenTickets). */
+export interface POSKitchenReprint {
+  roundNumber: number;
+  printJobs: POSPrintJob[];
 }
 
 // ---------------------------------------------------------------------------
@@ -404,3 +439,6 @@ export interface POSRefundRequest {
   supervisorStaffId: string;
   supervisorPin: string;
 }
+
+/** The most of one item a line holds: fbc-peak's MaxLineQuantity, the contract's maximum on adding and on a quantity change. */
+export const MAX_LINE_QUANTITY = 999;

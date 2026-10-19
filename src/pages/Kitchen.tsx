@@ -9,6 +9,8 @@ import {
 } from "../hooks/usePosData";
 import type { Refusal } from "../components/system";
 import { KitchenBoard } from "../kitchen/KitchenBoard";
+import { useTillMenu } from "../fnb/useTillMenu";
+import { tagNote } from "../fnb/fnbWords";
 import { KITCHEN_CLOCK_TICK_SECONDS, KITCHEN_REFRESH_SECONDS } from "../kitchen/kitchenSettings";
 import { ticketsFromOrders, ticketsFromStations, type BoardTicket } from "../kitchen/kitchenTickets";
 import { kitchenProblem, nextStepFor, stationWords, stepDoneWords } from "../kitchen/kitchenWords";
@@ -187,6 +189,8 @@ export function Kitchen() {
   const bound = useMemo(() => (identity?.prepStations ?? []).map((name) => name.trim().toUpperCase()).filter(Boolean), [identity?.prepStations]);
   const shown = display && station !== ALL_STATIONS ? tickets.filter((ticket) => ticket.station === station) : tickets;
   const title = normalizeMode(identity?.mode) === "BAR_DISPLAY" ? "Bar" : "Kitchen";
+  // Staff's tags on each item (allergies first of all), when the outlet's menus are on.
+  const tillMenu = useTillMenu().data;
 
   return (
     <KitchenBoard
@@ -197,6 +201,7 @@ export function Kitchen() {
       busyIds={new Set(held.keys())}
       canMove={canMove}
       onNextStep={(ticket) => void nextStep(ticket)}
+      tagsOf={(productId) => (tillMenu?.enabled ? tagNote(tillMenu, productId) : undefined)}
       result={result}
       problem={problem}
       loading={source.isLoading}

@@ -421,3 +421,14 @@ describe("SupervisorApproval", () => {
     expect(onPinKey.mock.calls.map(([key]) => key)).toEqual(["5", "delete"]);
   });
 });
+
+describe("MoneyField reads as money", () => {
+  it("groups the digits as they are typed, and keeps the amount", async () => {
+    const { groupedDigits } = await import("./fields");
+    expect(groupedDigits("50000")).toBe("50,000");
+    expect(groupedDigits("1234567")).toBe("1,234,567");
+    expect(groupedDigits("950")).toBe("950");
+    expect(groupedDigits("1500.5")).toBe("1,500.5");
+    expect(groupedDigits("")).toBe("");
+  });
+});

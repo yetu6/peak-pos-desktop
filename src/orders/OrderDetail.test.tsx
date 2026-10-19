@@ -61,6 +61,7 @@ function renderDetail(props: Partial<OrderDetailViewProps> = {}) {
     onPay: vi.fn(),
     onVoid: vi.fn(),
     onRemoveLine: vi.fn(),
+    onQuantity: vi.fn(),
     onReprint: vi.fn(),
     onClose: vi.fn(),
     onSelectLine: vi.fn(),
@@ -195,7 +196,8 @@ describe("OrderDetailView", () => {
     const handlers = renderDetail();
     const actions = footer();
     expect(within(actions).getByRole("button", { name: /Send to kitchen/ })).toHaveTextContent("F8");
-    const pay = within(actions).getByRole("button", { name: /Pay TSh 15,340/ });
+    // Not sent yet: Pay sends it first.
+    const pay = within(actions).getByRole("button", { name: /Send and pay TSh 15,340/ });
     expect(pay).toHaveClass("y-button--primary", "y-button--64");
     expect(pay).toHaveTextContent("F9");
     await userEvent.click(within(actions).getByRole("button", { name: /Send to kitchen/ }));
@@ -308,7 +310,7 @@ describe("OrderDetailView", () => {
   it("holds every action while a request is with Yetu, and the sheet can't be dismissed", async () => {
     const handlers = renderDetail({ pending: "send" });
     expect(within(footer()).getByRole("button", { name: /Sending…/ })).toBeDisabled();
-    expect(within(footer()).getByRole("button", { name: /Pay/ })).toBeDisabled();
+    expect(within(footer()).getByRole("button", { name: /pay/i })).toBeDisabled();
     expect(within(footer()).getByRole("button", { name: "Void order" })).toBeDisabled();
     await userEvent.keyboard("{Escape}");
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -348,5 +350,38 @@ describe("OrderDetailView", () => {
     await userEvent.keyboard("{F9}");
     expect(handlers.onSend).toHaveBeenCalledTimes(1);
     expect(handlers.onPay).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("OrderDetailView: by round", () => {
+  it("a line added after a round sits under Not sent yet, and can be removed", async () => {
+    const base = order();
+    const rounds = order({
+      status: "SERVED",
+      roundsSent: 1,
+      items: [{ ...base.items[0], status: "SENT", roundNumber: 1 }, { ...base.items[0], id: "line-new", name: "Chocolate tart", status: "ADDED" }],
+    });
+    const handlers = renderDetail({ order: rounds, selectedLineId: "line-new" });
+    expect(within(screen.getByTestId("detail-group-round-1")).getByRole("heading", { name: "Round 1" })).toBeInTheDocument();
+    const unsent = screen.getByTestId("detail-group-unsent");
+    expect(within(unsent).getByRole("heading", { name: "Not sent yet" })).toBeInTheDocument();
+    await userEvent.click(within(unsent).getByRole("button", { name: "Remove Chocolate tart" }));
+    expect(handlers.onRemoveLine).toHaveBeenCalledWith(expect.objectContaining({ id: "line-new" }));
+    // Its quantity by its stepper; never below one (Remove takes it off).
+    await userEvent.click(within(unsent).getByRole("button", { name: "One more Chocolate tart" }));
+    expect(handlers.onQuantity).toHaveBeenCalledWith(expect.objectContaining({ id: "line-new" }), base.items[0].quantity + 1);
+    expect(within(unsent).getByRole("button", { name: "One fewer Chocolate tart" })).toHaveProperty("disabled", base.items[0].quantity <= 1);
+  });
+
+  it("while a change is with Yetu, the stepper waits", () => {
+    const base = order();
+    const rounds = order({
+      status: "SERVED",
+      roundsSent: 1,
+      items: [{ ...base.items[0], status: "SENT", roundNumber: 1 }, { ...base.items[0], id: "line-new", name: "Chocolate tart", quantity: 2, status: "ADDED" }],
+    });
+    renderDetail({ order: rounds, selectedLineId: "line-new", pending: "quantity" });
+    expect(screen.getByRole("button", { name: "One more Chocolate tart" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "One fewer Chocolate tart" })).toBeDisabled();
   });
 });

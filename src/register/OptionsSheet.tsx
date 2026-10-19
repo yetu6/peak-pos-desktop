@@ -3,6 +3,8 @@ import { useMemo, useState } from "react";
 import { Banner, Button, Sheet, Stepper } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSCatalogProduct, POSModifierGroup } from "../lib/posContracts";
+import { MAX_LINE_QUANTITY } from "../lib/posContracts";
+import type { FnbTillPrice, FnbTillSize } from "../fnb/fnbContracts";
 import { cn } from "../lib/utils";
 
 /** A group is met when its count of choices is within the catalog's limits (as before: min, and max when set). */
@@ -36,14 +38,23 @@ export function OptionsSheet({
   onAdd,
   pending = false,
   error = null,
+  sizes = [],
+  description,
+  happy,
 }: {
   product: POSCatalogProduct;
   currency: string | undefined;
   onCancel: () => void;
-  onAdd: (choice: { quantity: number; modifierOptionIds: string[] }) => void;
+  onAdd: (choice: { quantity: number; modifierOptionIds: string[]; variantId?: string }) => void;
   pending?: boolean;
   /** Why adding didn't work, said here as well as on the ticket behind. */
   error?: string | null;
+  /** The item's sizes on sale (S16-B4): with more than one, a size is chosen first. Yetu prices it. */
+  sizes?: readonly FnbTillSize[];
+  /** What staff say about the item. */
+  description?: string;
+  /** S17c: a price rule in force for the item (happy hour): its name and prices. Yetu prices the line. */
+  happy?: FnbTillPrice;
 }) {
   const groups = useMemo(() => {
     const active = (product.modifierGroups ?? []).filter((group) => group.isActive !== false);
@@ -51,13 +62,23 @@ export function OptionsSheet({
   }, [product.modifierGroups]);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [quantity, setQuantity] = useState(1);
-  const ready = groups.every((group) => groupMet(group, chosen));
+  const choosingSize = sizes.length > 1;
+  // The default size to start with, when it can be sold today; otherwise the first that can.
+  const [sizeId, setSizeId] = useState<string | null>(
+    () => (sizes.find((size) => size.isDefault && size.isAvailable) ?? sizes.find((size) => size.isAvailable))?.id ?? null,
+  );
+  const size = sizes.find((candidate) => candidate.id === sizeId);
+  const ready = groups.every((group) => groupMet(group, chosen)) && (!choosingSize || size !== undefined);
 
   const extras = groups
     .flatMap((group) => group.options ?? [])
     .filter((option) => chosen.has(option.id))
     .reduce((sum, option) => sum + option.priceDeltaMinor, 0);
-  const figure = (product.priceMinor + extras) * quantity;
+  // A rule in force (happy hour) prices the size, or the item as it is.
+  const priceOf = (sizeIdOf: string | undefined, own: number) =>
+    (sizeIdOf ? happy?.sizes?.[sizeIdOf] : happy?.priceMinor) ?? own;
+  const base = choosingSize && size ? priceOf(size.id, size.priceMinor) : priceOf(undefined, product.priceMinor);
+  const figure = (base + extras) * quantity;
 
   function toggle(group: POSModifierGroup, optionId: string) {
     setChosen((current) => {
@@ -80,7 +101,7 @@ export function OptionsSheet({
         if (!open) onCancel();
       }}
       title={product.name}
-      description={`${formatMoney(product.priceMinor, currency)} before options`}
+      description={choosingSize ? "Choose a size" : `${formatMoney(product.priceMinor, currency)} before options`}
       testId="modifier-dialog"
       footer={
         <div className="y-options__footer">
@@ -92,7 +113,9 @@ export function OptionsSheet({
             size={56}
             data-testid="modifier-confirm-add"
             disabled={!ready || pending}
-            onClick={() => onAdd({ quantity, modifierOptionIds: Array.from(chosen) })}
+            onClick={() =>
+              onAdd({ quantity, modifierOptionIds: Array.from(chosen), ...(choosingSize && size ? { variantId: size.id } : {}) })
+            }
           >
             {`Add to order · ${formatMoney(figure, currency)}`}
           </Button>
@@ -100,6 +123,55 @@ export function OptionsSheet({
       }
     >
       <div className="y-options">
+        {description ? (
+          <p className="y-options__description" data-testid="options-description">
+            {description}
+          </p>
+        ) : null}
+        {choosingSize ? (
+          <div role="radiogroup" aria-label="Size, choose 1" data-option-group="" className="y-options__group">
+            <div className="y-options__head">
+              <span className="y-options__name">Size</span>
+              <span className="y-options__rule y-options__rule--required">Choose 1</span>
+            </div>
+            <div className="y-options__list">
+              {sizes.map((candidate) => {
+                const on = candidate.id === sizeId;
+                return (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    aria-disabled={!candidate.isAvailable || undefined}
+                    data-testid={`size-option-${candidate.id}`}
+                    className="y-options__option"
+                    onClick={candidate.isAvailable ? () => setSizeId(candidate.id) : undefined}
+                  >
+                    <span className="y-options__tick" aria-hidden="true">
+                      {on ? <Check /> : null}
+                    </span>
+                    <span className="y-options__label">{candidate.name}</span>
+                    <span className="y-options__price">
+                      {!candidate.isAvailable ? (
+                        "Sold out"
+                      ) : priceOf(candidate.id, candidate.priceMinor) !== candidate.priceMinor ? (
+                        <>
+                          {formatMoney(priceOf(candidate.id, candidate.priceMinor), currency)}{" "}
+                          <s className="y-tile__was" aria-label={`was ${formatMoney(candidate.priceMinor, currency)}`}>
+                            {formatMoney(candidate.priceMinor, currency)}
+                          </s>
+                        </>
+                      ) : (
+                        formatMoney(candidate.priceMinor, currency)
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
         {groups.map((group) => {
           const rule = ruleWords(group);
           const count = (group.options ?? []).filter((option) => chosen.has(option.id)).length;
@@ -150,7 +222,7 @@ export function OptionsSheet({
         })}
         <div className="y-options__quantity">
           <span className="y-options__name">Quantity</span>
-          <Stepper label={product.name} value={quantity} onChange={setQuantity} min={1} />
+          <Stepper label={product.name} value={quantity} onChange={setQuantity} min={1} max={MAX_LINE_QUANTITY} />
         </div>
         {error ? (
           <Banner inline tone="danger">

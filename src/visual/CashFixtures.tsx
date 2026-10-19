@@ -1,3 +1,4 @@
+import { ORDER as ORDER_FOR_TABS } from "./registerData";
 import { AccessFrame } from "../access/AccessLayout";
 import { CloseDayCardView } from "../cash/CloseDayCard";
 import { CloseShiftSheetView } from "../cash/CloseShiftSheet";
@@ -212,6 +213,8 @@ export function CashOutFixture() {
   );
 }
 
+const NO_TABS = { count: 0, owedMinor: 0 };
+
 /** Closing over a cashier's Cash page: the usual closer, and the count stays blind behind the sheet. */
 function Close(props: Partial<Parameters<typeof CloseShiftSheetView>[0]>) {
   return (
@@ -223,6 +226,7 @@ function Close(props: Partial<Parameters<typeof CloseShiftSheetView>[0]>) {
         currency={CURRENCY}
         requesterId={AMINA}
         roster={ROSTER}
+        openTabs={NO_TABS}
         onClose={async () => SHIFT}
         {...props}
       />
@@ -238,6 +242,15 @@ export function CloseCountFixture() {
 /** Close shift, step 2: the count matches. */
 export function CloseBalancedFixture() {
   return <Close initialCounted="74000" initialStep="check" />;
+}
+
+/** Close shift with tabs still open (S17b): they go to the next shift, and the button says so. */
+export function CloseTabsFixture() {
+  const tabs = [
+    { ...ORDER_FOR_TABS, id: "tab-41", dailyNumber: 41, orderNumber: "POS-MR-261012-41", serviceType: "ROOM_SERVICE" as const, tableLabel: "204", remainingMinor: 2_500_000 },
+    { ...ORDER_FOR_TABS, id: "tab-43", dailyNumber: 43, orderNumber: "POS-MR-261012-43", serviceType: "DINE_IN" as const, tableLabel: "4", remainingMinor: 2_020_000 },
+  ];
+  return <Close initialCounted="74000" initialStep="check" openTabs={{ count: 2, owedMinor: 4_520_000, tabs }} />;
 }
 
 /** Close shift, step 2: over, so a manager approves. */

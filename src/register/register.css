@@ -158,6 +158,8 @@
 
 .y-options__tick svg { width: 16px; height: 16px; }
 .y-options__price { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.y-options__option[aria-disabled="true"] { border-style: dashed; color: var(--text-muted); cursor: not-allowed; }
+.y-options__description { margin: 0; color: var(--text-muted); }
 
 .y-options__quantity {
   display: flex;
@@ -226,6 +228,42 @@
   list-style: none;
 }
 
+/* The ticket by round: what went to the kitchen, then what hasn't, last. */
+.y-ticket__groups {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* A round's heading stays at the top while its lines scroll under it. */
+.y-ticket__group-title {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-1);
+  background: var(--surface-raised);
+  padding: var(--space-1) 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Not sent yet: said in words, in the warning tone, with a marker before it. */
+.y-ticket__group-title--unsent {
+  color: var(--warning);
+}
+
+.y-ticket__group-title--unsent::before {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
 .y-ticket__line-actions {
   display: flex;
   flex-wrap: wrap;
@@ -285,6 +323,8 @@
 
 /* --------------------------------------------------------------- Actions */
 .y-actions { display: grid; gap: var(--space-3); }
+/* Why Pay waits (S17a): said above the button, in the till's plain words. */
+.y-actions__why { margin: 0; color: var(--text-muted); font-size: var(--type-small); }
 
 .y-actions__row {
   display: flex;
@@ -428,6 +468,26 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The change to give: the cashier's one number, in display type, in the done tone. */
+.y-pay__change-due {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border: 1px solid var(--success-line);
+  border-radius: var(--radius-control);
+  background: var(--success-subtle);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  font-size: var(--type-title);
+}
+
+.y-pay__change-due strong {
+  color: var(--success);
+  font-size: var(--type-display);
+  line-height: 1.1;
+}
+
 .y-pay__rooms { display: grid; gap: var(--space-2); }
 
 /* Always in the page (a live region), so a recorded part payment is announced. */
@@ -546,3 +606,30 @@
 }
 
 .y-pay__footer > .y-button--primary { min-width: min(100%, 360px); }
+
+/*
+ * Menu groups (Food, Drinks) above the categories: two levels that look like
+ * two levels. The groups are filled pills, the categories underlined tabs
+ * beneath. Same tab semantics: only the look differs.
+ */
+.y-catalog__groups {
+  gap: var(--space-2);
+  border-bottom: 0;
+  padding-bottom: var(--space-2);
+}
+
+.y-catalog__groups .y-tab {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  padding: 0 var(--space-5);
+  color: var(--text);
+  font-size: var(--type-lead);
+  font-weight: 600;
+}
+
+.y-catalog__groups .y-tab[aria-selected="true"] {
+  border-color: var(--action);
+  background: var(--action);
+  color: var(--on-action);
+}

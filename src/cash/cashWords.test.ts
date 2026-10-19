@@ -19,7 +19,7 @@ describe("closing a shift: the backend's refusals in words", () => {
   it("names each refusal and what to do", () => {
     expect(closeShiftProblem(problem("SHIFT_HAS_OPEN_ORDERS", "shift has open orders"))).toEqual({
       kind: "open-orders",
-      words: "Some orders on this till are still open. Take payment for them or void them, then close the shift.",
+      words: "Some orders on this shift are still open. Hand them over to the next shift, or take payment for them first.",
     });
     expect(closeShiftProblem(problem("SHIFT_OFFLINE_CASH_UNRESOLVED", "shift has unresolved offline cash"))?.kind).toBe("offline-cash");
     expect(closeShiftProblem(problem("CONFLICT", "supervisor approval failed"))).toEqual({
@@ -64,6 +64,16 @@ describe("closing the day: what blocks it, in words", () => {
     expect(
       dayCloseProblem(problem("INVALID_STATE", "a shift for this business date is still open: 1 shift(s) for 2026-10-12"))?.words,
     ).toBe("1 shift is still open today. Close every till's shift, then close the day.");
+  });
+
+  it("counts the tabs still open: the day closes once they are settled (S17b)", () => {
+    // fbc-peak business_day.go: "<n> open tab(s) for <day>", after the shifts are closed.
+    expect(
+      dayCloseProblem(problem("INVALID_STATE", "a shift for this business date is still open: 2 open tab(s) for 2026-10-19")),
+    ).toEqual({
+      kind: "tabs-open",
+      words: "2 tabs are still open today. Take payment for them, charge them to a room or void them, then close the day.",
+    });
   });
 
   it("names unsent offline cash and night audit", () => {

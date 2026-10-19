@@ -10,6 +10,10 @@ import {
 import { formatReceipt, receiptCopyFromPrintDocument } from "./receiptPrint";
 import { formatRefundReceipt, refundReceiptCopyFromPrintDocument } from "./refundReceiptPrint";
 import type { POSPrintJob, PrintJobStatus } from "./posContracts";
+import { kitchenTicketBytes } from "../print/kitchenTicket";
+import { paperFromPrintDocument, type KitchenPrintRoutes } from "../print/kitchenRouting";
+import { printerFor, stationPrintsNoPaper } from "../print/printerSettings";
+import { receiptPaperFor } from "../print/receiptRouting";
 
 /**
  * The `pos_print_jobs.job_type` values Yetu writes: a kitchen ticket at
@@ -139,8 +143,12 @@ async function defaultPrint(title: string, text: string): Promise<void> {
 
 /** Peak's job status column stores PENDING/CLAIMED/PRINTED/FAILED exactly —
  *  the query filter must match that case or every row is silently excluded. */
-export async function listPrintJobs(status: PrintJobStatus | "" = "PENDING"): Promise<POSPrintJob[]> {
-  const query = status ? new URLSearchParams({ status }).toString() : "";
+export async function listPrintJobs(status: PrintJobStatus | "" = "PENDING", sourceId?: string): Promise<POSPrintJob[]> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  // S8a: the order's or refund's own jobs, however many others wait at the outlet.
+  if (sourceId) params.set("sourceId", sourceId);
+  const query = params.toString();
   return request(`/api/v1/pos/print-jobs${query ? `?${query}` : ""}`);
 }
 
@@ -183,7 +191,14 @@ export async function ackFailed(jobId: string, error: string): Promise<POSPrintJ
 export async function processPrintJob(
   job: POSPrintJob,
   printFn: (title: string, text: string) => Promise<void> = defaultPrint,
+  routes?: KitchenPrintRoutes,
 ): Promise<PrintResult> {
+  const kitchen = job.jobType === KITCHEN_TICKET && routes !== undefined;
+  // Paper kitchen tickets off on this till (its kitchen has a screen): the job
+  // is left for a till that prints them, never claimed and dropped.
+  if (kitchen && !routes.settings.kitchenTickets) return { ok: true };
+  // No paper for this station on this till (a bar whose bartender pours what they ring up): left, like the above.
+  if (kitchen && stationPrintsNoPaper(routes.settings, job.document.station)) return { ok: true };
   let claimed: POSPrintJob;
   try {
     claimed = job.status === "PENDING" ? await claimPrintJob(job.id) : job;
@@ -196,7 +211,18 @@ export async function processPrintJob(
   }
   const formatted = formatPrintDocument(claimed);
   try {
-    await printFn(formatted.title, formatted.text);
+    const station = typeof claimed.document.station === "string" ? claimed.document.station : undefined;
+    const printer = kitchen ? printerFor(routes.settings, station) : null;
+    const receiptPrinter = (claimed.jobType === RECEIPT || claimed.jobType === REFUND_RECEIPT) ? routes?.settings.receipt : null;
+    if (kitchen && printer) {
+      // A thermal printer of the kitchen's: the ticket in large type, with a cut (S8a).
+      await routes.printRaw(printer.target, kitchenTicketBytes(paperFromPrintDocument(claimed.document, routes.tagsOf), printer.width));
+    } else if (routes && receiptPrinter) {
+      // The thermal receipt printer: columns, a cut, and the cash drawer for cash on an original (S8b).
+      await routes.printRaw(receiptPrinter.target, receiptPaperFor(claimed, receiptPrinter.width, routes.settings.cashDrawer, formatted.text));
+    } else {
+      await printFn(formatted.title, formatted.text);
+    }
     await ackPrinted(claimed.id);
     return { ok: true };
   } catch (error) {
@@ -220,17 +246,18 @@ export async function processPendingPrintJobs(
   _propertyId: string,
   sourceId?: string,
   printFn: (title: string, text: string) => Promise<void> = defaultPrint,
+  routes?: KitchenPrintRoutes,
 ): Promise<PrintResult[]> {
   let jobs: POSPrintJob[];
   try {
-    jobs = await listPrintJobs("PENDING");
+    jobs = await listPrintJobs("PENDING", sourceId);
   } catch (error) {
     return [printFailure(error)];
   }
   const mine = sourceId ? jobs.filter((job) => String(job.sourceId) === sourceId) : jobs;
   const results: PrintResult[] = [];
   for (const job of mine) {
-    results.push(await processPrintJob(job, printFn));
+    results.push(await processPrintJob(job, printFn, routes));
   }
   return results;
 }

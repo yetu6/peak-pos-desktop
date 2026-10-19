@@ -32,6 +32,8 @@ export interface BoardTicket {
   staffName?: string;
   notes?: string;
   station?: string;
+  /** S17a: the order's round this ticket makes, when Yetu says (from round 2 it is said). */
+  roundNumber?: number;
   /** When it was sent, as Yetu wrote it; absent when Yetu gave no time. */
   sentAt?: string;
   items: POSOrderItem[];
@@ -102,6 +104,7 @@ export function ticketsFromStations(tickets: readonly POSStationTicket[]): Board
         staffName: ticket.waiterName || undefined,
         notes: ticket.notes,
         station: ticket.station,
+        roundNumber: ticket.roundNumber,
         sentAt: ticket.createdAt,
         items: stillMade(ticket.items),
       },

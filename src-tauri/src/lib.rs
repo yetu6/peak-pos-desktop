@@ -2,6 +2,7 @@ mod diagnostics;
 mod identity;
 pub mod local_store;
 mod printer;
+mod raw_print;
 mod socket;
 
 use tauri::Manager;
@@ -28,6 +29,10 @@ pub fn run() {
             printer::print_kitchen_ticket,
             printer::printer_status,
             printer::print_test_page,
+            printer::print_raw,
+            printer::list_printers,
+            printer::load_printer_settings,
+            printer::save_printer_settings,
             diagnostics::host_diagnostics,
             socket::open_peak_socket,
             socket::send_peak_socket,

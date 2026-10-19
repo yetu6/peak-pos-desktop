@@ -58,6 +58,8 @@ export function StatusChip({
 export function Tile({
   name,
   price,
+  note,
+  offer,
   soldOut = false,
   disabled = false,
   mark,
@@ -68,6 +70,10 @@ export function Tile({
 }: {
   name: string;
   price: string;
+  /** A short line under the name: what staff say about the item ("Vegan · Contains nuts"). */
+  note?: string;
+  /** A price rule in force (happy hour): its name, and the price the item had, struck through. */
+  offer?: { label: string; was: string };
   soldOut?: boolean;
   /** Can't be added just now; the screen says why. It stays focusable and keeps its place. */
   disabled?: boolean;
@@ -92,10 +98,19 @@ export function Tile({
       onContextMenu={onContextMenu}
     >
       <span className="y-tile__name">{name}</span>
+      {note ? <span className="y-tile__note">{note}</span> : null}
       {soldOut ? (
         <StatusChip tone="neutral" icon={<Ban aria-hidden="true" />}>
           Sold out
         </StatusChip>
+      ) : offer ? (
+        <span className="y-tile__offer">
+          <span className="y-tile__offer-label">{offer.label}</span>
+          <span className="y-tile__price">{price}</span>
+          <s className="y-tile__was" aria-label={`was ${offer.was}`}>
+            {offer.was}
+          </s>
+        </span>
       ) : (
         <span className="y-tile__price">{price}</span>
       )}
@@ -109,8 +124,11 @@ export function TicketLine({
   name,
   options = [],
   note,
+  tags,
   amount,
   sent = false,
+  sentWords = "Sent",
+  sentChip = true,
   selected = false,
   onSelect,
   className,
@@ -119,13 +137,19 @@ export function TicketLine({
   name: string;
   options?: readonly string[];
   note?: string;
+  /** What staff say about the item ("Halal · Contains nuts"), under its name. */
+  tags?: string;
   amount: string;
   sent?: boolean;
+  /** What the sent chip says: "Sent", or its round once there are several ("Round 2"). */
+  sentWords?: string;
+  /** False where a heading above already says the line was sent (the ticket by round). */
+  sentChip?: boolean;
   selected?: boolean;
   onSelect?: () => void;
   className?: string;
 }) {
-  const label = [`${quantity} × ${name}`, ...options, note ? `Note: ${note}` : "", sent ? "Sent to kitchen" : "", amount]
+  const label = [`${quantity} × ${name}`, ...options, tags ?? "", note ? `Note: ${note}` : "", sent ? "Sent to kitchen" : "", amount]
     .filter(Boolean)
     .join(", ");
   const body = (
@@ -138,10 +162,11 @@ export function TicketLine({
             {option}
           </span>
         ))}
+        {tags ? <span className="y-ticket-line__tags">{tags}</span> : null}
         {note ? <span className="y-ticket-line__note">{note}</span> : null}
-        {sent ? (
+        {sent && sentChip ? (
           <StatusChip tone="info" className="y-ticket-line__sent">
-            Sent
+            {sentWords}
           </StatusChip>
         ) : null}
       </span>
