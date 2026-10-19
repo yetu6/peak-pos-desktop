@@ -99,6 +99,13 @@ export function SearchField({
   );
 }
 
+/** Digits as money reads ("50000" -> "50,000"); the decimals, if any, as typed. */
+export function groupedDigits(text: string): string {
+  const [whole, ...rest] = text.split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return rest.length ? `${grouped}.${rest.join("")}` : grouped;
+}
+
 /**
  * An amount typed in the currency's main unit ("42500" for TSh 42,500). The
  * parent keeps the text; `onValueChange` also hands back the minor-unit amount
@@ -156,7 +163,8 @@ export function MoneyField({
           inputMode="decimal"
           autoComplete="off"
           autoFocus={autoFocus}
-          value={value}
+          // Shown as money is read (50,000); kept as the digits typed.
+          value={groupedDigits(value)}
           onChange={(event) => {
             const text = event.target.value.replace(/[^\d.]/g, "");
             onValueChange(text, toMinor(text));

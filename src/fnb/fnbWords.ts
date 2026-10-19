@@ -7,7 +7,9 @@ export const MORE_GROUP = "more";
 /** What staff say about an item, on its tile: its tags ("Vegan · Contains nuts"). */
 export function tagNote(menu: FnbTillMenu | undefined, productId: string): string | undefined {
   const tags = menu?.products[productId]?.tags ?? [];
-  return tags.length > 0 ? tags.map((tag) => tag.label).join(" · ") : undefined;
+  // Allergies first: what can harm a guest is read before what suits them.
+  const ordered = [...tags.filter((tag) => tag.kind === "ALLERGEN"), ...tags.filter((tag) => tag.kind !== "ALLERGEN")];
+  return ordered.length > 0 ? ordered.map((tag) => tag.label).join(" · ") : undefined;
 }
 
 /** An item's sizes on sale, in order; none when it sells as it is. */

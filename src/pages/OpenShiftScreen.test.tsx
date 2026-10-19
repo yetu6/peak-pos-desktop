@@ -95,7 +95,7 @@ describe("OpenShiftScreen", () => {
     await userEvent.click(within(counter).getByRole("button", { name: "One more TSh 5,000" }));
     expect(within(counter).getByTestId("note-count-total")).toHaveTextContent("TSh 25,000");
     await userEvent.click(within(counter).getByRole("button", { name: "Use TSh 25,000" }));
-    expect(screen.getByTestId("opening-float")).toHaveValue("25000");
+    expect(screen.getByTestId("opening-float")).toHaveValue("25,000");
     await userEvent.click(screen.getByTestId("open-shift"));
     expect(openMutate).toHaveBeenCalledWith({ openingCashMinor: 2_500_000, idempotencyKey: "key-1" });
   });

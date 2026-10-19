@@ -560,7 +560,12 @@ export function PaySheetView({
                   : receivedMinor == null || receivedMinor <= 0
                   ? "Type or pick the cash the guest gives you."
                   : receivedMinor >= due
-                    ? `Change to give ${formatMoney(receivedMinor - due, currency)}`
+                    ? (
+                        <span className="y-pay__change-due">
+                          <span>Change to give</span>{" "}
+                          <strong>{formatMoney(receivedMinor - due, currency)}</strong>
+                        </span>
+                      )
                     : `Part payment: ${formatMoney(receivedMinor, currency)} now, ${formatMoney(due - receivedMinor, currency)} still to pay`}
               </p>
             </form>

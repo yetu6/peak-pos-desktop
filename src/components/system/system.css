@@ -487,13 +487,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Staff's tags on a tile wrap and are never cut short: an allergy is read in full. */
 .y-tile__note {
-  overflow: hidden;
   max-width: 100%;
   color: var(--text-muted);
   font-size: var(--type-small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .y-tile--sold-out {
