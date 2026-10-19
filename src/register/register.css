@@ -601,3 +601,30 @@
 }
 
 .y-pay__footer > .y-button--primary { min-width: min(100%, 360px); }
+
+/*
+ * Menu groups (Food, Drinks) above the categories: two levels that look like
+ * two levels. The groups are filled pills, the categories underlined tabs
+ * beneath. Same tab semantics: only the look differs.
+ */
+.y-catalog__groups {
+  gap: var(--space-2);
+  border-bottom: 0;
+  padding-bottom: var(--space-2);
+}
+
+.y-catalog__groups .y-tab {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  padding: 0 var(--space-5);
+  color: var(--text);
+  font-size: var(--type-lead);
+  font-weight: 600;
+}
+
+.y-catalog__groups .y-tab[aria-selected="true"] {
+  border-color: var(--action);
+  background: var(--action);
+  color: var(--on-action);
+}

@@ -1,3 +1,4 @@
+import { orderStatusIcon } from "./orderStatusIcon";
 import { Plus, ReceiptText, SearchX } from "lucide-react";
 import type { KeyboardEvent } from "react";
 import { Banner, Button, EmptyState, Money, SearchField, Skeleton, StatusChip, Tabs } from "../components/system";
@@ -258,7 +259,7 @@ function OrderRow({
           Waiting for a shift
         </StatusChip>
       ) : (
-        <StatusChip tone={orderStatusTone(order.status)} className="y-orow__status">
+        <StatusChip tone={orderStatusTone(order.status)} icon={orderStatusIcon(order.status)} className="y-orow__status">
           {orderStatusWords(order.status)}
         </StatusChip>
       )}

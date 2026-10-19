@@ -706,6 +706,8 @@ describe("Orders: a tab handed over to the next shift (S17b)", () => {
     expect(await screen.findByTestId("order-waiting-order-1")).toHaveTextContent("Waiting for a shift");
     const sheet = await openDetail("order-1");
     const waiting = await within(sheet).findByTestId("detail-waiting");
+    // The detail says what the list says.
+    expect(within(sheet).getByTestId("order-detail-status")).toHaveTextContent("Waiting for a shift");
     expect(waiting).toHaveTextContent(`Handed over to the next shift at ${clockTime(WAITING.handedOverAt!)}.`);
     expect(within(sheet).queryByTestId("detail-pay")).toBeNull();
     expect(within(sheet).queryByTestId("detail-send")).toBeNull();

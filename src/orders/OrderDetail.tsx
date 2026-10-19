@@ -1,5 +1,6 @@
 import { ChefHat, Printer, Trash2, Undo2, Wallet } from "lucide-react";
 import { linesByRound, sendWords, takesMore } from "../register/rounds";
+import { orderStatusIcon } from "./orderStatusIcon";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, PermissionNotice, RefusalNotice, Sheet, StatusChip, TicketLine, type Refusal } from "../components/system";
 import {
@@ -316,8 +317,13 @@ export function OrderDetailView({
             <StatusChip tone="danger" data-testid="order-detail-status">
               {refundedInFull ? "Refunded" : "Partly refunded"}
             </StatusChip>
+          ) : owing && order.waitingForShift ? (
+            // S17b: the list and the detail say the same: it waits for a shift.
+            <StatusChip tone="warning" data-testid="order-detail-status">
+              Waiting for a shift
+            </StatusChip>
           ) : (
-            <StatusChip tone={orderStatusTone(order.status)} data-testid="order-detail-status">
+            <StatusChip tone={orderStatusTone(order.status)} icon={orderStatusIcon(order.status)} data-testid="order-detail-status">
               {orderStatusWords(order.status)}
             </StatusChip>
           )}

@@ -22,7 +22,8 @@ export type SettlementMethod = PaymentMethod | "ROOM_CHARGE";
 const ORDER_STATUS: Record<OrderStatus, { words: string; tone: Tone }> = {
   OPEN: { words: "Open", tone: "neutral" },
   SENT: { words: "Sent to kitchen", tone: "info" },
-  PREPARING: { words: "Preparing", tone: "warning" },
+  // Progress, not trouble: warning is kept for what needs someone (late, waiting).
+  PREPARING: { words: "Preparing", tone: "info" },
   READY: { words: "Ready", tone: "success" },
   SERVED: { words: "Served", tone: "neutral" },
   CLOSED: { words: "Paid", tone: "success" },
