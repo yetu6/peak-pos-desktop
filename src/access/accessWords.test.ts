@@ -96,7 +96,7 @@ describe("access notices", () => {
     expect(accessNotice("Session expired — enter your PIN again")).toEqual({
       kind: "session-ended",
       tone: "info",
-      words: "Your session ended. Enter your PIN to carry on.",
+      words: "You were signed out. Enter your PIN to carry on.",
     });
     expect(accessNotice("Locked after idle")?.tone).toBe("info");
   });
@@ -188,7 +188,7 @@ describe("server address check", () => {
       const check = validatePeakApiUrl(raw);
       return check.ok ? null : addressProblemWords(check.error);
     };
-    expect(words("")).toBe("Type the server address.");
+    expect(words("")).toBe("Type Yetu's address.");
     expect(words("not an address")).toBe("That doesn't look like an address. Check it and try again.");
     expect(words("http://yetu.example.com")).toBe("The address must start with https://");
     expect(words("ftp://yetu.example.com")).toBe("The address must start with https://");

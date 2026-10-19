@@ -45,7 +45,7 @@ describe("S6 fixtures", () => {
   it("sync problem: banner and chip", () => {
     render(<SyncProblemFixture />);
     expect(screen.getByTestId("sync-problem-banner")).toHaveTextContent("2 sales on this till need a manager to check them.");
-    expect(screen.getByTestId("conn-label")).toHaveTextContent("Sync problem");
+    expect(screen.getByTestId("conn-label")).toHaveTextContent("Sales not sent");
   });
 
   it("status: checks with what to do; a browser offers no test page", () => {

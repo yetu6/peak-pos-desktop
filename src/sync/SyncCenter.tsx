@@ -43,7 +43,7 @@ function hasProblem(state: SyncState): boolean {
  */
 export function chipWords(state: SyncState | null, realtime: ConnectionPhase | string): { label: string; tone: Tone } {
   if (state) {
-    if (hasProblem(state)) return { label: "Sync problem", tone: "danger" };
+    if (hasProblem(state)) return { label: "Sales not sent", tone: "danger" };
     const waiting = state.queuedOperations;
     if (state.status === "Live") return { label: waiting > 0 ? `Online · ${waiting} waiting to send` : "Online", tone: "success" };
     if (state.status === "Reconnecting") return { label: "Reconnecting", tone: "warning" };
@@ -106,7 +106,7 @@ export function SyncChip({ sync }: { sync: SyncCenterState }) {
         className="y-sync-chip"
         data-testid="connectivity"
         aria-haspopup="dialog"
-        aria-label={`${label}. Open Sync`}
+        aria-label={`${label}. See what's waiting`}
         onClick={() => sync.setOpen(true)}
       >
         <StatusChip tone={tone} icon={<Icon aria-hidden="true" />}>
@@ -130,13 +130,13 @@ export function SyncProblemBanner({ sync }: { sync: SyncCenterState }) {
       data-testid="sync-problem-banner"
       action={
         <Button variant="secondary" onClick={() => sync.setOpen(true)}>
-          Open Sync
+          See what's waiting
         </Button>
       }
     >
       {count > 0
         ? `${sales(count)} on this till ${count === 1 ? "needs" : "need"} a manager to check ${count === 1 ? "it" : "them"}.`
-        : "Yetu didn't accept this till's sales just now. Open Sync to try again."}
+        : "Yetu didn't accept this till's sales just now. See what's waiting to try again."}
     </Banner>
   );
 }
@@ -173,7 +173,7 @@ export function SyncSheet({ sync }: { sync: SyncCenterState }) {
         if (!open && sending) return;
         sync.setOpen(open);
       }}
-      title="Sync"
+      title="Sending sales"
       description="Sales saved on this till, and sending them to Yetu."
       testId="sync-center"
       footer={

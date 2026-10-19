@@ -20,9 +20,9 @@ beforeEach(() => {
 describe("SetupScreen", () => {
   it("asks for the Yetu server in plain words, with no installer talk", () => {
     render(<SetupScreen />);
-    expect(screen.getByRole("heading", { name: "Connect to your Yetu server" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Connect this till to Yetu" })).toBeInTheDocument();
     expect(screen.getByTestId("setup-screen")).not.toHaveTextContent(/installer|configuration|Peak/i);
-    expect(screen.getByRole("textbox", { name: "Server address" })).toHaveAccessibleDescription(/https:\/\//);
+    expect(screen.getByRole("textbox", { name: "Yetu address" })).toHaveAccessibleDescription(/https:\/\//);
   });
 
   it("checks the address before saving, and says what is wrong in words", async () => {

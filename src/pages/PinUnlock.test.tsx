@@ -284,7 +284,7 @@ describe("PIN entry", () => {
   it("tells a person whose session ended to carry on, as information", () => {
     useDeviceSessionMock.mockReturnValue(baseSession({ roster: TWO, error: "Session expired — enter your PIN again" }));
     render(<PinUnlock />);
-    expect(screen.getByTestId("pin-notice")).toHaveTextContent("Your session ended. Enter your PIN to carry on.");
+    expect(screen.getByTestId("pin-notice")).toHaveTextContent("You were signed out. Enter your PIN to carry on.");
     expect(screen.queryByTestId("pin-error")).not.toBeInTheDocument();
   });
 });

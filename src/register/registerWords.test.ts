@@ -31,8 +31,8 @@ describe("discount and void refusals in words", () => {
   });
 
   it("keeps the till's words for a session that ended", () => {
-    expect(discountProblem(problem("SESSION_EXPIRED", "x"))?.words).toBe("Your session ended. Enter your PIN to carry on.");
-    expect(voidProblem(problem("SESSION_EXPIRED", "x"))?.words).toBe("Your session ended. Enter your PIN to carry on.");
+    expect(discountProblem(problem("SESSION_EXPIRED", "x"))?.words).toBe("You were signed out. Enter your PIN to carry on.");
+    expect(voidProblem(problem("SESSION_EXPIRED", "x"))?.words).toBe("You were signed out. Enter your PIN to carry on.");
   });
 
   it("never shows the backend's own sentence", () => {
@@ -53,7 +53,7 @@ describe("payment and room charge refusals in words", () => {
     );
     expect(tenderProblem(problem("FORBIDDEN", "x"))).toEqual({ kind: "permission", words: "Only a cashier or manager can take payment. Ask one to help." });
     expect(tenderProblem(problem("CONFLICT", "pq: new"))?.words).toBe("The payment wasn't recorded. Try again.");
-    expect(tenderProblem(problem("SESSION_EXPIRED", "x"))?.words).toBe("Your session ended. Enter your PIN to carry on.");
+    expect(tenderProblem(problem("SESSION_EXPIRED", "x"))?.words).toBe("You were signed out. Enter your PIN to carry on.");
   });
 
   it("names the room charge refusals", async () => {

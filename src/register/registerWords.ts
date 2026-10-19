@@ -220,7 +220,7 @@ export function lostAnswerRefusalWords(error: unknown, room: boolean): string {
   const what = room ? "charge" : "payment";
   const kind = afterLostAnswer(error);
   if (kind === "cannot-tell") {
-    return `Yetu couldn't answer for this ${what} because your session ended. Sign in again, then check this order in Orders before taking any money.`;
+    return `Yetu couldn't answer for this ${what} because you were signed out. Sign in again, then check this order in Orders before taking any money.`;
   }
   const refusal = room ? roomChargeProblem(error) : tenderProblem(error);
   // Refused because the order moved on: stale, already paid, more than is owed, not eligible.

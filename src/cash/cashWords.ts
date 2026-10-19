@@ -34,7 +34,7 @@ export function closeShiftProblem(
       };
     case "TAB_CLAIMED_OFFLINE":
       // Yetu names the order (S17b).
-      return { kind: "claimed-offline", words: otherWords(problem, "An order of this shift is being settled offline. Sync the till, then close.") };
+      return { kind: "claimed-offline", words: otherWords(problem, "An order from this shift was paid without internet and hasn't reached Yetu yet. Reconnect so it's sent, then close the shift.") };
     case "SHIFT_OFFLINE_CASH_UNRESOLVED":
       return {
         kind: "offline-cash",
