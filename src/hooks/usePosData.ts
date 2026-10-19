@@ -2,6 +2,7 @@ import type { FnbTillMenu } from "../fnb/fnbContracts";
 import type { PrintResult } from "../lib/kitchenTicketPrint";
 import { tagNote } from "../fnb/fnbWords";
 import { printFor } from "../print/printFor";
+import { PRINTERS_PLACE } from "../print/printProblems";
 import { loadPrinterSettings } from "../print/printerStore";
 import { useMemo, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -772,10 +773,10 @@ function menuTags(queryClient: ReturnType<typeof useQueryClient>, outletId: stri
   return (productId: string) => (menu ? tagNote(menu, productId) : undefined);
 }
 
-/** This till prints no kitchen tickets (Manager, Printers): a copy would print nowhere. */
+/** This till prints no kitchen tickets (Status, Printers): a copy would print nowhere. */
 export class KitchenPaperOff extends Error {
   constructor() {
-    super("This till doesn't print kitchen tickets. A manager can turn them on in Manager, Printers.");
+    super(`This till doesn't print kitchen tickets. A manager can turn them on in ${PRINTERS_PLACE}.`);
     this.name = "KitchenPaperOff";
   }
 }

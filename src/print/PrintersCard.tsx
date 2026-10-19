@@ -44,7 +44,7 @@ function savedWords(settings: PrinterSettings): string {
 }
 
 /**
- * Manager → Printers (S8a): paper kitchen tickets for a kitchen or bar
+ * Status → Printers (S8a): paper kitchen tickets for a kitchen or bar
  * without a screen, to the kitchen's printer -- by name on this computer or
  * by address on the network -- with a printer of its own for any station.
  */

@@ -29,7 +29,7 @@ import { PaySheet, type PaidInfo } from "../register/PaySheet";
 import { NoteSheet } from "../register/NoteSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
 import { TicketActions } from "../register/TicketActions";
-import { TicketPanel } from "../register/TicketPanel";
+import { TicketPanel, type WaitingTap } from "../register/TicketPanel";
 import { sellProblem } from "../register/registerWords";
 import { REGISTER_QUIET_AFTER_RETURN_MS } from "../register/registerSettings";
 import { useRequestKey } from "../lib/useRequestKey";
@@ -174,6 +174,9 @@ export function NewOrder({
   // Taps made while an add is with Yetu wait their turn, in the order they
   // were made (F-230): two quick taps on a beer are two beers, never one.
   const taps = useRef<Promise<void>>(Promise.resolve());
+  // Those taps, on the ticket at once as being added until Yetu answers (F-247).
+  const [waiting, setWaiting] = useState<WaitingTap[]>([]);
+  const tapCount = useRef(0);
   const adding = createOrder.isPending || addItem.isPending;
   // Until when a tap on the menu is the person reaching for the payment screen that just went (F-232).
   const quietUntil = useRef(0);
@@ -188,7 +191,11 @@ export function NewOrder({
       openOptions(product);
       return;
     }
-    taps.current = taps.current.then(() => addProduct(product, 1, []));
+    const key = ++tapCount.current;
+    setWaiting((current) => [...current, { key, name: product.name }]);
+    taps.current = taps.current
+      .then(() => addProduct(product, 1, []))
+      .finally(() => setWaiting((current) => current.filter((tap) => tap.key !== key)));
   }
 
   /** A fresh options sheet starts without an earlier add's refusal. */
@@ -369,6 +376,7 @@ export function NewOrder({
             onSelectLine={setSelectedLineId}
             onQuantity={(line, quantity) => void changeQuantity(line, quantity)}
             onRemoveLine={(line) => void removeLine(line)}
+            waiting={waiting}
             lineBusy={busy}
             sentAt={sentAt}
             error={mutationError}

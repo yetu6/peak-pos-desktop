@@ -19,6 +19,12 @@ function labelFor(type: ServiceType): string | null {
   return null;
 }
 
+/** A tap still with Yetu (F-247). */
+export interface WaitingTap {
+  key: number;
+  name: string;
+}
+
 export interface TicketPanelProps {
   order: POSOrder | null;
   currency: string | undefined;
@@ -32,6 +38,8 @@ export interface TicketPanelProps {
   /** How many of an unsent line (the stepper); Yetu prices it as it was added. */
   onQuantity: (line: POSOrderItem, quantity: number) => void;
   onRemoveLine: (line: POSOrderItem) => void;
+  /** Taps still with Yetu, shown at once as being added until Yetu's line takes their place (F-247). */
+  waiting?: readonly WaitingTap[];
   lineBusy: boolean;
   /** When this till sent the order to the kitchen, if it did. */
   sentAt: Date | null;
@@ -68,6 +76,7 @@ export function TicketPanel({
   onSelectLine,
   onQuantity,
   onRemoveLine,
+  waiting = [],
   lineBusy,
   sentAt,
   error,
@@ -85,12 +94,14 @@ export function TicketPanel({
   const figures = order ? vatFigures(order) : null;
   // The newest line in view: the ticket scrolls to it as lines are added.
   const groupsRef = useRef<HTMLDivElement>(null);
-  const lineCount = lines.length;
+  const lineCount = lines.length + waiting.length;
   useEffect(() => {
     const items = groupsRef.current?.querySelectorAll("li");
     const newest = items?.[items.length - 1];
     if (newest && typeof newest.scrollIntoView === "function") newest.scrollIntoView({ block: "nearest" });
   }, [lineCount]);
+  // An order with no lines yet has no figures to show.
+  const priced = figures !== null && lines.length > 0;
 
   function renderLine(line: POSOrderItem) {
     const selected = line.id === selectedLineId;
@@ -177,7 +188,7 @@ export function TicketPanel({
             {notice}
           </Banner>
         ) : null}
-        {lines.length === 0 ? (
+        {lineCount === 0 ? (
           <EmptyState title="Tap an item to start an order." />
         ) : (
           <div className="y-ticket__groups" ref={groupsRef}>
@@ -196,6 +207,15 @@ export function TicketPanel({
                 <ul className="y-ticket__list">{group.lines.map(renderLine)}</ul>
               </section>
             ))}
+            {waiting.length > 0 ? (
+              <ul className="y-ticket__list" aria-label="Being added" data-testid="ticket-waiting">
+                {waiting.map((tap) => (
+                  <li key={tap.key}>
+                    <TicketLine quantity={1} name={tap.name} amount="Adding…" className="y-ticket-line--waiting" />
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         )}
       </div>
@@ -205,7 +225,7 @@ export function TicketPanel({
           <div>
             <dt>{figures?.itemsLabel ?? "Subtotal"}</dt>
             <dd>
-              <Money minor={figures ? figures.itemsMinor : null} currency={currency} />
+              <Money minor={priced ? figures.itemsMinor : null} currency={currency} />
             </dd>
           </div>
           {order && figures && figures.discountMinor > 0 ? (
@@ -219,13 +239,13 @@ export function TicketPanel({
           <div>
             <dt>{figures?.vatLabel ?? "VAT"}</dt>
             <dd>
-              <Money minor={figures ? figures.taxMinor : null} currency={currency} />
+              <Money minor={priced ? figures.taxMinor : null} currency={currency} />
             </dd>
           </div>
           <div className="y-ticket__total">
             <dt>Total</dt>
             <dd data-testid="cart-preview-total">
-              <Money minor={order && lines.length > 0 ? order.totalMinor : null} currency={currency} size="heading" />
+              <Money minor={priced && order ? order.totalMinor : null} currency={currency} size="heading" />
             </dd>
           </div>
           {order && order.paidMinor > 0 ? (

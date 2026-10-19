@@ -142,7 +142,7 @@ vi.mock("../lib/printJobs", () => ({
   processPendingPrintJobs: spies.processPendingPrintJobs,
 }));
 
-// This till's printer settings (Manager, Printers), as the till app holds them.
+// This till's printer settings (Status, Printers), as the till app holds them.
 const tillPrinters = vi.hoisted(() => ({ kitchenTickets: true }));
 vi.mock("../print/printerStore", () => ({
   loadPrinterSettings: async () => ({ kitchenTickets: tillPrinters.kitchenTickets, kitchen: null, stations: {}, receipt: null, cashDrawer: false }),
@@ -712,7 +712,7 @@ describe("Orders: a kitchen ticket printed again (S8a)", () => {
       const sheet = await openDetail("order-1");
       await userEvent.click(await within(sheet).findByTestId("detail-kitchen-reprint"));
       expect(await within(sheet).findByRole("alert")).toHaveTextContent(
-        "This till doesn't print kitchen tickets. A manager can turn them on in Manager, Printers.",
+        "This till doesn't print kitchen tickets. A manager can turn them on in Status (F12), under Printers.",
       );
       expect(spies.reprintKitchenTickets).not.toHaveBeenCalled();
     } finally {

@@ -8,6 +8,12 @@ import { getOperationalSession } from "../lib/operationalSession";
  */
 const said = new Set<string>();
 
+/**
+ * Where a manager sets up this till's printers: the Printers card on Status
+ * (Diagnostics, for a manager). The till has no Manager page (F-246).
+ */
+export const PRINTERS_PLACE = "Status (F12), under Printers";
+
 export function printProblemOnce(results: readonly PrintResult[], what: "kitchen ticket" | "receipt"): string | null {
   const failed = results.find((result) => !result.ok);
   if (!failed) return null;
@@ -16,7 +22,7 @@ export function printProblemOnce(results: readonly PrintResult[], what: "kitchen
   if (said.has(key)) return null;
   said.add(key);
   const why = reason ? `: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}` : "";
-  return `The ${what} didn't print${why}. A manager sets up printers in Manager, Printers.`;
+  return `The ${what} didn't print${why}. A manager sets up printers in ${PRINTERS_PLACE}.`;
 }
 
 /** A copy of a receipt Yetu made but the printer didn't print (F-233). */

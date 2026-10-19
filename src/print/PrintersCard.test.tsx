@@ -25,7 +25,7 @@ beforeEach(() => {
   till.settings = null;
 });
 
-describe("Manager → Printers (S8a)", () => {
+describe("Status → Printers (S8a)", () => {
   it("sends kitchen tickets to a printer this computer knows, on 80 mm paper by default", async () => {
     render(<PrintersCard />);
     const picker = within(screen.getByTestId("kitchen-printer"));
