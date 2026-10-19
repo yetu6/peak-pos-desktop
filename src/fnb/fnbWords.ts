@@ -34,6 +34,34 @@ export function tilePriceWords(
   return `${formatMoney(shown.priceMinor, currency)} · ${sizes.length} sizes`;
 }
 
+/** A price rule in force for an item, as its tile shows it: the rule's name and the price it had. */
+export interface TileOffer {
+  label: string;
+  was: string;
+}
+
+/**
+ * S17c: the tile's price under a rule in force (happy hour), with what it
+ * was; none offline (an offline till sells at the item's own price) or when
+ * no rule prices the item.
+ */
+export function tileOfferOf(
+  menu: FnbTillMenu | undefined,
+  productId: string,
+  basePriceMinor: number,
+  currency: string | undefined,
+  offline = false,
+): { price: string; offer: TileOffer } | undefined {
+  const rule = menu?.prices?.[productId];
+  if (!rule || offline) return undefined;
+  const sizes = sizesOf(menu, productId);
+  const shown = sizes.find((size) => size.isDefault) ?? sizes[0];
+  const was = shown ? shown.priceMinor : basePriceMinor;
+  if (rule.priceMinor === was) return undefined;
+  const more = sizes.length > 1 ? ` · ${sizes.length} sizes` : "";
+  return { price: `${formatMoney(rule.priceMinor, currency)}${more}`, offer: { label: rule.ruleName, was: formatMoney(was, currency) } };
+}
+
 /** Under an item with sizes, offline: the other sizes wait for Yetu. */
 export const OFFLINE_SIZES_NOTE = "More sizes need a connection";
 

@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Banner, Button, Sheet, Stepper } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSCatalogProduct, POSModifierGroup } from "../lib/posContracts";
-import type { FnbTillSize } from "../fnb/fnbContracts";
+import type { FnbTillPrice, FnbTillSize } from "../fnb/fnbContracts";
 import { cn } from "../lib/utils";
 
 /** A group is met when its count of choices is within the catalog's limits (as before: min, and max when set). */
@@ -39,6 +39,7 @@ export function OptionsSheet({
   error = null,
   sizes = [],
   description,
+  happy,
 }: {
   product: POSCatalogProduct;
   currency: string | undefined;
@@ -51,6 +52,8 @@ export function OptionsSheet({
   sizes?: readonly FnbTillSize[];
   /** What staff say about the item. */
   description?: string;
+  /** S17c: a price rule in force for the item (happy hour): its name and prices. Yetu prices the line. */
+  happy?: FnbTillPrice;
 }) {
   const groups = useMemo(() => {
     const active = (product.modifierGroups ?? []).filter((group) => group.isActive !== false);
@@ -70,7 +73,10 @@ export function OptionsSheet({
     .flatMap((group) => group.options ?? [])
     .filter((option) => chosen.has(option.id))
     .reduce((sum, option) => sum + option.priceDeltaMinor, 0);
-  const base = choosingSize && size ? size.priceMinor : product.priceMinor;
+  // A rule in force (happy hour) prices the size, or the item as it is.
+  const priceOf = (sizeIdOf: string | undefined, own: number) =>
+    (sizeIdOf ? happy?.sizes?.[sizeIdOf] : happy?.priceMinor) ?? own;
+  const base = choosingSize && size ? priceOf(size.id, size.priceMinor) : priceOf(undefined, product.priceMinor);
   const figure = (base + extras) * quantity;
 
   function toggle(group: POSModifierGroup, optionId: string) {
@@ -145,7 +151,20 @@ export function OptionsSheet({
                       {on ? <Check /> : null}
                     </span>
                     <span className="y-options__label">{candidate.name}</span>
-                    <span className="y-options__price">{candidate.isAvailable ? formatMoney(candidate.priceMinor, currency) : "Sold out"}</span>
+                    <span className="y-options__price">
+                      {!candidate.isAvailable ? (
+                        "Sold out"
+                      ) : priceOf(candidate.id, candidate.priceMinor) !== candidate.priceMinor ? (
+                        <>
+                          {formatMoney(priceOf(candidate.id, candidate.priceMinor), currency)}{" "}
+                          <s className="y-tile__was" aria-label={`was ${formatMoney(candidate.priceMinor, currency)}`}>
+                            {formatMoney(candidate.priceMinor, currency)}
+                          </s>
+                        </>
+                      ) : (
+                        formatMoney(candidate.priceMinor, currency)
+                      )}
+                    </span>
                   </button>
                 );
               })}

@@ -64,3 +64,30 @@ describe("useTillMenu", () => {
     expect(invalidate).not.toHaveBeenCalled();
   });
 });
+
+describe("useTillMenu: happy hour starts and ends (S17c)", () => {
+  it("reads the menu again when a rule starts or ends, as Yetu says", async () => {
+    answer.data = { ...NO_MENU, prices: {}, pricesChangeInSeconds: 90 };
+    // The menu's own timer is kept to run by hand; every other timer runs as usual.
+    const timers: Array<{ ms: number; run: () => void }> = [];
+    const realSetTimeout = window.setTimeout.bind(window);
+    const setTimer = vi.spyOn(window, "setTimeout").mockImplementation(((run: () => void, ms?: number, ...rest: unknown[]) => {
+      if (ms === 91_000) {
+        timers.push({ ms, run });
+        return 0 as unknown as number;
+      }
+      return realSetTimeout(run, ms, ...rest);
+    }) as typeof window.setTimeout);
+    try {
+      const { result, invalidate } = setup();
+      await waitFor(() => expect(result.current.data?.pricesChangeInSeconds).toBe(90));
+      const timer = timers.find((entry) => entry.ms === 91_000);
+      expect(timer).toBeDefined();
+      invalidate.mockClear();
+      timer?.run();
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["fnb", "menu", "outlet-1"] });
+    } finally {
+      setTimer.mockRestore();
+    }
+  });
+});

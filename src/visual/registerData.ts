@@ -193,6 +193,16 @@ export const MENU: FnbTillMenu = {
   },
 };
 
+/** Happy hour in force (S17c): the lager's sizes and the juice at their rule prices. */
+export const HAPPY_MENU: FnbTillMenu = {
+  ...MENU,
+  prices: {
+    tusker: { ruleName: "Happy hour", priceMinor: 400_000, sizes: { "tusker-bottle": 400_000, "tusker-pint": 520_000 } },
+    juice: { ruleName: "Happy hour", priceMinor: 480_000, sizes: { "juice-glass": 480_000, "juice-jug": 1_200_000 } },
+  },
+  pricesChangeInSeconds: 3600,
+};
+
 /** A payment as Yetu lists it on an order (S5b). */
 export function payment(id: string, paymentMethod: POSOrderPayment["paymentMethod"], amountMinor: number, createdAt: string, recordedByName: string): POSOrderPayment {
   return { id, paymentMethod, amountMinor, createdAt, recordedByName };

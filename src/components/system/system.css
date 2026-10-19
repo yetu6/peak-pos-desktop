@@ -498,6 +498,31 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A price rule in force (happy hour): its name, the price now, the price it had struck through. */
+.y-tile__offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--space-2);
+}
+
+.y-tile__offer-label {
+  flex-basis: 100%;
+  color: var(--accent-text);
+  font-size: var(--type-small);
+  font-weight: 700;
+}
+
+.y-tile__offer .y-tile__price {
+  font-weight: 700;
+}
+
+.y-tile__was {
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Staff's tags on a tile wrap and are never cut short: an allergy is read in full. */
 .y-tile__note {
   max-width: 100%;

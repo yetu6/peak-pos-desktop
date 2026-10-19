@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { useOutletId } from "../hooks/usePosData";
 import { useRealtimeEvents } from "../realtime/RealtimeProvider";
 import { createFnbApi } from "./fnbApi";
@@ -42,5 +43,15 @@ export function useTillMenu() {
     void queryClient.invalidateQueries({ queryKey: ["fnb", "menu", outletId] });
     void queryClient.invalidateQueries({ queryKey: ["pos", "catalog"] });
   });
+  // Happy hour (S17c): read the menu again when a rule starts or ends, so the tiles show the price Yetu will charge.
+  const changeIn = query.data?.pricesChangeInSeconds ?? 0;
+  useEffect(() => {
+    if (changeIn <= 0) return;
+    const timer = window.setTimeout(
+      () => void queryClient.invalidateQueries({ queryKey: ["fnb", "menu", outletId] }),
+      (changeIn + 1) * 1000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [changeIn, outletId, queryClient]);
   return query;
 }

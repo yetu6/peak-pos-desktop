@@ -17,6 +17,7 @@ import {
   ORDER,
   PAID_ORDER,
   PRODUCTS,
+  HAPPY_MENU,
   MENU,
   RECEIPT,
   ROUND2_ORDER,
@@ -155,6 +156,11 @@ export function RegisterSizesFixture() {
       <OptionsSheet product={tusker} currency={CURRENCY} sizes={MENU.sizes.tusker} description={MENU.products.tusker.description} onCancel={nothing} onAdd={nothing} />
     </Sell>
   );
+}
+
+/** Happy hour (S17c): the drinks at the rule's price, its name, the price they had struck through. */
+export function RegisterHappyHourFixture() {
+  return <Sell order={ORDER} menu={HAPPY_MENU} category="drinks" />;
 }
 
 /** Round 2 (S17a): round 1 served, a tart added after: Send round 2, and Pay waits for it. */

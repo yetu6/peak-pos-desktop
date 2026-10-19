@@ -111,3 +111,21 @@ describe("OptionsSheet", () => {
     );
   });
 });
+
+describe("OptionsSheet: happy hour (S17c)", () => {
+  it("each size at its price now, the one it had struck through, and Add at the price now", () => {
+    const sizes = [
+      { id: "bottle", name: "Bottle", priceMinor: 500_000, isDefault: true, isAvailable: true },
+      { id: "pint", name: "Pint", priceMinor: 700_000, isDefault: false, isAvailable: true },
+    ];
+    const lager = { ...BURGER, id: "tusker", name: "Tusker", priceMinor: 500_000, modifierGroups: [] };
+    render(
+      <OptionsSheet product={lager} currency="TZS" onCancel={vi.fn()} onAdd={vi.fn()} sizes={sizes}
+        happy={{ ruleName: "Happy hour", priceMinor: 400_000, sizes: { bottle: 400_000, pint: 560_000 } }} />,
+    );
+    const pint = screen.getByTestId("size-option-pint");
+    expect(pint.textContent?.replace(/\u00a0/g, " ")).toContain("TSh 5,600");
+    expect(within(pint).getByLabelText(/was TSh 7,000/)).toBeInTheDocument();
+    expect(add().textContent?.replace(/\u00a0/g, " ")).toContain("TSh 4,000");
+  });
+});

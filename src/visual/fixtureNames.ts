@@ -50,6 +50,7 @@ export const VISUAL_FIXTURE_NAMES = [
   "register-menus",
   "register-sizes",
   "register-round2",
+  "register-happy-hour",
   "pay-cash",
   "pay-split",
   "pay-card",

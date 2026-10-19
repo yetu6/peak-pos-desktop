@@ -55,6 +55,7 @@ import {
   RegisterMenusFixture,
   RegisterOptionsFixture,
   RegisterRound2Fixture,
+  RegisterHappyHourFixture,
   RegisterSizesFixture,
   RegisterSentFixture,
 } from "./RegisterFixtures";
@@ -155,6 +156,7 @@ const FIXTURES: Record<VisualFixtureName, ComponentType> = {
   "register-menus": RegisterMenusFixture,
   "register-sizes": RegisterSizesFixture,
   "register-round2": RegisterRound2Fixture,
+  "register-happy-hour": RegisterHappyHourFixture,
   "pay-cash": PayCashFixture,
   "pay-split": PaySplitFixture,
   "pay-card": PayCardFixture,

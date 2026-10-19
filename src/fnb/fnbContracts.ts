@@ -31,6 +31,15 @@ export interface FnbTillProduct {
   tags: { label: string; kind: FnbTagKind }[];
 }
 
+/** What a price rule in force sets now for an item (happy hour, S17c); Yetu prices every line itself. */
+export interface FnbTillPrice {
+  ruleName: string;
+  /** The item as it is (its default size). */
+  priceMinor: number;
+  /** Each size's price under the rule, by size id. */
+  sizes?: Record<string, number>;
+}
+
 export interface FnbTillMenu {
   /** False: menus are off for this outlet; the till shows its categories as it always has. */
   enabled: boolean;
@@ -42,6 +51,10 @@ export interface FnbTillMenu {
   sizes: Record<string, FnbTillSize[]>;
   /** What staff say about each item, by product id. */
   products: Record<string, FnbTillProduct>;
+  /** S17c: the prices the rules in force set now, by product id (menus on or off). */
+  prices?: Record<string, FnbTillPrice>;
+  /** S17c: seconds until a rule starts or ends next; the till reads the menu again then (0: none). */
+  pricesChangeInSeconds?: number;
 }
 
 /** The menu of a till whose outlet has menus off, or whose Yetu has no module. */

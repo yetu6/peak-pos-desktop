@@ -338,6 +338,7 @@ export function NewOrder() {
           onAdd={(choice) => void addProduct(configuring, choice.quantity, choice.modifierOptionIds, choice.variantId)}
           sizes={sizesOf(menu, configuring.id)}
           description={menu?.products[configuring.id]?.description}
+          happy={menu?.prices?.[configuring.id]}
         />
       )}
       {settleOpen && order && currency && (

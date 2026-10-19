@@ -5,7 +5,7 @@ import { isComposing } from "../lib/keyboard";
 import { formatMoney } from "../lib/money";
 import type { POSCatalogProduct, POSCategory } from "../lib/posContracts";
 import type { FnbTillMenu } from "../fnb/fnbContracts";
-import { MORE_GROUP, sizesOf, tileNote, tilePriceWords } from "../fnb/fnbWords";
+import { MORE_GROUP, sizesOf, tileNote, tileOfferOf, tilePriceWords } from "../fnb/fnbWords";
 
 export const ALL_CATEGORIES = "all";
 const SEARCH_ID = "menu-search";
@@ -216,12 +216,16 @@ export function MenuPanel({
           />
         ) : (
           <div className="y-menu-grid" data-testid="menu-grid" onKeyDown={moveFocus}>
-            {shown.map((item) => (
+            {shown.map((item) => {
+              // Happy hour (S17c): a rule in force prices the tile, menus on or off.
+              const offered = tileOfferOf(menu, item.id, item.priceMinor, currency ?? item.currency, offline);
+              return (
               <Tile
                 key={item.id}
                 data-testid={`menu-${item.name}`}
                 name={item.name}
-                price={grouped ? tilePriceWords(item.priceMinor, sizesOf(menu, item.id), currency ?? item.currency, offline) : formatMoney(item.priceMinor, currency ?? item.currency)}
+                offer={offered?.offer}
+                price={offered ? offered.price : grouped ? tilePriceWords(item.priceMinor, sizesOf(menu, item.id), currency ?? item.currency, offline) : formatMoney(item.priceMinor, currency ?? item.currency)}
                 note={grouped ? tileNote(menu, item.id, offline) : undefined}
                 soldOut={item.isAvailable === false}
                 disabled={Boolean(addBlocked)}
@@ -232,7 +236,8 @@ export function MenuPanel({
                   if (onSoldOutToggle) setAsking(item);
                 }}
               />
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

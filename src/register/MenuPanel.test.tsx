@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -197,6 +197,25 @@ describe("MenuPanel with the Restaurant & Bar module's menu (S16-B4)", () => {
     expect(tile).toContain("More sizes need a connection");
     expect(tile).not.toContain("2 sizes");
     expect(screen.getByTestId("menu-Soda")).not.toHaveTextContent("More sizes need a connection");
+  });
+
+  it("happy hour: the price now, the rule's name and the price it had, menus on or off (S17c)", async () => {
+    const happy = { ...MENU, prices: { tusker: { ruleName: "Happy hour", priceMinor: 400_000, sizes: { bottle: 400_000, pint: 560_000 } } } };
+    render(<Menu menu={happy} />);
+    await userEvent.click(within(screen.getByRole("tablist", { name: "Menu" })).getByRole("tab", { name: "Drinks" }));
+    const tile = plain(screen.getByTestId("menu-Tusker Lager").textContent);
+    expect(tile).toContain("Happy hour");
+    expect(tile).toContain("TSh 4,000 · 2 sizes");
+    expect(within(screen.getByTestId("menu-Tusker Lager")).getByLabelText(/was TSh 5,000/)).toBeInTheDocument();
+    cleanup();
+    // Menus off: the rule still prices the tile.
+    render(<Menu menu={{ ...happy, enabled: false }} />);
+    expect(plain(screen.getByTestId("menu-Tusker Lager").textContent)).toContain("Happy hour");
+    cleanup();
+    // Offline: the item's own price (rules aren't in the offline menu).
+    render(<Menu menu={happy} offline />);
+    await userEvent.click(within(screen.getByRole("tablist", { name: "Menu" })).getByRole("tab", { name: "Drinks" }));
+    expect(screen.getByTestId("menu-Tusker Lager")).not.toHaveTextContent("Happy hour");
   });
 
   it("menus off: the categories as before, nothing said of sizes or tags", () => {

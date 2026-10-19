@@ -59,6 +59,7 @@ export function Tile({
   name,
   price,
   note,
+  offer,
   soldOut = false,
   disabled = false,
   mark,
@@ -71,6 +72,8 @@ export function Tile({
   price: string;
   /** A short line under the name: what staff say about the item ("Vegan · Contains nuts"). */
   note?: string;
+  /** A price rule in force (happy hour): its name, and the price the item had, struck through. */
+  offer?: { label: string; was: string };
   soldOut?: boolean;
   /** Can't be added just now; the screen says why. It stays focusable and keeps its place. */
   disabled?: boolean;
@@ -100,6 +103,14 @@ export function Tile({
         <StatusChip tone="neutral" icon={<Ban aria-hidden="true" />}>
           Sold out
         </StatusChip>
+      ) : offer ? (
+        <span className="y-tile__offer">
+          <span className="y-tile__offer-label">{offer.label}</span>
+          <span className="y-tile__price">{price}</span>
+          <s className="y-tile__was" aria-label={`was ${offer.was}`}>
+            {offer.was}
+          </s>
+        </span>
       ) : (
         <span className="y-tile__price">{price}</span>
       )}
