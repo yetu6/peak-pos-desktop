@@ -151,3 +151,24 @@ describe("whether this order can be refunded here, and why not", () => {
     );
   });
 });
+
+// F-244: a bill paid partly in cash and partly on a room gives back the cash first, then the room's share.
+describe("a split bill's refund in words", () => {
+  it("names the cash and what comes off the room bill", () => {
+    expect(
+      refundSummaryWords(
+        [
+          { paymentMethod: "CASH", amountMinor: 500_000 },
+          { paymentMethod: "ROOM_CHARGE", amountMinor: 680_000 },
+        ],
+        "TZS",
+      ),
+    ).toBe("Give back TSh 11,800: TSh 5,000 in cash and TSh 6,800 off the room bill");
+    expect(
+      refundDoneWords(11_800_00, [
+        { paymentMethod: "CASH", amountMinor: 500_000 },
+        { paymentMethod: "ROOM_CHARGE", amountMinor: 680_000 },
+      ], "TZS").lines,
+    ).toEqual(["Give TSh 5,000 back in cash from the drawer.", "TSh 6,800 taken off the room bill."]);
+  });
+});
