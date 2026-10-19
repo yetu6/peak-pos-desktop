@@ -95,7 +95,7 @@ describe("PairingScreen with a code", () => {
     useSession({ phase: "waiting", identity: { pairing: pairingIn(600) } });
     render(<PairingScreen />);
     expect(screen.getByTestId("pairing-fingerprint").closest("details")).not.toHaveAttribute("open");
-    expect(screen.getByText("Technical details")).toBeInTheDocument();
+    expect(screen.getByText("Details for support")).toBeInTheDocument();
   });
 
   it("counts down the time left on the code", () => {

@@ -7,7 +7,7 @@ import { cn } from "../../lib/utils";
  */
 export function TechnicalDetails({
   children,
-  label = "Technical details",
+  label = "Details for support",
   className,
 }: {
   children: ReactNode;

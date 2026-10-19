@@ -85,7 +85,9 @@ export function Tile({
   className?: string;
   "data-testid"?: string;
 }) {
-  const style = mark ? ({ ["--tile-mark" as string]: `var(--mark-${mark})` } as CSSProperties) : undefined;
+  const style = mark
+    ? ({ ["--tile-mark" as string]: `var(--mark-${mark})`, ["--tile-tint" as string]: `var(--mark-${mark}-tint)` } as CSSProperties)
+    : undefined;
   const inactive = soldOut || disabled;
   return (
     <button
@@ -280,5 +282,24 @@ export function EmptyState({
       {description ? <p className="y-empty__description">{description}</p> : null}
       {action ? <div className="y-empty__action">{action}</div> : null}
     </div>
+  );
+}
+
+/** Named setting: how many colours people's avatars take turns in. */
+export const AVATAR_TONES = 4;
+
+/** A person's colour: the same for the same name, every time and on every till. */
+export function avatarTone(name: string): number {
+  let sum = 0;
+  for (const char of name.trim().toLowerCase()) sum = (sum * 31 + char.charCodeAt(0)) % 9973;
+  return (sum % AVATAR_TONES) + 1;
+}
+
+/** A person's initials in their own colour (owner's look, 2026-10-19). Decoration: the name is always beside it. */
+export function Avatar({ name, initials, className }: { name: string; initials: string; className?: string }) {
+  return (
+    <span className={cn("y-avatar", className)} data-tone={avatarTone(name)} aria-hidden="true">
+      {initials}
+    </span>
   );
 }

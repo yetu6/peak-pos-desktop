@@ -83,10 +83,16 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: var(--surface-hover);
+  background: var(--surface-raised);
   padding: 0 var(--space-2);
   font-variant-numeric: tabular-nums;
 }
+
+/* Each step in its own tone, with its word: New (the accent, as on new
+   tickets), Preparing (in progress), Ready (done). Owner's look, 2026-10-19. */
+.y-kcol[data-kitchen-column="SENT"] .y-kcol__head { border-bottom-color: var(--accent); background: var(--accent-subtle); color: var(--accent-text); }
+.y-kcol[data-kitchen-column="PREPARING"] .y-kcol__head { border-bottom-color: var(--info-line); background: var(--info-subtle); color: var(--info); }
+.y-kcol[data-kitchen-column="READY"] .y-kcol__head { border-bottom-color: var(--success-line); background: var(--success-subtle); color: var(--success); }
 
 .y-kcol__body {
   display: flex;

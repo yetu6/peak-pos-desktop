@@ -117,6 +117,14 @@ export function clockTime(value: Date | string | null | undefined): string {
   return new Intl.DateTimeFormat(CLOCK_LOCALE, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
 }
 
+/** Today in full, for the sign-in screen: "Monday 19 October". */
+export function longDayWords(value: Date): string {
+  if (Number.isNaN(value.getTime())) return "";
+  const parts = new Intl.DateTimeFormat(CLOCK_LOCALE, { weekday: "long", day: "numeric", month: "long" }).formatToParts(value);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((piece) => piece.type === type)?.value ?? "";
+  return `${part("weekday")} ${part("day")} ${part("month")}`;
+}
+
 const CIVIL_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /**

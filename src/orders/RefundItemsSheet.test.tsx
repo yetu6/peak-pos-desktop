@@ -1,8 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, render as renderInDom, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement, ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import type { POSOrder, POSOrderRefunds, POSRefund, POSRefundQuote, POSRefundQuoteRequest } from "../lib/posContracts";
 import { RefundItemsSheet } from "./RefundItemsSheet";
+
+/** The app's query provider, fresh for each render: the approval sheets ask Yetu who may approve (F-249). */
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderInDom(ui, { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+}
 
 // A stand-in for Yetu: each item's refund total is its price per unit with VAT
 // (it is Yetu's job, the till only shows it), split over the payments in order.

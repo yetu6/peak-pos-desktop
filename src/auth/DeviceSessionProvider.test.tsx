@@ -92,7 +92,7 @@ function renderSession(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  render(
+  return render(
     <QueryClientProvider client={queryClient}>
       <DeviceSessionProvider
         store={store}
@@ -194,6 +194,65 @@ describe("DeviceSessionProvider", () => {
     expect(getOperationalSession()).toBeNull();
     expect(applyOpsToken).toHaveBeenLastCalledWith("");
     expect(localStorage.getItem("peak-pos-session-p1-o1")).toBe("till-1");
+  });
+
+  // F-252: the till said "This till"; Yetu now names the hotel, the outlet and the till.
+  it("keeps the names Yetu gives, from the lock screen and from each sign-in", async () => {
+    const keys = await generateDeviceKeyPair();
+    const store = memoryStore(
+      JSON.stringify({ ...keys, deviceCode: "dev_abc", terminalId: "terminal-1", deviceCredential: "device-secret", approved: true, terminalName: "Bar 1" }),
+    );
+    let names = { propertyName: "Bahari QA Hotel", outletName: "Restaurant", terminalName: "Main till" };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/pos/device/challenges")) {
+        return jsonResponse({ challengeId: "11111111-1111-1111-1111-111111111111", nonce: btoa("n".repeat(32)), expiresAt: "2099-01-01T00:00:00Z", staff: [], ...names });
+      }
+      if (url.endsWith("/pos/sessions")) {
+        return jsonResponse({ token: `ops_live${"x".repeat(40)}`, expiresAt: "2099-01-01T00:00:00Z", assurance: "RESTRICTED", terminalId: "d1", propertyId: "p1", tenantId: "t1", staffId: "u1", outletId: "o1", ...names });
+      }
+      if (url.endsWith("/pos/catalog")) return jsonResponse({ outletId: "o1", outletName: "Restaurant", products: [] });
+      if (url.endsWith("/pos/orders?active=true")) return jsonResponse([]);
+      if (url.includes("/heartbeat")) return jsonResponse({}, 204);
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+
+    renderSession(store);
+    expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+    // The lock screen's staff list brought the names: renamed from "Bar 1" in Yetu.
+    await waitFor(async () => expect(JSON.parse((await store.load()) ?? "{}")).toMatchObject({
+      terminalName: "Main till", propertyName: "Bahari QA Hotel", outletName: "Restaurant",
+    }));
+
+    names = { propertyName: "Bahari Beach Hotel", outletName: "Pool bar", terminalName: "Bar till" };
+    await userEvent.click(screen.getByTestId("unlock"));
+    await waitFor(() => expect(screen.getByTestId("shell")).toHaveTextContent("OPERATIONAL"));
+    expect(getOperationalSession()).toMatchObject({ propertyName: "Bahari Beach Hotel", outletName: "Pool bar", terminalName: "Bar till" });
+    await waitFor(async () => expect(JSON.parse((await store.load()) ?? "{}")).toMatchObject({
+      terminalName: "Bar till", propertyName: "Bahari Beach Hotel", outletName: "Pool bar",
+    }));
+  });
+
+  it("a rename of the hotel, the outlet or the till alone reaches the lock screen", async () => {
+    const before = { propertyName: "Bahari QA Hotel", outletName: "Restaurant", terminalName: "Main till" };
+    for (const [field, renamed] of [["propertyName", "Bahari Beach Hotel"], ["outletName", "Pool bar"], ["terminalName", "Bar till"]] as const) {
+      const keys = await generateDeviceKeyPair();
+      const store = memoryStore(
+        JSON.stringify({ ...keys, deviceCode: "dev_abc", terminalId: "terminal-1", deviceCredential: "device-secret", approved: true, ...before }),
+      );
+      const now = { ...before, [field]: renamed };
+      vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith("/pos/device/challenges")) {
+          return jsonResponse({ challengeId: "11111111-1111-1111-1111-111111111111", nonce: btoa("n".repeat(32)), expiresAt: "2099-01-01T00:00:00Z", staff: [], ...now });
+        }
+        return jsonResponse({}, 404);
+      }));
+      const view = renderSession(store);
+      expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+      await waitFor(async () => expect(JSON.parse((await store.load()) ?? "{}")).toMatchObject(now), { timeout: 3_000 });
+      view.unmount();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("clears a previous tenant before a rejected PIN", async () => {

@@ -121,10 +121,12 @@ describe("the Sync Center", () => {
     expect(within(sheet).getByTestId("sync-sent")).toHaveTextContent("Last checked with Yetu at 14:02");
     expect(within(sheet).getByTestId("sync-attention")).toHaveTextContent("2 sales need a manager to check them.");
     expect(within(sheet).getByTestId("sync-attention")).toHaveTextContent("A manager checks them in Yetu.");
-    const technical = within(sheet).getByText("Technical details").closest("details")!;
+    const technical = within(sheet).getByText("Details for support").closest("details")!;
     expect(technical).not.toHaveAttribute("open");
-    expect(technical).toHaveTextContent("ACTIVE");
-    // Engineering words stay behind Technical details.
+    expect(technical).toHaveTextContent("Cash without internetReady");
+    expect(technical).toHaveTextContent("Menu for offline useReady");
+    // No engineering words, even in the details for support (owner, 2026-10-19).
+    expect(technical).not.toHaveTextContent(/ACTIVE|Lease|Catalog|Queued|Reconciled|Exception|Realtime|eligibility/);
     expect(within(sheet).getByTestId("sync-sections")).not.toHaveTextContent(/Reconciled|Lease|Exception|Local financial evidence|Queued/);
   });
 

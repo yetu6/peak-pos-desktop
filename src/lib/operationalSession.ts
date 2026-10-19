@@ -11,6 +11,9 @@ export interface OperationalSession {
   /** Pass 4: stations this display shows. Empty = all. */
   prepStations?: string[];
   terminalName?: string;
+  /** The hotel and the outlet as the manager named them (F-252). */
+  propertyName?: string;
+  outletName?: string;
   /** This property's authoritative effective capabilities (R6A-C), e.g.
    *  ["CORE","POS"] or ["CORE","LODGING","POS"] — never derived from
    *  property_type. UX composition only; every mutation is still

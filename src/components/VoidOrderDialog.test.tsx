@@ -1,9 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render as renderInDom, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement, ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { idleLockHeld } from "../lib/idleLock";
 import { VoidOrderDialog } from "./VoidOrderDialog";
 import type { POSOrder } from "../lib/posContracts";
+
+/** The app's query provider, fresh for each render: the approval sheets ask Yetu who may approve (F-249). */
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderInDom(ui, { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+}
 
 const { voidOrderMutate, sessionRef, voidState, voidReset } = vi.hoisted(() => ({
   voidReset: vi.fn(),
@@ -178,6 +186,41 @@ describe("VoidOrderDialog after too many attempts (429)", () => {
       expect(voidReset).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
+    }
+  });
+});
+
+// F-249: the void sheet at Bahari offered Zawadi, a cashier; Yetu refused her twice.
+describe("VoidOrderDialog: only those who can approve voids (F-249)", () => {
+  it("offers only those Yetu says can approve voids, and says who chooses when no one can", async () => {
+    const { clearOperationalSession, setOperationalSession } = await import("../lib/operationalSession");
+    setOperationalSession({ token: "t".repeat(40), expiresAt: "2099-01-01T00:00:00Z", tenantId: "t1", propertyId: "p1", outletId: "o1", terminalId: "d1", staffId: "staff-amina", assurance: "RESTRICTED" });
+    sessionRef.roster = [...ROSTER, { fullName: "Zawadi Said", staffNumber: "staff-zawadi" }];
+    let approvers: Array<{ staffId: string; approves: string[] }> = [
+      { staffId: "staff-grace", approves: ["VOID"] },
+      { staffId: "staff-zawadi", approves: ["REFUND"] },
+    ];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith("/api/v1/pos/approvers")
+        ? new Response(JSON.stringify({ approvers }), { status: 200, headers: { "Content-Type": "application/json" } })
+        : new Response("{}", { status: 404, headers: { "Content-Type": "application/json" } }),
+    ));
+    try {
+      const view = render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
+      // Zawadi approves refunds, not voids; Amina, who asks, approves nothing.
+      await waitFor(() => expect(screen.queryByRole("radio", { name: /Zawadi Said/ })).toBeNull());
+      expect(screen.getByRole("radio", { name: /Grace Mushi/ })).toBeInTheDocument();
+      expect(screen.queryByRole("radio", { name: /Amina Hassan/ })).toBeNull();
+      view.unmount();
+
+      approvers = [];
+      render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
+      expect(await screen.findByTestId("approval-no-one")).toHaveTextContent(
+        "No one is set to approve voids here yet. The owner chooses in Team rules.",
+      );
+    } finally {
+      clearOperationalSession();
+      vi.unstubAllGlobals();
     }
   });
 });

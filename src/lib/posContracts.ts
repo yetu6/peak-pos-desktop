@@ -192,6 +192,15 @@ export interface POSCatalog {
   products: POSCatalogProduct[];
 }
 
+/** What a supervisor approves (Team rules; fbc-peak approval_kinds). */
+export type ApprovalKind = "VOID" | "REFUND" | "DISCOUNT" | "CASH_OUT" | "SHIFT_VARIANCE";
+
+/** `GET /pos/approvers` (F-249): someone whose approval can succeed here, and for what. */
+export interface POSApprover {
+  staffId: string;
+  approves: ApprovalKind[];
+}
+
 export interface POSShift {
   id: string;
   status: ShiftStatus;

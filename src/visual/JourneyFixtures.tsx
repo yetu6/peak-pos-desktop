@@ -1,3 +1,4 @@
+import { FIXTURE_PLACE } from "./fixturePlace";
 import { useEffect, type ReactNode } from "react";
 import { AccessFrame } from "../access/AccessLayout";
 import { PIN_PAUSE_AFTER_FAILURES } from "../access/accessSettings";
@@ -142,7 +143,7 @@ function Locked(props: Partial<PinUnlockViewProps> & { banners?: ReactNode }) {
   return (
     <Frame banners={banners}>
       <PinUnlockView
-        tillName="Main Restaurant"
+        place={FIXTURE_PLACE}
         roster={rosterOf(6)}
         offlineState="ELIGIBLE"
         error={null}

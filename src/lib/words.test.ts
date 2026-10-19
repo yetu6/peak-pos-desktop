@@ -9,6 +9,7 @@ import type {
 } from "./posContracts";
 import {
   businessDayWords,
+  longDayWords,
   cashMovementWords,
   clockTime,
   dateTimeWords,
@@ -165,6 +166,13 @@ describe("the business day in words", () => {
     expect(
       shiftChipWords({ status: "PENDING_VARIANCE_APPROVAL", openedAt: opened, businessDate: "2026-10-12" }),
     ).toEqual({ full: "Shift waiting for a supervisor · Mon 12 Oct", short: "Waiting for a supervisor · Mon 12 Oct" });
+  });
+});
+
+describe("today in full, for the sign-in screen", () => {
+  it("names the weekday and the month in full", () => {
+    expect(longDayWords(new Date(2026, 9, 19, 21, 30))).toBe("Monday 19 October");
+    expect(longDayWords(new Date(Number.NaN))).toBe("");
   });
 });
 

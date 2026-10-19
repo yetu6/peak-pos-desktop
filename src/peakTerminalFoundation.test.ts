@@ -219,6 +219,28 @@ describe("Yetu till tokens", () => {
         expect(ratio(theme, "--on-accent", "--accent")).toBeGreaterThanOrEqual(4.5);
       });
 
+      // The owner's look at Bahari (2026-10-19): the rail and the sign-in pane in Yetu Blue, tiles tinted by category.
+      it("holds words on the brand surface and on each category tint to 4.5:1", () => {
+        const failures: string[] = [];
+        const pairs: Array<[string, string]> = [
+          ["--on-brand", "--brand-surface"],
+          ["--on-brand-muted", "--brand-surface"],
+          ["--on-brand", "--brand-hover"],
+          ["--on-brand-muted", "--brand-hover"],
+          ["--on-brand-current", "--brand-current"],
+          // A tile's name, price and tags; its happy-hour label sits on its own accent fill (system.css).
+          ...[1, 2, 3, 4].flatMap((mark) => [
+            ["--text", `--mark-${mark}-tint`] as [string, string],
+            ["--text-muted", `--mark-${mark}-tint`] as [string, string],
+          ]),
+        ];
+        for (const [text, surface] of pairs) {
+          const value = ratio(theme, text, surface);
+          if (value < 4.5) failures.push(`${text} on ${surface}: ${value.toFixed(2)}`);
+        }
+        expect(failures).toEqual([]);
+      });
+
       it("keeps the focus ring, control edges and action fills at 3:1 against every surface", () => {
         const failures: string[] = [];
         for (const edge of ["--focus", "--line-control", "--action"]) {

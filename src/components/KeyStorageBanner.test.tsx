@@ -22,7 +22,7 @@ describe("KeyStorageBanner", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "This till can't store its key safely. Call support before taking payments.",
     );
-    const details = screen.getByText("Technical details").closest("details");
+    const details = screen.getByText("Details for support").closest("details");
     expect(details).not.toHaveAttribute("open");
     expect(details).toHaveTextContent("keyring error 0x80070490");
     expect(banner).toContainElement(details as HTMLElement);

@@ -1,4 +1,5 @@
 import { CircleCheck, ShieldCheck, Undo2 } from "lucide-react";
+import { useSupervisors } from "../approvals/supervisors";
 import { useRef, useState } from "react";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
@@ -76,7 +77,7 @@ export function RefundItemsSheet({
   onRefunded?: (refund: POSRefund) => void;
 }) {
   const device = useDeviceSessionOptional();
-  const roster = device?.roster ?? [];
+  const { supervisors, emptyWords } = useSupervisors("REFUND");
   const requesterId = device?.session?.staffId ?? "";
   const propertyId = usePropertyId();
   const refunds = useOrderRefunds(order.id);
@@ -310,7 +311,8 @@ export function RefundItemsSheet({
         <div className="y-form">
           <SupervisorApproval
             request={`${summary} for ${itemsWords(lines, data)}: ${reason}`}
-            supervisors={roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }))}
+            supervisors={supervisors}
+          emptyWords={emptyWords}
             requesterId={requesterId}
             selectedId={supervisorId}
             onSelect={(id) => {

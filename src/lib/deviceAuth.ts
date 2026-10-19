@@ -1,6 +1,7 @@
 import { bytesToB64Url, signChallengeNonce } from "./deviceCrypto";
 import type { OperationalSession } from "./operationalSession";
 import type { TerminalBinding } from "./offlineAuthorization";
+import { placeFrom, type TillPlace } from "./tillPlace";
 
 export class DeviceNotApprovedError extends Error {
   constructor(message = "This register has not been approved yet") {
@@ -304,12 +305,24 @@ export async function fetchStaffRoster(
 	terminalId: string,
 	deviceCredential = terminalId,
 ): Promise<RosterEntry[]> {
+  return (await fetchLockScreen(baseUrl, terminalId, deviceCredential)).staff;
+}
+
+/** The lock screen's staff list and the till's names (F-252), from one challenge. */
+export async function fetchLockScreen(
+  baseUrl: string,
+	terminalId: string,
+	deviceCredential = terminalId,
+): Promise<{ staff: RosterEntry[]; place: TillPlace }> {
   try {
 		const challenge = await issueChallenge(baseUrl, terminalId, deviceCredential);
-    if (!challenge) return [];
-		return (challenge.staff ?? []).map((entry) => ({ fullName: entry.displayName, staffNumber: entry.id }));
+    if (!challenge) return { staff: [], place: {} };
+    return {
+      staff: (challenge.staff ?? []).map((entry) => ({ fullName: entry.displayName, staffNumber: entry.id })),
+      place: placeFrom(challenge),
+    };
   } catch {
-    return [];
+    return { staff: [], place: {} };
   }
 }
 
@@ -382,6 +395,8 @@ export async function createStaffSession(args: {
 		assurance: "RESTRICTED",
     mode: optionalId(body.mode),
     terminalName: optionalId(body.terminalName),
+    propertyName: placeFrom(body).propertyName,
+    outletName: placeFrom(body).outletName,
     prepStations: stringArray(body.prepStations),
 		capabilities: stringArray(body.capabilities),
 		permissions: stringArray(body.permissions),

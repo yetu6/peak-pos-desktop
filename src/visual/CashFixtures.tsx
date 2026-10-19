@@ -1,3 +1,4 @@
+import { FIXTURE_PLACE } from "./fixturePlace";
 import { ORDER as ORDER_FOR_TABS } from "./registerData";
 import { AccessFrame } from "../access/AccessLayout";
 import { CloseDayCardView } from "../cash/CloseDayCard";
@@ -63,7 +64,7 @@ function OpenShift(props: Partial<Parameters<typeof OpenShiftView>[0]>) {
     <AccessFrame>
       <OpenShiftView
         person={{ name: "Amina Hassan", initials: "AH" }}
-        tillName="Main Restaurant"
+        place={FIXTURE_PLACE}
         currency={CURRENCY}
         canOpenShift
         pending={false}

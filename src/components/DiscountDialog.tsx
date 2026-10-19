@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSupervisors } from "../approvals/supervisors";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { useApplyDiscount, useIdempotencyKey } from "../hooks/usePosData";
@@ -43,7 +44,7 @@ export function DiscountDialog({
   onApplied: (order: POSOrder) => void;
 }) {
   const device = useDeviceSessionOptional();
-  const roster = device?.roster ?? [];
+  const { supervisors, emptyWords } = useSupervisors("DISCOUNT");
   const requesterId = device?.session?.staffId ?? "";
   const applyDiscount = useApplyDiscount();
   const idempotencyKey = useIdempotencyKey();
@@ -176,7 +177,8 @@ export function DiscountDialog({
               ? `Take ${valueWords} off order ${orderNumberWords(order)}: ${reason.trim()}`
               : `A discount on order ${orderNumberWords(order)}`
           }
-          supervisors={roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }))}
+          supervisors={supervisors}
+          emptyWords={emptyWords}
           requesterId={requesterId}
           selectedId={supervisorId}
           onSelect={(id) => {

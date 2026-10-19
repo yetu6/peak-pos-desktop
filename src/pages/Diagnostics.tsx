@@ -1,4 +1,5 @@
-import { CircleAlert, CircleCheck, CircleHelp, Printer, RefreshCw } from "lucide-react";
+import { ChefHat, CircleAlert, CircleCheck, CircleHelp, Cloud, KeyRound, Printer, RadioTower, ReceiptText, RefreshCw, Wifi } from "lucide-react";
+import { computerWords, liveUpdatesWords, tillKindWords, yetuAnswersWords } from "../lib/supportWords";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
 import { useNetworkOnline } from "../access/useNetworkOnline";
@@ -147,11 +148,22 @@ export function statusChecks(input: {
   return checks;
 }
 
+/** Each check's own picture, so a glance finds the printer or the internet. */
+const CHECK_ICON: Record<string, ReactNode> = {
+  internet: <Wifi aria-hidden="true" />,
+  yetu: <Cloud aria-hidden="true" />,
+  live: <RadioTower aria-hidden="true" />,
+  "receipt-printer": <ReceiptText aria-hidden="true" />,
+  "kitchen-printer": <ChefHat aria-hidden="true" />,
+  keys: <KeyRound aria-hidden="true" />,
+};
+
 function CheckRow({ check }: { check: Check }) {
   const chip = STATE_CHIP[check.state];
   return (
-    <li className="y-status__check" data-testid={`diag-check-${check.id}`}>
+    <li className="y-status__check" data-state={check.state} data-testid={`diag-check-${check.id}`}>
       <div className="y-status__head">
+        <span className="y-status__icon">{CHECK_ICON[check.id] ?? <CircleHelp aria-hidden="true" />}</span>
         <h3 className="y-status__name">{check.name}</h3>
         <StatusChip tone={chip.tone} icon={chip.icon}>
           {chip.words}
@@ -318,47 +330,47 @@ export function StatusView({
 
       <TechnicalDetails>
         <dl className="y-status__technical" data-testid="diag-technician-view">
-          <TechRow label="App version" testId="diag-app-version">
-            {snapshot.appVersion}
-          </TechRow>
-          <TechRow label="OS" testId="diag-os">
-            {snapshot.os} {snapshot.arch}
-          </TechRow>
-          <TechRow label="Printer" testId="diag-printer-name">
-            {snapshot.printerAvailable ? snapshot.printerName : `${snapshot.printerName} (not configured)`}
-          </TechRow>
-          <TechRow label="Device code" testId="diag-device-code">
-            {snapshot.deviceCode}
-          </TechRow>
-          <TechRow label="Device id" testId="diag-device-id">
-            {snapshot.deviceId}
-          </TechRow>
-          <TechRow label="Terminal" testId="diag-terminal">
+          <TechRow label="Till name" testId="diag-terminal">
             {snapshot.terminalName}
           </TechRow>
-          <TechRow label="Mode" testId="diag-mode">
-            {snapshot.mode}
+          <TechRow label="Kind of till" testId="diag-mode">
+            {tillKindWords(snapshot.mode)}
           </TechRow>
-          <TechRow label="Yetu address" testId="diag-peak-origin">
-            {snapshot.peakOrigin}
+          <TechRow label="Version" testId="diag-app-version">
+            {snapshot.appVersion}
           </TechRow>
-          <TechRow label="Yetu check" testId="diag-peak-detail">
-            {peak ? `${peak.status}, ${peak.detail}` : "checking"}
+          <TechRow label="Computer" testId="diag-os">
+            {computerWords(snapshot.os, snapshot.arch)}
           </TechRow>
-          <TechRow label="Realtime" testId="diag-realtime-detail">
-            {state.phase}
-            {state.attempt > 0 ? `, attempt ${state.attempt}` : ""}
-            {state.lastError ? `, ${state.lastError}` : ""}
+          <TechRow label="Printer" testId="diag-printer-name">
+            {snapshot.printerAvailable ? snapshot.printerName : "None set up"}
           </TechRow>
-          <TechRow label="Key storage" testId="diag-key-storage">
-            {snapshot.keyStorageBackend}
-            {snapshot.keyStorageHardwareBacked === false ? " (not hardware-backed)" : ""}
+          <TechRow label="Yetu" testId="diag-peak-detail">
+            {yetuAnswersWords(peak)}
           </TechRow>
-          <TechRow label="Last test print" testId="diag-test-print-detail">
-            {testPrint ? (testPrint.ok ? "sent" : testPrint.detail ?? "failed") : "none"}
+          <TechRow label="Live updates" testId="diag-realtime-detail">
+            {liveUpdatesWords(state)}
+          </TechRow>
+          <TechRow label="Last test page" testId="diag-test-print-detail">
+            {testPrint ? (testPrint.ok ? "Sent" : `Didn't print${testPrint.detail ? `: ${testPrint.detail}` : ""}`) : "None yet"}
           </TechRow>
           <TechRow label="Last update problem" testId="diag-update-detail">
             {updateNote && updateNote.kind !== "ready" ? updateNote.detail ?? "No detail" : "None"}
+          </TechRow>
+          <TechRow label="Till code (for support)" testId="diag-device-code">
+            {snapshot.deviceCode}
+          </TechRow>
+          {snapshot.deviceId !== snapshot.deviceCode ? (
+            <TechRow label="Till number (for support)" testId="diag-device-id">
+              {snapshot.deviceId}
+            </TechRow>
+          ) : null}
+          <TechRow label="Yetu address (for support)" testId="diag-peak-origin">
+            {snapshot.peakOrigin}
+          </TechRow>
+          <TechRow label="Where the till's key is kept" testId="diag-key-storage">
+            {snapshot.keyStorageBackend}
+            {snapshot.keyStorageHardwareBacked === false ? " (not in a secure chip)" : ""}
           </TechRow>
         </dl>
       </TechnicalDetails>

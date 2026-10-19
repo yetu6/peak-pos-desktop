@@ -1,3 +1,4 @@
+import { FIXTURE_PLACE } from "./fixturePlace";
 import { ReceiptText } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Banner, EmptyState, Sheet, StatusChip, SupervisorApproval, SupervisorApprovalActions } from "../components/system";
@@ -67,7 +68,7 @@ export function FixtureShell({
       offlineCash={offlineCash}
       page={page}
       onNavigate={setPage}
-      tillName="Main Restaurant"
+      place={FIXTURE_PLACE}
       person={{ name: "Amina Hassan", initials: "AH" }}
       shift={shiftChipWords({ status: "OPEN", openedAt: OPENED_AT, businessDate: BUSINESS_DATE })}
       clock="14:32"

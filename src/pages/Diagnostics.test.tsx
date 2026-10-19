@@ -101,7 +101,7 @@ describe("Diagnostics", () => {
     render(<Diagnostics />);
     expect(screen.getByTestId("diag-updates")).toHaveTextContent("Couldn't check for updates at 14:05. The till keeps working.");
     expect(screen.getByTestId("diag-updates")).not.toHaveTextContent("JSON");
-    await userEvent.click(screen.getByText("Technical details"));
+    await userEvent.click(screen.getByText("Details for support"));
     expect(await screen.findByTestId("diag-update-detail")).toHaveTextContent(
       "Could not fetch a valid release JSON from the remote",
     );
@@ -167,13 +167,15 @@ describe("Diagnostics", () => {
     });
 
     render(<Diagnostics />);
-    await userEvent.click(screen.getByText("Technical details"));
+    await userEvent.click(screen.getByText("Details for support"));
 
     expect(await screen.findByTestId("diag-technician-view")).toBeVisible();
     expect(screen.getByTestId("diag-app-version")).toHaveTextContent("0.1.0");
     expect(screen.getByTestId("diag-device-code")).toHaveTextContent("TILL-204");
     expect(screen.getByTestId("diag-device-id")).toHaveTextContent("device-uuid");
-    expect(screen.getByTestId("diag-os")).toHaveTextContent("linux");
+    // Friendly words in the details for support too (owner, 2026-10-19).
+    expect(screen.getByTestId("diag-os")).toHaveTextContent("Linux, 64-bit");
+    expect(screen.getByTestId("diag-technician-view")).not.toHaveTextContent(/x86_64|Realtime|Device id|HTTP|unnamed/);
     expect(screen.getByTestId("diag-printer-name")).toHaveTextContent("front-bar");
     expect(screen.getByTestId("diag-key-storage")).toHaveTextContent("file");
     expect(screen.queryByText("SECRET_PRIVATE_KEY")).not.toBeInTheDocument();
@@ -217,9 +219,10 @@ describe("Diagnostics", () => {
       expect(screen.getByTestId("diag-check-receipt-printer")).toHaveTextContent("Ask support to set up the printer.");
       expect(screen.getByTestId("diag-check-keys")).toHaveTextContent("This till can't store its key safely.");
       expect(screen.getByTestId("diag-check-keys")).toHaveTextContent("Call support before taking payments.");
-      // The raw detail is for a technician only (Technical details).
+      // No raw error anywhere, the details for support included (owner, 2026-10-19).
       expect(screen.getByRole("list", { name: "Checks" })).not.toHaveTextContent(/Failed to fetch|file fallback|unreachable/);
-      expect(screen.getByTestId("diag-peak-detail")).toHaveTextContent("Failed to fetch");
+      expect(screen.getByTestId("diag-peak-detail")).toHaveTextContent("Can't be reached");
+      expect(screen.getByTestId("diag-peak-detail")).not.toHaveTextContent(/Failed to fetch|unreachable/);
     });
 
     it("in a browser there is no print path: no Print test page, and it says so", async () => {

@@ -20,6 +20,9 @@ export interface DeviceIdentityRecord {
   /** Pass 4: stations this KDS shows. Empty = all stations. */
   prepStations?: string[];
   terminalName?: string;
+  /** The hotel and the outlet as Yetu last named them (F-252), for the lock screen. */
+  propertyName?: string;
+  outletName?: string;
 	terminalId?: string;
 	deviceCredential?: string;
 }
@@ -80,6 +83,8 @@ export function persistableIdentity(record: DeviceIdentityRecord): DeviceIdentit
     pairing: record.approved ? undefined : record.pairing,
     mode: record.mode,
     terminalName: record.terminalName,
+    propertyName: record.propertyName,
+    outletName: record.outletName,
 	terminalId: record.terminalId,
 	deviceCredential: record.deviceCredential,
   };

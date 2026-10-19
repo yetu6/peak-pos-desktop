@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from "react";
+import { placeOf, type TillPlace } from "../lib/tillPlace";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
 import { AccessLayout } from "../access/AccessLayout";
 import { differenceWords, handedOverWords, openShiftProblem } from "../cash/cashWords";
 import { CloseDayCard } from "../cash/CloseDayCard";
 import { forgetClosedShift, useLastClosedShift, type ClosedShift } from "../cash/closedShift";
 import { NoteCounterSheet, denominationsFor, moneyFieldText } from "../cash/NoteCounterSheet";
-import { Button, Money, MoneyField, PermissionNotice, type Refusal } from "../components/system";
+import { Avatar, Button, Money, MoneyField, PermissionNotice, type Refusal } from "../components/system";
 import {
   useCatalogCurrency,
   useHasCapability,
@@ -36,7 +37,7 @@ export function OpenShiftScreen() {
   return (
     <OpenShiftView
       person={personLabel(session?.staffId, roster)}
-      tillName={identity?.terminalName?.trim() || null}
+      place={placeOf(identity)}
       currency={currency}
       canOpenShift={canOpenShift}
       pending={open.isPending}
@@ -59,7 +60,8 @@ export function OpenShiftScreen() {
 
 export interface OpenShiftViewProps {
   person: { name: string; initials: string };
-  tillName: string | null;
+  /** The hotel, the outlet and the till (F-252). */
+  place: TillPlace;
   currency: string | undefined;
   canOpenShift: boolean;
   pending: boolean;
@@ -77,7 +79,7 @@ export interface OpenShiftViewProps {
 
 export function OpenShiftView({
   person,
-  tillName,
+  place,
   currency,
   canOpenShift,
   pending,
@@ -103,16 +105,14 @@ export function OpenShiftView({
     <AccessLayout
       testId="open-shift-screen"
       title="Open the shift"
-      tillName={tillName}
+      place={place}
       width={aside ? "wide" : "regular"}
     >
       <div className={aside ? "y-open-shift" : undefined}>
         <div className="y-access__column">
           <div className="y-pin__who">
             <span className="y-pin__person">
-              <span className="y-avatar" aria-hidden="true">
-                {person.initials}
-              </span>
+              <Avatar name={person.name} initials={person.initials} />
               <span className="y-pin__who-name" data-testid="shift-staff-name">
                 {person.name}
               </span>

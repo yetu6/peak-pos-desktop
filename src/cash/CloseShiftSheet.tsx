@@ -1,4 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { supervisorChoice, useApprovers } from "../approvals/supervisors";
+import type { POSApprover } from "../lib/posContracts";
 import { useEffect, useRef, useState } from "react";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { Banner, Button, Money, MoneyField, PermissionNotice, Sheet, SupervisorApproval, type KeypadKey } from "../components/system";
@@ -44,6 +46,7 @@ export function CloseShiftSheet(props: Omit<CloseShiftSheetViewProps, "onClose" 
   const { close } = usePosShift();
   // S17b: the shift's tabs still open go to the next shift when it closes.
   const openTabs = useOpenTabsOf(props.shift.id);
+  const approvers = useApprovers();
   const closeKey = useIdempotencyKey();
   const queryClient = useQueryClient();
   // The lock waits (within its bound) while the close is with Yetu: the mutation's own status.
@@ -51,6 +54,7 @@ export function CloseShiftSheet(props: Omit<CloseShiftSheetViewProps, "onClose" 
   return (
     <CloseShiftSheetView
       {...props}
+      approvers={approvers}
       openTabs={openTabs}
       onClose={(args) => close.mutateAsync({ ...args, idempotencyKey: closeKey.next() })}
       // The shift query refetches as usePosData already does after cash in or out ("pos", "shift").
@@ -66,6 +70,8 @@ export interface CloseShiftSheetViewProps {
   currency: string | undefined;
   requesterId: string;
   roster: readonly RosterEntry[];
+  /** F-249: Yetu's approvers here; null until it answers, and then everyone is offered. */
+  approvers?: readonly POSApprover[] | null;
   /** S17b: the shift's tabs still open, and what they owe: closing hands them over to the next shift. */
   openTabs: OpenTabs;
   /** Closes the shift with Yetu and returns the closed shift it sends back. */
@@ -84,12 +90,14 @@ export function CloseShiftSheetView({
   currency,
   requesterId,
   roster,
+  approvers = null,
   openTabs,
   onClose,
   onRefreshShift,
   initialCounted = "",
   initialStep = "count",
 }: CloseShiftSheetViewProps) {
+  const varianceChoice = supervisorChoice(roster, approvers, "SHIFT_VARIANCE");
   const [step, setStep] = useState<"count" | "check">(initialStep);
   const [checkVisit, setCheckVisit] = useState(0);
   const checkHeading = useRef<HTMLHeadingElement>(null);
@@ -304,7 +312,8 @@ export function CloseShiftSheetView({
               {needsSupervisor && !refreshing ? (
                 <SupervisorApproval
                   request={`Close the shift with ${formatMoney(countedMinor, currency)} counted. Yetu expects ${formatMoney(shift.expectedCashMinor, currency)}.`}
-                  supervisors={roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }))}
+                  supervisors={varianceChoice.supervisors}
+                  emptyWords={varianceChoice.emptyWords}
                   requesterId={requesterId}
                   selectedId={supervisorId}
                   onSelect={(id) => {

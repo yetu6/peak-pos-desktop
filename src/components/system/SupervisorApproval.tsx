@@ -3,6 +3,7 @@ import { PIN_LENGTH } from "../../access/accessSettings";
 import { cn } from "../../lib/utils";
 import { Button } from "./Button";
 import { Banner } from "./containers";
+import { Avatar } from "./display";
 import { Keypad, type KeypadKey } from "./Keypad";
 
 export interface Supervisor {
@@ -39,6 +40,8 @@ export interface SupervisorApprovalProps {
   actions?: "inline" | "none";
   /** Test ids for the PIN keys: `${keyTestIdPrefix}-${key}`. */
   keyTestIdPrefix?: string;
+  /** What to say when no one is offered: who sets approvers (F-249); else the staff list is missing. */
+  emptyWords?: string;
   className?: string;
 }
 
@@ -91,6 +94,7 @@ export function SupervisorApproval({
   canApprove = false,
   actions = "inline",
   keyTestIdPrefix,
+  emptyWords,
   className,
 }: SupervisorApprovalProps) {
   const selected = supervisors.find((supervisor) => supervisor.id === selectedId) ?? null;
@@ -112,9 +116,9 @@ export function SupervisorApproval({
           Choose a supervisor
         </h3>
         {supervisors.length === 0 ? (
-          <p className="y-approval__message">
-            This till can't show its staff list right now, so no one can approve here. Check the internet connection,
-            then try again.
+          <p className="y-approval__message" data-testid="approval-no-one">
+            {emptyWords ??
+              "This till can't show its staff list right now, so no one can approve here. Check the internet connection, then try again."}
           </p>
         ) : null}
         <div role="radiogroup" aria-labelledby="approval-who-heading" className="y-approval__people">
@@ -133,9 +137,7 @@ export function SupervisorApproval({
                 disabled={settled || isRequester}
                 onClick={() => onSelect(supervisor.id)}
               >
-                <span className="y-avatar" aria-hidden="true">
-                  {initials(supervisor.name)}
-                </span>
+                <Avatar name={supervisor.name} initials={initials(supervisor.name)} />
                 <span className="y-approval__person-text">
                   <span className="y-approval__person-name">
                     {supervisor.name}

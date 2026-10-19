@@ -1,4 +1,5 @@
 import { CircleAlert } from "lucide-react";
+import { placeOf, type TillPlace } from "../lib/tillPlace";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
 import { AccessLayout } from "../access/AccessLayout";
@@ -6,7 +7,7 @@ import { PIN_LENGTH, ROSTER_SEARCH_AFTER } from "../access/accessSettings";
 import { offlineReadinessWords, pinNotice } from "../access/accessWords";
 import { rateLimitWords } from "../lib/posErrors";
 import { useNetworkOnline } from "../access/useNetworkOnline";
-import { Banner, Button, Field, Keypad, SearchField, type KeypadKey } from "../components/system";
+import { Avatar, Banner, Button, Field, Keypad, SearchField, type KeypadKey } from "../components/system";
 import type { RosterEntry } from "../lib/deviceAuth";
 import { isComposing } from "../lib/keyboard";
 import type { OfflineEligibilityStatus } from "../lib/offlineAuthorization";
@@ -17,7 +18,7 @@ export function PinUnlock() {
   const online = useNetworkOnline();
   return (
     <PinUnlockView
-      tillName={identity?.terminalName?.trim() || null}
+      place={placeOf(identity)}
       roster={roster}
       offlineState={offlineEligibility?.state ?? null}
       error={error}
@@ -36,7 +37,8 @@ function initialsOf(fullName: string): string {
 }
 
 export interface PinUnlockViewProps {
-  tillName: string | null;
+  /** The hotel, the outlet and the till (F-252). */
+  place: TillPlace;
   roster: readonly RosterEntry[];
   offlineState: OfflineEligibilityStatus["state"] | null;
   /** The device session's message after the last attempt or lock. */
@@ -52,7 +54,7 @@ export interface PinUnlockViewProps {
 }
 
 export function PinUnlockView({
-  tillName,
+  place,
   roster,
   offlineState,
   error,
@@ -228,7 +230,7 @@ export function PinUnlockView({
         testId="pin-screen"
         title="Who's working?"
         lede={<p>Tap your name.</p>}
-        tillName={tillName}
+        place={place}
         width="wide"
         notice={notices}
       >
@@ -245,9 +247,7 @@ export function PinUnlockView({
                 data-testid={`roster-entry-${entry.staffNumber}`}
                 onClick={() => chooseFromRoster(entry)}
               >
-                <span className="y-avatar" aria-hidden="true">
-                  {initialsOf(entry.fullName)}
-                </span>
+                <Avatar name={entry.fullName} initials={initialsOf(entry.fullName)} />
                 <span className="y-roster__name">{entry.fullName}</span>
               </button>
             ))}
@@ -271,16 +271,14 @@ export function PinUnlockView({
     <AccessLayout
       testId="pin-screen"
       title={selected ? "Enter your PIN" : "Sign in with your staff number"}
-      tillName={tillName}
+      place={place}
       notice={notices}
     >
       <div className="y-pin">
         {selected ? (
           <div className="y-pin__who">
             <span className="y-pin__person">
-              <span className="y-avatar" aria-hidden="true">
-                {initialsOf(selected.fullName)}
-              </span>
+              <Avatar name={selected.fullName} initials={initialsOf(selected.fullName)} />
               <span className="y-pin__who-name" data-testid="selected-staff-name">
                 {selected.fullName}
               </span>

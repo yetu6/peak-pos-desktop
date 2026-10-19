@@ -442,3 +442,18 @@ describe("MoneyField reads as money", () => {
     expect(groupedDigits("")).toBe("");
   });
 });
+
+// The owner, 2026-10-19: people in their own colour on the sign-in screen and wherever they appear.
+describe("Avatar", () => {
+  it("gives a person the same colour every time, one of the four", async () => {
+    const { Avatar, avatarTone } = await import("./display");
+    expect(avatarTone("Zawadi Said")).toBe(avatarTone(" zawadi said "));
+    const tones = new Set(["Amina Hassan", "Baraka Mushi", "Grace Mushi", "Juma Ally", "Neema Mwakyusa", "Rehema Swai", "Zawadi Said"].map(avatarTone));
+    for (const tone of tones) expect([1, 2, 3, 4]).toContain(tone);
+    expect(tones.size).toBeGreaterThan(1);
+    render(<Avatar name="Zawadi Said" initials="ZS" />);
+    const avatar = screen.getByText("ZS");
+    expect(avatar).toHaveAttribute("data-tone", String(avatarTone("Zawadi Said")));
+    expect(avatar).toHaveAttribute("aria-hidden", "true");
+  });
+});

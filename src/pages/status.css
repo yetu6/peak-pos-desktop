@@ -47,9 +47,30 @@
 .y-status__head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
+
+.y-status__head .y-chip { margin-left: auto; }
+
+/* The check's picture in a circle of its state's tone; the chip says the state in words. */
+.y-status__icon {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+.y-status__icon svg { width: 22px; height: 22px; }
+
+.y-status__check[data-state="ok"] .y-status__icon { background: var(--success-subtle); color: var(--success); }
+.y-status__check[data-state="problem"] .y-status__icon { background: var(--danger-subtle); color: var(--danger); }
+.y-status__check[data-state="unknown"] .y-status__icon { background: var(--info-subtle); color: var(--info); }
+
+/* A problem stands out at a glance: its card's edge in the danger tone. */
+.y-status__check[data-state="problem"] { border-color: var(--danger-line); }
 
 .y-status__name {
   margin: 0;

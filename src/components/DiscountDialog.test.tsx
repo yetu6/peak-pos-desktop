@@ -1,9 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render as renderInDom, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement, ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { idleLockHeld } from "../lib/idleLock";
 import { DiscountDialog } from "./DiscountDialog";
 import type { POSOrder } from "../lib/posContracts";
+
+/** The app's query provider, fresh for each render: the approval sheets ask Yetu who may approve (F-249). */
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderInDom(ui, { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+}
 
 const { applyMutate, applyState, applyReset } = vi.hoisted(() => ({
   applyState: { isPending: false, error: null as unknown },

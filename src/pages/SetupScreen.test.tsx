@@ -46,7 +46,7 @@ describe("SetupScreen", () => {
 
   it("puts the rules and the version behind Technical details", () => {
     render(<SetupScreen />);
-    const details = screen.getByText("Technical details").closest("details");
+    const details = screen.getByText("Details for support").closest("details");
     expect(details).not.toHaveAttribute("open");
     expect(details).toHaveTextContent(/https/i);
     expect(details).toHaveTextContent(/version/i);
