@@ -366,14 +366,9 @@ export function PaySheetView({
   const nothingDue = due <= 0;
   const partPaid = order.paidMinor > 0;
   const methods: Method[] = roomAvailable ? [...TENDER_METHODS, "ROOM_CHARGE"] : [...TENDER_METHODS];
-  // Yetu charges a room only for an order the kitchen has (SENT, READY or SERVED) and nothing paid yet.
-  const roomBlocked = partPaid
-    ? "Charge to room isn't possible once part of the bill is paid."
-    : order.status === "OPEN"
-      ? "Charge to room: send it to the kitchen first."
-      : order.status === "PREPARING"
-        ? "Charge to room: once the kitchen has it ready."
-        : null;
+  // Yetu charges a room for an order the kitchen has, preparing or after (F-245): all of it, or
+  // what is left once part is paid (F-244).
+  const roomBlocked = order.status === "OPEN" ? "Charge to room: send it to the kitchen first." : null;
   const usable = (candidate: Method) => !blocked && !nothingDue && !(candidate === "ROOM_CHARGE" && roomBlocked !== null);
 
   // Prices below are Yetu's (what is owed); the change and a part payment's

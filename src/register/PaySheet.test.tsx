@@ -276,11 +276,22 @@ describe("PaySheet", () => {
     expect(screen.queryByRole("radio", { name: "Charge to room" })).not.toBeInTheDocument();
   });
 
-  it("charge to room isn't possible once part is paid, and says so", () => {
+  // F-244 (owner decision 2026-10-19): one guest pays cash, another charges the rest to their room.
+  it("once part is paid, the rest can go on a room", async () => {
     refs.roomAvailable = true;
+    refs.candidates = [
+      { stayId: "stay-12", roomId: "room-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
+    ];
     renderPay({ ...ORDER, paidMinor: 1_000_000, remainingMinor: 3_250_000 });
-    expect(screen.getByRole("radio", { name: "Charge to room" })).toBeDisabled();
-    expect(screen.getByText("Charge to room isn't possible once part of the bill is paid.")).toBeInTheDocument();
+    const room = screen.getByRole("radio", { name: "Charge to room" });
+    expect(room).toBeEnabled();
+    expect(screen.queryByText(/isn't possible once part of the bill is paid/)).toBeNull();
+    await userEvent.click(room);
+    await userEvent.type(screen.getByTestId("room-query"), "12");
+    await userEvent.click(await screen.findByTestId("room-candidate-stay-12"));
+    expect(screen.getByTestId("confirm-room-charge")).toHaveTextContent("Charge TSh 32,500 to room 12");
+    await userEvent.click(screen.getByTestId("confirm-room-charge"));
+    expect(chargeToRoomMutate).toHaveBeenCalledWith(expect.objectContaining({ orderId: "order-1", stayId: "stay-12" }), expect.anything());
   });
 
   it("charge to room waits until the order has gone to the kitchen, and says so", () => {
@@ -290,11 +301,12 @@ describe("PaySheet", () => {
     expect(screen.getByText("Charge to room: send it to the kitchen first.")).toBeInTheDocument();
   });
 
-  it("charge to room isn't taken while the kitchen is preparing it (the backend's rule), and says so", () => {
+  // F-245: Yetu takes a room charge while the kitchen prepares, as it takes a tender.
+  it("charge to room is open while the kitchen prepares", () => {
     refs.roomAvailable = true;
     renderPay({ ...ORDER, status: "PREPARING" });
-    expect(screen.getByRole("radio", { name: "Charge to room" })).toBeDisabled();
-    expect(screen.getByText("Charge to room: once the kitchen has it ready.")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Charge to room" })).toBeEnabled();
+    expect(screen.queryByText("Charge to room: once the kitchen has it ready.")).toBeNull();
   });
 
   it("a guest whose bill isn't open can't be charged", async () => {
