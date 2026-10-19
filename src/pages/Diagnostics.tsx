@@ -307,7 +307,7 @@ export function StatusView({
         </div>
       ) : null}
 
-      {printers}
+      {printers ? <div className="y-status__panel">{printers}</div> : null}
 
       <section className="y-status__updates" aria-labelledby="diag-updates-title">
         <h2 id="diag-updates-title" className="y-status__name">

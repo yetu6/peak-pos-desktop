@@ -1,5 +1,7 @@
 mod diagnostics;
 mod identity;
+#[cfg(target_os = "linux")]
+mod linux_webview;
 pub mod local_store;
 mod printer;
 mod raw_print;
@@ -9,6 +11,8 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    linux_webview::apply_defaults();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())

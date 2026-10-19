@@ -1,7 +1,8 @@
-/* Status: the till's checks in words, each with what to do. */
+/* Status: the till's checks in words, each with what to do. It fills the
+   page like Sell, Orders, Kitchen and Cash: the checks take as many columns
+   as fit, and only running text keeps a reading width. */
 .y-status {
   display: grid;
-  max-width: 920px;
   gap: var(--space-5);
 }
 
@@ -65,6 +66,7 @@
 
 .y-status__print {
   display: flex;
+  max-width: 72ch;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
@@ -80,6 +82,7 @@
 .y-status__updates {
   display: grid;
   gap: var(--space-1);
+  max-width: 72ch;
 }
 
 .y-status__updates p { margin: 0; }
@@ -88,7 +91,11 @@
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: var(--space-1) var(--space-3);
+  max-width: 920px;
   margin: 0;
 }
 
 .y-status__technical dd { margin: 0; overflow-wrap: anywhere; }
+
+/* A form on Status (a manager's Printers) keeps a working width, not the page's. */
+.y-status__panel { max-width: 920px; }
