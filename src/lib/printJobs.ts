@@ -12,7 +12,7 @@ import { formatRefundReceipt, refundReceiptCopyFromPrintDocument } from "./refun
 import type { POSPrintJob, PrintJobStatus } from "./posContracts";
 import { kitchenTicketBytes } from "../print/kitchenTicket";
 import { paperFromPrintDocument, type KitchenPrintRoutes } from "../print/kitchenRouting";
-import { printerFor } from "../print/printerSettings";
+import { printerFor, stationPrintsNoPaper } from "../print/printerSettings";
 import { receiptPaperFor } from "../print/receiptRouting";
 
 /**
@@ -197,6 +197,8 @@ export async function processPrintJob(
   // Paper kitchen tickets off on this till (its kitchen has a screen): the job
   // is left for a till that prints them, never claimed and dropped.
   if (kitchen && !routes.settings.kitchenTickets) return { ok: true };
+  // No paper for this station on this till (a bar whose bartender pours what they ring up): left, like the above.
+  if (kitchen && stationPrintsNoPaper(routes.settings, job.document.station)) return { ok: true };
   let claimed: POSPrintJob;
   try {
     claimed = job.status === "PENDING" ? await claimPrintJob(job.id) : job;

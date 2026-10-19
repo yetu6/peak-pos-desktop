@@ -46,4 +46,10 @@ describe("printers on the till (S8a)", () => {
     expect(settingsFrom({ receipt: null, cashDrawer: true })).toMatchObject({ receipt: null, cashDrawer: false });
     expect(settingsFrom({ receipt: { target: { kind: "network", host: "8.8.8.8", port: 9100 } }, cashDrawer: true })).toMatchObject({ receipt: null, cashDrawer: false });
   });
+
+  it("a station with no paper is read back as such, and prints nowhere (S8a)", () => {
+    const settings = settingsFrom({ kitchenTickets: true, kitchen: KITCHEN, stations: { BAR: "none", HOT: "nonsense" } });
+    expect(settings.stations).toEqual({ BAR: "none" });
+    expect(printerFor(settings, "BAR")).toEqual(KITCHEN);
+  });
 });

@@ -7,7 +7,7 @@ import { PAPER_58MM, PAPER_80MM, type PaperWidth } from "./escpos";
 import { kitchenTicketBytes } from "./kitchenTicket";
 import { receiptBytes } from "./receipt";
 import {
-  DEFAULT_PRINTER_SETTINGS, parseNetworkAddress, printerWords, type PrinterChoice, type PrinterSettings,
+  DEFAULT_PRINTER_SETTINGS, NO_PAPER, parseNetworkAddress, printerWords, type PrinterChoice, type PrinterSettings,
 } from "./printerSettings";
 import { listSystemPrinters, loadPrinterSettings, printRawToPrinter, savePrinterSettings } from "./printerStore";
 
@@ -15,6 +15,7 @@ const STATIONS: readonly PrepStation[] = ["GENERAL", "HOT", "COLD", "BAR", "GRIL
 const OWN = "own";
 const SAME = "same";
 const NETWORK = "network";
+const NO_PAPER_KIND = "nopaper";
 
 /** A sample ticket for "Print a test ticket": the kitchen's layout, nothing sold. */
 const TEST_TICKET = {
@@ -118,7 +119,7 @@ export function PrintersCard() {
             value={settings.kitchen}
             printers={printers}
             allowOwn
-            onChange={(kitchen) => setSettings({ ...settings, kitchen })}
+            onChange={(kitchen) => setSettings({ ...settings, kitchen: kitchen === NO_PAPER ? null : kitchen })}
             testId="kitchen-printer"
           />
           <details className="y-printers__stations">
@@ -129,6 +130,7 @@ export function PrintersCard() {
                 label={stationWords(station)}
                 value={settings.stations[station] ?? null}
                 printers={printers}
+                allowNoPaper
                 onChange={(choice) => {
                   const stations = { ...settings.stations };
                   if (choice) stations[station] = choice;
@@ -147,7 +149,10 @@ export function PrintersCard() {
         value={settings.receipt}
         printers={printers}
         allowOwn
-        onChange={(receipt) => setSettings({ ...settings, receipt, cashDrawer: receipt ? settings.cashDrawer : false })}
+        onChange={(choice) => {
+          const receipt = choice === NO_PAPER ? null : choice;
+          setSettings({ ...settings, receipt, cashDrawer: receipt ? settings.cashDrawer : false });
+        }}
         testId="receipt-printer"
       />
       {settings.receipt ? (
@@ -184,27 +189,31 @@ export function PrintersCard() {
 }
 
 function PrinterPicker({
-  label, value, printers, allowOwn = false, onChange, testId,
+  label, value, printers, allowOwn = false, allowNoPaper = false, onChange, testId,
 }: {
   label: string;
-  value: PrinterChoice | null;
+  value: PrinterChoice | null | typeof NO_PAPER;
   printers: readonly string[];
   /** The kitchen printer may be this till's own; a station's falls back to the kitchen's. */
   allowOwn?: boolean;
-  onChange: (choice: PrinterChoice | null) => void;
+  /** A station may print no ticket on this till. */
+  allowNoPaper?: boolean;
+  onChange: (choice: PrinterChoice | null | typeof NO_PAPER) => void;
   testId: string;
 }) {
   const id = useId();
-  const kindOf = (choice: PrinterChoice | null) =>
-    !choice ? (allowOwn ? OWN : SAME) : choice.target.kind === "network" ? NETWORK : `system:${choice.target.name}`;
+  const kindOf = (choice: PrinterChoice | null | typeof NO_PAPER) =>
+    choice === NO_PAPER ? NO_PAPER_KIND : !choice ? (allowOwn ? OWN : SAME) : choice.target.kind === "network" ? NETWORK : `system:${choice.target.name}`;
   // The picker's own choice: "a printer on the network" stays chosen while its address is being typed.
   const [kind, setKind] = useState(kindOf(value));
   useEffect(() => {
     if (value) setKind(kindOf(value));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
-  const width: PaperWidth = value?.width ?? PAPER_80MM;
-  const [address, setAddress] = useState(value?.target.kind === "network" ? `${value.target.host}:${value.target.port}` : "");
+  // "No paper" is no printer to set: no width, no address.
+  const choice = value === NO_PAPER ? null : value;
+  const width: PaperWidth = choice?.width ?? PAPER_80MM;
+  const [address, setAddress] = useState(choice?.target.kind === "network" ? `${choice.target.host}:${choice.target.port}` : "");
   const parsed = parseNetworkAddress(address);
   return (
     <div className="y-printers__picker" data-testid={testId}>
@@ -217,12 +226,14 @@ function PrinterPicker({
           const next = event.target.value;
           setKind(next);
           if (next === OWN || next === SAME) onChange(null);
+          else if (next === NO_PAPER_KIND) onChange(NO_PAPER);
           else if (next === NETWORK) onChange(parsed ? { target: { kind: "network", ...parsed }, width } : null);
           else onChange({ target: { kind: "system", name: next.slice("system:".length) }, width });
         }}
       >
         {allowOwn ? <option value={OWN}>This till's own printer</option> : <option value={SAME}>The kitchen printer</option>}
         {printers.map((name) => <option key={name} value={`system:${name}`}>{name}</option>)}
+        {allowNoPaper ? <option value={NO_PAPER_KIND}>No paper for this station</option> : null}
         <option value={NETWORK}>A printer on the network…</option>
       </select>
       {kind === NETWORK ? (
@@ -239,12 +250,12 @@ function PrinterPicker({
           autoComplete="off"
         />
       ) : null}
-      {value ? (
+      {choice ? (
         <SegmentedControl
           label={`${label}: paper`}
           options={[{ value: String(PAPER_58MM), label: "58 mm paper" }, { value: String(PAPER_80MM), label: "80 mm paper" }]}
           value={String(width)}
-          onChange={(next) => onChange({ ...value, width: Number(next) === PAPER_58MM ? PAPER_58MM : PAPER_80MM })}
+          onChange={(next) => onChange({ ...choice, width: Number(next) === PAPER_58MM ? PAPER_58MM : PAPER_80MM })}
         />
       ) : null}
     </div>

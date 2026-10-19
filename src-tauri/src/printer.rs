@@ -375,7 +375,12 @@ fn saved_targets(settings: &serde_json::Value) -> Result<Vec<crate::raw_print::R
     }
     match settings.get("stations") {
         None | Some(serde_json::Value::Null) => {}
-        Some(serde_json::Value::Object(stations)) => choices.extend(stations.values()),
+        // "none": no paper for that station; nothing to check.
+        Some(serde_json::Value::Object(stations)) => choices.extend(
+            stations
+                .values()
+                .filter(|value| value.as_str() != Some("none")),
+        ),
         Some(_) => return Err(bad()),
     }
     choices

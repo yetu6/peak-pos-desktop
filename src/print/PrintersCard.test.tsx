@@ -91,4 +91,13 @@ describe("Manager → Printers (S8a)", () => {
     await waitFor(() => expect(till.saved).toHaveLength(2));
     expect(till.saved[1]).toMatchObject({ receipt: null, cashDrawer: false });
   });
+
+  it("a station can print no paper on this till", async () => {
+    render(<PrintersCard />);
+    await userEvent.click(screen.getByText("A printer for one station (optional)"));
+    await userEvent.selectOptions(within(screen.getByTestId("station-printer-BAR")).getByRole("combobox"), "nopaper");
+    await userEvent.click(screen.getByTestId("save-printers"));
+    await waitFor(() => expect(till.saved).toHaveLength(1));
+    expect(till.saved[0]).toMatchObject({ stations: { BAR: "none" } });
+  });
 });

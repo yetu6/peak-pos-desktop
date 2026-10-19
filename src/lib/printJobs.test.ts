@@ -483,3 +483,34 @@ describe("printJobs: receipts on a thermal printer, the cash drawer (S8b)", () =
     expect(text[0]).toContain("Discount (Regular guest)  -TSh");
   });
 });
+
+describe("printJobs: no paper for a station on this till", () => {
+  const job = (station: string): POSPrintJob => ({ ...KITCHEN_JOB, id: `job-${station}`, document: { dailyNumber: 7, station, items: [{ name: "Tusker lager", quantity: 2 }] } });
+  const KITCHEN = { target: { kind: "network" as const, host: "192.168.1.50", port: 9100 }, width: 48 as const };
+
+  async function run(printJob: POSPrintJob) {
+    const requests: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = String(input);
+        requests.push(url);
+        if (url.endsWith("/claim")) return json({ ...printJob, status: "CLAIMED" });
+        if (url.endsWith("/printed")) return json({ ...printJob, status: "PRINTED" });
+        if (url.includes("/pos/print-jobs")) return json([printJob]);
+        return json({}, 500);
+      }),
+    );
+    const printRaw = vi.fn();
+    await processPendingPrintJobs("prop", "order-1", vi.fn(), {
+      settings: { kitchenTickets: true, kitchen: KITCHEN, stations: { BAR: "none" }, receipt: null, cashDrawer: false },
+      printRaw,
+    });
+    return { claimed: requests.some((url) => url.endsWith("/claim")), printed: printRaw.mock.calls.length };
+  }
+
+  it("the bar's ticket is left, never claimed; the kitchen's still prints", async () => {
+    expect(await run(job("BAR"))).toEqual({ claimed: false, printed: 0 });
+    expect(await run(job("HOT"))).toEqual({ claimed: true, printed: 1 });
+  });
+});

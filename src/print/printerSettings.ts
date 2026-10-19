@@ -22,12 +22,16 @@ export interface PrinterSettings {
   /** Where kitchen tickets go when their station has no printer of its own. */
   kitchen: PrinterChoice | null;
   /** A station's own printer: the bar's, the grill's. */
-  stations: Partial<Record<PrepStation, PrinterChoice>>;
+  /** A station's own printer, or no paper for it (a bar whose bartender pours what they ring up). */
+  stations: Partial<Record<PrepStation, PrinterChoice | typeof NO_PAPER>>;
   /** S8b: the receipt printer, a thermal one (null: this computer's own printer, as plain text). */
   receipt: PrinterChoice | null;
   /** S8b: a cash drawer is plugged into the receipt printer: open it for cash taken or paid out. */
   cashDrawer: boolean;
 }
+
+/** A station that prints no kitchen ticket on this till. */
+export const NO_PAPER = "none";
 
 /** Paper kitchen tickets on, sent to this till's own printer until a kitchen printer is chosen. */
 export const DEFAULT_PRINTER_SETTINGS: PrinterSettings = { kitchenTickets: true, kitchen: null, stations: {}, receipt: null, cashDrawer: false };
@@ -43,10 +47,15 @@ function localIPv4(parts: number[]): boolean {
   return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
 }
 
+/** Whether this till prints no kitchen ticket for the station. */
+export function stationPrintsNoPaper(settings: PrinterSettings, station: unknown): boolean {
+  return typeof station === "string" && settings.stations[station as PrepStation] === NO_PAPER;
+}
+
 /** The printer a station's kitchen ticket goes to; null: this till's own printer, as before. */
 export function printerFor(settings: PrinterSettings, station: string | undefined): PrinterChoice | null {
   const own = station ? settings.stations[station as PrepStation] : undefined;
-  return own ?? settings.kitchen ?? null;
+  return (own && own !== NO_PAPER ? own : null) ?? settings.kitchen ?? null;
 }
 
 /**
@@ -96,6 +105,10 @@ export function settingsFrom(raw: unknown): PrinterSettings {
   const stations: PrinterSettings["stations"] = {};
   if (value.stations && typeof value.stations === "object") {
     for (const [station, c] of Object.entries(value.stations as Record<string, unknown>)) {
+      if (c === NO_PAPER) {
+        stations[station as PrepStation] = NO_PAPER;
+        continue;
+      }
       const parsed = choice(c);
       if (parsed) stations[station as PrepStation] = parsed;
     }
