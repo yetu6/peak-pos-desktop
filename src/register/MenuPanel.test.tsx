@@ -218,6 +218,12 @@ describe("MenuPanel with the Restaurant & Bar module's menu (S16-B4)", () => {
     expect(screen.getByTestId("menu-Tusker Lager")).not.toHaveTextContent("Happy hour");
   });
 
+  it("a category chosen before opens on its own group: the tabs never contradict the tiles", () => {
+    render(<Menu menu={MENU} activeCategory="drinks" />);
+    expect(within(screen.getByRole("tablist", { name: "Menu" })).getByRole("tab", { name: "Drinks" })).toHaveAttribute("aria-selected", "true");
+    expect(tileNames()).toEqual(["menu-Tusker Lager", "menu-Soda"]);
+  });
+
   it("menus off: the categories as before, nothing said of sizes or tags", () => {
     render(<Menu menu={{ ...MENU, enabled: false }} />);
     expect(screen.queryByRole("tablist", { name: "Menu" })).toBeNull();

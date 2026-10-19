@@ -104,7 +104,11 @@ export function MenuPanel({
     return tabs;
   }, [grouped, menu, activeCategories, products]);
   const [chosenGroup, setChosenGroup] = useState<string | null>(null);
-  const activeGroup = groupTabs.find((group) => group.id === chosenGroup) ?? groupTabs[0];
+  // The group chosen, else the one holding the category chosen, else the first: the tabs never contradict the tiles.
+  const activeGroup =
+    groupTabs.find((group) => group.id === chosenGroup) ??
+    groupTabs.find((group) => group.categoryIds.includes(activeCategory)) ??
+    groupTabs[0];
   const categoryTabsFor = activeGroup
     ? activeGroup.categoryIds.map((id) => activeCategories.find((category) => category.id === id)).filter((c): c is POSCategory => Boolean(c))
     : activeCategories;
