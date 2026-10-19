@@ -43,6 +43,29 @@ const ORDER: POSOrder = {
   ],
 };
 
+/** The ticket as an element, for rerendering with a new order. */
+function ticketElement(props: Partial<TicketPanelProps> = {}) {
+  return (
+    <TicketPanel
+      order={ORDER}
+      currency="TZS"
+      serviceType="DINE_IN"
+      label=""
+      selectedLineId={null}
+      lineBusy={false}
+      sentAt={null}
+      error={null}
+      actions={null}
+      onServiceType={vi.fn()}
+      onLabel={vi.fn()}
+      onSelectLine={vi.fn()}
+      onAddAnother={vi.fn()}
+      onRemoveLine={vi.fn()}
+      {...props}
+    />
+  );
+}
+
 function renderTicket(props: Partial<TicketPanelProps> = {}) {
   const handlers = {
     onServiceType: vi.fn(),
@@ -182,7 +205,7 @@ describe("TicketPanel", () => {
 });
 
 describe("TicketPanel: rounds (S17a)", () => {
-  it("says each sent line's round once there are several, and Sent when there is one", () => {
+  it("groups the lines by round under one heading each, never a chip on every line", () => {
     const rounds = {
       ...ORDER,
       status: "SERVED" as const,
@@ -190,11 +213,48 @@ describe("TicketPanel: rounds (S17a)", () => {
       items: [line("l1", "Cappuccino", 2, 1_534_000, { status: "SENT", roundNumber: 1 }), line("l2", "Cake", 1, 590_000, { status: "SENT", roundNumber: 2 })],
     };
     renderTicket({ order: rounds });
-    expect(screen.getByTestId("cart-Cappuccino")).toHaveTextContent("Round 1");
-    expect(screen.getByTestId("cart-Cake")).toHaveTextContent("Round 2");
-    cleanup();
-    renderTicket({ order: { ...rounds, roundsSent: 1, items: [rounds.items[0]] } });
-    expect(screen.getByTestId("cart-Cappuccino")).toHaveTextContent("Sent");
+    const first = screen.getByTestId("ticket-group-round-1");
+    expect(within(first).getByRole("heading", { name: "Round 1" })).toBeInTheDocument();
+    expect(within(first).getByTestId("cart-Cappuccino")).toBeInTheDocument();
+    expect(within(screen.getByTestId("ticket-group-round-2")).getByTestId("cart-Cake")).toBeInTheDocument();
     expect(screen.getByTestId("cart-Cappuccino")).not.toHaveTextContent("Round");
+    cleanup();
+    // One round, all sent: no headings; the ticket's own chip says it went.
+    renderTicket({ order: { ...rounds, roundsSent: 1, items: [rounds.items[0]] } });
+    expect(screen.queryByRole("heading", { name: /Round/ })).toBeNull();
+    expect(screen.getByTestId("cart-Cappuccino")).not.toHaveTextContent("Sent");
+  });
+
+  it("keeps what isn't sent yet apart and last, under Not sent yet", () => {
+    const added = {
+      ...ORDER,
+      status: "SERVED" as const,
+      roundsSent: 1,
+      items: [line("l1", "Cappuccino", 2, 1_534_000, { status: "SENT", roundNumber: 1 }), line("l2", "Cake", 1, 590_000, { status: "ADDED" })],
+    };
+    renderTicket({ order: added });
+    const groups = screen.getAllByTestId(/^ticket-group-/).map((group) => group.getAttribute("data-testid"));
+    expect(groups).toEqual(["ticket-group-round-1", "ticket-group-unsent"]);
+    expect(within(screen.getByTestId("ticket-group-unsent")).getByRole("heading", { name: "Not sent yet" })).toBeInTheDocument();
+    expect(within(screen.getByTestId("ticket-group-unsent")).getByTestId("cart-Cake")).toBeInTheDocument();
+  });
+});
+
+describe("TicketPanel: the newest line in view", () => {
+  it("scrolls to the line just added", () => {
+    const scrolled: Element[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      const one = { ...ORDER, items: [line("l1", "Cappuccino", 2, 1_534_000)] };
+      const { rerender } = render(ticketElement({ order: one }));
+      scrolled.length = 0;
+      rerender(ticketElement({ order: { ...one, items: [...one.items, line("l2", "Cake", 1, 590_000)] } }));
+      expect(scrolled.at(-1)).toBe(screen.getByTestId("cart-Cake"));
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
   });
 });

@@ -1,6 +1,6 @@
-import { roundWords } from "./rounds";
+import { linesByRound } from "./rounds";
 import { ChefHat, Plus, Trash2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Banner, Button, EmptyState, Field, Money, PermissionNotice, SegmentedControl, StatusChip, TicketLine, type Refusal } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
@@ -78,6 +78,62 @@ export function TicketPanel({
   const type = order?.serviceType ?? serviceType;
   const labelName = labelFor(type);
   const lines = (order?.items ?? []).filter((line) => line.status !== "VOIDED");
+  // The newest line in view: the ticket scrolls to it as lines are added.
+  const groupsRef = useRef<HTMLDivElement>(null);
+  const lineCount = lines.length;
+  useEffect(() => {
+    const items = groupsRef.current?.querySelectorAll("li");
+    const newest = items?.[items.length - 1];
+    if (newest && typeof newest.scrollIntoView === "function") newest.scrollIntoView({ block: "nearest" });
+  }, [lineCount]);
+
+  function renderLine(line: POSOrderItem) {
+    const selected = line.id === selectedLineId;
+    return (
+      <li key={line.id} data-testid={`cart-${line.name}`}>
+        <TicketLine
+          quantity={line.quantity}
+          name={line.name}
+          options={(line.modifiers ?? []).map((modifier) => modifier.optionName)}
+          tags={tagsOf?.(line.productId)}
+          amount={formatMoney(line.totalMinor, currency)}
+          sent={line.status === "SENT"}
+          sentChip={false}
+          selected={selected}
+          onSelect={() => onSelectLine(selected ? null : line.id)}
+        />
+        {selected ? (
+          <div
+            role="group"
+            aria-label={line.name}
+            className="y-ticket__line-actions"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.stopPropagation();
+                onSelectLine(null);
+              }
+            }}
+          >
+            {line.status === "ADDED" ? (
+              <>
+                <Button icon={<Plus />} disabled={lineBusy} onClick={() => onAddAnother(line)}>
+                  Add another
+                </Button>
+                <Button variant="danger" icon={<Trash2 />} disabled={lineBusy} onClick={() => onRemoveLine(line)}>
+                  Remove
+                </Button>
+              </>
+            ) : (
+              <p className="y-ticket__line-note">
+                Sent to the kitchen. To take it off, void the order with a supervisor (More).
+              </p>
+            )}
+          </div>
+        ) : null}
+      </li>
+    );
+  }
+
   const sent = order !== null && order.status !== "OPEN" && order.status !== "CLOSED" && order.status !== "VOIDED";
 
   return (
@@ -121,54 +177,23 @@ export function TicketPanel({
         {lines.length === 0 ? (
           <EmptyState title="Tap an item to start an order." />
         ) : (
-          <ul className="y-ticket__list">
-            {lines.map((line) => {
-              const selected = line.id === selectedLineId;
-              return (
-                <li key={line.id} data-testid={`cart-${line.name}`}>
-                  <TicketLine
-                    quantity={line.quantity}
-                    name={line.name}
-                    options={(line.modifiers ?? []).map((modifier) => modifier.optionName)}
-                    tags={tagsOf?.(line.productId)}
-                    amount={formatMoney(line.totalMinor, currency)}
-                    sent={line.status === "SENT"}
-                    sentWords={roundWords(line.roundNumber, order?.roundsSent) ?? "Sent"}
-                    selected={selected}
-                    onSelect={() => onSelectLine(selected ? null : line.id)}
-                  />
-                  {selected ? (
-                    <div
-                      role="group"
-                      aria-label={line.name}
-                      className="y-ticket__line-actions"
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") {
-                          event.stopPropagation();
-                          onSelectLine(null);
-                        }
-                      }}
-                    >
-                      {line.status === "ADDED" ? (
-                        <>
-                          <Button icon={<Plus />} disabled={lineBusy} onClick={() => onAddAnother(line)}>
-                            Add another
-                          </Button>
-                          <Button variant="danger" icon={<Trash2 />} disabled={lineBusy} onClick={() => onRemoveLine(line)}>
-                            Remove
-                          </Button>
-                        </>
-                      ) : (
-                        <p className="y-ticket__line-note">
-                          Sent to the kitchen. To take it off, void the order with a supervisor (More).
-                        </p>
-                      )}
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+          <div className="y-ticket__groups" ref={groupsRef}>
+            {linesByRound(lines).map((group) => (
+              <section
+                key={group.key}
+                className="y-ticket__group"
+                aria-label={group.title ?? undefined}
+                data-testid={`ticket-group-${group.key}`}
+              >
+                {group.title ? (
+                  <h3 className={group.key === "unsent" ? "y-ticket__group-title y-ticket__group-title--unsent" : "y-ticket__group-title"}>
+                    {group.title}
+                  </h3>
+                ) : null}
+                <ul className="y-ticket__list">{group.lines.map(renderLine)}</ul>
+              </section>
+            ))}
+          </div>
         )}
       </div>
 

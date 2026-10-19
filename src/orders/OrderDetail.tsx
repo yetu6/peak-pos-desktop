@@ -1,5 +1,5 @@
 import { ChefHat, Printer, Trash2, Undo2, Wallet } from "lucide-react";
-import { sendWords, takesMore } from "../register/rounds";
+import { linesByRound, sendWords, takesMore } from "../register/rounds";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, PermissionNotice, RefusalNotice, Sheet, StatusChip, TicketLine, type Refusal } from "../components/system";
 import {
@@ -127,7 +127,6 @@ export function OrderDetailView({
   const primaryRef = useRef<HTMLButtonElement>(null);
   const busy = pending !== null;
   const lines = order.items.filter((line) => line.status !== "VOIDED");
-  const open = order.status === "OPEN";
   const paid = order.status === "CLOSED";
   const voided = order.status === "VOIDED";
   const owing = !paid && !voided;
@@ -357,38 +356,50 @@ export function OrderDetailView({
           <h3 id="detail-lines" className="y-detail__heading">
             Items
           </h3>
-          <ul className="y-ticket__list" data-testid="order-detail-lines">
-            {lines.map((line) => {
-              const removable = open && line.status === "ADDED";
-              const selected = removable && selectedLineId === line.id;
-              return (
-                <li key={line.id}>
-                  <TicketLine
-                    quantity={line.quantity}
-                    name={line.name}
-                    options={(line.modifiers ?? []).map((modifier) => modifier.optionName)}
-                    amount={formatMoney(line.totalMinor, currency)}
-                    sent={owing && line.status === "SENT"}
-                    selected={selected}
-                    onSelect={removable && !busy ? () => onSelectLine(selected ? null : line.id) : undefined}
-                  />
-                  {selected ? (
-                    <div className="y-ticket__line-actions">
-                      <Button
-                        variant="danger"
-                        icon={<Trash2 />}
-                        aria-label={`Remove ${line.name}`}
-                        disabled={busy}
-                        onClick={() => onRemoveLine(line)}
-                      >
-                        {pending === "remove" ? "Removing…" : "Remove"}
-                      </Button>
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+          <div className="y-ticket__groups" data-testid="order-detail-lines">
+            {linesByRound(lines).map((group) => (
+              <section key={group.key} className="y-ticket__group" aria-label={group.title ?? undefined} data-testid={`detail-group-${group.key}`}>
+                {group.title ? (
+                  <h4 className={group.key === "unsent" ? "y-ticket__group-title y-ticket__group-title--unsent" : "y-ticket__group-title"}>
+                    {group.title}
+                  </h4>
+                ) : null}
+                <ul className="y-ticket__list">
+                  {group.lines.map((line) => {
+                    const removable = takesLines && line.status === "ADDED";
+                    const selected = removable && selectedLineId === line.id;
+                    return (
+                      <li key={line.id}>
+                        <TicketLine
+                          quantity={line.quantity}
+                          name={line.name}
+                          options={(line.modifiers ?? []).map((modifier) => modifier.optionName)}
+                          amount={formatMoney(line.totalMinor, currency)}
+                          sent={owing && line.status === "SENT"}
+                          sentChip={false}
+                          selected={selected}
+                          onSelect={removable && !busy ? () => onSelectLine(selected ? null : line.id) : undefined}
+                        />
+                        {selected ? (
+                          <div className="y-ticket__line-actions">
+                            <Button
+                              variant="danger"
+                              icon={<Trash2 />}
+                              aria-label={`Remove ${line.name}`}
+                              disabled={busy}
+                              onClick={() => onRemoveLine(line)}
+                            >
+                              {pending === "remove" ? "Removing…" : "Remove"}
+                            </Button>
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ))}
+          </div>
         </section>
 
         <dl className="y-ticket__totals" data-testid="order-detail-totals">

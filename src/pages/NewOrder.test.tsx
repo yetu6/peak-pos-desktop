@@ -704,7 +704,7 @@ describe("NewOrder: rounds (S17a)", () => {
     await userEvent.click(screen.getByTestId("send-order"));
     await waitFor(() => expect(sendOrderSpy).toHaveBeenCalled());
     // The order is Yetu's sent one now (its line says so), and the menu still takes more.
-    expect(await within(screen.getByTestId("ticket-panel")).findByText("Sent")).toBeInTheDocument();
+    expect(await within(screen.getByTestId("ticket-panel")).findByTestId("ticket-sent")).toBeInTheDocument();
     const tile = await screen.findByTestId("menu-Tusker Lager");
     await waitFor(() => expect(tile).toBeEnabled());
     expect(screen.queryByText("This order has gone to the kitchen. Start a new sale to add more.")).toBeNull();

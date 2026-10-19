@@ -228,6 +228,37 @@
   list-style: none;
 }
 
+/* The ticket by round: what went to the kitchen, then what hasn't, last. */
+.y-ticket__groups {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.y-ticket__group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-1);
+  padding-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Not sent yet: said in words, in the warning tone, with a marker before it. */
+.y-ticket__group-title--unsent {
+  color: var(--warning);
+}
+
+.y-ticket__group-title--unsent::before {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
 .y-ticket__line-actions {
   display: flex;
   flex-wrap: wrap;
