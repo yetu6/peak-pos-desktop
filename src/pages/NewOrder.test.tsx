@@ -836,6 +836,43 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
     expect(versions.map((body) => (body as { version: number }).version)).toEqual([1, 2]);
   });
 
+  // F-247: on Bahari's till a tap showed nothing on the ticket for one or two
+  // seconds while Yetu added the item, which invites a second tap.
+  it("a tap shows on the ticket at once as being added, until Yetu's line takes its place", async () => {
+    let answer = () => {};
+    const held = new Promise<void>((resolve) => (answer = resolve));
+    addItemSpy.mockImplementation(async () => {
+      await held;
+      return { data: { ...OPEN_ORDER, items: [{ ...OPEN_ORDER.items[0], id: "item-2", name: "Tusker Lager" }] }, error: null } as never;
+    });
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Tusker Lager");
+    await waitFor(() => expect(tile).toBeEnabled());
+    fireEvent.click(tile);
+    const ticket = within(screen.getByTestId("ticket-panel"));
+    const waiting = await ticket.findByTestId("ticket-waiting");
+    expect(waiting).toHaveTextContent("Tusker Lager");
+    expect(waiting).toHaveTextContent("Adding…");
+    expect(ticket.queryByText("Tap an item to start an order.")).toBeNull();
+    answer();
+    expect(await ticket.findByRole("button", { name: /Tusker Lager/ })).toBeInTheDocument();
+    expect(ticket.queryByTestId("ticket-waiting")).toBeNull();
+  });
+
+  it("a tap Yetu refuses leaves no line being added behind, and says why", async () => {
+    addItemSpy.mockImplementation(async () => ({
+      data: null,
+      error: { status: 409, code: "PRODUCT_UNAVAILABLE", detail: "That item is sold out or not on this outlet's menu." },
+    }) as never);
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Tusker Lager");
+    await waitFor(() => expect(tile).toBeEnabled());
+    fireEvent.click(tile);
+    const ticket = within(screen.getByTestId("ticket-panel"));
+    expect(await ticket.findByRole("alert")).toHaveTextContent("sold out");
+    expect(ticket.queryByTestId("ticket-waiting")).toBeNull();
+  });
+
   it("Send and pay opens the payment as soon as the send is taken, while the ticket is still printing", async () => {
     printForSpy.mockImplementation(() => new Promise<unknown[]>(() => {}));
     renderNewOrder();
@@ -850,10 +887,12 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
   });
 
   it("a void says the kitchen was told only of an order it had (F-243)", async () => {
-    async function voidTheTicket() {
+    async function voidTheTicket(says: string) {
       await userEvent.click(screen.getByRole("button", { name: "More" }));
       await userEvent.click(await screen.findByRole("button", { name: /Void the order/ }));
       const voiding = await screen.findByTestId("void-order-dialog");
+      // Said before the approval too, not only after it.
+      expect(voiding).toHaveTextContent(says);
       await userEvent.type(within(voiding).getByTestId("void-reason"), "Wrong table");
       await userEvent.click(within(voiding).getByRole("radio", { name: /Grace Mushi/ }));
       for (const digit of "123456") await userEvent.click(within(voiding).getByTestId(`void-pin-key-${digit}`));
@@ -865,14 +904,14 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
     await waitFor(() => expect(tile).toBeEnabled());
     await userEvent.click(tile);
     await within(screen.getByTestId("ticket-panel")).findByRole("button", { name: /Nyama Choma/ });
-    await voidTheTicket();
+    await voidTheTicket("Takes the whole order off. It never went to the kitchen.");
     expect(await screen.findByText("Order 1 was voided.")).toBeInTheDocument();
 
     cleanup();
     vi.clearAllMocks();
     renderNewOrder({ resume: TABLE_4 });
     await within(screen.getByTestId("ticket-panel")).findByRole("button", { name: /Nyama Choma/ });
-    await voidTheTicket();
+    await voidTheTicket("Takes the whole order off and tells the kitchen.");
     expect(await screen.findByText("Order 4 was voided. The kitchen has been told.")).toBeInTheDocument();
   });
 
@@ -887,7 +926,7 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
     await within(screen.getByTestId("ticket-panel")).findByRole("button", { name: /Nyama Choma/ });
     await userEvent.click(screen.getByTestId("send-order"));
     expect(
-      await screen.findByText("The kitchen ticket didn't print: no printer is set up on this till. A manager sets up printers in Manager, Printers."),
+      await screen.findByText("The kitchen ticket didn't print: no printer is set up on this till. A manager sets up printers in Status (F12), under Printers."),
     ).toBeInTheDocument();
   });
 });

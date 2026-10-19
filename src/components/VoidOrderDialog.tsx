@@ -9,6 +9,7 @@ import type { POSOrder } from "../lib/posContracts";
 import { voidProblem } from "../register/registerWords";
 import { Banner, Button, Field, Sheet, SupervisorApproval, type KeypadKey } from "./system";
 import { orderNumberWords } from "../lib/orderNumber";
+import { voidSheetWords } from "../orders/ordersWords";
 
 /**
  * `POST /pos/orders/{orderId}/void`: the one certified correction for a sent
@@ -93,7 +94,7 @@ export function VoidOrderDialog({
         if (!open && !voidOrder.isPending) onClose();
       }}
       title="Void the order"
-      description="Takes the whole order off and tells the kitchen. This is not a refund: no money moves."
+      description={voidSheetWords(order)}
       testId="void-order-dialog"
       footer={
         <div className="y-options__footer">

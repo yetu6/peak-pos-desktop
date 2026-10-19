@@ -442,6 +442,10 @@ describe("DeviceSessionProvider", () => {
     expect(getOperationalSession()?.token).toBe("");
   });
 
+  // Starting a pairing makes a real device key and saves it before asking Yetu;
+  // with the whole suite running that can take longer than waitFor's one second.
+  const PAIRING_STARTS = { timeout: 5_000 };
+
   it("persists the pending proof and accepts only the terminal id approved by Peak", async () => {
     const store = memoryStore();
     const future = new Date(Date.now() + 120_000).toISOString();
@@ -463,7 +467,7 @@ describe("DeviceSessionProvider", () => {
     renderSession(store);
     expect(await screen.findByTestId("shell")).toHaveTextContent("UNPAIRED");
     await userEvent.click(screen.getByTestId("start-pairing"));
-    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("waiting"));
+    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("waiting"), PAIRING_STARTS);
     expect(screen.getByTestId("pairing-code")).toHaveTextContent("23456-ABCDE");
     const pending = JSON.parse((await store.load()) ?? "{}") as { approved?: boolean; terminalId?: string; deviceCredential?: string; pairing?: { claimToken?: string } };
     expect(pending.approved).toBe(false);
@@ -506,8 +510,9 @@ describe("DeviceSessionProvider", () => {
     renderSession(store);
     await screen.findByTestId("shell");
     await userEvent.click(screen.getByTestId("start-pairing"));
-    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("unpaired"));
-    expect(screen.getByTestId("error")).toHaveTextContent(/denied/i);
+    // "unpaired" is also where it starts: wait for the refusal itself, then the phase.
+    await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent(/denied/i), PAIRING_STARTS);
+    expect(screen.getByTestId("phase")).toHaveTextContent("unpaired");
     const saved = JSON.parse((await store.load()) ?? "{}") as Record<string, unknown>;
     expect(saved.approved).toBe(false);
     expect(saved.pairing).toBeUndefined();

@@ -255,7 +255,7 @@ export interface StatusViewProps {
   snapshot: TechnicianSnapshot;
   peak: PeakProbe | null;
   realtime: { phase: string; attempt: number; lastError: string | null };
-  /** Manager -> Printers (S8a/S8b): this computer's printers, set up beside the printer's check. */
+  /** Status -> Printers (S8a/S8b): this computer's printers, set up beside the printer's check. */
   printers?: ReactNode;
 }
 

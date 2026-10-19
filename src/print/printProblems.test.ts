@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
-import { copyNotPrintedWords, printProblemOnce } from "./printProblems";
+import { workspaceNav } from "../lib/workspace";
+import { copyNotPrintedWords, PRINTERS_PLACE, printProblemOnce } from "./printProblems";
 
 function signIn(token: string) {
   setOperationalSession({
@@ -24,16 +25,24 @@ describe("printProblemOnce", () => {
     expect(printProblemOnce([{ ok: true }], "kitchen ticket")).toBeNull();
     const failed = [{ ok: true }, { ok: false, error: "No printer is set up on this till" }];
     expect(printProblemOnce(failed, "kitchen ticket")).toBe(
-      "The kitchen ticket didn't print: no printer is set up on this till. A manager sets up printers in Manager, Printers.",
+      "The kitchen ticket didn't print: no printer is set up on this till. A manager sets up printers in Status (F12), under Printers.",
     );
     expect(printProblemOnce(failed, "kitchen ticket")).toBeNull();
     // A receipt is its own thing to say.
     expect(printProblemOnce(failed, "receipt")).toBe(
-      "The receipt didn't print: no printer is set up on this till. A manager sets up printers in Manager, Printers.",
+      "The receipt didn't print: no printer is set up on this till. A manager sets up printers in Status (F12), under Printers.",
     );
     // The next person to sign in is told too.
     signIn("baraka-session");
     expect(printProblemOnce(failed, "kitchen ticket")).not.toBeNull();
+  });
+
+  // F-246: the words sent managers to "Manager, Printers", a page the till doesn't have.
+  it("sends a manager to a page every till has", () => {
+    const page = PRINTERS_PLACE.split(" (")[0];
+    for (const mode of ["POS", "CASHIER", "KITCHEN_DISPLAY", "OFFLINE_CASH"]) {
+      expect(workspaceNav(mode).map((item) => item.label)).toContain(page);
+    }
   });
 
   it("a copy that didn't print says why and that Yetu has the receipt", () => {

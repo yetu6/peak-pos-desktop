@@ -238,7 +238,7 @@
   .y-cash__card { padding: var(--space-4); }
 }
 
-/* Manager → Printers (S8a). */
+/* Status → Printers (S8a). */
 .y-printers__switch { display: flex; min-height: 48px; align-items: center; gap: var(--space-3); font-weight: 600; }
 .y-printers__switch input { width: 24px; height: 24px; }
 .y-printers__picker { display: grid; gap: var(--space-2); padding-block: var(--space-2); }

@@ -205,6 +205,15 @@ describe("TicketPanel", () => {
     renderTicket({ order: null });
     expect(screen.getByText("Tap an item to start an order.")).toBeInTheDocument();
   });
+
+  // Bahari's Order 7 read "Items TSh 0" beside "Total —" before its first line.
+  it("an order with no lines yet shows no figures, all alike", () => {
+    const started = { ...ORDER, items: [], subtotalMinor: 0, discountMinor: 0, taxMinor: 0, totalMinor: 0, remainingMinor: 0, pricesIncludeTax: true };
+    renderTicket({ order: started });
+    const totals = screen.getByTestId("ticket-totals");
+    expect(totals).not.toHaveTextContent("TSh");
+    expect(totals).toHaveTextContent("VAT included");
+  });
 });
 
 describe("TicketPanel: rounds (S17a)", () => {

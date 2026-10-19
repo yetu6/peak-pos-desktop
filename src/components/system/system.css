@@ -611,6 +611,11 @@ button.y-ticket-line:hover { background: var(--surface-hover); }
   white-space: nowrap;
 }
 
+/* A tap still with Yetu (F-247): the line as it will be, quieter, with "Adding…" for its price. */
+.y-ticket-line--waiting,
+.y-ticket-line--waiting .y-ticket-line__amount { color: var(--text-muted); }
+.y-ticket-line--waiting .y-ticket-line__qty { opacity: 0.6; }
+
 /* ---------------------------------------------------------------- List row */
 .y-row {
   display: flex;

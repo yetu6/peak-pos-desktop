@@ -226,11 +226,22 @@ export function orderStateWords(order: Pick<POSOrder, "status" | "totalMinor" | 
   return { words: orderStatusWords(order.status), tone: orderStatusTone(order.status) };
 }
 
+/** Whether the kitchen heard of an order: a round went, or it moved on from open (F-243). */
+export function reachedTheKitchen(order: Pick<POSOrder, "status" | "roundsSent">): boolean {
+  return (order.roundsSent ?? 0) > 0 || order.status !== "OPEN";
+}
+
 /**
  * What the till says once an order is voided: the kitchen is told only of an
  * order it had heard of (F-243); one never sent was only ever on this till.
  */
 export function voidedWords(order: Pick<POSOrder, "dailyNumber" | "orderNumber" | "status" | "roundsSent">): string {
-  const sent = (order.roundsSent ?? 0) > 0 || order.status !== "OPEN";
-  return `${orderName(order)} was voided.${sent ? " The kitchen has been told." : ""}`;
+  return `${orderName(order)} was voided.${reachedTheKitchen(order) ? " The kitchen has been told." : ""}`;
+}
+
+/** What voiding does, said before the supervisor approves it (F-243). */
+export function voidSheetWords(order: Pick<POSOrder, "status" | "roundsSent">): string {
+  return reachedTheKitchen(order)
+    ? "Takes the whole order off and tells the kitchen. This is not a refund: no money moves."
+    : "Takes the whole order off. It never went to the kitchen. This is not a refund: no money moves.";
 }
