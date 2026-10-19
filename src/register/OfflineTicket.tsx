@@ -6,6 +6,7 @@ import type { LocalCatalogView, LocalOrderView } from "../lib/localPosCore";
 import { formatMoney } from "../lib/money";
 import { serviceTypeWords } from "../lib/words";
 import type { ServiceType } from "../lib/posContracts";
+import { MAX_LINE_QUANTITY } from "../lib/posContracts";
 import { REGISTER_KEYS } from "./TicketActions";
 
 export interface OfflineTicketProps {
@@ -139,7 +140,7 @@ export function OfflineTicket({
                         }
                       }}
                     >
-                      <Stepper label={line.name} value={line.quantity} min={1} onChange={(quantity) => !busy && onQuantity(line.id, quantity)} />
+                      <Stepper label={line.name} value={line.quantity} min={1} max={MAX_LINE_QUANTITY} onChange={(quantity) => !busy && onQuantity(line.id, quantity)} />
                       <Button variant="danger-outline" icon={<Trash2 />} disabled={busy} onClick={() => onRemoveLine(line.id)}>
                         Remove
                       </Button>

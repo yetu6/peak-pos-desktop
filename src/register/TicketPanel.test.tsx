@@ -270,3 +270,11 @@ describe("TicketPanel: an everyday removal is not a red block", () => {
     expect(remove).not.toHaveClass("y-button--danger");
   });
 });
+
+describe("TicketPanel: a line holds what Yetu takes", () => {
+  it("one more stops at the most of an item a line holds", () => {
+    const full = { ...ORDER, items: [{ ...ORDER.items[0], quantity: 999 }, ORDER.items[1]] };
+    renderTicket({ order: full, selectedLineId: "l1" });
+    expect(screen.getByRole("button", { name: "One more Cappuccino" })).toBeDisabled();
+  });
+});

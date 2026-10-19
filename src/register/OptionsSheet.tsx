@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Banner, Button, Sheet, Stepper } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSCatalogProduct, POSModifierGroup } from "../lib/posContracts";
+import { MAX_LINE_QUANTITY } from "../lib/posContracts";
 import type { FnbTillPrice, FnbTillSize } from "../fnb/fnbContracts";
 import { cn } from "../lib/utils";
 
@@ -221,7 +222,7 @@ export function OptionsSheet({
         })}
         <div className="y-options__quantity">
           <span className="y-options__name">Quantity</span>
-          <Stepper label={product.name} value={quantity} onChange={setQuantity} min={1} />
+          <Stepper label={product.name} value={quantity} onChange={setQuantity} min={1} max={MAX_LINE_QUANTITY} />
         </div>
         {error ? (
           <Banner inline tone="danger">

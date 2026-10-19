@@ -437,3 +437,6 @@ export interface POSRefundRequest {
   supervisorStaffId: string;
   supervisorPin: string;
 }
+
+/** The most of one item a line holds: fbc-peak's MaxLineQuantity, the contract's maximum on adding and on a quantity change. */
+export const MAX_LINE_QUANTITY = 999;

@@ -4,6 +4,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { Banner, Button, EmptyState, Field, Money, PermissionNotice, SegmentedControl, StatusChip, Stepper, TicketLine, type Refusal } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
+import { MAX_LINE_QUANTITY } from "../lib/posContracts";
 import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
 import { orderName } from "../lib/orderNumber";
 
@@ -117,7 +118,7 @@ export function TicketPanel({
           >
             {line.status === "ADDED" ? (
               <>
-                <Stepper label={line.name} value={line.quantity} min={1} disabled={lineBusy} onChange={(quantity) => onQuantity(line, quantity)} />
+                <Stepper label={line.name} value={line.quantity} min={1} max={MAX_LINE_QUANTITY} disabled={lineBusy} onChange={(quantity) => onQuantity(line, quantity)} />
                 <Button variant="danger-outline" icon={<Trash2 />} disabled={lineBusy} onClick={() => onRemoveLine(line)}>
                   Remove
                 </Button>

@@ -20,6 +20,7 @@ import {
 import { isComposing } from "../lib/keyboard";
 import { formatMoney } from "../lib/money";
 import type { POSOrder, POSOrderItem, POSOrderPayment, POSOrderRefunds, POSReceipt } from "../lib/posContracts";
+import { MAX_LINE_QUANTITY } from "../lib/posContracts";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRequestKey } from "../lib/useRequestKey";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, serviceTypeWords } from "../lib/words";
@@ -393,7 +394,7 @@ export function OrderDetailView({
                         />
                         {selected ? (
                           <div className="y-ticket__line-actions" role="group" aria-label={line.name}>
-                            <Stepper label={line.name} value={line.quantity} min={1} disabled={busy} onChange={(quantity) => onQuantity(line, quantity)} />
+                            <Stepper label={line.name} value={line.quantity} min={1} max={MAX_LINE_QUANTITY} disabled={busy} onChange={(quantity) => onQuantity(line, quantity)} />
                             <Button
                               variant="danger-outline"
                               icon={<Trash2 />}
