@@ -81,6 +81,9 @@
 .brand-lockup .brand-lockup__on-dark { display: none; }
 body.dark-theme .brand-lockup .brand-lockup__on-light { display: none; }
 body.dark-theme .brand-lockup .brand-lockup__on-dark { display: block; }
+/* On the brand surface (the sign-in hotel pane) the on-dark set, whatever the theme. */
+.brand-lockup.brand-lockup--on-dark .brand-lockup__on-light { display: none; }
+.brand-lockup.brand-lockup--on-dark .brand-lockup__on-dark { display: block; }
 
 @layer base {
   *,

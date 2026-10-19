@@ -103,6 +103,7 @@ export function PrintersCard() {
       <label className="y-printers__switch">
         <input
           type="checkbox"
+          role="switch"
           checked={settings.kitchenTickets}
           onChange={(event) => setSettings({ ...settings, kitchenTickets: event.target.checked })}
           data-testid="kitchen-tickets-on"
@@ -159,6 +160,7 @@ export function PrintersCard() {
         <label className="y-printers__switch">
           <input
             type="checkbox"
+          role="switch"
             checked={settings.cashDrawer}
             onChange={(event) => setSettings({ ...settings, cashDrawer: event.target.checked })}
             data-testid="cash-drawer-on"

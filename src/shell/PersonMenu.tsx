@@ -1,6 +1,6 @@
 import { ChevronDown, Lock, UsersRound } from "lucide-react";
 import { useEffect, useId, useRef, type KeyboardEvent } from "react";
-import { KeyHint } from "../components/system";
+import { Avatar, KeyHint } from "../components/system";
 import { keyHintForCommand } from "../lib/keyboard";
 
 /**
@@ -73,9 +73,7 @@ export function PersonMenu({
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen(!open)}
       >
-        <span className="y-avatar" aria-hidden="true">
-          {person.initials}
-        </span>
+        <Avatar name={person.name} initials={person.initials} />
         <span className="y-person__name" data-testid="staff-name">
           {person.name}
         </span>

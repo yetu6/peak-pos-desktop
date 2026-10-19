@@ -16,6 +16,7 @@ import type {
   POSRefundQuoteRequest,
   POSRefundRequest,
   POSRoomChargeCandidate,
+  POSApprover,
   POSShift,
   POSStationTicket,
   POSTenderResult,
@@ -62,6 +63,10 @@ export function createPosApi() {
         headers: idempotent(idempotencyKey),
         body: { openingCashMinor },
       });
+    },
+    /** Who may approve what here (F-249), by the rule Yetu's approval check applies. */
+    getApprovers(): Promise<ApiResult<{ approvers: POSApprover[] }>> {
+      return client.GET<{ approvers: POSApprover[] }>("/api/v1/pos/approvers");
     },
     /** Resume an open (or variance-pending) shift after restart. 404 when none. */
     getCurrentShift(): Promise<ApiResult<POSShift>> {

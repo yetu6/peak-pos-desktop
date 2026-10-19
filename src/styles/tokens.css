@@ -142,11 +142,26 @@ body {
   --scrim: rgb(16 32 47 / 0.48);
   --shadow-sheet: 0 16px 48px -12px rgb(16 65 124 / 0.28), 0 2px 6px rgb(16 65 124 / 0.08);
 
-  /* Category marks on menu tiles (decoration beside the name, never text) */
+  /* Category marks on menu tiles (decoration beside the name, never text),
+     and each mark's tint behind its tiles: about 12% of the mark over white,
+     solid so the contrast checks can hold text to AA on it. */
   --mark-1: var(--fbc-ink-600);
   --mark-2: var(--fbc-leaf);
   --mark-3: var(--fbc-control);
   --mark-4: var(--fbc-warning);
+  --mark-1-tint: #e5ecf4;
+  --mark-2-tint: #e7f6e8;
+  --mark-3-tint: #f0f2f4;
+  --mark-4-tint: #f6eae2;
+
+  /* The brand surface: the rail and the sign-in screens' hotel pane, in
+     Yetu Blue. The current page is a white pill with blue words. */
+  --brand-surface: var(--fbc-ink);
+  --brand-hover: var(--fbc-ink-800);
+  --on-brand: #ffffff;
+  --on-brand-muted: #c4d4ea;
+  --brand-current: #ffffff;
+  --on-brand-current: var(--fbc-ink);
 
   /* ---------------------------------------------------------------------
    * Legacy aliases. The existing screens read these names; each follows the
@@ -241,6 +256,19 @@ body.dark-theme {
   --mark-2: var(--fbc-leaf-300);
   --mark-3: var(--fbc-slate-300);
   --mark-4: var(--fbc-warning-night);
+  /* About 16% of each mark over the night card. */
+  --mark-1-tint: #203a59;
+  --mark-2-tint: #1e4144;
+  --mark-3-tint: #283c52;
+  --mark-4-tint: #383c38;
+
+  /* A deep ink at night, so the rail stays Yetu's without glaring. */
+  --brand-surface: #0c2a4e;
+  --brand-hover: #143a66;
+  --on-brand: var(--fbc-night-fg);
+  --on-brand-muted: var(--fbc-slate-300);
+  --brand-current: var(--fbc-ink-300);
+  --on-brand-current: var(--fbc-night-paper);
 }
 
 /* Size classes: the same layout scaled, with no position moving.

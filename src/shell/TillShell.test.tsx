@@ -22,7 +22,7 @@ function Harness({ initialPage = "new", onNavigate, ...props }: Overrides & { on
   return (
     <TillShell
       mode="POS"
-      tillName="Main Bar"
+      place={{ propertyName: "Bahari QA Hotel", outletName: "Restaurant", tillName: "Main Bar" }}
       person={{ name: "Amina Hassan", initials: "AH" }}
       shift={{ full: "Shift open since 07:02 · Mon 12 Oct", short: "Since 07:02 · Mon 12 Oct" }}
       clock="14:32"
@@ -49,7 +49,11 @@ describe("TillShell", () => {
   it("shows the till, the person, the shift in words, the connection and the time", () => {
     render(<Harness />);
     expect(screen.getByTestId("pos-register")).toHaveClass("terminal-shell");
-    expect(screen.getByTestId("till-label")).toHaveTextContent("Main Bar");
+    // F-252: the hotel's till, by its names, not Yetu's logo and "This till".
+    expect(screen.getByTestId("place-title")).toHaveTextContent("Bahari QA Hotel");
+    expect(screen.getByTestId("place-subtitle")).toHaveTextContent("Restaurant · Main Bar");
+    expect(screen.getByTestId("till-label")).not.toHaveTextContent("This till");
+    expect(screen.queryByAltText("Yetu")).toBeNull();
     expect(screen.getByTestId("staff-name")).toHaveTextContent("Amina Hassan");
     expect(screen.getByTestId("shell-business-date")).toHaveTextContent("Shift open since 07:02 · Mon 12 Oct");
     expect(screen.getByTestId("shell-business-date")).toHaveAccessibleName("Shift open since 07:02 · Mon 12 Oct");
@@ -60,7 +64,7 @@ describe("TillShell", () => {
   });
 
   it("never shows an id or a code when the till has no name", () => {
-    render(<Harness tillName={null} />);
+    render(<Harness place={{}} />);
     expect(screen.getByTestId("till-label")).toHaveTextContent("This till");
   });
 

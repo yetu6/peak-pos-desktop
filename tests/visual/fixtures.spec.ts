@@ -52,6 +52,10 @@ async function measure(page: Page): Promise<Finding[]> {
       const rendered = (element: Element): boolean => {
         const rect = element.getBoundingClientRect();
         if (rect.width <= 1 || rect.height <= 1) return false;
+        // Inside a closed <details> (its summary aside) nothing is on screen,
+        // though Chrome keeps layout boxes for it (content-visibility).
+        const closed = element.closest("details:not([open])");
+        if (closed && !element.closest("summary")) return false;
         const style = getComputedStyle(element);
         return style.visibility !== "hidden" && style.display !== "none";
       };

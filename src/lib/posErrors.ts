@@ -106,7 +106,7 @@ const WORDS: Record<PosErrorKind, { sentence: string; nextStep: string }> = {
   PERMISSION_DENIED: { sentence: "Your role can't do that.", nextStep: "Ask a supervisor or manager to help." },
   CAPABILITY_NOT_ENABLED: { sentence: "This isn't switched on for your business.", nextStep: "Ask a manager to switch it on in Yetu." },
   DEVICE_REVOKED: { sentence: "This till was disconnected from your restaurant.", nextStep: "Ask a manager to connect it again." },
-  SESSION_EXPIRED: { sentence: "Your session ended.", nextStep: "Enter your PIN to carry on." },
+  SESSION_EXPIRED: { sentence: "You were signed out.", nextStep: "Enter your PIN to carry on." },
   STALE_VERSION: { sentence: "This order changed on another till. We've reloaded it.", nextStep: "Check it, then try again." },
   VALIDATION_ERROR: { sentence: "Some of the details aren't right.", nextStep: "Check them, then try again." },
   BUSINESS_CONFLICT: { sentence: "Yetu couldn't do that with things as they are now.", nextStep: "Check the order, then try again." },

@@ -470,12 +470,15 @@
   transition: background-color var(--motion-press), border-color var(--motion-press), transform var(--motion-press);
 }
 
+/* A category's tiles share its tint and its band (owner's look, 2026-10-19). */
+.y-tile--marked { background: var(--tile-tint, var(--surface-raised)); }
+
 .y-tile--marked::before {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
-  width: 4px;
+  width: 5px;
   background: var(--tile-mark, transparent);
   content: "";
 }
@@ -500,14 +503,20 @@
 
 /* A price rule in force (happy hour): its name, the price now, the price it had struck through. */
 .y-tile__offer {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto auto 1fr;
   align-items: baseline;
   gap: 2px var(--space-2);
 }
 
+/* On its own accent fill: orange words keep AA on every category tint. */
 .y-tile__offer-label {
-  flex-basis: 100%;
+  grid-column: 1 / -1;
+  justify-self: start;
+  max-width: 100%;
+  border-radius: var(--radius-control);
+  background: var(--accent-subtle);
+  padding: 0 var(--space-2);
   color: var(--accent-text);
   font-size: var(--type-small);
   font-weight: 700;
@@ -669,6 +678,12 @@ button.y-ticket-line:hover { background: var(--surface-hover); }
   font-size: var(--type-small);
   font-weight: 700;
 }
+
+/* Each person in their own colour, from pairs the contrast checks already hold to AA. */
+.y-avatar[data-tone="1"] { background: var(--info-subtle); color: var(--info); }
+.y-avatar[data-tone="2"] { background: var(--success-subtle); color: var(--success); }
+.y-avatar[data-tone="3"] { background: var(--warning-subtle); color: var(--warning); }
+.y-avatar[data-tone="4"] { background: var(--accent-subtle); color: var(--accent-text); }
 
 /* ----------------------------------------------------------------- Skeleton */
 .y-skeleton {

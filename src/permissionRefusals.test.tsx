@@ -76,7 +76,7 @@ describe("a refusal for a role without the permission (403)", () => {
     render(
       <OpenShiftView
         person={{ name: "Amina Hassan", initials: "AH" }}
-        tillName="Main Restaurant"
+        place={{ outletName: "Main Restaurant" }}
         currency={CURRENCY}
         canOpenShift
         pending={false}

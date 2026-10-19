@@ -20,6 +20,8 @@
   grid-template-columns: var(--rail-width) minmax(0, 1fr);
   grid-template-rows: var(--topbar-height) auto minmax(0, 1fr);
   background: var(--canvas);
+  /* From the PIN into the till: a short fade, not a jump (reduced motion: none, index.css). */
+  animation: y-fade-in var(--motion-sheet) ease-out;
 }
 
 .terminal-shell--kds {
@@ -44,23 +46,12 @@
   padding: 0 var(--space-3) 0 var(--space-4);
 }
 
-.y-topbar__brand {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  margin-right: var(--space-2);
-}
-
+/* The hotel's mark and names lead the bar; they give way before the chips do. */
 .y-topbar__till {
-  min-width: 96px;
-  max-width: 220px;
+  min-width: 140px;
+  max-width: 320px;
   flex: 0 1 auto;
-  overflow: hidden;
-  color: var(--text);
-  font-size: var(--type-body);
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin-right: var(--space-2);
 }
 
 /* Chips keep their words whole (a status cut to "Onli…" says nothing); the
@@ -84,10 +75,11 @@
   color: var(--text);
 }
 
-.y-topbar__search .y-kbd,
-.y-rail__key {
+.y-topbar__search .y-kbd {
   color: var(--text-muted);
 }
+
+.y-rail__key { color: inherit; }
 
 .y-topbar__clock {
   flex: none;
@@ -205,8 +197,9 @@
   flex-direction: column;
   gap: var(--space-2);
   overflow-y: auto;
-  border-right: 1px solid var(--line);
-  background: var(--surface);
+  border-right: 0;
+  /* Yetu Blue: the till's way around, apart from the work (owner's look, 2026-10-19). */
+  background: var(--brand-surface);
   padding: var(--space-2) var(--space-1);
 }
 
@@ -224,7 +217,7 @@
   border-radius: var(--radius-control);
   background: transparent;
   padding: var(--space-2) 0;
-  color: var(--text-muted);
+  color: var(--on-brand-muted);
   font-size: var(--type-small);
   font-weight: 600;
   line-height: 1.2;
@@ -232,23 +225,15 @@
   transition: background-color var(--motion-press), color var(--motion-press);
 }
 
-.y-rail__item:hover { background: var(--surface-hover); color: var(--text); }
+.y-rail__item:hover { background: var(--brand-hover); color: var(--on-brand); }
 
+/* The page you are on: a white pill with blue words (a blue pill with dark words at night). */
 .y-rail__item[aria-current="page"] {
-  background: var(--surface-selected);
-  color: var(--action-text);
+  background: var(--brand-current);
+  color: var(--on-brand-current);
 }
 
-.y-rail__item[aria-current="page"]::before {
-  position: absolute;
-  top: 14px;
-  bottom: 14px;
-  left: calc(-1 * var(--space-1));
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--action);
-  content: "";
-}
+.y-rail__item:focus-visible { outline-color: var(--on-brand); }
 
 .y-rail__item[aria-disabled="true"] {
   cursor: not-allowed;
@@ -263,7 +248,8 @@
   right: var(--space-2);
   width: 16px;
   height: 16px;
-  color: var(--warning);
+  /* Bright amber: 5.6:1 on the blue rail in both themes. */
+  color: var(--fbc-warning-night);
 }
 
 .y-rail__icon { width: 24px; height: 24px; margin-bottom: 2px; }
@@ -402,7 +388,7 @@
 
 /* ------------------------------------------------------------ Size classes */
 @media (max-width: 1279px) {
-  .y-topbar__till { max-width: 150px; }
+  .y-topbar__till { min-width: 120px; max-width: 200px; }
   .y-topbar__search-label,
   .y-theme-toggle__label {
     position: absolute;
@@ -421,3 +407,59 @@
 @media (prefers-reduced-motion: reduce) {
   .y-command { animation: none; }
 }
+
+/* ------------------------------------------------------- The hotel's mark */
+/* Whose till this is (F-252): the hotel's initials, its name, and the outlet
+   with the till beneath. In the top bar and on the sign-in hotel pane. */
+.y-place {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.y-place__mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-control);
+  background: var(--brand-surface);
+  color: var(--on-brand);
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.y-place__names { display: grid; min-width: 0; }
+
+.y-place__title,
+.y-place__subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.y-place--bar .y-place__mark { width: 36px; height: 36px; font-size: var(--type-small); }
+.y-place--bar .y-place__title { color: var(--text); font-size: var(--type-body); font-weight: 700; line-height: 1.2; }
+.y-place--bar .y-place__subtitle { color: var(--text-muted); font-size: var(--type-small); line-height: 1.25; }
+
+.y-place--pane { gap: var(--space-4); }
+.y-place--pane .y-place__mark {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-card);
+  background: var(--brand-current);
+  color: var(--on-brand-current);
+  font-size: var(--type-heading);
+}
+.y-place--pane .y-place__names { gap: var(--space-1); }
+.y-place--pane .y-place__title {
+  color: var(--on-brand);
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: normal;
+}
+.y-place--pane .y-place__subtitle { color: var(--on-brand-muted); font-size: var(--type-lead); white-space: normal; }

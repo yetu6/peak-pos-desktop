@@ -19,39 +19,58 @@
   overflow-y: auto;
 }
 
+/* Two columns: the hotel's pane in Yetu Blue, and the step on the canvas
+   (owner's look at Bahari, 2026-10-19: the till is the hotel's). */
 .y-access {
-  display: flex;
+  display: grid;
   min-height: 100%;
   flex: 1;
-  flex-direction: column;
-  padding: var(--space-5) var(--space-8) var(--space-6);
+  grid-template-columns: minmax(320px, 34%) minmax(0, 1fr);
   color: var(--text);
 }
 
-.y-access__top {
+.y-access__brand {
   display: flex;
-  min-height: var(--target-min);
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-8);
+  background: var(--brand-surface);
+  padding: var(--space-12) var(--space-8) var(--space-8);
+  color: var(--on-brand);
 }
 
-.y-access__till {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text);
-  font-size: var(--type-lead);
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.y-access__time {
+  display: grid;
+  margin-top: auto;
+  gap: var(--space-1);
 }
+
+.y-access__clock {
+  font-family: var(--font-display);
+  font-size: 72px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.y-access__day { color: var(--on-brand-muted); font-size: var(--type-lead); }
+
+.y-access__yetu { opacity: 0.9; }
 
 .y-access__main {
   display: flex;
-  flex: 1;
+  min-width: 0;
   align-items: center;
   justify-content: center;
-  padding: var(--space-4) 0;
+  padding: var(--space-8);
+}
+
+/* Each step rises into place as it changes; reduced motion keeps it still. */
+.y-access__step { animation: y-step-in 180ms ease-out; }
+
+@keyframes y-step-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
 }
 
 .y-access__panel {
@@ -413,13 +432,18 @@
 }
 
 @media (max-width: 1279px) {
-  .y-access { padding: var(--space-4) var(--space-6) var(--space-5); }
+  .y-access { grid-template-columns: minmax(280px, 32%) minmax(0, 1fr); }
+  .y-access__brand { gap: var(--space-6); padding: var(--space-8) var(--space-6) var(--space-6); }
+  .y-access__clock { font-size: 56px; }
+  .y-place--pane .y-place__title { font-size: 28px; }
+  .y-access__main { padding: var(--space-6); }
   .y-access__panel { padding: var(--space-6); }
   .y-pairing { gap: var(--space-5); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .y-splash__dots span { animation: none; opacity: 0.7; }
+  .y-access__step { animation: none; }
 }
 
 .y-access__column {
@@ -429,3 +453,10 @@
 }
 
 .y-section-title--spaced { margin-top: var(--space-2); }
+
+/* A 768-800px-high till: tighter margins, so every step fits without scrolling. */
+@media (max-height: 800px) {
+  .y-access__brand { gap: var(--space-6); padding-top: var(--space-8); padding-bottom: var(--space-6); }
+  .y-access__main { padding: var(--space-4) var(--space-6); }
+  .y-access__panel { gap: var(--space-3); padding: var(--space-6); }
+}

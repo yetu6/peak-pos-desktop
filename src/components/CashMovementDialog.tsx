@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { supervisorChoice, useApprovers } from "../approvals/supervisors";
+import type { POSApprover } from "../lib/posContracts";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { cashMovementProblem } from "../cash/cashWords";
@@ -42,6 +44,7 @@ export function CashMovementDialog({
       currency={currency}
       initialType={initialType}
       roster={device?.roster ?? []}
+      approvers={useApprovers()}
       requesterId={device?.session?.staffId ?? ""}
       pending={record.isPending}
       waiting={waiting}
@@ -57,6 +60,8 @@ export interface CashMovementSheetViewProps {
   currency?: string;
   initialType?: CashMovementType;
   roster: readonly RosterEntry[];
+  /** F-249: Yetu's approvers here; null until it answers, and then everyone is offered. */
+  approvers?: readonly POSApprover[] | null;
   requesterId: string;
   pending: boolean;
   /** Yetu asked the till to wait before the next attempt (too many attempts). */
@@ -81,6 +86,7 @@ export function CashMovementSheetView({
   currency,
   initialType = "CASH_IN",
   roster,
+  approvers = null,
   requesterId,
   pending,
   waiting = false,
@@ -98,6 +104,7 @@ export function CashMovementSheetView({
   const problem = cashMovementProblem(error, errorMovementType ?? movementType);
   const amountMinor = toMinor(amount);
   const cashOut = movementType === "CASH_OUT";
+  const cashOutChoice = supervisorChoice(roster, approvers, "CASH_OUT");
   // Choosing yourself keeps the PIN keypad closed (SupervisorApproval), and choosing anyone clears the PIN,
   // so a full PIN always belongs to someone else; the backend refuses self-approval as well.
   const supervisor = supervisorId;
@@ -192,7 +199,8 @@ export function CashMovementSheetView({
         {cashOut ? (
           <SupervisorApproval
             request={request}
-            supervisors={roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }))}
+            supervisors={cashOutChoice.supervisors}
+            emptyWords={cashOutChoice.emptyWords}
             requesterId={requesterId}
             selectedId={supervisorId}
             onSelect={(id) => {

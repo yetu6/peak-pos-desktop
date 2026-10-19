@@ -62,7 +62,7 @@ const MESSAGES: Record<string, AccessNotice> = {
   "Session expired — enter your PIN again": {
     kind: "session-ended",
     tone: "info",
-    words: "Your session ended. Enter your PIN to carry on.",
+    words: "You were signed out. Enter your PIN to carry on.",
   },
   "Locked after idle": {
     kind: "idle-locked",
@@ -188,7 +188,7 @@ export function pinNotice(
  * peakConfig.validatePeakApiUrl; this only words its answers.
  */
 export function addressProblemWords(problem: string): string {
-  if (problem === "Enter the Peak server address.") return "Type the server address.";
+  if (problem === "Enter the Peak server address.") return "Type Yetu's address.";
   if (problem === "That does not look like a server address.") {
     return "That doesn't look like an address. Check it and try again.";
   }

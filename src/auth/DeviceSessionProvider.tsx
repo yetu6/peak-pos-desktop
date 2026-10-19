@@ -16,7 +16,7 @@ import {
   deviceCredentialDigest,
   DeviceNotApprovedError,
   DeviceRevokedError,
-  fetchStaffRoster,
+  fetchLockScreen,
   generateDeviceCredential,
   getPairingStatus,
   humanDeviceError,
@@ -231,11 +231,26 @@ export function DeviceSessionProvider({
 		const terminalId = current.terminalId ?? current.deviceCode;
 		const credential = current.deviceCredential ?? current.deviceCode;
 		if (!terminalId || !credential) { setRoster([]); return; }
-    const online=await fetchStaffRoster(peakUrl,terminalId,credential);
+    const { staff: online, place } = await fetchLockScreen(peakUrl, terminalId, credential);
+    // The names as Yetu has them now: a till renamed in Yetu shows its new name here (F-252).
+    const latest = identityRef.current;
+    if (
+      latest &&
+      ((place.tillName && place.tillName !== latest.terminalName) ||
+        (place.propertyName && place.propertyName !== latest.propertyName) ||
+        (place.outletName && place.outletName !== latest.outletName))
+    ) {
+      await persist({
+        ...latest,
+        terminalName: place.tillName ?? latest.terminalName,
+        propertyName: place.propertyName ?? latest.propertyName,
+        outletName: place.outletName ?? latest.outletName,
+      });
+    }
     if(online.length>0){setRoster(online);return}
     const local=await offlineAuthorityRef.current?.staffRoster?.().catch(()=>[]);
     setRoster((local??[]).map(entry=>({fullName:entry.displayName,staffNumber:entry.staffId})));
-  }, [peakUrl]);
+  }, [peakUrl, persist]);
 
   useEffect(() => {
     if (phase !== "locked") return;
@@ -623,6 +638,8 @@ export function DeviceSessionProvider({
           mode: next.mode ?? current.mode,
           prepStations: next.prepStations ?? current.prepStations,
           terminalName: next.terminalName ?? current.terminalName,
+          propertyName: next.propertyName ?? current.propertyName,
+          outletName: next.outletName ?? current.outletName,
         });
         armExpiry(next);
         setPhase("ready");
@@ -682,6 +699,8 @@ export function DeviceSessionProvider({
                 assurance:"RESTRICTED",
                 mode:"offline-cash",
                 terminalName:current.terminalName,
+                propertyName:current.propertyName,
+                outletName:current.outletName,
                 capabilities:["CORE","POS"],
                 permissions:local.permissions??[],
               };

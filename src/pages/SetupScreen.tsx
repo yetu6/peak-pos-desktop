@@ -51,7 +51,7 @@ export function SetupView({
   return (
     <AccessLayout
       testId="setup-screen"
-      title="Connect to your Yetu server"
+      title="Connect this till to Yetu"
       lede={<p>Type the address your Yetu support team gave you. You only do this once on this till.</p>}
     >
       <form
@@ -63,7 +63,7 @@ export function SetupView({
         }}
       >
         <Field
-          label="Server address"
+          label="Yetu address"
           hint="It starts with https://"
           value={address}
           onChange={(value) => {

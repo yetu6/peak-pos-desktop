@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSupervisors } from "../approvals/supervisors";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { useIdempotencyKey, useVoidOrder } from "../hooks/usePosData";
@@ -35,7 +36,7 @@ export function VoidOrderDialog({
   onStale?: () => void;
 }) {
   const device = useDeviceSessionOptional();
-  const roster = device?.roster ?? [];
+  const { supervisors, emptyWords } = useSupervisors("VOID");
   const requesterId = device?.session?.staffId ?? "";
   const voidOrder = useVoidOrder();
   const idempotencyKey = useIdempotencyKey();
@@ -126,7 +127,8 @@ export function VoidOrderDialog({
               ? `Void order ${orderNumberWords(order)}${currency ? ` (${formatMoney(order.totalMinor, currency)})` : ""}: ${reason.trim()}`
               : `Void order ${orderNumberWords(order)}`
           }
-          supervisors={roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }))}
+          supervisors={supervisors}
+          emptyWords={emptyWords}
           requesterId={requesterId}
           selectedId={supervisorId}
           onSelect={(id) => {

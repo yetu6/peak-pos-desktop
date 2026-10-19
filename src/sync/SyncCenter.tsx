@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
+import { liveUpdatesWords, offlineReadyWords, savedSalesWords } from "../lib/supportWords";
 import { CircleAlert, CloudOff, RefreshCw, Wifi } from "lucide-react";
 import { useState } from "react";
 import { Banner, Button, Sheet, StatusChip, TechnicalDetails } from "../components/system";
@@ -7,7 +8,7 @@ import { getOperationalSession } from "../lib/operationalSession";
 import { getApiBaseUrl } from "../lib/peakConfig";
 import { isTauriRuntime } from "../lib/peakSocket";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
-import { clockTime } from "../lib/words";
+import { CLOCK_LOCALE, clockTime } from "../lib/words";
 import { useRealtime } from "../realtime/RealtimeProvider";
 import type { ConnectionPhase } from "../realtime/RealtimeEnvelope";
 import { SYNC_REFRESH_SECONDS } from "./syncSettings";
@@ -15,8 +16,14 @@ import { SYNC_REFRESH_SECONDS } from "./syncSettings";
 type Tone = "success" | "warning" | "danger" | "info";
 
 /** A moment as people say it: 12 Oct 2026, 14:02:31. */
-function attemptWords(ms: number): string {
-  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(new Date(ms));
+/** When the till last checked with Yetu: "14:02" today, "Mon 12 Oct, 14:02" before. */
+function attemptWords(ms: number, now = Date.now()): string {
+  const when = new Date(ms);
+  const today = new Date(now);
+  const sameDay = when.getFullYear() === today.getFullYear() && when.getMonth() === today.getMonth() && when.getDate() === today.getDate();
+  if (sameDay) return clockTime(when);
+  const day = new Intl.DateTimeFormat(CLOCK_LOCALE, { weekday: "short", day: "numeric", month: "short" }).format(when).replace(",", "");
+  return `${day}, ${clockTime(when)}`;
 }
 
 function sales(count: number): string {
@@ -36,7 +43,7 @@ function hasProblem(state: SyncState): boolean {
  */
 export function chipWords(state: SyncState | null, realtime: ConnectionPhase | string): { label: string; tone: Tone } {
   if (state) {
-    if (hasProblem(state)) return { label: "Sync problem", tone: "danger" };
+    if (hasProblem(state)) return { label: "Sales not sent", tone: "danger" };
     const waiting = state.queuedOperations;
     if (state.status === "Live") return { label: waiting > 0 ? `Online · ${waiting} waiting to send` : "Online", tone: "success" };
     if (state.status === "Reconnecting") return { label: "Reconnecting", tone: "warning" };
@@ -99,7 +106,7 @@ export function SyncChip({ sync }: { sync: SyncCenterState }) {
         className="y-sync-chip"
         data-testid="connectivity"
         aria-haspopup="dialog"
-        aria-label={`${label}. Open Sync`}
+        aria-label={`${label}. See what's waiting`}
         onClick={() => sync.setOpen(true)}
       >
         <StatusChip tone={tone} icon={<Icon aria-hidden="true" />}>
@@ -123,13 +130,13 @@ export function SyncProblemBanner({ sync }: { sync: SyncCenterState }) {
       data-testid="sync-problem-banner"
       action={
         <Button variant="secondary" onClick={() => sync.setOpen(true)}>
-          Open Sync
+          See what's waiting
         </Button>
       }
     >
       {count > 0
         ? `${sales(count)} on this till ${count === 1 ? "needs" : "need"} a manager to check ${count === 1 ? "it" : "them"}.`
-        : "Yetu didn't accept this till's sales just now. Open Sync to try again."}
+        : "Yetu didn't accept this till's sales just now. See what's waiting to try again."}
     </Banner>
   );
 }
@@ -166,7 +173,7 @@ export function SyncSheet({ sync }: { sync: SyncCenterState }) {
         if (!open && sending) return;
         sync.setOpen(open);
       }}
-      title="Sync"
+      title="Sending sales"
       description="Sales saved on this till, and sending them to Yetu."
       testId="sync-center"
       footer={
@@ -233,30 +240,26 @@ export function SyncSheet({ sync }: { sync: SyncCenterState }) {
           <dl className="y-sync__technical">
             {state ? (
               <>
-                <dt>Store status</dt>
-                <dd>{state.status}</dd>
-                <dt>Queued operations</dt>
+                <dt>Sales saved on this till</dt>
+                <dd>{savedSalesWords(state.status)}</dd>
+                <dt>Sales waiting to send</dt>
                 <dd>{state.queuedOperations}</dd>
-                <dt>Reconciled operations</dt>
+                <dt>Sales sent</dt>
                 <dd>{state.reconciledOperations}</dd>
-                <dt>Exception or review</dt>
+                <dt>Need a manager's look</dt>
                 <dd>{state.exceptionOperations}</dd>
-                <dt>Lease</dt>
-                <dd>{state.leaseStatus}</dd>
-                <dt>Catalog</dt>
-                <dd>{state.catalogStatus}</dd>
-                <dt>Offline shift eligibility</dt>
-                <dd>{state.shiftOfflineEligible ? "Eligible" : "Not eligible"}</dd>
-                <dt>Last attempt</dt>
-                <dd>{state.lastAttemptAtMs ? attemptWords(state.lastAttemptAtMs) : "None"}</dd>
+                <dt>Cash without internet</dt>
+                <dd>{offlineReadyWords(state.leaseStatus)}</dd>
+                <dt>Menu for offline use</dt>
+                <dd>{offlineReadyWords(state.catalogStatus)}</dd>
+                <dt>Can take cash offline this shift</dt>
+                <dd>{state.shiftOfflineEligible ? "Yes" : "No"}</dd>
+                <dt>Last checked</dt>
+                <dd>{state.lastAttemptAtMs ? attemptWords(state.lastAttemptAtMs) : "Not yet"}</dd>
               </>
             ) : null}
-            <dt>Realtime</dt>
-            <dd>
-              {sync.realtime.phase}
-              {sync.realtime.attempt > 0 ? `, attempt ${sync.realtime.attempt}` : ""}
-              {sync.realtime.lastError ? `, ${sync.realtime.lastError}` : ""}
-            </dd>
+            <dt>Live updates</dt>
+            <dd>{liveUpdatesWords(sync.realtime)}</dd>
           </dl>
         </TechnicalDetails>
       </div>

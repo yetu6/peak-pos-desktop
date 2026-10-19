@@ -744,7 +744,7 @@ describe("PaySheet", () => {
       await userEvent.click(screen.getByRole("button", { name: /^Exact/ }));
       await userEvent.click(pay());
       expect(await screen.findByTestId("settle-error")).toHaveTextContent(
-        "Yetu couldn't answer for this payment because your session ended. Sign in again, then check this order in Orders before taking any money.",
+        "Yetu couldn't answer for this payment because you were signed out. Sign in again, then check this order in Orders before taking any money.",
       );
       expect(onPaid).not.toHaveBeenCalled();
       expect(screen.queryByTestId("confirm-settle")).not.toBeInTheDocument();

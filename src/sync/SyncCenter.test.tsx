@@ -88,7 +88,7 @@ describe("the connection and sync chip", () => {
     expect(chipWords(LIVE, "connected")).toEqual({ label: "Online", tone: "success" });
     expect(chipWords(WAITING, "disconnected")).toEqual({ label: "Offline · 3 sales waiting to send", tone: "warning" });
     expect(chipWords({ ...WAITING, status: "Offline · 1 waiting", queuedOperations: 1 }, "disconnected").label).toBe("Offline · 1 sale waiting to send");
-    expect(chipWords(PROBLEM, "connected")).toEqual({ label: "Sync problem", tone: "danger" });
+    expect(chipWords(PROBLEM, "connected")).toEqual({ label: "Sales not sent", tone: "danger" });
     expect(chipWords({ ...LIVE, status: "Reconnecting" }, "connected").label).toBe("Reconnecting");
     expect(chipWords({ ...LIVE, status: "Offline · Sales available" }, "disconnected").label).toBe("Offline");
     // No store (a browser): the live connection alone.
@@ -105,7 +105,7 @@ describe("the connection and sync chip", () => {
     expect(screen.getByTestId("sync-announce")).toHaveTextContent("Offline · 3 sales waiting to send");
     chip.focus();
     await userEvent.keyboard("{Enter}");
-    expect(await screen.findByRole("dialog", { name: "Sync" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Sending sales" })).toBeInTheDocument();
   });
 });
 
@@ -114,17 +114,19 @@ describe("the Sync Center", () => {
     core.syncState.mockResolvedValue({ ...PROBLEM, status: "Offline · 3 waiting", queuedOperations: 3 });
     renderCenter();
     await userEvent.click(await screen.findByTestId("connectivity"));
-    const sheet = await screen.findByRole("dialog", { name: "Sync" });
+    const sheet = await screen.findByRole("dialog", { name: "Sending sales" });
     expect(within(sheet).getByTestId("sync-waiting")).toHaveTextContent("3 sales waiting to send");
     expect(within(sheet).getByTestId("sync-waiting")).toHaveTextContent("They go to Yetu by themselves when the connection returns.");
     expect(within(sheet).getByTestId("sync-sent")).toHaveTextContent("12 sales sent to Yetu");
     expect(within(sheet).getByTestId("sync-sent")).toHaveTextContent("Last checked with Yetu at 14:02");
     expect(within(sheet).getByTestId("sync-attention")).toHaveTextContent("2 sales need a manager to check them.");
     expect(within(sheet).getByTestId("sync-attention")).toHaveTextContent("A manager checks them in Yetu.");
-    const technical = within(sheet).getByText("Technical details").closest("details")!;
+    const technical = within(sheet).getByText("Details for support").closest("details")!;
     expect(technical).not.toHaveAttribute("open");
-    expect(technical).toHaveTextContent("ACTIVE");
-    // Engineering words stay behind Technical details.
+    expect(technical).toHaveTextContent("Cash without internetReady");
+    expect(technical).toHaveTextContent("Menu for offline useReady");
+    // No engineering words, even in the details for support (owner, 2026-10-19).
+    expect(technical).not.toHaveTextContent(/ACTIVE|Lease|Catalog|Queued|Reconciled|Exception|Realtime|eligibility/);
     expect(within(sheet).getByTestId("sync-sections")).not.toHaveTextContent(/Reconciled|Lease|Exception|Local financial evidence|Queued/);
   });
 
@@ -133,7 +135,7 @@ describe("the Sync Center", () => {
     core.retrySync.mockResolvedValue({ ...LIVE, reconciledOperations: 15 });
     renderCenter();
     await userEvent.click(await screen.findByTestId("connectivity"));
-    const sheet = await screen.findByRole("dialog", { name: "Sync" });
+    const sheet = await screen.findByRole("dialog", { name: "Sending sales" });
     await userEvent.click(within(sheet).getByRole("button", { name: "Try again" }));
     expect(core.retrySync).toHaveBeenCalledWith(expect.any(String), "ops-live-session-token-0123456789abcdef");
     expect(await within(sheet).findByTestId("sync-result")).toHaveTextContent("Everything is sent.");
@@ -149,7 +151,7 @@ describe("the Sync Center", () => {
     core.retrySync.mockResolvedValue(idle);
     renderCenter();
     await userEvent.click(await screen.findByTestId("connectivity"));
-    const sheet = await screen.findByRole("dialog", { name: "Sync" });
+    const sheet = await screen.findByRole("dialog", { name: "Sending sales" });
     const sent = within(sheet).getByTestId("sync-sent");
     expect(sent).toHaveTextContent("No sales sent from this till yet.");
     expect(sent).not.toHaveTextContent("Last sent");
@@ -162,7 +164,7 @@ describe("the Sync Center", () => {
     core.retrySync.mockResolvedValue(WAITING);
     renderCenter();
     await userEvent.click(await screen.findByTestId("connectivity"));
-    const sheet = await screen.findByRole("dialog", { name: "Sync" });
+    const sheet = await screen.findByRole("dialog", { name: "Sending sales" });
     await userEvent.click(within(sheet).getByRole("button", { name: "Try again" }));
     const result = await within(sheet).findByTestId("sync-result");
     expect(result).toHaveAttribute("role", "alert");
@@ -175,12 +177,12 @@ describe("the Sync Center", () => {
     core.retrySync.mockImplementation(() => new Promise((resolve) => (finish = resolve)));
     renderCenter();
     await userEvent.click(await screen.findByTestId("connectivity"));
-    const sheet = await screen.findByRole("dialog", { name: "Sync" });
+    const sheet = await screen.findByRole("dialog", { name: "Sending sales" });
     await userEvent.click(within(sheet).getByRole("button", { name: "Try again" }));
     expect(within(sheet).getByRole("button", { name: "Sending…" })).toBeDisabled();
     expect(idleLockHeld()).toBe(true);
     fireEvent.keyDown(sheet, { key: "Escape" });
-    expect(screen.getByRole("dialog", { name: "Sync" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Sending sales" })).toBeInTheDocument();
     await act(async () => finish(LIVE));
     await waitFor(() => expect(idleLockHeld()).toBe(false));
   });
@@ -190,7 +192,7 @@ describe("the Sync Center", () => {
     realtime.phase = "reconnecting";
     renderCenter();
     await userEvent.click(await screen.findByRole("button", { name: /Reconnecting/ }));
-    const sheet = await screen.findByRole("dialog", { name: "Sync" });
+    const sheet = await screen.findByRole("dialog", { name: "Sending sales" });
     expect(sheet).toHaveTextContent("Sales go to Yetu as they happen. Nothing is kept on this till for later.");
     expect(within(sheet).queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
     expect(core.syncState).not.toHaveBeenCalled();
@@ -203,10 +205,10 @@ describe("a sync problem", () => {
     const view = renderCenter();
     const banner = await screen.findByTestId("sync-problem-banner");
     expect(banner).toHaveTextContent("2 sales on this till need a manager to check them.");
-    await userEvent.click(within(banner).getByRole("button", { name: "Open Sync" }));
-    expect(await screen.findByRole("dialog", { name: "Sync" })).toBeInTheDocument();
+    await userEvent.click(within(banner).getByRole("button", { name: "See what's waiting" }));
+    expect(await screen.findByRole("dialog", { name: "Sending sales" })).toBeInTheDocument();
     core.retrySync.mockResolvedValue(LIVE);
-    await userEvent.click(within(screen.getByRole("dialog", { name: "Sync" })).getByRole("button", { name: "Try again" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "Sending sales" })).getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(screen.queryByTestId("sync-problem-banner")).not.toBeInTheDocument());
     view.unmount();
   });

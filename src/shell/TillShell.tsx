@@ -16,12 +16,13 @@ import {
   WifiOff,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BrandLockup } from "../components/BrandLockup";
+import { PlaceMark } from "../components/PlaceMark";
 import { Button, KeyHint, StatusChip } from "../components/system";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { normalizeMode } from "../lib/displayDefaults";
 import { globalCommandFor, keyHintFor, keyHintForCommand } from "../lib/keyboard";
 import { chooseTheme, useTheme } from "../lib/theme";
+import type { TillPlace } from "../lib/tillPlace";
 import { cn } from "../lib/utils";
 import { isDisplayMode, railNav, type RailItem, type WorkspacePage } from "../lib/workspace";
 import { CommandSearch, type ShellCommand } from "./CommandSearch";
@@ -60,8 +61,8 @@ export interface TillShellProps {
   offlineCash?: boolean;
   page: WorkspacePage;
   onNavigate: (page: WorkspacePage) => void;
-  /** The till's name, as the manager wrote it at pairing. */
-  tillName?: string | null;
+  /** The hotel, the outlet and the till, as the manager named them in Yetu (F-252). */
+  place?: TillPlace;
   person: { name: string; initials: string };
   /** The shift and its business day in words, in full and shorter for compact screens. */
   shift?: { full: string; short: string } | null;
@@ -94,7 +95,7 @@ export function TillShell({
   offlineCash = false,
   page,
   onNavigate,
-  tillName,
+  place = {},
   person,
   shift,
   clock,
@@ -222,12 +223,7 @@ export function TillShell({
   return (
     <div className={cn("terminal-shell", display && "terminal-shell--kds")} data-testid="pos-register">
       <header className="y-topbar">
-        <span className="y-topbar__brand">
-          <BrandLockup height={22} />
-        </span>
-        <span className="y-topbar__till" data-testid="till-label">
-          {tillName?.trim() || "This till"}
-        </span>
+        <PlaceMark place={place} className="y-topbar__till" data-testid="till-label" />
         {display ? (
           <StatusChip tone="info" className="y-topbar__status" data-testid="kds-mode-badge">
             {displayName}

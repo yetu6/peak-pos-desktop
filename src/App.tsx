@@ -35,6 +35,8 @@ import { defaultWorkspacePage, isDisplayMode, workspaceNav, type WorkspacePage }
 import { TillShell } from "./shell/TillShell";
 import { Banner } from "./components/system";
 import { OFFLINE_BANNER } from "./register/offlineWords";
+import { placeOf } from "./lib/tillPlace";
+import { useApprovers } from "./approvals/supervisors";
 import { SyncChip, SyncProblemBanner, SyncSheet, useSyncCenter } from "./sync/SyncCenter";
 
 type Page = WorkspacePage;
@@ -90,7 +92,7 @@ function PosShell() {
       offlineCash={offlineCash}
       page={page}
       onNavigate={setPage}
-      tillName={identity?.terminalName}
+      place={placeOf(identity)}
       person={person}
       shift={shiftChipWords(shift)}
       clock={clock}
@@ -159,6 +161,8 @@ function ReadyGate() {
   const { session, identity, prepareOffline } = useDeviceSession();
   const offlineCash = session?.mode === "offline-cash";
   const { shift, isLoading: shiftLoading } = usePosShift();
+  // Asked at sign-in, so an approval sheet opens offering only the right people (F-249).
+  useApprovers();
   // Yetu gives a till its offline start-up only while a shift is open (409
   // before), so one signed in before opening the shift asks again once it
   // opens (F-228); one that signed in to an open shift had it at sign-in.
