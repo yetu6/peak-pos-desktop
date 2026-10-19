@@ -632,16 +632,11 @@ fn validate_payload(p: &CatalogSnapshotPayload, now: i64) -> Result<(), LocalSto
         }
     }
 
-    for group in &p.modifier_groups {
-        let available = p
-            .modifier_options
-            .iter()
-            .filter(|o| o.group_id == group.group_id && o.is_available)
-            .count() as i64;
-        if group.is_active && (group.max_select > available || group.min_select > available) {
-            return Err(LocalStoreError::InvalidCatalog);
-        }
-    }
+    // A group's maximum is "up to": more than is available today (an option
+    // sold out, or Yetu's "any number", maxSelect 2147483647) is not a broken
+    // catalogue, and refusing the catalogue for it left the till with no
+    // offline menu at all (F-228). What is chosen is checked when the item is
+    // added (orders.rs, read_group_constraints).
     Ok(())
 }
 
@@ -723,10 +718,13 @@ mod tests {
         }
     }
     fn seeded_store(key: &SigningKey) -> (tempfile::TempDir, LocalStore) {
+        seeded_store_with(key, &payload())
+    }
+    fn seeded_store_with(key: &SigningKey, p: &CatalogSnapshotPayload) -> (tempfile::TempDir, LocalStore) {
         let temp = tempfile::tempdir().unwrap();
         let store =
             LocalStore::open(&temp.path().join("store.db"), &MemoryKeys::default()).unwrap();
-        let bytes = serde_json::to_vec(&payload()).unwrap();
+        let bytes = serde_json::to_vec(p).unwrap();
         store.connection.execute("INSERT INTO terminal_authority VALUES ('term-1',1,'prop-1','out-1','reg-1','trust-1',?1,x'01','PAIRED',1,0,900,900)",[key.verifying_key().to_bytes().as_slice()]).unwrap();
         store.connection.execute("INSERT INTO authorization_bundles(bundle_id,terminal_id,credential_epoch,generation,lease_id,property_id,outlet_id,register_id,shift_id,business_date,catalog_version,catalog_digest,issued_at_ms,not_before_ms,refresh_after_ms,hard_expires_at_ms,revocation_generation,max_operation_count,max_gross_minor,max_cash_minor,allowed_operations_json,signing_key_id,signed_payload,signature,state,received_at_ms) VALUES ('bundle-1','term-1',1,1,'lease-1','prop-1','out-1','reg-1','shift-1','2026-09-03','v1',?1,900,1000,5000,10000,0,100,1000000,1000000,'[\"ORDER_DRAFT\",\"ORDER_COMMIT\"]','trust-1',x'01',zeroblob(64),'STAGED',1000)",[hex_digest(&bytes)]).unwrap();
         store.connection.execute("INSERT INTO offline_staff_verifiers(bundle_id,staff_id,display_name,verifier_phc,permissions_json,expires_at_ms,max_attempts,base_lockout_ms) VALUES ('bundle-1','staff-1','Cashier','x','[]',10000,5,1000)",[]).unwrap();
@@ -778,6 +776,28 @@ mod tests {
             )
             .unwrap();
         assert_eq!(state, "ACTIVE");
+    }
+    // F-228: Yetu sends a group that takes any number as maxSelect 2147483647, and
+    // Bahari QA Hotel's Extras (two options) made every offline start-up fail: the
+    // whole catalogue was refused because the maximum passed what was available. A
+    // maximum is "up to"; the choice itself is checked when the item is added.
+    #[test]
+    fn a_group_of_any_number_and_one_with_an_option_sold_out_still_install() {
+        let key = SigningKey::from_bytes(&[9; 32]);
+        let mut any = payload();
+        any.modifier_groups[0].min_select = 0;
+        any.modifier_groups[0].max_select = i64::from(i32::MAX);
+        let (_temp, mut store) = seeded_store_with(&key, &any);
+        let result = store.install_catalog_snapshot(envelope(&key, &any), 2_000).unwrap();
+        assert_eq!(result.state, "ACTIVE");
+
+        let mut sold_out = payload();
+        sold_out.modifier_groups[0].min_select = 0;
+        sold_out.modifier_groups[0].max_select = 2;
+        sold_out.modifier_options[0].is_available = false;
+        let (_temp2, mut store2) = seeded_store_with(&key, &sold_out);
+        let result = store2.install_catalog_snapshot(envelope(&key, &sold_out), 2_000).unwrap();
+        assert_eq!(result.state, "ACTIVE");
     }
     #[test]
     fn altered_or_inapplicable_snapshot_fails_closed() {
