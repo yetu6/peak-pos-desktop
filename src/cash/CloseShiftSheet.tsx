@@ -2,7 +2,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { Banner, Button, Money, MoneyField, PermissionNotice, Sheet, SupervisorApproval, type KeypadKey } from "../components/system";
-import { useIdempotencyKey, useOpenTabsOf, usePosShift } from "../hooks/usePosData";
+import { useIdempotencyKey, useOpenTabsOf, usePosShift, type OpenTabs } from "../hooks/usePosData";
+import { orderName } from "../lib/orderNumber";
+import { orderPlaceWords } from "../lib/words";
 import type { RosterEntry } from "../lib/deviceAuth";
 import { formatMoney } from "../lib/money";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
@@ -65,7 +67,7 @@ export interface CloseShiftSheetViewProps {
   requesterId: string;
   roster: readonly RosterEntry[];
   /** S17b: the shift's tabs still open, and what they owe: closing hands them over to the next shift. */
-  openTabs: { count: number; owedMinor: number };
+  openTabs: OpenTabs;
   /** Closes the shift with Yetu and returns the closed shift it sends back. */
   onClose: (args: { countedCashMinor: number; supervisorStaffId?: string; supervisorPin?: string; handOver?: boolean }) => Promise<POSShift>;
   /** Gets the shift from Yetu again; its new figures arrive through `shift`. */
@@ -318,9 +320,28 @@ export function CloseShiftSheetView({
                 />
               ) : null}
               {openTabs.count > 0 ? (
-                <p className="y-cash__muted" data-testid="close-open-tabs">
-                  {openTabsWords(openTabs.count, openTabs.owedMinor, currency)}
-                </p>
+                // Money owed changes hands: each tab going over is listed, as a till's close-out lists open checks.
+                <section className="y-cash__tabs" aria-labelledby="close-tabs-title">
+                  <h4 id="close-tabs-title" className="y-cash__tabs-title">
+                    Going to the next shift
+                  </h4>
+                  <p className="y-cash__muted" data-testid="close-open-tabs">
+                    {openTabsWords(openTabs.count, openTabs.owedMinor, currency)}
+                  </p>
+                  {openTabs.tabs?.length ? (
+                    <ul className="y-cash__tabs-list" data-testid="close-tabs-list">
+                      {openTabs.tabs.map((tab) => (
+                        <li key={tab.id}>
+                          <span>
+                            {orderName(tab)}
+                            {tab.tableLabel || tab.serviceType !== "DINE_IN" ? ` · ${orderPlaceWords(tab.serviceType, tab.tableLabel)}` : ""}
+                          </span>
+                          <Money minor={tab.remainingMinor} currency={currency} />
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </section>
               ) : null}
               {refusedKind === "open-orders" && !handOverFound ? (
                 <Button

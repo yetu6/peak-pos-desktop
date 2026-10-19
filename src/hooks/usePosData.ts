@@ -786,11 +786,18 @@ export function useReprintKitchenTickets() {
 }
 
 /** S17b: the open tabs of a shift, from the outlet's open orders: how many, and what they owe. */
-export function useOpenTabsOf(shiftId: string | undefined): { count: number; owedMinor: number } {
+export interface OpenTabs {
+  count: number;
+  owedMinor: number;
+  /** Each tab going over, as the close lists it. */
+  tabs?: readonly POSOrder[];
+}
+
+export function useOpenTabsOf(shiftId: string | undefined): OpenTabs {
   const { data: orders = [] } = useActiveOrders();
   return useMemo(() => {
     const mine = orders.filter((order) => order.shiftId === shiftId && order.status !== "CLOSED" && order.status !== "VOIDED");
-    return { count: mine.length, owedMinor: mine.reduce((sum, order) => sum + order.remainingMinor, 0) };
+    return { count: mine.length, owedMinor: mine.reduce((sum, order) => sum + order.remainingMinor, 0), tabs: mine };
   }, [orders, shiftId]);
 }
 

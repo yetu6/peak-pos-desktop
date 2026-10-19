@@ -91,6 +91,46 @@
   gap: var(--target-gap);
 }
 
+/* Footer buttons say what they do on one line: the main one takes the room. */
+.y-cash__footer > .y-button {
+  white-space: nowrap;
+}
+
+.y-cash__footer > .y-button--primary {
+  flex: 1;
+}
+
+/* S17b: the tabs going to the next shift, at a close. */
+.y-cash__tabs {
+  display: grid;
+  gap: var(--space-2);
+  border: 1px solid var(--warning-line);
+  border-radius: var(--radius-card, 10px);
+  background: var(--warning-subtle);
+  padding: var(--space-3);
+}
+
+.y-cash__tabs-title {
+  margin: 0;
+  font-size: var(--type-body);
+  font-weight: 700;
+}
+
+.y-cash__tabs-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: var(--space-1);
+  list-style: none;
+}
+
+.y-cash__tabs-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-variant-numeric: tabular-nums;
+}
+
 .y-cash__step-title {
   margin: 0;
   font-size: var(--type-title);
