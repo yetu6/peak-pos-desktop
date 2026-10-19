@@ -3,7 +3,9 @@ import type { Reachability } from "./diagnostics";
 /**
  * The details for support (Status, Sync) in the till's own words. The owner
  * asked for friendly, easily understood words everywhere (2026-10-19); these
- * were Lease ACTIVE, Realtime connecting, HTTP 404 and the like.
+ * were Lease ACTIVE, Realtime connecting, HTTP 404 and the like. What the till
+ * actually saw (Yetu's answer, why live updates dropped) stays beside them in
+ * rows marked "(for support)", so a call about a till can still be answered.
  */
 
 /** The till's saved sales (the native store's status line). */
@@ -28,7 +30,8 @@ const OFFLINE_READY: Record<string, string> = {
 
 /** Cash without internet, or the menu kept for it (the lease and the catalogue). */
 export function offlineReadyWords(state: string): string {
-  return OFFLINE_READY[state] ?? "Not known";
+  // A state this till doesn't know yet stays readable for support.
+  return OFFLINE_READY[state] ?? (state.trim() ? `Not known (${state.trim()})` : "Not known");
 }
 
 /** Live updates: on, connecting, or off. */
@@ -71,8 +74,9 @@ export function tillKindWords(mode: string | null | undefined): string {
   return TILL_KINDS[(mode ?? "POS").trim().toUpperCase()] ?? "Orders and payments";
 }
 
-/** Whether Yetu answers, without the status code. */
+/** Whether Yetu answers, without the status code (the row beside it keeps that for support). */
 export function yetuAnswersWords(check: { status: Reachability } | null): string {
   if (!check) return "Checking";
-  return check.status === "reachable" ? "Answers" : "Can't be reached";
+  if (check.status === "reachable") return "Answers";
+  return check.status === "failing" ? "Answers with a problem" : "Can't be reached";
 }

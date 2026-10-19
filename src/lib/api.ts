@@ -1,6 +1,7 @@
 import { devIdentityFromEnv, type DevIdentity } from "./env";
 import { getApiBaseUrl } from "./peakConfig";
 import { getOperationalSession } from "./operationalSession";
+import { noteRequestTime } from "./requestTimes";
 import { restRequestHeaders } from "./restAuth";
 
 function tryDevIdentity(): DevIdentity | null {
@@ -26,6 +27,8 @@ async function request<T>(method: string, path: string, options: Record<string, 
     if (encoded) resolvedPath += `?${encoded}`;
   }
   const headers = { ...restRequestHeaders(getOperationalSession(), tryDevIdentity()), ...options.headers };
+  // How long the till waits for Yetu, for the details for support (F-255).
+  const asked = performance.now();
   const response = await fetch(`${getApiBaseUrl()}${resolvedPath}`, {
     method,
     headers,
@@ -36,6 +39,7 @@ async function request<T>(method: string, path: string, options: Record<string, 
   // a refusal lost its code on the way to the screen's words.
   const json = /application\/([\w.-]+\+)?json/.test(contentType);
   const payload = response.status === 204 ? undefined : json ? await response.json() : await response.text();
+  noteRequestTime(method, performance.now() - asked);
   if (!response.ok) return { error: withRetryAfter(payload ?? response.statusText, response), response };
   return { data: payload as T, response };
 }

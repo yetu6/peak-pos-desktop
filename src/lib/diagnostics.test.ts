@@ -33,13 +33,31 @@ describe("diagnostics", () => {
     expect(packagedAppVersion()).not.toMatch(/placeholder|todo|dev-local/i);
   });
 
-  it("treats any HTTP answer as Peak being reachable", async () => {
-    const probe = await probePeakServer("https://hotel.example", async () => {
-      return { ok: false, status: 401 } as Response;
+  // Support must tell the hotel's internet from a problem at Yetu (2026-10-20): a
+  // 502 from Yetu's front door, or Yetu without its database, is Yetu answering
+  // with a problem, not the till being unable to reach it.
+  it("asks Yetu whether it is ready, not for its front page", async () => {
+    let asked = "";
+    await probePeakServer("https://hotel.example/", async (url) => {
+      asked = String(url);
+      return { ok: true, status: 200 } as Response;
     });
+    expect(asked).toBe("https://hotel.example/health/ready");
+  });
+
+  it("a ready answer is Yetu answering", async () => {
+    const probe = await probePeakServer("https://hotel.example", async () => ({ ok: true, status: 200 }) as Response);
     expect(probe.status).toBe("reachable");
-    expect(probe.detail).toContain("401");
+    expect(probe.detail).toBe("HTTP 200");
     expect(probe.origin).toBe("https://hotel.example");
+  });
+
+  it("any other answer is Yetu with a problem, and says which", async () => {
+    for (const status of [503, 502, 404]) {
+      const probe = await probePeakServer("https://hotel.example", async () => ({ ok: false, status }) as Response);
+      expect(probe.status).toBe("failing");
+      expect(probe.detail).toBe(`HTTP ${status}`);
+    }
   });
 
   it("marks Peak unreachable when the address does not answer", async () => {

@@ -25,9 +25,11 @@
   color: var(--text-muted);
 }
 
+/* Six checks in at most three columns: two calm rows on a wide screen, never six
+   narrow cards whose words and chips run over their edges (1920 wide, 2026-10-20). */
 .y-status__checks {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(max(280px, calc((100% - 2 * var(--space-3)) / 3)), 1fr));
   gap: var(--space-3);
   margin: 0;
   padding: 0;
@@ -35,6 +37,8 @@
 }
 
 .y-status__check {
+  container-type: inline-size;
+  min-width: 0;
   display: grid;
   align-content: start;
   gap: var(--space-2);
@@ -45,12 +49,17 @@
 }
 
 .y-status__head {
-  display: flex;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2) var(--space-3);
 }
 
-.y-status__head .y-chip { margin-left: auto; }
+/* A narrow card puts its state under the check's name, never over the card's edge. */
+@container (max-width: 390px) {
+  .y-status__head { grid-template-columns: 44px minmax(0, 1fr); }
+  .y-status__head .y-chip { grid-column: 2; justify-self: start; }
+}
 
 /* The check's picture in a circle of its state's tone; the chip says the state in words. */
 .y-status__icon {

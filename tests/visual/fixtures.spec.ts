@@ -85,6 +85,43 @@ async function measure(page: Page): Promise<Finding[]> {
         if (!contained) findings.push({ key: "overflow", detail: `${describe(element)} reaches ${Math.round(rect.right)}px` });
       }
 
+      // Nothing spills past its own box: a chip or a sentence running over a
+      // card's edge (the Status cards at 1920 wide, 2026-10-20) sits on the next
+      // card. A box has a border on both sides and shows what overflows it; what
+      // a clipping container between them cuts off, and what is placed out of
+      // the flow on purpose (a badge, a popover), is not a spill.
+      const styles = new Map<Element, CSSStyleDeclaration>();
+      const styleOf = (element: Element): CSSStyleDeclaration => {
+        let style = styles.get(element);
+        if (!style) {
+          style = getComputedStyle(element);
+          styles.set(element, style);
+        }
+        return style;
+      };
+      for (const element of document.querySelectorAll("body *")) {
+        if (!rendered(element) || element.closest("svg") !== null && element.tagName.toLowerCase() !== "svg") continue;
+        let placed = ["absolute", "fixed"].includes(styleOf(element).position);
+        let box: Element | null = null;
+        for (let parent = element.parentElement; parent && parent !== document.body && !placed; parent = parent.parentElement) {
+          const style = styleOf(parent);
+          const bordered = Number.parseFloat(style.borderLeftWidth) >= 1 && Number.parseFloat(style.borderRightWidth) >= 1;
+          if (bordered) {
+            box = parent;
+            break;
+          }
+          if (style.overflowX !== "visible" || style.overflowY !== "visible") break;
+          placed = ["absolute", "fixed"].includes(style.position);
+        }
+        if (!box || placed) continue;
+        const boxStyle = styleOf(box);
+        if (boxStyle.overflowX !== "visible" || boxStyle.overflowY !== "visible") continue;
+        const inner = element.getBoundingClientRect();
+        const outer = box.getBoundingClientRect();
+        const past = Math.max(inner.right - outer.right, outer.left - inner.left, inner.bottom - outer.bottom, outer.top - inner.top);
+        if (past > 1) findings.push({ key: "spills", detail: `${describe(element)} runs ${Math.round(past)}px past ${describe(box)}` });
+      }
+
       // A screen marked must-fit shows everything without scrolling the screen itself.
       for (const element of document.querySelectorAll("[data-must-fit]")) {
         const over = element.scrollHeight - element.clientHeight;

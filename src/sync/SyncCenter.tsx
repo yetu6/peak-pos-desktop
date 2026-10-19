@@ -260,6 +260,12 @@ export function SyncSheet({ sync }: { sync: SyncCenterState }) {
             ) : null}
             <dt>Live updates</dt>
             <dd>{liveUpdatesWords(sync.realtime)}</dd>
+            {sync.realtime.lastError ? (
+              <>
+                <dt>Last live-updates problem (for support)</dt>
+                <dd>{sync.realtime.lastError}</dd>
+              </>
+            ) : null}
           </dl>
         </TechnicalDetails>
       </div>
