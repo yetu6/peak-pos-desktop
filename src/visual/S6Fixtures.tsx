@@ -1,3 +1,4 @@
+import { PrintersCard } from "../print/PrintersCard";
 import type { UseMutationResult } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Banner } from "../components/system";
@@ -209,7 +210,7 @@ const SNAPSHOT_INPUT = {
   peakOrigin: "https://api.yetu.fbcsoftwares.com",
 };
 
-function Status({ problems = false, browser = false, printed = null }: { problems?: boolean; browser?: boolean; printed?: { ok: boolean; detail: string | null } | null }) {
+function Status({ problems = false, browser = false, printed = null, printers = null }: { problems?: boolean; browser?: boolean; printed?: { ok: boolean; detail: string | null } | null; printers?: ReactNode }) {
   const printer = browser ? null : problems ? { available: false, name: null } : SNAPSHOT_INPUT.printer;
   const keyStorage = problems ? { hardwareBacked: false, backend: "file", warning: "file fallback" } : SNAPSHOT_INPUT.keyStorage;
   const peak = problems
@@ -230,6 +231,7 @@ function Status({ problems = false, browser = false, printed = null }: { problem
         snapshot={buildTechnicianSnapshot({ ...SNAPSHOT_INPUT, printer, keyStorage })}
         peak={peak}
         realtime={realtime}
+        printers={printers}
       />
     </FixtureShell>
   );
@@ -238,6 +240,11 @@ function Status({ problems = false, browser = false, printed = null }: { problem
 /** Status on a healthy counter computer, a test page just sent. */
 export function StatusFixture() {
   return <Status printed={{ ok: true, detail: null }} />;
+}
+
+/** Status for a manager (S8a/S8b): this computer's printers, set up beside the printer's check. */
+export function StatusPrintersFixture() {
+  return <Status printed={{ ok: true, detail: null }} printers={<PrintersCard />} />;
 }
 
 /** Status with problems: each says what to do. */

@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { noteUpdate, resetUpdateNotes } from "../lib/updateNotes";
 import { Diagnostics } from "./Diagnostics";
+import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
 
 const {
   probePeakServer,
@@ -253,5 +254,39 @@ describe("Diagnostics", () => {
       await waitFor(() => expect(probePeakServer).toHaveBeenCalledTimes(2));
       expect(loadPrinterStatus).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+describe("Status: this computer's printers, for a manager", () => {
+  afterEach(() => clearOperationalSession());
+
+  function signIn(permissions: string[]) {
+    setOperationalSession({
+      token: "t",
+      expiresAt: "2099-01-01T00:00:00Z",
+      tenantId: "tenant-1",
+      propertyId: "property-1",
+      outletId: "outlet-1",
+      terminalId: "device-uuid",
+      staffId: "staff-12",
+      assurance: "RESTRICTED",
+      capabilities: ["CORE", "POS"],
+      permissions,
+    });
+  }
+
+  it("a manager sets the printers up here, beside the printer's check; a cashier doesn't see them", async () => {
+    probePeakServer.mockResolvedValue({ status: "reachable", detail: "HTTP 200", origin: "https://hotel.example" });
+    loadPrinterStatus.mockResolvedValue({ available: true, name: "front-bar" });
+    loadHostDiagnostics.mockResolvedValue({ os: "linux", arch: "x86_64", appVersion: "0.1.0" });
+    loadDeviceKeyStorageStatus.mockResolvedValue({ hardwareBacked: true, backend: "keyring", warning: null });
+    signIn(["pos.order.read", "pos.report.manager"]);
+    const { unmount } = render(<Diagnostics />);
+    expect(await screen.findByTestId("printers-card")).toBeInTheDocument();
+    unmount();
+    signIn(["pos.order.read"]);
+    render(<Diagnostics />);
+    await screen.findByTestId("diagnostics");
+    expect(screen.queryByTestId("printers-card")).toBeNull();
   });
 });

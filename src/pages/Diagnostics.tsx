@@ -19,6 +19,8 @@ import { getApiBaseUrl } from "../lib/peakConfig";
 import { useLastUpdateNote, type UpdateNote } from "../lib/updateNotes";
 import { clockTime } from "../lib/words";
 import { useRealtime } from "../realtime/RealtimeProvider";
+import { useHasPermission } from "../hooks/usePosData";
+import { PrintersCard } from "../print/PrintersCard";
 
 /** The updater's last outcome, in words. */
 function updateWords(note: UpdateNote | null): string {
@@ -179,6 +181,7 @@ function TechRow({ label, testId, children }: { label: string; testId: string; c
  */
 export function Diagnostics() {
   const { state } = useRealtime();
+  const isManager = useHasPermission("pos.report.manager");
   const { identity, session } = useDeviceSession();
   const updateNote = useLastUpdateNote();
   const online = useNetworkOnline();
@@ -234,6 +237,7 @@ export function Diagnostics() {
       snapshot={buildTechnicianSnapshot({ identity, session, host, printer, keyStorage, peakOrigin: getApiBaseUrl() })}
       peak={peak}
       realtime={state}
+      printers={isManager ? <PrintersCard /> : null}
     />
   );
 }
@@ -251,6 +255,8 @@ export interface StatusViewProps {
   snapshot: TechnicianSnapshot;
   peak: PeakProbe | null;
   realtime: { phase: string; attempt: number; lastError: string | null };
+  /** Manager -> Printers (S8a/S8b): this computer's printers, set up beside the printer's check. */
+  printers?: ReactNode;
 }
 
 /** The Status screen itself, from what the container found out. */
@@ -266,6 +272,7 @@ export function StatusView({
   snapshot,
   peak,
   realtime: state,
+  printers = null,
 }: StatusViewProps) {
   return (
     <div className="y-status" data-testid="diagnostics">
@@ -299,6 +306,8 @@ export function StatusView({
           ) : null}
         </div>
       ) : null}
+
+      {printers}
 
       <section className="y-status__updates" aria-labelledby="diag-updates-title">
         <h2 id="diag-updates-title" className="y-status__name">

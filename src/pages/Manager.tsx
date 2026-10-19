@@ -3,7 +3,6 @@ import { useState, type ReactNode } from "react";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { CloseDayCard } from "../cash/CloseDayCard";
 import { CloseShiftSheet } from "../cash/CloseShiftSheet";
-import { PrintersCard } from "../print/PrintersCard";
 import { useExpectedCashVisible } from "../cash/useExpectedCashVisible";
 import { CashMovementDialog } from "../components/CashMovementDialog";
 import { Button, EmptyState, ListRow, Money, PermissionNotice } from "../components/system";
@@ -51,7 +50,6 @@ export function Manager() {
       canCloseShift={canCloseShift}
       showExpected={showExpected}
       closeDay={isManager && !hotel ? <CloseDayCard thisTillShiftOpen={Boolean(shift)} /> : null}
-      printers={isManager ? <PrintersCard /> : null}
       onCashIn={() => setMovement("CASH_IN")}
       onCashOut={() => setMovement("CASH_OUT")}
       onCloseShift={() => setClosing(true)}

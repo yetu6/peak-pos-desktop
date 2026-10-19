@@ -1,4 +1,3 @@
-import { PrintersCard } from "../print/PrintersCard";
 import { AccessFrame } from "../access/AccessLayout";
 import { CloseDayCardView } from "../cash/CloseDayCard";
 import { CloseShiftSheetView } from "../cash/CloseShiftSheet";
@@ -156,11 +155,6 @@ function Cash(props: Partial<Parameters<typeof CashView>[0]>) {
       />
     </FixtureShell>
   );
-}
-
-/** Manager -> Printers (S8a/S8b): paper kitchen tickets, the kitchen and receipt printers, the drawer. */
-export function PrintersFixture() {
-  return <Cash printers={<PrintersCard />} />;
 }
 
 /** Cash for a manager: the drawer, cash in and out, close shift, close the day. */
