@@ -258,3 +258,12 @@ describe("TicketPanel: the newest line in view", () => {
     }
   });
 });
+
+describe("TicketPanel: an everyday removal is not a red block", () => {
+  it("a chosen line's Remove is outlined in red, beside Add another", () => {
+    renderTicket({ selectedLineId: "l1" });
+    const remove = screen.getByRole("button", { name: /Remove/ });
+    expect(remove).toHaveClass("y-button--danger-outline");
+    expect(remove).not.toHaveClass("y-button--danger");
+  });
+});

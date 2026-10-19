@@ -140,7 +140,7 @@ export function OfflineTicket({
                       }}
                     >
                       <Stepper label={line.name} value={line.quantity} min={1} onChange={(quantity) => !busy && onQuantity(line.id, quantity)} />
-                      <Button variant="danger" icon={<Trash2 />} disabled={busy} onClick={() => onRemoveLine(line.id)}>
+                      <Button variant="danger-outline" icon={<Trash2 />} disabled={busy} onClick={() => onRemoveLine(line.id)}>
                         Remove
                       </Button>
                     </div>

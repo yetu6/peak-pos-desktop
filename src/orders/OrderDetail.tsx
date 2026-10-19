@@ -389,7 +389,7 @@ export function OrderDetailView({
                         {selected ? (
                           <div className="y-ticket__line-actions">
                             <Button
-                              variant="danger"
+                              variant="danger-outline"
                               icon={<Trash2 />}
                               aria-label={`Remove ${line.name}`}
                               disabled={busy}

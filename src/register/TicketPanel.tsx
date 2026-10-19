@@ -119,7 +119,7 @@ export function TicketPanel({
                 <Button icon={<Plus />} disabled={lineBusy} onClick={() => onAddAnother(line)}>
                   Add another
                 </Button>
-                <Button variant="danger" icon={<Trash2 />} disabled={lineBusy} onClick={() => onRemoveLine(line)}>
+                <Button variant="danger-outline" icon={<Trash2 />} disabled={lineBusy} onClick={() => onRemoveLine(line)}>
                   Remove
                 </Button>
               </>

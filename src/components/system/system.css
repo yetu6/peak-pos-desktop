@@ -106,6 +106,17 @@
   color: var(--on-danger);
 }
 
+/* An everyday removal: red in its words and edge, not a red block beside the ticket. */
+.y-button--danger-outline {
+  border-color: var(--danger-line);
+  background: var(--surface-raised);
+  color: var(--danger);
+}
+
+.y-button--danger-outline:hover:not(:disabled) {
+  background: var(--danger-subtle);
+}
+
 .y-button:active:not(:disabled) { transform: translateY(1px); }
 
 .y-button:disabled {

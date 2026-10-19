@@ -1,7 +1,8 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
 
-export type ButtonVariant = "primary" | "secondary" | "quiet" | "danger";
+/** danger: a confirmation that undoes or gives back (Void, Approve refund). danger-outline: an everyday removal (a line not sent). */
+export type ButtonVariant = "primary" | "secondary" | "quiet" | "danger" | "danger-outline";
 /** Touch sizes: 48 minimum, 56 for frequent actions, 64 for money actions (Pay, Take cash, Approve). */
 export type ButtonSize = 48 | 56 | 64;
 
