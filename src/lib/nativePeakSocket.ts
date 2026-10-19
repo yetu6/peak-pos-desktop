@@ -6,6 +6,7 @@ type SocketEvent = {
 /**
  * WebSocket-shaped adapter over the Tauri Peak handshake. Authorization and
  * Origin remain native handshake headers and never enter a URL or browser log.
+ * The native side answers on a channel made before it connects.
  */
 export class NativePeakSocket {
   readonly url: string;
@@ -17,7 +18,7 @@ export class NativePeakSocket {
   onclose: ((ev: CloseEvent) => void) | null = null;
 
   private id: number | null = null;
-  private unlisten: (() => void) | null = null;
+  private closed = false;
   private opened: Promise<void>;
 
   constructor(
@@ -29,20 +30,33 @@ export class NativePeakSocket {
   }
 
   private async connect(): Promise<void> {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const { listen } = await import("@tauri-apps/api/event");
-    const id = await invoke<number>("open_peak_socket", {
-      url: this.url,
-      authorization: this.headers.Authorization,
-      origin: this.headers.Origin,
-    });
+    const { Channel, invoke } = await import("@tauri-apps/api/core");
+    // The channel is listening before the handshake starts: the native side
+    // says "open" before the command returns the connection's number, and an
+    // event listened for by that number missed it every time (the till sat
+    // at "connecting" and never subscribed).
+    const events = new Channel<SocketEvent>();
+    events.onmessage = (event) => this.onNativeEvent(event);
+    let id: number;
+    try {
+      id = await invoke<number>("open_peak_socket", {
+        url: this.url,
+        authorization: this.headers.Authorization,
+        origin: this.headers.Origin,
+        events,
+      });
+    } catch {
+      // Refused or unreachable: closed, so the realtime client tries again.
+      this.finish();
+      return;
+    }
     this.id = id;
-    this.unlisten = await listen<SocketEvent>(`peak-socket://${id}`, (event) => {
-      this.onNativeEvent(event.payload);
-    });
+    // Closed while the handshake ran: close what arrived.
+    if (this.closed) void invoke("close_peak_socket", { id });
   }
 
   private onNativeEvent(event: SocketEvent): void {
+    if (this.closed) return;
     if (event.kind === "open") {
       this.readyState = 1;
       this.onopen?.(new Event("open"));
@@ -58,13 +72,19 @@ export class NativePeakSocket {
       this.onerror?.(new Event("error"));
       return;
     }
+    this.finish();
+  }
+
+  /** Closed, said once whichever way it ends. */
+  private finish(): void {
+    if (this.closed) return;
+    this.closed = true;
     this.readyState = 3;
     this.onclose?.(new CloseEvent("close"));
-    this.unlisten?.();
-    this.unlisten = null;
   }
 
   send(data: string): void {
+    if (this.closed) return;
     if (this.id == null) {
       void this.opened.then(() => this.send(data));
       return;
@@ -75,15 +95,13 @@ export class NativePeakSocket {
   }
 
   close(): void {
+    if (this.closed) return;
     this.readyState = 2;
     if (this.id != null) {
       void import("@tauri-apps/api/core").then(({ invoke }) =>
         invoke("close_peak_socket", { id: this.id }),
       );
     }
-    this.unlisten?.();
-    this.unlisten = null;
-    this.readyState = 3;
-    this.onclose?.(new CloseEvent("close"));
+    this.finish();
   }
 }

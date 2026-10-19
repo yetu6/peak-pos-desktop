@@ -442,8 +442,13 @@ describe("DeviceSessionProvider", () => {
     expect(getOperationalSession()?.token).toBe("");
   });
 
-  // Starting a pairing makes a real device key and saves it before asking Yetu;
-  // with the whole suite running that can take longer than waitFor's one second.
+  // The shell says UNPAIRED from the first moment ("bootstrapping" too), while
+  // the till is still making its device key; a tap then finds no identity and
+  // does nothing (the app shows its splash meanwhile). Tap once it can pair.
+  async function readyToPair() {
+    await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent(/^unpaired$/));
+  }
+  // Saving the pending proof and asking Yetu, with the whole suite running.
   const PAIRING_STARTS = { timeout: 5_000 };
 
   it("persists the pending proof and accepts only the terminal id approved by Peak", async () => {
@@ -466,6 +471,7 @@ describe("DeviceSessionProvider", () => {
 
     renderSession(store);
     expect(await screen.findByTestId("shell")).toHaveTextContent("UNPAIRED");
+    await readyToPair();
     await userEvent.click(screen.getByTestId("start-pairing"));
     await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("waiting"), PAIRING_STARTS);
     expect(screen.getByTestId("pairing-code")).toHaveTextContent("23456-ABCDE");
@@ -495,6 +501,8 @@ describe("DeviceSessionProvider", () => {
     renderSession(store);
     await waitFor(() => expect(screen.getByTestId("phase")).toHaveTextContent("waiting"));
     expect(screen.getByTestId("approved")).toHaveTextContent("no");
+    // The till asks after the request a moment after it shows "waiting".
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(init.headers).toEqual({ "X-Peak-Pairing-Token": "claim-token-with-at-least-thirty-two-characters" });
   });
@@ -509,6 +517,7 @@ describe("DeviceSessionProvider", () => {
 
     renderSession(store);
     await screen.findByTestId("shell");
+    await readyToPair();
     await userEvent.click(screen.getByTestId("start-pairing"));
     // "unpaired" is also where it starts: wait for the refusal itself, then the phase.
     await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent(/denied/i), PAIRING_STARTS);
