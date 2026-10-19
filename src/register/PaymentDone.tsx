@@ -12,7 +12,8 @@ import { orderName } from "../lib/orderNumber";
  * amount, how, and the change to give. It says nothing about printing: the
  * till doesn't learn here whether the receipt printed (S8). New sale starts
  * the next order; Sell also comes back on its own after
- * REGISTER_AUTO_RETURN_SECONDS, waiting while the person is using this screen.
+ * REGISTER_AUTO_RETURN_SECONDS, waiting while the person is using this screen:
+ * the pointer over it, a finger on it, or one of its buttons focused.
  */
 export function PaymentDone({
   paid,
@@ -23,8 +24,8 @@ export function PaymentDone({
 }: {
   paid: PaidInfo;
   currency: string;
-  /** Leaves this screen: its main button, and on its own after the named setting's seconds. */
-  onNewSale: () => void;
+  /** Leaves this screen: its main button, and on its own (`byItself`) after the named setting's seconds. */
+  onNewSale: (byItself: boolean) => void;
   onViewReceipt: () => void;
   /** Where it goes back to, and its main button's words: Sell and New sale, or Orders when paid from there. */
   returnTo?: { place: string; action: string };
@@ -39,10 +40,10 @@ export function PaymentDone({
   const startingFocus = useRef(true);
   const paused = hovered || buttonFocused;
 
-  function finish() {
+  function finish(byItself = false) {
     if (done.current) return;
     done.current = true;
-    onNewSale();
+    onNewSale(byItself);
   }
 
   useEffect(() => {
@@ -52,7 +53,7 @@ export function PaymentDone({
   }, [paused]);
 
   useEffect(() => {
-    if (left <= 0) finish();
+    if (left <= 0) finish(true);
   });
 
   const room = paid.method === "ROOM_CHARGE";
@@ -81,6 +82,8 @@ export function PaymentDone({
         data-testid="payment-done"
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
+        // A touch screen has no hover: a finger on the screen holds it too (F-232).
+        onPointerDown={() => setHovered(true)}
       >
         <CircleCheck className="y-done__tick" aria-hidden="true" />
         <Money minor={paid.order.totalMinor} currency={currency} size="display" />
@@ -107,7 +110,7 @@ export function PaymentDone({
           <Button size={56} icon={<Receipt />} onClick={onViewReceipt}>
             View receipt
           </Button>
-          <Button ref={newSaleButton} variant="primary" size={64} onClick={finish}>
+          <Button ref={newSaleButton} variant="primary" size={64} onClick={() => finish()}>
             {returnTo.action}
           </Button>
         </div>

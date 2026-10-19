@@ -144,6 +144,7 @@ export function OfflineNewOrder() {
             order={order}
             currency={currency}
             serviceTypes={catalog.data?.serviceTypes ?? []}
+            vatIncluded={catalog.data?.taxMode === "INCLUSIVE"}
             serviceType={serviceType}
             onServiceType={(next) => {
               setServiceType(next);

@@ -385,3 +385,49 @@ describe("OrderDetailView: by round", () => {
     expect(screen.getByRole("button", { name: "One fewer Chocolate tart" })).toBeDisabled();
   });
 });
+
+// F-236: an open order is carried on with on Sell, and takes a discount here.
+describe("OrderDetail: Add items and Discount", () => {
+  it("an open order offers Add items and Discount", async () => {
+    const onAddItems = vi.fn();
+    const onDiscount = vi.fn();
+    renderDetail({ order: order({ status: "SENT", roundsSent: 1 }), onAddItems, onDiscount });
+    await userEvent.click(within(footer()).getByTestId("detail-add-items"));
+    await userEvent.click(within(footer()).getByTestId("detail-discount"));
+    expect(onAddItems).toHaveBeenCalledTimes(1);
+    expect(onDiscount).toHaveBeenCalledTimes(1);
+  });
+
+  it("an order sent to a Yetu before rounds takes nothing more, so Add items isn't offered", () => {
+    renderDetail({ order: order({ status: "SENT" }), onAddItems: vi.fn(), onDiscount: vi.fn() });
+    expect(within(footer()).queryByTestId("detail-add-items")).toBeNull();
+    expect(within(footer()).getByTestId("detail-discount")).toBeEnabled();
+  });
+
+  it("no discount once part of the bill is paid, and the sheet says why", () => {
+    renderDetail({ order: order({ status: "SENT", roundsSent: 1, paidMinor: 500_000, remainingMinor: 1_034_000 }), onAddItems: vi.fn(), onDiscount: vi.fn() });
+    expect(within(footer()).getByTestId("detail-discount")).toBeDisabled();
+    expect(footer()).toHaveTextContent("An order can't be voided or discounted once part of it is paid.");
+  });
+
+  it("a paid order offers neither", () => {
+    renderDetail({ order: order(PAID), onAddItems: vi.fn(), onDiscount: vi.fn() });
+    expect(within(footer()).queryByTestId("detail-add-items")).toBeNull();
+    expect(within(footer()).queryByTestId("detail-discount")).toBeNull();
+  });
+});
+
+// F-229: the order sheet reads like the ticket.
+describe("OrderDetail: prices that include VAT", () => {
+  it("reads Items at the menu prices, VAT included and the total", () => {
+    renderDetail({
+      order: order({ pricesIncludeTax: true, subtotalMinor: 1_864_407, taxMinor: 335_593, totalMinor: 2_200_000, remainingMinor: 2_200_000,
+        items: [{ ...line("l1", "Chicken biryani", "SENT"), unitPriceMinor: 2_200_000, taxMinor: 335_593, totalMinor: 2_200_000 }] }),
+    });
+    const totals = screen.getByTestId("order-detail-totals");
+    expect(totals).toHaveTextContent("Items");
+    expect(totals).toHaveTextContent("VAT included");
+    expect(totals).not.toHaveTextContent("Subtotal");
+    expect(totals).not.toHaveTextContent("TSh 18,644.07");
+  });
+});

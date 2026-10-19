@@ -26,8 +26,8 @@ function percentBasisPoints(text: string): number | null {
 
 /**
  * A discount on the order, approved by a different supervisor with their
- * PIN. Yetu applies it to the subtotal before VAT and works out the new
- * figures; it clears it when a line is added or removed, and refuses it
+ * PIN. Yetu applies it to the subtotal before VAT (to what the guest pays
+ * when the prices include VAT, F-229) and works out the new figures; it clears it when a line is added or removed, and refuses it
  * once part of the bill is paid. The approval is for one amount, kind and
  * reason: changing any of them asks again.
  */
@@ -106,7 +106,8 @@ export function DiscountDialog({
         if (!open && !applyDiscount.isPending) onClose();
       }}
       title="Discount"
-      description={`On order ${orderNumberWords(order)}, before VAT. A different supervisor approves with their PIN.`}
+      // F-229: with VAT inside the prices it comes off what the guest pays; with VAT on top, off the price before VAT.
+      description={`On order ${orderNumberWords(order)}, ${order.pricesIncludeTax ? "off what the guest pays" : "before VAT"}. A different supervisor approves with their PIN.`}
       testId="discount-dialog"
       footer={
         <div className="y-options__footer">

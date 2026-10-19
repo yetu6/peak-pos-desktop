@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { POSOrder } from "../lib/posContracts";
 import { PaymentDone } from "./PaymentDone";
@@ -81,7 +81,21 @@ describe("PaymentDone", () => {
   it("New sale starts the next order", () => {
     const { onNewSale } = renderDone();
     fireEvent.click(screen.getByRole("button", { name: /New sale/ }));
-    expect(onNewSale).toHaveBeenCalledTimes(1);
+    expect(onNewSale).toHaveBeenCalledWith(false);
+  });
+
+  // F-232: on a touch till there is no hover; a finger on the screen holds it.
+  it("waits while a finger is on the screen, and says when it went by itself", () => {
+    const { onNewSale } = renderDone();
+    act(() => vi.advanceTimersByTime(REGISTER_AUTO_RETURN_SECONDS * 1000 - 1000));
+    fireEvent.pointerDown(screen.getByTestId("payment-done"), { pointerType: "touch" });
+    act(() => vi.advanceTimersByTime(5000));
+    expect(onNewSale).not.toHaveBeenCalled();
+    expect(screen.getByTestId("done-countdown")).toHaveTextContent("Waiting while you look");
+    cleanup();
+    const again = renderDone();
+    act(() => vi.advanceTimersByTime(REGISTER_AUTO_RETURN_SECONDS * 1000));
+    expect(again.onNewSale).toHaveBeenCalledWith(true);
   });
 
   it("goes back to Sell on its own after the named setting's seconds", () => {

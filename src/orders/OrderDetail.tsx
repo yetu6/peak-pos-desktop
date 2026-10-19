@@ -1,4 +1,5 @@
-import { ChefHat, Printer, Trash2, Undo2, Wallet } from "lucide-react";
+import { BadgePercent, ChefHat, Plus, Printer, Trash2, Undo2, Wallet } from "lucide-react";
+import { vatFigures } from "../lib/vatWords";
 import { linesByRound, sendWords, takesMore } from "../register/rounds";
 import { orderStatusIcon } from "./orderStatusIcon";
 import { useEffect, useId, useRef, useState } from "react";
@@ -38,6 +39,7 @@ import {
 } from "./ordersWords";
 import { orderName, orderReference } from "../lib/orderNumber";
 import { refundAvailability, refundGivenWords } from "./refundWords";
+import { copyNotPrintedWords, printProblemOnce } from "../print/printProblems";
 
 export type DetailPending = "send" | "remove" | "quantity" | "reprint" | "kitchen" | "take-over" | null;
 
@@ -68,6 +70,10 @@ export interface OrderDetailViewProps {
   onKitchenReprint?: () => void;
   /** S17b: take a tab handed over to the next shift onto this till's shift. */
   onTakeOver?: () => void;
+  /** F-236: carry on with the order on Sell (the next round, or more before it is sent). */
+  onAddItems?: () => void;
+  /** F-236: a discount, with a supervisor, as on Sell's More. */
+  onDiscount?: () => void;
   onClose: () => void;
   /** A paid order's refunds and what is left to refund (S7); absent until Yetu has sent them. */
   refunds?: POSOrderRefunds;
@@ -124,6 +130,8 @@ export function OrderDetailView({
   onReprint,
   onKitchenReprint,
   onTakeOver,
+  onAddItems,
+  onDiscount,
   onClose,
   refunds,
   refundOffer,
@@ -148,6 +156,8 @@ export function OrderDetailView({
   const payments = order.payments ?? [];
   const refunded = paid && refunds !== undefined && refunds.refundedMinor > 0;
   const refundedInFull = refunded && refunds.remainingMinor <= 0;
+  // The figures as the guest reads them: with VAT inside the prices, the menu prices (F-229).
+  const figures = vatFigures(order);
 
   // Send (F8) and Pay (F9), as on Sell, while this sheet has the keys.
   const keys = useRef({ sendable, payable, canSend, canPay, busy, onSend, onPay });
@@ -237,6 +247,28 @@ export function OrderDetailView({
                   )
                 ) : null}
               </div>
+              {(takesLines && onAddItems) || onDiscount ? (
+                <div className="y-detail__row">
+                  {takesLines && onAddItems ? (
+                    <Button size={56} icon={<Plus />} data-testid="detail-add-items" disabled={busy} onClick={onAddItems}>
+                      Add items
+                    </Button>
+                  ) : null}
+                  {onDiscount ? (
+                    <Button
+                      variant="quiet"
+                      size={56}
+                      icon={<BadgePercent />}
+                      data-testid="detail-discount"
+                      disabled={busy || partPaid || lines.length === 0}
+                      aria-describedby={partPaid ? voidReasonId : undefined}
+                      onClick={onDiscount}
+                    >
+                      Discount
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
               {onKitchenReprint ? (
                 <Button
                   variant="quiet"
@@ -251,7 +283,9 @@ export function OrderDetailView({
               ) : null}
               {partPaid ? (
                 <p className="y-detail__why" id={voidReasonId}>
-                  An order can't be voided once part of it is paid.
+                  {onDiscount
+                    ? "An order can't be voided or discounted once part of it is paid."
+                    : "An order can't be voided once part of it is paid."}
                 </p>
               ) : null}
               {canPay ? (
@@ -417,18 +451,18 @@ export function OrderDetailView({
 
         <dl className="y-ticket__totals" data-testid="order-detail-totals">
           <div>
-            <dt>Subtotal</dt>
-            <dd>{formatMoney(order.subtotalMinor, currency)}</dd>
+            <dt>{figures.itemsLabel}</dt>
+            <dd>{formatMoney(figures.itemsMinor, currency)}</dd>
           </div>
-          {order.discountMinor > 0 ? (
+          {figures.discountMinor > 0 ? (
             <div>
               <dt>Discount{order.discountReason ? ` · ${order.discountReason}` : ""}</dt>
-              <dd>{formatMoney(-order.discountMinor, currency)}</dd>
+              <dd>{formatMoney(-figures.discountMinor, currency)}</dd>
             </div>
           ) : null}
           <div>
-            <dt>VAT</dt>
-            <dd>{formatMoney(order.taxMinor, currency)}</dd>
+            <dt>{figures.vatLabel}</dt>
+            <dd>{formatMoney(figures.taxMinor, currency)}</dd>
           </div>
           <div className="y-ticket__total">
             <dt>Total</dt>
@@ -506,6 +540,8 @@ export function OrderDetail({
   onPay,
   onVoid,
   onRefund,
+  onAddItems,
+  onDiscount,
   onClose,
   onReload,
 }: {
@@ -516,6 +552,10 @@ export function OrderDetail({
   onPay: () => void;
   onVoid: () => void;
   onRefund?: () => void;
+  /** Opens the order on Sell (the shell's). */
+  onAddItems?: () => void;
+  /** Opens the discount (the parent's sheet). */
+  onDiscount?: () => void;
   onClose: () => void;
   /** Ask Yetu for the order again (it may have changed on another till). */
   onReload: () => void;
@@ -618,8 +658,11 @@ export function OrderDetail({
         onSuccess: (updated) => {
           focusAfter.current = true;
           setResult("Sent to the kitchen.");
-          // The kitchen tickets Yetu made, printed as before.
-          void printAfter(updated.id);
+          // The kitchen tickets Yetu made, printed as before; one that didn't print is said (F-233).
+          void printAfter(updated.id).then((results) => {
+            const words = printProblemOnce(results, "kitchen ticket");
+            if (words) setResult(`Sent to the kitchen. ${words}`);
+          });
         },
         onError: (error) => {
           const refusal = sendProblem(error);
@@ -688,7 +731,10 @@ export function OrderDetail({
     reprint.mutate(
       { orderId: order.id, idempotencyKey: reprintKey.keyFor([order.id, receipt.data.reprintCount].join("|")) },
       {
-        onSuccess: () => setResult("A copy of the receipt was sent to the printer."),
+        onSuccess: ({ failed }) => {
+          if (failed) setProblem({ kind: "other", words: copyNotPrintedWords(failed) });
+          else setResult("A copy of the receipt was sent to the printer.");
+        },
         onError: (error) => {
           const refusal = reprintProblem(error);
           setProblem(refusal ?? { kind: "other", words: "The copy wasn't printed. Try again." });
@@ -766,6 +812,8 @@ export function OrderDetail({
       onReprint={printCopy}
       onKitchenReprint={canSend && sentToKitchen(order) ? printKitchenAgain : undefined}
       onTakeOver={canSend ? takeTabOver : undefined}
+      onAddItems={onAddItems}
+      onDiscount={onDiscount}
       onClose={onClose}
       refunds={refunds.data}
       refundOffer={refundOffer}

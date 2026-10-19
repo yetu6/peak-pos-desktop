@@ -1,4 +1,6 @@
 import { Printer } from "lucide-react";
+import { copyNotPrintedWords } from "../print/printProblems";
+import { vatFigures } from "../lib/vatWords";
 import { useReceipt, useReprintReceipt } from "../hooks/usePosData";
 import { reprintProblem } from "../orders/ordersWords";
 import { formatMoney } from "../lib/money";
@@ -25,7 +27,8 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
   const reprint = useReprintReceipt();
   // A copy asked for again after a lost answer reuses its key; each new copy (a new count) gets a new one.
   const requestKey = useRequestKey();
-  const reprintError = reprintProblem(reprint.error);
+  // Yetu made the copy but the printer didn't print it: said, not passed over (F-233).
+  const reprintError = reprintProblem(reprint.error) ?? (reprint.data?.failed ? copyNotPrintedWords(reprint.data.failed) : null);
   // The till doesn't lock itself while a copy is with Yetu.
   useHoldIdleLock(reprint.isPending);
   return (
@@ -63,6 +66,8 @@ export function ReceiptSheet({
   onClose: () => void;
 }) {
   const doc = receipt?.document;
+  // The figures as the guest reads them: with VAT inside the prices, the menu prices (F-229).
+  const figures = doc ? vatFigures(doc) : null;
 
   return (
     <Dialog
@@ -151,12 +156,18 @@ export function ReceiptSheet({
             </ul>
             <dl className="y-receipt__totals">
               <div>
-                <dt>Subtotal</dt>
-                <dd>{formatMoney(doc.subtotalMinor, doc.currency)}</dd>
+                <dt>{figures!.itemsLabel}</dt>
+                <dd>{formatMoney(figures!.itemsMinor, doc.currency)}</dd>
               </div>
+              {figures!.discountMinor > 0 ? (
+                <div>
+                  <dt>Discount{doc.discountReason ? ` · ${doc.discountReason}` : ""}</dt>
+                  <dd>{formatMoney(-figures!.discountMinor, doc.currency)}</dd>
+                </div>
+              ) : null}
               <div>
-                <dt>VAT</dt>
-                <dd>{formatMoney(doc.taxMinor, doc.currency)}</dd>
+                <dt>{figures!.vatLabel}</dt>
+                <dd>{formatMoney(figures!.taxMinor, doc.currency)}</dd>
               </div>
               <div className="y-receipt__total">
                 <dt>Total</dt>

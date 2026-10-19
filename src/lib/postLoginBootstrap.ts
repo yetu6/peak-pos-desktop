@@ -30,8 +30,18 @@ export interface PostLoginBootstrap {
   certifiedCatalog?: CatalogActivationResult | { state: "BACKEND_GAP" | "UNAVAILABLE" | "INVALID" };
 }
 
-export interface PostLoginBootstrapOptions {
+export interface OfflineStartOptions {
   installOfflineBootstrap?: (expectedTerminalId:string,expectedPropertyId:string,expectedOutletId:string,bootstrap:unknown)=>Promise<{authorization:AuthorizationStageResult;catalog:CatalogActivationResult}>;
+  /**
+   * Fetches and installs Yetu's offline keys (retry_sync) first: a new till
+   * has none, and without them it can't check the start-up's signatures, so
+   * its lease stayed STAGED and its catalogue MISSING (F-228). It also tells
+   * the till it reached Yetu, so a reachable till isn't called Offline.
+   */
+  installTrustKeyset?: () => Promise<unknown>;
+}
+
+export interface PostLoginBootstrapOptions extends OfflineStartOptions {
   stageOfflineAuthorization?: (
     envelope: SignedAuthorizationBundle,
   ) => Promise<AuthorizationStageResult>;
@@ -96,19 +106,7 @@ export async function bootstrapOperationalSession(
   };
 
   if (options.installOfflineBootstrap) {
-    let response:Response;
-    try { response=await fetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/offline/bootstrap`,{method:"POST",headers:{Authorization:`Bearer ${session.token}`,"Content-Type":"application/json"},body:"{}"}); }
-    catch { result.offlineAuthorization={state:"UNAVAILABLE"}; return result; }
-    if(response.status===401)throw new SessionExpiredError();
-    if(response.status===404||response.status===501){result.offlineAuthorization={state:"BACKEND_GAP"};return result}
-    if(!response.ok){result.offlineAuthorization={state:"UNAVAILABLE"};return result}
-    try{
-      const bootstrap:unknown=await response.json();
-      const installed=await options.installOfflineBootstrap(session.terminalId,session.propertyId,session.outletId,bootstrap);
-      result.offlineAuthorization=installed.authorization;result.certifiedCatalog=installed.catalog;
-      await fetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/offline/catalog-acknowledge`,{method:"POST",headers:{Authorization:`Bearer ${session.token}`,"Content-Type":"application/json"},body:JSON.stringify({catalogSnapshotId:installed.catalog.snapshotId,activatedAtMs:Date.now()})});
-    }catch{result.offlineAuthorization={state:"INVALID"}}
-    return result;
+    return { ...result, ...(await prepareOfflineStart(baseUrl, session, options)) };
   }
 
   if (options.stageOfflineAuthorization) {
@@ -132,6 +130,35 @@ export async function bootstrapOperationalSession(
     }
   }
   return result;
+}
+
+/**
+ * The till's offline start-up (POST /pos/offline/bootstrap): its lease and
+ * signed catalogue, installed in the local store. Yetu gives one only while a
+ * shift is open on the till (409 before), so it is asked for at sign-in and
+ * again when a shift opens (F-228).
+ */
+export async function prepareOfflineStart(
+  baseUrl: string,
+  session: OperationalSession,
+  options: OfflineStartOptions,
+): Promise<Pick<PostLoginBootstrap, "offlineAuthorization" | "certifiedCatalog">> {
+  if (!options.installOfflineBootstrap) return {};
+  if (options.installTrustKeyset) {
+    try { await options.installTrustKeyset(); } catch { /* the start-up below then says it can't be checked */ }
+  }
+  let response:Response;
+  try { response=await fetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/offline/bootstrap`,{method:"POST",headers:{Authorization:`Bearer ${session.token}`,"Content-Type":"application/json"},body:"{}"}); }
+  catch { return {offlineAuthorization:{state:"UNAVAILABLE"}}; }
+  if(response.status===401)throw new SessionExpiredError();
+  if(response.status===404||response.status===501)return {offlineAuthorization:{state:"BACKEND_GAP"}};
+  if(!response.ok)return {offlineAuthorization:{state:"UNAVAILABLE"}};
+  try{
+    const bootstrap:unknown=await response.json();
+    const installed=await options.installOfflineBootstrap(session.terminalId,session.propertyId,session.outletId,bootstrap);
+    await fetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/offline/catalog-acknowledge`,{method:"POST",headers:{Authorization:`Bearer ${session.token}`,"Content-Type":"application/json"},body:JSON.stringify({catalogSnapshotId:installed.catalog.snapshotId,activatedAtMs:Date.now()})});
+    return {offlineAuthorization:installed.authorization,certifiedCatalog:installed.catalog};
+  }catch{return {offlineAuthorization:{state:"INVALID"}}}
 }
 
 async function bootstrapCertifiedCatalog(

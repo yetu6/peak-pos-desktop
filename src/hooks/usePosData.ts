@@ -1,4 +1,5 @@
 import type { FnbTillMenu } from "../fnb/fnbContracts";
+import type { PrintResult } from "../lib/kitchenTicketPrint";
 import { tagNote } from "../fnb/fnbWords";
 import { printFor } from "../print/printFor";
 import { loadPrinterSettings } from "../print/printerStore";
@@ -709,9 +710,10 @@ export function useReprintReceipt() {
       // The reprint is a chained pos_print_jobs row; the terminal claims and
       // physically prints it exactly like the original and kitchen tickets.
       // Its source is the order (receipt.id is the copy's own id: asking for
-      // that printed nothing).
-      await printFor(propertyId, args.orderId);
-      return receipt;
+      // that printed nothing). `failed` is what the printer said when it
+      // didn't print the copy (F-233): Yetu made it either way.
+      const results = await printFor(propertyId, args.orderId);
+      return { receipt, failed: results.find((result) => !result.ok)?.error };
     },
     onSuccess: (_data, variables) =>
       queryClient.invalidateQueries({ queryKey: ["pos", "receipt", variables.orderId] }),
@@ -764,10 +766,10 @@ export function useCloseBusinessDay() {
 // Print jobs (kitchen tickets, receipts) already sent for a source id.
 // ---------------------------------------------------------------------------
 
-/** Staff's tags for an item, from the menu Yetu last sent this till (none while menus are off). */
+/** Staff's tags for an item, from the menu Yetu last sent this till, grouped or not (F-231). */
 function menuTags(queryClient: ReturnType<typeof useQueryClient>, outletId: string | undefined) {
   const menu = queryClient.getQueryData<FnbTillMenu>(["fnb", "menu", outletId]);
-  return (productId: string) => (menu?.enabled ? tagNote(menu, productId) : undefined);
+  return (productId: string) => (menu ? tagNote(menu, productId) : undefined);
 }
 
 /** This till prints no kitchen tickets (Manager, Printers): a copy would print nowhere. */
@@ -832,12 +834,13 @@ export function usePrintAfter(propertyId: string) {
   const printing = useRef(false);
   const queryClient = useQueryClient();
   const outletId = useOutletId();
-  return async (sourceId: string | undefined): Promise<void> => {
-    if (!sourceId || printing.current) return;
+  // What each job did, so the screen can say when one didn't print (F-233).
+  return async (sourceId: string | undefined): Promise<PrintResult[]> => {
+    if (!sourceId || printing.current) return [];
     printing.current = true;
     try {
       // Kitchen tickets to the kitchen's printer, with staff's tags from the menu Yetu last sent (S8a).
-      await printFor(propertyId, sourceId, menuTags(queryClient, outletId));
+      return await printFor(propertyId, sourceId, menuTags(queryClient, outletId));
     } finally {
       printing.current = false;
     }

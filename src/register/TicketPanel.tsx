@@ -1,4 +1,5 @@
 import { linesByRound } from "./rounds";
+import { vatFigures } from "../lib/vatWords";
 import { ChefHat, Trash2 } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Banner, Button, EmptyState, Field, Money, PermissionNotice, SegmentedControl, StatusChip, Stepper, TicketLine, type Refusal } from "../components/system";
@@ -80,6 +81,8 @@ export function TicketPanel({
   const type = order?.serviceType ?? serviceType;
   const labelName = labelFor(type);
   const lines = (order?.items ?? []).filter((line) => line.status !== "VOIDED");
+  // The figures as the guest reads them: with VAT inside the prices, the menu prices (F-229).
+  const figures = order ? vatFigures(order) : null;
   // The newest line in view: the ticket scrolls to it as lines are added.
   const groupsRef = useRef<HTMLDivElement>(null);
   const lineCount = lines.length;
@@ -200,23 +203,23 @@ export function TicketPanel({
       <footer className="y-ticket__foot">
         <dl className="y-ticket__totals" data-testid="ticket-totals">
           <div>
-            <dt>Subtotal</dt>
+            <dt>{figures?.itemsLabel ?? "Subtotal"}</dt>
             <dd>
-              <Money minor={order ? order.subtotalMinor : null} currency={currency} />
+              <Money minor={figures ? figures.itemsMinor : null} currency={currency} />
             </dd>
           </div>
-          {order && order.discountMinor > 0 ? (
+          {order && figures && figures.discountMinor > 0 ? (
             <div>
               <dt>Discount{order.discountReason ? ` · ${order.discountReason}` : ""}</dt>
               <dd data-testid="cart-discount">
-                <Money minor={-order.discountMinor} currency={currency} />
+                <Money minor={-figures.discountMinor} currency={currency} />
               </dd>
             </div>
           ) : null}
           <div>
-            <dt>VAT</dt>
+            <dt>{figures?.vatLabel ?? "VAT"}</dt>
             <dd>
-              <Money minor={order ? order.taxMinor : null} currency={currency} />
+              <Money minor={figures ? figures.taxMinor : null} currency={currency} />
             </dd>
           </div>
           <div className="y-ticket__total">

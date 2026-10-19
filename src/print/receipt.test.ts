@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PAPER_58MM, PAPER_80MM, readable } from "./escpos";
 import { receiptBytes, textPaperBytes } from "./receipt";
-import type { ReceiptCopy } from "../lib/receiptPrint";
+import { formatReceipt, receiptCopyFromPrintDocument, type ReceiptCopy } from "../lib/receiptPrint";
 
 const DRAWER = [0x1b, 0x70, 0, 25, 250];
 const hasDrawer = (bytes: Uint8Array) => Array.from(bytes).join(",").includes(DRAWER.join(","));
@@ -64,5 +64,40 @@ describe("the receipt on a thermal printer (S8b)", () => {
     expect(paper.slice(0, 3)).toEqual(["REFUND", "Order 42", ""]);
     expect(hasDrawer(bytes)).toBe(true);
     expect(Array.from(bytes.slice(-4))).toEqual([0x1d, 0x56, 0x42, 3]);
+  });
+});
+
+// F-229: the printed receipt of an order whose prices include VAT.
+describe("a printed receipt whose prices include VAT", () => {
+  const document = {
+    propertyName: "Bahari QA Hotel",
+    dailyNumber: 1,
+    currency: "TZS",
+    pricesIncludeTax: true,
+    items: [{ name: "Cappuccino", quantity: 3, totalMinor: 1_500_000 }],
+    subtotalMinor: 1_271_186,
+    discountMinor: 169_491,
+    discountReason: "Regular guest",
+    taxMinor: 198_305,
+    totalMinor: 1_300_000,
+  };
+
+  it("reads Items at the menu prices, the TSh 2,000 that came off, VAT included and the total", () => {
+    const copy = receiptCopyFromPrintDocument(document);
+    const text = formatReceipt(copy);
+    expect(text).toContain("Items  TSh 15,000");
+    expect(text).toContain("Discount (Regular guest)  -TSh 2,000");
+    expect(text).toContain("VAT included  TSh 1,983.05");
+    expect(text).toContain("TOTAL  TSh 13,000");
+    expect(text).not.toContain("Subtotal");
+    const paper = readable(receiptBytes(copy, PAPER_58MM)).split("\n");
+    expect(paper.some((line) => line.startsWith("VAT included") && line.endsWith("TSh 1,983.05"))).toBe(true);
+    expect(paper.some((line) => line.startsWith("Items") && line.endsWith("TSh 15,000"))).toBe(true);
+  });
+
+  it("an order with VAT on top prints as before", () => {
+    const text = formatReceipt(receiptCopyFromPrintDocument({ ...document, pricesIncludeTax: false }));
+    expect(text).toContain("Subtotal  TSh 12,711.86");
+    expect(text).toContain("VAT  TSh 1,983.05");
   });
 });

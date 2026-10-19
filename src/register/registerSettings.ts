@@ -11,6 +11,13 @@
 export const REGISTER_AUTO_RETURN_SECONDS = 8;
 
 /**
+ * register.quietAfterReturnMs: when the payment screen goes back to Sell on
+ * its own, a tap on the menu this soon after is taken as the person reaching
+ * for the payment screen's button, not a sale, and starts no order (F-232).
+ */
+export const REGISTER_QUIET_AFTER_RETURN_MS = 800;
+
+/**
  * register.payCheckEverySeconds: while a payment's answer was lost, how often
  * the Pay sheet sends the same request to Yetu again (once at once, then this
  * often) until Yetu answers for it.

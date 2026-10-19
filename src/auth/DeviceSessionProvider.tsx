@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { ROSTER_REFRESH_SECONDS } from "../access/accessSettings";
 import { applyOpsTokenToBridge } from "../lib/applyOpsToken";
 import { usesRealtimeBridge } from "../lib/peakSocket";
 import {
@@ -43,11 +44,12 @@ import { REALTIME_BRIDGE_URL } from "../lib/env";
 import { getApiBaseUrl, loadPeakApiUrl, savePeakApiUrl } from "../lib/peakConfig";
 import {
   clearOperationalSession,
+  getOperationalSession,
   SessionExpiredError,
   setOperationalSession,
   type OperationalSession,
 } from "../lib/operationalSession";
-import { bootstrapOperationalSession } from "../lib/postLoginBootstrap";
+import { bootstrapOperationalSession, prepareOfflineStart } from "../lib/postLoginBootstrap";
 import {
   loadNativeOfflineAuthority,
   type OfflineAuthority,
@@ -96,6 +98,8 @@ export interface DeviceSessionValue {
    *  PIN entry; manual staff-number entry always remains the fallback. */
   roster: RosterEntry[];
   refreshRoster: () => Promise<void>;
+  /** Asks Yetu again for the till's offline start-up, for when a shift has opened since sign-in (F-228). */
+  prepareOffline: () => Promise<void>;
   offlineEligibility: OfflineEligibilityStatus | null;
   /** After too many sign-in attempts (429): when Yetu allows the next one (ms since the epoch). */
   signInHeldUntil: number | null;
@@ -236,6 +240,18 @@ export function DeviceSessionProvider({
   useEffect(() => {
     if (phase !== "locked") return;
     void refreshRoster();
+    // Staff added or given a PIN while the till waits here appear without a restart (F-227).
+    const again = () => {
+      if (document.visibilityState !== "hidden") void refreshRoster();
+    };
+    const timer = window.setInterval(again, ROSTER_REFRESH_SECONDS * 1000);
+    window.addEventListener("focus", again);
+    document.addEventListener("visibilitychange", again);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", again);
+      document.removeEventListener("visibilitychange", again);
+    };
   }, [phase, refreshRoster]);
 
   useEffect(() => {
@@ -512,6 +528,21 @@ export function DeviceSessionProvider({
     phase,
   ]);
 
+  const prepareOffline = useCallback(async () => {
+    const current = getOperationalSession();
+    const core = localPosCoreRef.current;
+    if (!current || !core) return;
+    try {
+      await prepareOfflineStart(peakUrl, current, {
+        installTrustKeyset: () => core.retrySync(peakUrl, current.token),
+        installOfflineBootstrap: (terminalId, propertyId, outletId, bootstrap) => core.installBootstrap(terminalId, propertyId, outletId, bootstrap),
+      });
+      if (offlineAuthorityRef.current) setOfflineEligibility(await offlineAuthorityRef.current.eligibilityStatus(current.staffId));
+    } catch {
+      // Best effort, like at sign-in: the till works online without it.
+    }
+  }, [peakUrl]);
+
   const unlock = useCallback(
     async (staffNumber: string, pin: string) => {
       const current = identityRef.current;
@@ -540,6 +571,9 @@ export function DeviceSessionProvider({
           localPosCoreRef.current ??= await loadLocalPosCore();
         }
         const bootstrap = await bootstrapOperationalSession(peakUrl, next, {
+          installTrustKeyset: localPosCoreRef.current
+            ? () => localPosCoreRef.current!.retrySync(peakUrl, next.token)
+            : undefined,
           installOfflineBootstrap: localPosCoreRef.current
             ? (terminalId, propertyId, outletId, bootstrap) => localPosCoreRef.current!.installBootstrap(terminalId, propertyId, outletId, bootstrap)
             : undefined,
@@ -690,6 +724,7 @@ export function DeviceSessionProvider({
       keyStorageWarning,
       roster,
       refreshRoster,
+      prepareOffline,
       offlineEligibility,
       signInHeldUntil,
     }),
@@ -707,6 +742,7 @@ export function DeviceSessionProvider({
       keyStorageWarning,
       roster,
       refreshRoster,
+      prepareOffline,
       offlineEligibility,
       signInHeldUntil,
     ],

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { printProblemOnce } from "../print/printProblems";
 import { DiscountDialog } from "../components/DiscountDialog";
 import { VoidOrderDialog } from "../components/VoidOrderDialog";
 import {
@@ -8,6 +9,7 @@ import {
   useCreateOrder,
   useHasPermission,
   useIdempotencyKey,
+  useOrder,
   usePosShift,
   usePrintAfter,
   usePropertyId,
@@ -29,15 +31,24 @@ import { RegisterLayout } from "../register/RegisterLayout";
 import { TicketActions } from "../register/TicketActions";
 import { TicketPanel } from "../register/TicketPanel";
 import { sellProblem } from "../register/registerWords";
+import { REGISTER_QUIET_AFTER_RETURN_MS } from "../register/registerSettings";
 import { useRequestKey } from "../lib/useRequestKey";
 import type { POSCatalogProduct, POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 import { orderName } from "../lib/orderNumber";
+import { voidedWords } from "../orders/ordersWords";
 
 /**
  * Sell, against the live API: the catalog from GET /pos/catalog and the
  * ticket from the order mutations. The offline register is a separate screen.
+ *
+ * `resume` is an order to carry on with (F-236): the one this person left on
+ * the ticket to look at Orders or the kitchen, or one chosen in Orders with
+ * Add items. `onTicket` hears of the order on the ticket while it is open.
  */
-export function NewOrder() {
+export function NewOrder({
+  resume = null,
+  onTicket,
+}: { resume?: POSOrder | null; onTicket?: (order: POSOrder | null) => void } = {}) {
   const { shift } = usePosShift();
   const catalog = useCatalog();
   // The Restaurant & Bar module's menu (groups, sizes, tags); none: sell as before.
@@ -46,10 +57,12 @@ export function NewOrder() {
   const currency = useCatalogCurrency();
   const [activeCategory, setActiveCategory] = useState<string>(ALL_CATEGORIES);
   const [search, setSearch] = useState("");
-  const [serviceType, setServiceType] = useState<ServiceType>("DINE_IN");
-  const [tableLabel, setTableLabel] = useState("");
+  const [serviceType, setServiceType] = useState<ServiceType>(resume?.serviceType ?? "DINE_IN");
+  const [tableLabel, setTableLabel] = useState(resume?.tableLabel ?? "");
   const [notes, setNotes] = useState("");
-  const [order, setOrder] = useState<POSOrder | null>(null);
+  const [order, setOrder] = useState<POSOrder | null>(resume);
+  // The order as it is now, for taps waiting their turn (their render's `order` is older).
+  const orderRef = useRef<POSOrder | null>(resume);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [sentAt, setSentAt] = useState<Date | null>(null);
   const [configuring, setConfiguring] = useState<POSCatalogProduct | null>(null);
@@ -79,6 +92,38 @@ export function NewOrder() {
   const removeKey = useIdempotencyKey();
   const quantityKey = useIdempotencyKey();
 
+  function adopt(next: POSOrder | null) {
+    orderRef.current = next;
+    setOrder(next);
+  }
+
+  // The ticket's open order is told to the shell, so it is still here when the person comes back.
+  const ticketRef = useRef(onTicket);
+  ticketRef.current = onTicket;
+  useEffect(() => {
+    ticketRef.current?.(order && order.status !== "CLOSED" && order.status !== "VOIDED" ? order : null);
+  }, [order]);
+
+  // An order brought back to Sell is asked for once more, as Yetu has it now:
+  // another till may have added to it, paid it or voided it meanwhile.
+  const [resumedId] = useState(resume?.id);
+  const latest = useOrder(resumedId);
+  const checked = useRef(false);
+  useEffect(() => {
+    const fresh = latest.data;
+    if (checked.current || !latest.isFetchedAfterMount || !fresh) return;
+    checked.current = true;
+    const current = orderRef.current;
+    if (current?.id !== fresh.id) return;
+    if (fresh.status === "CLOSED" || fresh.status === "VOIDED") {
+      clearTicket();
+      setNotice(`${orderName(fresh)} is ${fresh.status === "CLOSED" ? "paid" : "voided"} already. Start a new sale.`);
+    } else if (fresh.version > current.version) {
+      adopt(fresh);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latest.isFetchedAfterMount, latest.data]);
+
   const createProblem = sellProblem(createOrder.error, "create");
   const addProblem = sellProblem(addItem.error, "add");
   const removeProblem = sellProblem(removeItem.error, "remove");
@@ -104,7 +149,7 @@ export function NewOrder() {
       : null;
 
   async function ensureOrder(): Promise<POSOrder | null> {
-    if (order) return order;
+    if (orderRef.current) return orderRef.current;
     if (!shift) {
       setActionError("Open a shift before taking orders.");
       return null;
@@ -119,22 +164,31 @@ export function NewOrder() {
         notes: notes.trim() || undefined,
         idempotencyKey: createKey.next(),
       });
-      setOrder(created);
+      adopt(created);
       return created;
     } catch {
       return null;
     }
   }
 
-  async function tapProduct(product: POSCatalogProduct) {
-    if (!canMutate || addBlocked) return;
+  // Taps made while an add is with Yetu wait their turn, in the order they
+  // were made (F-230): two quick taps on a beer are two beers, never one.
+  const taps = useRef<Promise<void>>(Promise.resolve());
+  const adding = createOrder.isPending || addItem.isPending;
+  // Until when a tap on the menu is the person reaching for the payment screen that just went (F-232).
+  const quietUntil = useRef(0);
+
+  function tapProduct(product: POSCatalogProduct) {
+    if (!shift || addBlocked || (busy && !adding)) return;
+    if (Date.now() < quietUntil.current) return;
     if (product.isAvailable === false) return;
     setNotice(null);
     if ((product.modifierGroups?.length ?? 0) > 0 || sizesOf(menu, product.id).length > 1) {
+      if (busy) return;
       openOptions(product);
       return;
     }
-    await addProduct(product, 1, []);
+    taps.current = taps.current.then(() => addProduct(product, 1, []));
   }
 
   /** A fresh options sheet starts without an earlier add's refusal. */
@@ -156,7 +210,7 @@ export function NewOrder() {
 
   async function addProduct(product: POSCatalogProduct, quantity: number, modifierOptionIds: string[], variantId?: string) {
     const current = await ensureOrder();
-    if (!current) return;
+    if (!current || !takesMore(current)) return;
     setActionError(null);
     try {
       const next = await addItem.mutateAsync({
@@ -179,9 +233,9 @@ export function NewOrder() {
           version: next.version,
           idempotencyKey: addKey.next(),
         });
-        setOrder(retried);
+        adopt(retried);
       } else {
-        setOrder(next);
+        adopt(next);
       }
       setConfiguring(null);
     } catch {
@@ -201,7 +255,7 @@ export function NewOrder() {
         version: order.version,
         idempotencyKey: quantityKey.next(),
       });
-      setOrder(next);
+      adopt(next);
     } catch {
       // The words come from setLineQuantity.error.
     }
@@ -216,7 +270,7 @@ export function NewOrder() {
         version: order.version,
         idempotencyKey: removeKey.next(),
       });
-      setOrder(next);
+      adopt(next);
       setSelectedLineId(null);
     } catch {
       // The words come from removeItem.error.
@@ -232,9 +286,14 @@ export function NewOrder() {
         version: order.version,
         idempotencyKey: sendRequest.keyFor(["send", order.id, order.version].join("|")),
       });
-      setOrder(next);
+      adopt(next);
       setSentAt(new Date());
-      await printAfter(next.id);
+      // The kitchen ticket prints on its own time: the send is done, and Send
+      // and pay opens the payment now (F-241), whatever the printer does.
+      void printAfter(next.id).then((results) => {
+        const words = printProblemOnce(results, "kitchen ticket");
+        if (words) setNotice(words);
+      });
       return true;
     } catch (error) {
       // The words come from sendOrder.error. Yetu refused it: the next press is a new request.
@@ -252,7 +311,7 @@ export function NewOrder() {
   }
 
   function clearTicket() {
-    setOrder(null);
+    adopt(null);
     setTableLabel("");
     setNotes("");
     setSelectedLineId(null);
@@ -264,11 +323,15 @@ export function NewOrder() {
   function afterPaid(info: PaidInfo) {
     setSettleOpen(false);
     setPaid(info);
-    // The receipt Yetu made on closing is printed as before; the till doesn't hear back here (S8).
-    void printAfter(info.order.id);
+    // The receipt Yetu made on closing is printed as before; one that didn't print is said on Sell (F-233).
+    void printAfter(info.order.id).then((results) => {
+      const words = printProblemOnce(results, "receipt");
+      if (words) setNotice(words);
+    });
   }
 
-  function newSale() {
+  function newSale(byItself = false) {
+    if (byItself) quietUntil.current = Date.now() + REGISTER_QUIET_AFTER_RETURN_MS;
     setPaid(null);
     clearTicket();
   }
@@ -287,7 +350,7 @@ export function NewOrder() {
             search={search}
             onSearch={setSearch}
             addBlocked={addBlocked}
-            onTap={(product) => void tapProduct(product)}
+            onTap={tapProduct}
             onSoldOutToggle={(product, available) => void setSoldOut(product, available)}
             loading={catalog.isLoading}
             failed={catalog.isError}
@@ -297,7 +360,7 @@ export function NewOrder() {
           <TicketPanel
             order={order}
             currency={currency}
-            tagsOf={(productId) => (menu?.enabled ? tagNote(menu, productId) : undefined)}
+            tagsOf={(productId) => (menu ? tagNote(menu, productId) : undefined)}
             serviceType={serviceType}
             onServiceType={setServiceType}
             label={tableLabel}
@@ -350,7 +413,7 @@ export function NewOrder() {
           order={order}
           currency={currency}
           onClose={() => setSettleOpen(false)}
-          onOrderChange={setOrder}
+          onOrderChange={adopt}
           onPaid={afterPaid}
         />
       )}
@@ -359,7 +422,7 @@ export function NewOrder() {
           order={order}
           currency={currency}
           onClose={() => setDiscountOpen(false)}
-          onApplied={(updated) => setOrder(updated)}
+          onApplied={adopt}
         />
       )}
       {voidOpen && order && (
@@ -368,9 +431,9 @@ export function NewOrder() {
           currency={currency}
           onClose={() => setVoidOpen(false)}
           onVoided={() => {
-            const name = orderName(order);
+            const words = voidedWords(order);
             clearTicket();
-            setNotice(`${name} was voided. The kitchen has been told.`);
+            setNotice(words);
           }}
         />
       )}

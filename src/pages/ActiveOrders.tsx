@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { printProblemOnce } from "../print/printProblems";
+import { DiscountDialog } from "../components/DiscountDialog";
 import { ReceiptView } from "../components/ReceiptView";
 import { VoidOrderDialog } from "../components/VoidOrderDialog";
 import {
@@ -22,11 +24,13 @@ import { PaymentDone } from "../register/PaymentDone";
 import { PaySheet, type PaidInfo } from "../register/PaySheet";
 import { formatMoney } from "../lib/money";
 import { orderName } from "../lib/orderNumber";
+import { voidedWords } from "../orders/ordersWords";
 
-/** What is open over the list: an order, its Pay, Void or Refund sheet, payment done, or a receipt. */
+/** What is open over the list: an order, its Pay, Void, Discount or Refund sheet, payment done, or a receipt. */
 type Overlay =
   | { kind: "detail"; orderId: string }
   | { kind: "pay"; orderId: string }
+  | { kind: "discount"; orderId: string }
   | { kind: "void"; orderId: string }
   | { kind: "refund"; orderId: string }
   | { kind: "done"; paid: PaidInfo }
@@ -38,9 +42,13 @@ type Overlay =
  * kept fresh by live updates) and today's paid ones at this outlet
  * (view=paid for the shift's business day, asked for only when that tab is
  * opened, a page at a time). An order opens in its detail; Pay is Sell's Pay sheet,
- * Void is the supervisor's void, and a paid order prints a copy of its receipt.
+ * Void and Discount are the supervisor's, Add items carries on with it on Sell
+ * (F-236), and a paid order prints a copy of its receipt.
  */
-export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
+export function ActiveOrders({
+  onNewOrder,
+  onAddItems,
+}: { onNewOrder?: () => void; onAddItems?: (order: POSOrder) => void } = {}) {
   const orders = useActiveOrders();
   const { shift } = usePosShift();
   const currency = useCatalogCurrency();
@@ -55,6 +63,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
   const [notice, setNotice] = useState<string | null>(null);
   const paid = usePaidOrders(shift ?? undefined, tab === "paid", query.trim().length > 0);
   const voided = useRef(false);
+  const refunded = useRef(false);
   // The order whose row gets focus back once nothing is open over the list.
   const returnFocusTo = useRef<string | null>(null);
 
@@ -118,8 +127,11 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
   function afterPaid(info: PaidInfo) {
     returnFocusTo.current = info.order.id;
     setOverlay({ kind: "done", paid: info });
-    // The receipt Yetu made on closing is printed as before.
-    void printAfter(info.order.id);
+    // The receipt Yetu made on closing is printed as before; one that didn't print is said (F-233).
+    void printAfter(info.order.id).then((results) => {
+      const words = printProblemOnce(results, "receipt");
+      if (words) setNotice(words);
+    });
   }
 
   return (
@@ -152,9 +164,22 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
             voided.current = false;
             setOverlay({ kind: "void", orderId: current.id });
           }}
-          onRefund={() => setOverlay({ kind: "refund", orderId: current.id })}
+          onRefund={() => {
+            refunded.current = false;
+            setOverlay({ kind: "refund", orderId: current.id });
+          }}
+          onAddItems={onAddItems ? () => onAddItems(current) : undefined}
+          onDiscount={currency ? () => setOverlay({ kind: "discount", orderId: current.id }) : undefined}
           onClose={close}
           onReload={reloadOrders}
+        />
+      ) : null}
+      {overlay?.kind === "discount" && current && currency ? (
+        <DiscountDialog
+          order={current}
+          currency={currency}
+          onApplied={() => reloadOrders()}
+          onClose={() => setOverlay({ kind: "detail", orderId: current.id })}
         />
       ) : null}
       {overlay?.kind === "pay" && current && currency ? (
@@ -171,7 +196,7 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
           currency={currency}
           onVoided={() => {
             voided.current = true;
-            setNotice(`${orderName(current)} was voided. The kitchen has been told.`);
+            setNotice(voidedWords(current));
           }}
           onClose={() => {
             if (voided.current) close();
@@ -184,8 +209,16 @@ export function ActiveOrders({ onNewOrder }: { onNewOrder?: () => void } = {}) {
         <RefundItemsSheet
           order={current}
           currency={currency}
-          onRefunded={(refund) => setNotice(`${orderName(current)}: ${formatMoney(refund.totalMinor, refund.currency || currency)} refunded.`)}
-          onClose={() => setOverlay({ kind: "detail", orderId: current.id })}
+          onRefunded={(refund) => {
+            refunded.current = true;
+            setNotice(`${orderName(current)}: ${formatMoney(refund.totalMinor, refund.currency || currency)} refunded.`);
+          }}
+          // Done after a refund goes back to the list, which says what was given back, so the
+          // till is free to move on (F-237); Cancel goes back to the order.
+          onClose={() => {
+            if (refunded.current) close();
+            else setOverlay({ kind: "detail", orderId: current.id });
+          }}
         />
       ) : null}
       {overlay?.kind === "done" && currency ? (

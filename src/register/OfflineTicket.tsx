@@ -15,6 +15,8 @@ export interface OfflineTicketProps {
   currency: string;
   /** The order types the saved menu allows. */
   serviceTypes: LocalCatalogView["serviceTypes"];
+  /** F-229: the saved menu's prices hold their VAT (taxMode INCLUSIVE). */
+  vatIncluded?: boolean;
   serviceType: string;
   onServiceType: (type: string) => void;
   /** The table (or room), saved with the sale when the field is left. */
@@ -42,6 +44,7 @@ export function OfflineTicket({
   order,
   currency,
   serviceTypes,
+  vatIncluded = false,
   serviceType,
   onServiceType,
   label,
@@ -162,7 +165,7 @@ export function OfflineTicket({
             </dd>
           </div>
           <div>
-            <dt>VAT</dt>
+            <dt>{vatIncluded ? "VAT included" : "VAT"}</dt>
             <dd>
               <Money minor={order && lines.length > 0 ? order.taxMinor : null} currency={currency} />
             </dd>

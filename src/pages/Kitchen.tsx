@@ -201,7 +201,7 @@ export function Kitchen() {
       busyIds={new Set(held.keys())}
       canMove={canMove}
       onNextStep={(ticket) => void nextStep(ticket)}
-      tagsOf={(productId) => (tillMenu?.enabled ? tagNote(tillMenu, productId) : undefined)}
+      tagsOf={(productId) => (tillMenu ? tagNote(tillMenu, productId) : undefined)}
       result={result}
       problem={problem}
       loading={source.isLoading}

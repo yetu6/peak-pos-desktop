@@ -9,7 +9,7 @@ import { formatMoney, majorDigits } from "../lib/money";
 import type { POSOrder, POSOrderPayment, POSStationTicket } from "../lib/posContracts";
 import { otherWords, problemOf, stepRefusal, UNREACHABLE } from "../lib/problemWords";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, ticketStepWords, type Tone } from "../lib/words";
-import { orderReference } from "../lib/orderNumber";
+import { orderName, orderReference } from "../lib/orderNumber";
 
 const AMOUNT_TYPED = /^\d+(\.\d*)?$/;
 
@@ -105,6 +105,12 @@ export function orderTimeline({
     }
   }
 
+  // A line taken off before it was sent stays in the order's history (F-239).
+  for (const line of order.items) {
+    if (line.status !== "VOIDED" || !line.removedAt) continue;
+    const who = line.removedByName?.trim();
+    add(line.removedAt, `${line.quantity} × ${line.name} taken off before it was sent${who ? ` by ${who}` : ""}`);
+  }
   for (const payment of order.payments ?? []) add(payment.createdAt, paymentWords(payment, currency));
   if (order.status === "VOIDED") {
     if (timeOf(order.closedAt) !== null) add(order.closedAt, orderStatusWords("VOIDED"));
@@ -218,4 +224,13 @@ export function orderStateWords(order: Pick<POSOrder, "status" | "totalMinor" | 
   const refunded = order.refundedMinor ?? 0;
   if (refunded > 0) return { words: refunded >= order.totalMinor ? "Refunded" : "Partly refunded", tone: "danger" };
   return { words: orderStatusWords(order.status), tone: orderStatusTone(order.status) };
+}
+
+/**
+ * What the till says once an order is voided: the kitchen is told only of an
+ * order it had heard of (F-243); one never sent was only ever on this till.
+ */
+export function voidedWords(order: Pick<POSOrder, "dailyNumber" | "orderNumber" | "status" | "roundsSent">): string {
+  const sent = (order.roundsSent ?? 0) > 0 || order.status !== "OPEN";
+  return `${orderName(order)} was voided.${sent ? " The kitchen has been told." : ""}`;
 }

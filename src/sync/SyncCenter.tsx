@@ -139,7 +139,11 @@ function resultWords(sync: SyncCenterState): { words: string; failed: boolean } 
   if (sync.retry.isError) return { words: "Something went wrong on this till. The sales stay on it. Try again.", failed: true };
   const after = sync.retry.data;
   if (!sync.retry.isSuccess || !after) return null;
-  if (after.queuedOperations === 0 && !hasProblem(after)) return { words: "Everything is sent.", failed: false };
+  if (after.queuedOperations === 0 && !hasProblem(after)) {
+    // Nothing was waiting: say that, not that something was sent (F-228).
+    const waited = (sync.before?.queuedOperations ?? 0) > 0 || after.reconciledOperations > (sync.before?.reconciledOperations ?? after.reconciledOperations);
+    return { words: waited ? "Everything is sent." : "Connected to Yetu. Nothing is waiting to send.", failed: false };
+  }
   if (after.status !== "Live" && after.queuedOperations > 0) {
     return {
       words: `Can't reach Yetu yet. The ${sales(after.queuedOperations)} stay on this till and go when the connection returns.`,
@@ -199,7 +203,8 @@ export function SyncSheet({ sync }: { sync: SyncCenterState }) {
               <p className="y-sync__figure">
                 {state.reconciledOperations > 0 ? `${sales(state.reconciledOperations)} sent to Yetu` : "No sales sent from this till yet."}
               </p>
-              <p>{state.lastSuccessAtMs ? `Last sent ${clockTime(new Date(state.lastSuccessAtMs))}` : "Not sent yet."}</p>
+              {/* When the till last reached Yetu for its sales, whether or not it had any to send (F-228). */}
+              <p>{state.lastSuccessAtMs ? `Last checked with Yetu at ${clockTime(new Date(state.lastSuccessAtMs))}` : "Not checked with Yetu yet."}</p>
             </section>
             <section className="y-sync__section" data-testid="sync-attention" aria-labelledby="sync-attention-title">
               <h3 id="sync-attention-title">Needs attention</h3>

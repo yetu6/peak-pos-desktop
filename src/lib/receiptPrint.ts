@@ -1,4 +1,5 @@
 import { formatMoney } from "./money";
+import { vatFigures } from "./vatWords";
 import { orderName, orderReference } from "./orderNumber";
 import { dateTimeWords, paymentMethodWords, type SettlementMethod } from "./words";
 export interface ReceiptLine {
@@ -26,6 +27,8 @@ export interface ReceiptCopy {
   discountReason?: string;
   taxAmount?: string;
   totalAmount?: string;
+  /** F-229: the prices hold their VAT: "Items" and "VAT included" in place of "Subtotal" and "VAT". */
+  vatIncluded?: boolean;
   lines: ReceiptLine[];
 }
 
@@ -103,12 +106,41 @@ export function receiptCopyFromPrintDocument(document: Record<string, unknown>):
         : typeof document.settlementMethod === "string"
           ? paymentMethodWords(document.settlementMethod as SettlementMethod)
           : undefined,
-    subtotal: amountWords(document.subtotal, document.subtotalMinor, currency),
-    discount: typeof document.discountMinor === "number" && document.discountMinor > 0 ? formatMoney(document.discountMinor, currency) : undefined,
+    ...guestFigures(document, currency),
     discountReason: typeof document.discountReason === "string" && document.discountReason.trim() ? document.discountReason.trim() : undefined,
     taxAmount: amountWords(document.taxAmount, document.taxMinor, currency),
     totalAmount: amountWords(document.totalAmount, document.totalMinor, currency),
     lines,
+  };
+}
+
+/**
+ * Subtotal and discount as the guest reads them: with VAT inside the prices
+ * (F-229), the items at their menu prices and what came off those.
+ */
+function guestFigures(document: Record<string, unknown>, currency: string | undefined): Pick<ReceiptCopy, "subtotal" | "discount" | "vatIncluded"> {
+  const items = Array.isArray(document.items) ? document.items : [];
+  if (document.pricesIncludeTax === true && typeof document.totalMinor === "number" && typeof document.subtotalMinor === "number") {
+    const figures = vatFigures({
+      pricesIncludeTax: true,
+      subtotalMinor: document.subtotalMinor,
+      taxMinor: typeof document.taxMinor === "number" ? document.taxMinor : 0,
+      totalMinor: document.totalMinor,
+      items: items.flatMap((line) =>
+        line && typeof line === "object" && typeof (line as Record<string, unknown>).totalMinor === "number"
+          ? [{ totalMinor: (line as { totalMinor: number }).totalMinor }]
+          : [],
+      ),
+    });
+    return {
+      subtotal: formatMoney(figures.itemsMinor, currency),
+      discount: figures.discountMinor > 0 ? formatMoney(figures.discountMinor, currency) : undefined,
+      vatIncluded: true,
+    };
+  }
+  return {
+    subtotal: amountWords(document.subtotal, document.subtotalMinor, currency),
+    discount: typeof document.discountMinor === "number" && document.discountMinor > 0 ? formatMoney(document.discountMinor, currency) : undefined,
   };
 }
 
@@ -147,9 +179,9 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     .join("\n");
 
   const totals = [
-    receipt.subtotal ? `Subtotal  ${receipt.subtotal}` : null,
+    receipt.subtotal ? `${receipt.vatIncluded ? "Items" : "Subtotal"}  ${receipt.subtotal}` : null,
     receipt.discount ? `${receipt.discountReason ? `Discount (${receipt.discountReason})` : "Discount"}  -${receipt.discount}` : null,
-    receipt.taxAmount ? `VAT  ${receipt.taxAmount}` : null,
+    receipt.taxAmount ? `${receipt.vatIncluded ? "VAT included" : "VAT"}  ${receipt.taxAmount}` : null,
     receipt.totalAmount ? `TOTAL  ${receipt.totalAmount}` : null,
   ]
     .filter(Boolean)

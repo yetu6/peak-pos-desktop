@@ -3,6 +3,7 @@ import { SessionExpiredError, type OperationalSession } from "./operationalSessi
 import {
   PostLoginBootstrapError,
   bootstrapOperationalSession,
+  prepareOfflineStart,
 } from "./postLoginBootstrap";
 
 const session: OperationalSession = {
@@ -149,5 +150,61 @@ describe("production POS post-login bootstrap", () => {
 
     expect(result.catalog.outletName).toBe("Main Bar");
     expect(result.offlineAuthorization).toEqual({ state: "INVALID" });
+  });
+});
+
+// F-228: a new till signed in to Bahari QA Hotel read Lease STAGED, Catalog
+// MISSING and "Offline" while every online call worked: it had no offline
+// keys to check its start-up with until someone pressed Try again.
+describe("the till's offline start-up (F-228)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const installed = {
+    authorization: { state: "ACTIVE" } as never,
+    catalog: { state: "ACTIVE", snapshotId: "snapshot-1" } as never,
+  };
+
+  it("installs Yetu's offline keys before it installs the start-up", async () => {
+    const order: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      order.push(url.replace("https://peak.example/api/v1", ""));
+      if (url.endsWith("/pos/offline/bootstrap")) return json({ lease: "signed" }, 201);
+      return json({}, 200);
+    }));
+    const installTrustKeyset = vi.fn(async () => {
+      order.push("keyset");
+    });
+    const installOfflineBootstrap = vi.fn(async () => {
+      order.push("install");
+      return installed;
+    });
+    const result = await prepareOfflineStart("https://peak.example", session, { installTrustKeyset, installOfflineBootstrap });
+    expect(order).toEqual(["keyset", "/pos/offline/bootstrap", "install", "/pos/offline/catalog-acknowledge"]);
+    expect(result).toEqual({ offlineAuthorization: installed.authorization, certifiedCatalog: installed.catalog });
+  });
+
+  it("at sign-in too, and a keyset that can't be had doesn't stop the online sign-in", async () => {
+    const order: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      order.push(url.replace("https://peak.example/api/v1", ""));
+      if (url.endsWith("/pos/catalog")) return json({ outletId: "outlet-1", outletName: "Main Bar", products: [] });
+      if (url.endsWith("/pos/orders?active=true")) return json([]);
+      // No shift open on the till yet.
+      if (url.endsWith("/pos/offline/bootstrap")) return json({ code: "SHIFT_REQUIRED" }, 409);
+      throw new Error(`unexpected URL: ${url}`);
+    }));
+    const installTrustKeyset = vi.fn(async () => {
+      order.push("keyset");
+      throw new Error("Yetu unreachable");
+    });
+    const result = await bootstrapOperationalSession("https://peak.example", session, {
+      installTrustKeyset,
+      installOfflineBootstrap: vi.fn(async () => installed),
+    });
+    expect(order).toEqual(["/pos/catalog", "/pos/orders?active=true", "keyset", "/pos/offline/bootstrap"]);
+    expect(result.catalog.outletName).toBe("Main Bar");
+    expect(result.offlineAuthorization).toEqual({ state: "UNAVAILABLE" });
   });
 });

@@ -86,6 +86,9 @@ describe("PairingScreen with a code", () => {
     expect(qr).toHaveAttribute("alt", "QR code for pairing code ABCDE-FGHIJ");
     const steps = within(screen.getByRole("list", { name: "How to connect" })).getAllByRole("listitem");
     expect(steps.map((step) => step.textContent)).toEqual(PAIRING_STEPS.map((step, index) => `${index + 1}${step}`));
+    // F-225: the hotel app's own words for where a till is approved.
+    expect(PAIRING_STEPS[0]).toBe("In Yetu, open Restaurant, then Tills and screens.");
+    expect(PAIRING_STEPS[1]).toBe("Press Connect a till.");
   });
 
   it("keeps the technical fingerprint behind Technical details", () => {
