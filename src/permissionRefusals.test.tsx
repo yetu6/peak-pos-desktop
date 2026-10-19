@@ -107,6 +107,7 @@ describe("a refusal for a role without the permission (403)", () => {
         onPay={nothing}
         onVoid={nothing}
         onRemoveLine={nothing}
+        onQuantity={nothing}
         onReprint={nothing}
         onClose={nothing}
       />,

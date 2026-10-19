@@ -2,7 +2,7 @@ import { ChefHat, Printer, Trash2, Undo2, Wallet } from "lucide-react";
 import { linesByRound, sendWords, takesMore } from "../register/rounds";
 import { orderStatusIcon } from "./orderStatusIcon";
 import { useEffect, useId, useRef, useState } from "react";
-import { Button, PermissionNotice, RefusalNotice, Sheet, StatusChip, TicketLine, type Refusal } from "../components/system";
+import { Button, PermissionNotice, RefusalNotice, Sheet, StatusChip, Stepper, TicketLine, type Refusal } from "../components/system";
 import {
   useOrderRefunds,
   usePosShift,
@@ -10,6 +10,7 @@ import {
   usePropertyId,
   useReceipt,
   useRemoveOrderItem,
+  useSetLineQuantity,
   useReprintKitchenTickets,
   useTakeOverTab,
   useReprintReceipt,
@@ -28,6 +29,7 @@ import {
   kitchenReprintWords,
   orderTimeline,
   removeProblem,
+  quantityProblem,
   reprintProblem,
   sendProblem,
   takeOverProblem,
@@ -36,7 +38,7 @@ import {
 import { orderName, orderReference } from "../lib/orderNumber";
 import { refundAvailability, refundGivenWords } from "./refundWords";
 
-export type DetailPending = "send" | "remove" | "reprint" | "kitchen" | "take-over" | null;
+export type DetailPending = "send" | "remove" | "quantity" | "reprint" | "kitchen" | "take-over" | null;
 
 export interface OrderDetailViewProps {
   order: POSOrder;
@@ -58,6 +60,8 @@ export interface OrderDetailViewProps {
   onPay: () => void;
   onVoid: () => void;
   onRemoveLine: (line: POSOrderItem) => void;
+  /** How many of a line not yet sent (round 2 on): Yetu keeps its price. */
+  onQuantity: (line: POSOrderItem, quantity: number) => void;
   onReprint: () => void;
   /** S8a: print the latest round's kitchen ticket again, marked COPY; absent when nothing has gone to the kitchen or this person can't send orders. */
   onKitchenReprint?: () => void;
@@ -115,6 +119,7 @@ export function OrderDetailView({
   onPay,
   onVoid,
   onRemoveLine,
+  onQuantity,
   onReprint,
   onKitchenReprint,
   onTakeOver,
@@ -387,7 +392,8 @@ export function OrderDetailView({
                           onSelect={removable && !busy ? () => onSelectLine(selected ? null : line.id) : undefined}
                         />
                         {selected ? (
-                          <div className="y-ticket__line-actions">
+                          <div className="y-ticket__line-actions" role="group" aria-label={line.name}>
+                            <Stepper label={line.name} value={line.quantity} min={1} disabled={busy} onChange={(quantity) => onQuantity(line, quantity)} />
                             <Button
                               variant="danger-outline"
                               icon={<Trash2 />}
@@ -529,12 +535,14 @@ export function OrderDetail({
     : undefined;
   const sendOrder = useSendOrder();
   const removeItem = useRemoveOrderItem();
+  const setLineQuantity = useSetLineQuantity();
   const reprint = useReprintReceipt();
   const kitchenReprint = useReprintKitchenTickets();
   const takeOver = useTakeOverTab();
   const takeOverKey = useRequestKey();
   const sendKey = useRequestKey();
   const removeKey = useRequestKey();
+  const quantityKey = useRequestKey();
   const reprintKey = useRequestKey();
   const kitchenKey = useRequestKey();
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
@@ -546,7 +554,9 @@ export function OrderDetail({
     ? "send"
     : removeItem.isPending
       ? "remove"
-      : reprint.isPending
+      : setLineQuantity.isPending
+        ? "quantity"
+        : reprint.isPending
         ? "reprint"
         : kitchenReprint.isPending
           ? "kitchen"
@@ -648,6 +658,29 @@ export function OrderDetail({
     );
   }
 
+  function changeQuantity(line: POSOrderItem, quantity: number) {
+    if (pending !== null || quantity < 1) return;
+    begin();
+    setLineQuantity.mutate(
+      {
+        orderId: order.id,
+        itemId: line.id,
+        quantity,
+        version: order.version,
+        idempotencyKey: quantityKey.keyFor([order.id, line.id, quantity, order.version].join("|")),
+      },
+      {
+        onSuccess: () => setResult(`${line.name}: ${quantity}.`),
+        onError: (error) => {
+          const refusal = quantityProblem(error);
+          setProblem(refusal ?? { kind: "other", words: "The quantity wasn't changed. Try again." });
+          if (refusal?.kind !== "network") quantityKey.forget();
+          if (refusal?.kind === "stale") onReload();
+        },
+      },
+    );
+  }
+
   function printCopy() {
     if (pending !== null || !receipt.data) return;
     begin();
@@ -728,6 +761,7 @@ export function OrderDetail({
       onPay={payAfterSending}
       onVoid={onVoid}
       onRemoveLine={remove}
+      onQuantity={changeQuantity}
       onReprint={printCopy}
       onKitchenReprint={canSend && sentToKitchen(order) ? printKitchenAgain : undefined}
       onTakeOver={canSend ? takeTabOver : undefined}

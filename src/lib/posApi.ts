@@ -143,6 +143,19 @@ export function createPosApi() {
         { headers: idempotent(idempotencyKey), body: { version } },
       );
     },
+    /** How many of an UNSENT item (the stepper). The line keeps the price it was added at. */
+    setItemQuantity(
+      orderId: string,
+      itemId: string,
+      quantity: number,
+      version: number,
+      idempotencyKey: string,
+    ): Promise<ApiResult<POSOrder>> {
+      return client.PATCH<POSOrder>(
+        `/api/v1/pos/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`,
+        { headers: idempotent(idempotencyKey), body: { quantity, version } },
+      );
+    },
     sendOrder(orderId: string, version: number, idempotencyKey: string): Promise<ApiResult<void>> {
       return client.POST<void>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/send`, {
         headers: idempotent(idempotencyKey),

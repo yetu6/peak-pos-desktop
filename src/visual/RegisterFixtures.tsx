@@ -88,7 +88,7 @@ function Sell({
             onLabel={nothing}
             selectedLineId={selectedLine}
             onSelectLine={setSelectedLine}
-            onAddAnother={nothing}
+            onQuantity={nothing}
             onRemoveLine={nothing}
             lineBusy={false}
             sentAt={sentAt}
@@ -118,7 +118,7 @@ function Sell({
   );
 }
 
-/** Sell with an order on the ticket, one line chosen: Add another and Remove. */
+/** Sell with an order on the ticket, one line chosen: its quantity and Remove. */
 export function RegisterFixture() {
   return <Sell order={ORDER} selected="line-burger" />;
 }

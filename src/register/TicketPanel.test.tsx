@@ -59,7 +59,7 @@ function ticketElement(props: Partial<TicketPanelProps> = {}) {
       onServiceType={vi.fn()}
       onLabel={vi.fn()}
       onSelectLine={vi.fn()}
-      onAddAnother={vi.fn()}
+      onQuantity={vi.fn()}
       onRemoveLine={vi.fn()}
       {...props}
     />
@@ -71,7 +71,7 @@ function renderTicket(props: Partial<TicketPanelProps> = {}) {
     onServiceType: vi.fn(),
     onLabel: vi.fn(),
     onSelectLine: vi.fn(),
-    onAddAnother: vi.fn(),
+    onQuantity: vi.fn(),
     onRemoveLine: vi.fn(),
   };
   render(
@@ -115,7 +115,7 @@ describe("TicketPanel", () => {
         onLabel={vi.fn()}
         selectedLineId={null}
         onSelectLine={vi.fn()}
-        onAddAnother={vi.fn()}
+        onQuantity={vi.fn()}
         onRemoveLine={vi.fn()}
         lineBusy={false}
         sentAt={null}
@@ -165,17 +165,20 @@ describe("TicketPanel", () => {
     expect(screen.getByTestId("cart-remaining")).toHaveTextContent("TSh 20,120");
   });
 
-  it("selecting an unsent line offers Add another and Remove", async () => {
+  it("selecting an unsent line offers its quantity and Remove", async () => {
     const { onSelectLine } = renderTicket();
     await userEvent.click(screen.getByRole("button", { name: /Cappuccino/ }));
     expect(onSelectLine).toHaveBeenCalledWith("l1");
   });
 
-  it("for a selected unsent line, Add another and Remove act on that line", async () => {
+  it("for a selected unsent line, its stepper and Remove act on that line", async () => {
     const handlers = renderTicket({ selectedLineId: "l1" });
     const actions = screen.getByRole("group", { name: "Cappuccino" });
-    await userEvent.click(within(actions).getByRole("button", { name: "Add another" }));
-    expect(handlers.onAddAnother).toHaveBeenCalledWith(ORDER.items[0]);
+    expect(within(actions).getByRole("group", { name: "Cappuccino quantity" })).toHaveTextContent("2");
+    await userEvent.click(within(actions).getByRole("button", { name: "One more Cappuccino" }));
+    expect(handlers.onQuantity).toHaveBeenCalledWith(ORDER.items[0], 3);
+    await userEvent.click(within(actions).getByRole("button", { name: "One fewer Cappuccino" }));
+    expect(handlers.onQuantity).toHaveBeenCalledWith(ORDER.items[0], 1);
     await userEvent.click(within(actions).getByRole("button", { name: "Remove" }));
     expect(handlers.onRemoveLine).toHaveBeenCalledWith(ORDER.items[0]);
   });
@@ -260,7 +263,7 @@ describe("TicketPanel: the newest line in view", () => {
 });
 
 describe("TicketPanel: an everyday removal is not a red block", () => {
-  it("a chosen line's Remove is outlined in red, beside Add another", () => {
+  it("a chosen line's Remove is outlined in red, beside its stepper", () => {
     renderTicket({ selectedLineId: "l1" });
     const remove = screen.getByRole("button", { name: /Remove/ });
     expect(remove).toHaveClass("y-button--danger-outline");

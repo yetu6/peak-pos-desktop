@@ -61,6 +61,7 @@ function renderDetail(props: Partial<OrderDetailViewProps> = {}) {
     onPay: vi.fn(),
     onVoid: vi.fn(),
     onRemoveLine: vi.fn(),
+    onQuantity: vi.fn(),
     onReprint: vi.fn(),
     onClose: vi.fn(),
     onSelectLine: vi.fn(),
@@ -366,5 +367,21 @@ describe("OrderDetailView: by round", () => {
     expect(within(unsent).getByRole("heading", { name: "Not sent yet" })).toBeInTheDocument();
     await userEvent.click(within(unsent).getByRole("button", { name: "Remove Chocolate tart" }));
     expect(handlers.onRemoveLine).toHaveBeenCalledWith(expect.objectContaining({ id: "line-new" }));
+    // Its quantity by its stepper; never below one (Remove takes it off).
+    await userEvent.click(within(unsent).getByRole("button", { name: "One more Chocolate tart" }));
+    expect(handlers.onQuantity).toHaveBeenCalledWith(expect.objectContaining({ id: "line-new" }), base.items[0].quantity + 1);
+    expect(within(unsent).getByRole("button", { name: "One fewer Chocolate tart" })).toHaveProperty("disabled", base.items[0].quantity <= 1);
+  });
+
+  it("while a change is with Yetu, the stepper waits", () => {
+    const base = order();
+    const rounds = order({
+      status: "SERVED",
+      roundsSent: 1,
+      items: [{ ...base.items[0], status: "SENT", roundNumber: 1 }, { ...base.items[0], id: "line-new", name: "Chocolate tart", quantity: 2, status: "ADDED" }],
+    });
+    renderDetail({ order: rounds, selectedLineId: "line-new", pending: "quantity" });
+    expect(screen.getByRole("button", { name: "One more Chocolate tart" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "One fewer Chocolate tart" })).toBeDisabled();
   });
 });

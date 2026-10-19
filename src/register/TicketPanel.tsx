@@ -1,7 +1,7 @@
 import { linesByRound } from "./rounds";
-import { ChefHat, Plus, Trash2 } from "lucide-react";
+import { ChefHat, Trash2 } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
-import { Banner, Button, EmptyState, Field, Money, PermissionNotice, SegmentedControl, StatusChip, TicketLine, type Refusal } from "../components/system";
+import { Banner, Button, EmptyState, Field, Money, PermissionNotice, SegmentedControl, StatusChip, Stepper, TicketLine, type Refusal } from "../components/system";
 import { formatMoney } from "../lib/money";
 import type { POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
@@ -27,7 +27,8 @@ export interface TicketPanelProps {
   onLabel: (label: string) => void;
   selectedLineId: string | null;
   onSelectLine: (lineId: string | null) => void;
-  onAddAnother: (line: POSOrderItem) => void;
+  /** How many of an unsent line (the stepper); Yetu prices it as it was added. */
+  onQuantity: (line: POSOrderItem, quantity: number) => void;
   onRemoveLine: (line: POSOrderItem) => void;
   lineBusy: boolean;
   /** When this till sent the order to the kitchen, if it did. */
@@ -50,9 +51,9 @@ export interface TicketPanelProps {
  * room, the lines (quantity, name, options beneath, Yetu's price), the
  * selected line's actions, and the totals, every figure from Yetu.
  *
- * Yetu has no way to change a line's quantity or note: an unsent line can be
- * repeated (Add another) or removed; a sent line comes off only by voiding
- * the order with a supervisor.
+ * An unsent line's quantity goes up or down by its stepper (never below one:
+ * Remove takes it off), at the price it was added at; a sent line comes off
+ * only by voiding the order with a supervisor.
  */
 export function TicketPanel({
   order,
@@ -63,7 +64,7 @@ export function TicketPanel({
   onLabel,
   selectedLineId,
   onSelectLine,
-  onAddAnother,
+  onQuantity,
   onRemoveLine,
   lineBusy,
   sentAt,
@@ -116,9 +117,7 @@ export function TicketPanel({
           >
             {line.status === "ADDED" ? (
               <>
-                <Button icon={<Plus />} disabled={lineBusy} onClick={() => onAddAnother(line)}>
-                  Add another
-                </Button>
+                <Stepper label={line.name} value={line.quantity} min={1} disabled={lineBusy} onChange={(quantity) => onQuantity(line, quantity)} />
                 <Button variant="danger-outline" icon={<Trash2 />} disabled={lineBusy} onClick={() => onRemoveLine(line)}>
                   Remove
                 </Button>

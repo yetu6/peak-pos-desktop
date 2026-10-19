@@ -103,6 +103,7 @@ function Detail({ order, tab = "open", ...props }: { order: POSOrder; tab?: Orde
         onPay={nothing}
         onVoid={nothing}
         onRemoveLine={nothing}
+        onQuantity={nothing}
         onReprint={nothing}
         onClose={nothing}
         {...props}

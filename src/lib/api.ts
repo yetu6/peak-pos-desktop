@@ -54,6 +54,7 @@ export function createApiClient() {
     GET: <T = any>(path: string, options?: Record<string, any>) => request<T>("GET", path, options),
     POST: <T = any>(path: string, options?: Record<string, any>) => request<T>("POST", path, options),
     DELETE: <T = any>(path: string, options?: Record<string, any>) => request<T>("DELETE", path, options),
+    PATCH: <T = any>(path: string, options?: Record<string, any>) => request<T>("PATCH", path, options),
   };
 }
 

@@ -150,6 +150,7 @@ const {
   addItemSpy,
   sendOrderSpy,
   removeItemSpy,
+  setItemQuantitySpy,
   getOrderSpy,
   recordTenderSpy,
 } = vi.hoisted(() => ({
@@ -223,6 +224,7 @@ const {
   addItemSpy: vi.fn(async () => ({ data: OPEN_ORDER, error: null })),
   sendOrderSpy: vi.fn(async () => ({ data: { ...OPEN_ORDER, status: "SENT", version: 3 }, error: null })),
   removeItemSpy: vi.fn(async () => ({ data: { ...OPEN_ORDER, items: [], version: 3 }, error: null })),
+  setItemQuantitySpy: vi.fn(async () => ({ data: OPEN_ORDER, error: null })),
   getOrderSpy: vi.fn(async () => ({ data: OPEN_ORDER, error: null })),
   recordTenderSpy: vi.fn(async () => ({ data: { paymentId: "pay-1", orderClosed: true, paidMinor: 1200000, remainingMinor: 0, version: 3 }, error: null })),
 }));
@@ -241,6 +243,7 @@ vi.mock("../lib/posApi", () => ({
     recordTender: recordTenderSpy,
     listPrintJobs: vi.fn(async () => ({ data: [], error: null })),
     removeItem: removeItemSpy,
+    setItemQuantity: setItemQuantitySpy,
   }),
 }));
 
@@ -348,51 +351,25 @@ describe("NewOrder", () => {
 
   const ticket = () => within(screen.getByTestId("ticket-panel"));
 
-  it("Add another repeats the selected line", async () => {
+  it("One more raises the chosen line's quantity in Yetu, at the line's price; no new line", async () => {
     const line = await startOrder();
     addItemSpy.mockClear();
     await userEvent.click(line);
-    await userEvent.click(screen.getByRole("button", { name: "Add another" }));
-    await waitFor(() =>
-      expect(addItemSpy).toHaveBeenCalledWith(
-        "order-1",
-        expect.objectContaining({ productId: "00000000-0000-0000-0000-000000000001", quantity: 1, modifierOptionIds: [] }),
-        expect.any(String),
-      ),
-    );
+    await userEvent.click(ticket().getByRole("button", { name: "One more Nyama Choma" }));
+    await waitFor(() => expect(setItemQuantitySpy).toHaveBeenCalledWith("order-1", "item-1", 2, 2, expect.any(String)));
+    expect(addItemSpy).not.toHaveBeenCalled();
+    // One is the least: Remove takes it off.
+    expect(ticket().getByRole("button", { name: "One fewer Nyama Choma" })).toBeDisabled();
   });
 
-  it("Add another keeps the line's options", async () => {
-    addItemSpy.mockResolvedValueOnce({
-      data: {
-        ...OPEN_ORDER,
-        items: [
-          {
-            id: "item-9",
-            productId: "00000000-0000-0000-0000-000000000009",
-            name: "House burger",
-            quantity: 1,
-            unitPriceMinor: 800000,
-            taxMinor: 144000,
-            totalMinor: 944000,
-            status: "ADDED",
-            modifiers: [{ id: "row-1", groupName: "Cooked", optionName: "Well done", priceDeltaMinor: 0 }],
-          },
-        ],
-      },
-      error: null,
-    });
-    const burger = await startOrder("House burger");
-    addItemSpy.mockClear();
-    await userEvent.click(burger);
-    await userEvent.click(screen.getByRole("button", { name: "Add another" }));
-    await waitFor(() =>
-      expect(addItemSpy).toHaveBeenCalledWith(
-        "order-1",
-        expect.objectContaining({ productId: "00000000-0000-0000-0000-000000000009", quantity: 1, modifierOptionIds: ["opt-well"] }),
-        expect.any(String),
-      ),
-    );
+  it("a refused change says why in words", async () => {
+    setItemQuantitySpy.mockResolvedValueOnce({
+      data: undefined,
+      error: { status: 409, code: "ITEM_NOT_CHANGEABLE", title: "This item can no longer be changed.", detail: "Only an item not yet sent to the kitchen can be changed, and only before the order is paid." },
+    } as never);
+    await userEvent.click(await startOrder());
+    await userEvent.click(ticket().getByRole("button", { name: "One more Nyama Choma" }));
+    expect(await ticket().findByText("This item can't be changed now. If it hasn't gone to the kitchen, remove it and add it again.")).toBeInTheDocument();
   });
 
   it("Remove takes an unsent line off the order", async () => {
@@ -496,34 +473,6 @@ describe("NewOrder", () => {
     await userEvent.click(screen.getByTestId("menu-House burger"));
     const again = await screen.findByRole("dialog", { name: "House burger" });
     expect(within(again).queryByRole("alert")).not.toBeInTheDocument();
-  });
-
-  it("Add another asks for the options again rather than guess between groups with the same name", async () => {
-    addItemSpy.mockResolvedValueOnce({
-      data: {
-        ...OPEN_ORDER,
-        items: [
-          {
-            id: "item-10",
-            productId: "00000000-0000-0000-0000-000000000010",
-            name: "Double burger",
-            quantity: 1,
-            unitPriceMinor: 1200000,
-            taxMinor: 0,
-            totalMinor: 1200000,
-            status: "ADDED",
-            modifiers: [{ id: "row-1", groupName: "Extras", optionName: "Cheese", priceDeltaMinor: 0 }],
-          },
-        ],
-      },
-      error: null,
-    });
-    const line = await startOrder("Double burger");
-    addItemSpy.mockClear();
-    await userEvent.click(line);
-    await userEvent.click(ticket().getByRole("button", { name: "Add another" }));
-    expect(await screen.findByRole("dialog", { name: "Double burger" })).toBeInTheDocument();
-    expect(addItemSpy).not.toHaveBeenCalled();
   });
 
   describe("refusals and recovery (S6)", () => {

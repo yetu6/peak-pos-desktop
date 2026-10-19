@@ -177,6 +177,22 @@ export function takeOverProblem(error: unknown): OrderProblem | null {
   return { kind: "other", words: otherWords(problem, "The tab wasn't taken over. Try again.") };
 }
 
+/** How many of a line that hasn't gone to the kitchen (the stepper). */
+export function quantityProblem(error: unknown): OrderProblem | null {
+  const problem = problemOf(error);
+  if (!problem) return null;
+  if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  if (problem.code === "INVALID_STATE") return { kind: "paid", words: "This order has taken payment, so its items can't be changed." };
+  // It went to the kitchen meanwhile (sent on another till): reloaded, so the screen shows it as Yetu has it.
+  if (problem.code === "ITEM_NOT_CHANGEABLE") {
+    return { kind: "stale", words: "This item can't be changed now. The order has been reloaded: if it hasn't gone to the kitchen, remove it and add it again." };
+  }
+  if (problem.code === "STALE_VERSION") {
+    return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then try again." };
+  }
+  return { kind: "other", words: otherWords(problem, "The quantity wasn't changed. Try again.") };
+}
+
 /** Removing a line that hasn't gone to the kitchen. */
 export function removeProblem(error: unknown): OrderProblem | null {
   const problem = problemOf(error);

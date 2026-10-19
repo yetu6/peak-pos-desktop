@@ -133,6 +133,7 @@ export function Stepper({
   onChange,
   min = 0,
   max = Number.POSITIVE_INFINITY,
+  disabled = false,
   className,
 }: {
   label: string;
@@ -140,6 +141,8 @@ export function Stepper({
   onChange: (value: number) => void;
   min?: number;
   max?: number;
+  /** While a change is with Yetu: both buttons wait. */
+  disabled?: boolean;
   className?: string;
 }) {
   return (
@@ -148,7 +151,7 @@ export function Stepper({
         type="button"
         className="y-button y-button--secondary y-button--48 y-icon-button"
         aria-label={`One fewer ${label}`}
-        disabled={value <= min}
+        disabled={disabled || value <= min}
         onClick={() => onChange(Math.max(min, value - 1))}
       >
         <Minus aria-hidden="true" />
@@ -160,7 +163,7 @@ export function Stepper({
         type="button"
         className="y-button y-button--secondary y-button--48 y-icon-button"
         aria-label={`One more ${label}`}
-        disabled={value >= max}
+        disabled={disabled || value >= max}
         onClick={() => onChange(Math.min(max, value + 1))}
       >
         <Plus aria-hidden="true" />

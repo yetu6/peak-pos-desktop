@@ -25,6 +25,19 @@ function tooMany(retryAfter: string | null) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("the transport", () => {
+  it("sends a change of quantity as Yetu's PATCH, with its key and body (the stepper)", async () => {
+    const fetchSpy = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ id: "o1" }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchSpy);
+    const { createPosApi } = await import("./posApi");
+    await createPosApi().setItemQuantity("o1", "i1", 3, 7, "key-1");
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://127.0.0.1:18080/api/v1/pos/orders/o1/items/i1");
+    expect(init?.method).toBe("PATCH");
+    expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("key-1");
+    expect(JSON.parse(String(init?.body))).toEqual({ quantity: 3, version: 7 });
+  });
+
+
   it("carries Yetu's Retry-After with a 429's problem", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => tooMany("42")));
     const result = await createApiClient().POST("/api/v1/pos/orders/o1/void", { body: {} });

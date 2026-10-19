@@ -441,6 +441,19 @@ export function useRemoveOrderItem() {
   });
 }
 
+/** How many of an unsent line (the stepper); Yetu prices the line as it was added. */
+export function useSetLineQuantity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { orderId: string; itemId: string; quantity: number; version: number; idempotencyKey: string }) =>
+      unwrap(createPosApi().setItemQuantity(args.orderId, args.itemId, args.quantity, args.version, args.idempotencyKey)),
+    onSuccess: (order: POSOrder) => {
+      queryClient.setQueryData(["pos", "order", order.id], order);
+      invalidateOrders(queryClient);
+    },
+  });
+}
+
 export function useSendOrder() {
   const queryClient = useQueryClient();
   return useMutation({

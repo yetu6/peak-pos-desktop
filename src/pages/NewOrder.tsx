@@ -12,6 +12,7 @@ import {
   usePrintAfter,
   usePropertyId,
   useRemoveOrderItem,
+  useSetLineQuantity,
   useSendOrder,
   useSetProductAvailability,
 } from "../hooks/usePosData";
@@ -23,7 +24,6 @@ import { useTillMenu } from "../fnb/useTillMenu";
 import { sizesOf, tagNote } from "../fnb/fnbWords";
 import { PaymentDone } from "../register/PaymentDone";
 import { PaySheet, type PaidInfo } from "../register/PaySheet";
-import { optionIdsFor } from "../register/repeatLine";
 import { NoteSheet } from "../register/NoteSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
 import { TicketActions } from "../register/TicketActions";
@@ -69,6 +69,7 @@ export function NewOrder() {
   const createOrder = useCreateOrder();
   const addItem = useAddOrderItem();
   const removeItem = useRemoveOrderItem();
+  const setLineQuantity = useSetLineQuantity();
   const sendOrder = useSendOrder();
   const setAvailability = useSetProductAvailability();
   const createKey = useIdempotencyKey();
@@ -76,19 +77,21 @@ export function NewOrder() {
   // A send whose answer was lost is the same request again (same key); a refused one is new.
   const sendRequest = useRequestKey();
   const removeKey = useIdempotencyKey();
+  const quantityKey = useIdempotencyKey();
 
   const createProblem = sellProblem(createOrder.error, "create");
   const addProblem = sellProblem(addItem.error, "add");
   const removeProblem = sellProblem(removeItem.error, "remove");
+  const quantityProblem = sellProblem(setLineQuantity.error, "quantity");
   const sendProblem = sellProblem(sendOrder.error, "send");
   const availabilityProblem = sellProblem(setAvailability.error, "availability");
   const createError = createProblem?.words ?? null;
   const addError = addProblem?.words ?? null;
-  const mutationError = createProblem ?? addProblem ?? removeProblem ?? sendProblem ?? availabilityProblem ?? actionError;
+  const mutationError = createProblem ?? addProblem ?? removeProblem ?? quantityProblem ?? sendProblem ?? availabilityProblem ?? actionError;
   // Only a send whose answer was lost is offered again as it was; the order stays on the ticket.
   const retrySend = sendProblem?.kind === "network" && order ? () => void sendToKitchen() : undefined;
 
-  const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || sendOrder.isPending;
+  const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || setLineQuantity.isPending || sendOrder.isPending;
   const canMutate = Boolean(shift) && !busy;
   // An order takes more after it was sent, as the next round (S17a); a Yetu
   // before rounds takes nothing once sent, and a paid or voided order never.
@@ -186,21 +189,22 @@ export function NewOrder() {
     }
   }
 
-  /** Another of the same line, with the same options (a new line: Yetu has no quantity change). */
-  async function addAnother(line: POSOrderItem) {
-    if (!canMutate) return;
-    const product = catalog.data?.products.find((candidate) => candidate.id === line.productId);
-    if (!product || product.isAvailable === false) {
-      setActionError(`${line.name} can't be added just now.`);
-      return;
+  /** How many of an unsent line: Yetu keeps the line's price, options and size. */
+  async function changeQuantity(line: POSOrderItem, quantity: number) {
+    if (!order || !canMutate || line.status !== "ADDED" || quantity < 1) return;
+    setActionError(null);
+    try {
+      const next = await setLineQuantity.mutateAsync({
+        orderId: order.id,
+        itemId: line.id,
+        quantity,
+        version: order.version,
+        idempotencyKey: quantityKey.next(),
+      });
+      setOrder(next);
+    } catch {
+      // The words come from setLineQuantity.error.
     }
-    const ids = optionIdsFor(line, product);
-    // Which size the line was is Yetu's to know: with a choice of sizes, the person picks again.
-    if (ids === null || sizesOf(menu, product.id).length > 1) {
-      openOptions(product);
-      return;
-    }
-    await addProduct(product, 1, ids);
   }
 
   async function removeLine(line: POSOrderItem) {
@@ -300,7 +304,7 @@ export function NewOrder() {
             onLabel={setTableLabel}
             selectedLineId={selectedLineId}
             onSelectLine={setSelectedLineId}
-            onAddAnother={(line) => void addAnother(line)}
+            onQuantity={(line, quantity) => void changeQuantity(line, quantity)}
             onRemoveLine={(line) => void removeLine(line)}
             lineBusy={busy}
             sentAt={sentAt}
