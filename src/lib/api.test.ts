@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApiClient } from "./api";
+import { requestTimesWords, resetRequestTimes } from "./requestTimes";
 import { problemOf } from "./problemWords";
 import { tenderProblem } from "../register/registerWords";
 
@@ -22,9 +23,20 @@ function tooMany(retryAfter: string | null) {
   );
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  resetRequestTimes();
+});
 
 describe("the transport", () => {
+  it("times each answer from asking to reading it, refusals included (F-255)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ id: "o1" }), { status: 201, headers: { "Content-Type": "application/json" } })));
+    await createApiClient().POST("/api/v1/pos/orders/o1/items", { body: { quantity: 1 } });
+    vi.stubGlobal("fetch", vi.fn(async () => tooMany("41")));
+    await createApiClient().GET("/api/v1/pos/orders/o1");
+    expect(requestTimesWords()).toMatch(/^Changes \d\.\d\d s · Look-ups \d\.\d\d s \(usual of the last 2\)$/);
+  });
+
   it("sends a change of quantity as Yetu's PATCH, with its key and body (the stepper)", async () => {
     const fetchSpy = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ id: "o1" }), { status: 200, headers: { "Content-Type": "application/json" } }));
     vi.stubGlobal("fetch", fetchSpy);

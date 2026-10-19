@@ -354,10 +354,17 @@ export function useOrder(orderId: string | undefined) {
   });
 }
 
-function invalidateOrders(queryClient: ReturnType<typeof useQueryClient>) {
+function invalidateOrders(queryClient: ReturnType<typeof useQueryClient>, answered?: POSOrder) {
   queryClient.invalidateQueries({ queryKey: ["pos", "orders"] });
-  queryClient.invalidateQueries({ queryKey: ["pos", "order"] });
+  // The order Yetu just answered with is as Yetu has it (F-255): only the others are asked again.
+  queryClient.invalidateQueries({ queryKey: ["pos", "order"], predicate: (query) => answered === undefined || query.queryKey[2] !== answered.id });
   queryClient.invalidateQueries({ queryKey: ["pos", "station-tickets"] });
+}
+
+/** Keep Yetu's answer to a change of an order, and ask again for what it may have moved. */
+function keepAnswer(queryClient: ReturnType<typeof useQueryClient>, order: POSOrder) {
+  queryClient.setQueryData(["pos", "order", order.id], order);
+  invalidateOrders(queryClient, order);
 }
 
 export function useCreateOrder() {
@@ -382,8 +389,7 @@ export function useCreateOrder() {
         ),
       ),
     onSuccess: (order: POSOrder) => {
-      queryClient.setQueryData(["pos", "order", order.id], order);
-      invalidateOrders(queryClient);
+      keepAnswer(queryClient, order);
     },
   });
 }
@@ -425,8 +431,7 @@ export function useAddOrderItem() {
       }
     },
     onSuccess: (order: POSOrder) => {
-      queryClient.setQueryData(["pos", "order", order.id], order);
-      invalidateOrders(queryClient);
+      keepAnswer(queryClient, order);
     },
   });
 }
@@ -437,8 +442,7 @@ export function useRemoveOrderItem() {
     mutationFn: (args: { orderId: string; itemId: string; version: number; idempotencyKey: string }) =>
       unwrap(createPosApi().removeItem(args.orderId, args.itemId, args.version, args.idempotencyKey)),
     onSuccess: (order: POSOrder) => {
-      queryClient.setQueryData(["pos", "order", order.id], order);
-      invalidateOrders(queryClient);
+      keepAnswer(queryClient, order);
     },
   });
 }
@@ -450,8 +454,7 @@ export function useSetLineQuantity() {
     mutationFn: (args: { orderId: string; itemId: string; quantity: number; version: number; idempotencyKey: string }) =>
       unwrap(createPosApi().setItemQuantity(args.orderId, args.itemId, args.quantity, args.version, args.idempotencyKey)),
     onSuccess: (order: POSOrder) => {
-      queryClient.setQueryData(["pos", "order", order.id], order);
-      invalidateOrders(queryClient);
+      keepAnswer(queryClient, order);
     },
   });
 }
@@ -464,8 +467,7 @@ export function useSendOrder() {
       return unwrap(createPosApi().getOrder(args.orderId));
     },
     onSuccess: (order: POSOrder) => {
-      queryClient.setQueryData(["pos", "order", order.id], order);
-      invalidateOrders(queryClient);
+      keepAnswer(queryClient, order);
     },
   });
 }
@@ -502,8 +504,7 @@ export function useTransitionOrderStatus() {
       return unwrap(createPosApi().getOrder(args.orderId));
     },
     onSuccess: (order: POSOrder) => {
-      queryClient.setQueryData(["pos", "order", order.id], order);
-      invalidateOrders(queryClient);
+      keepAnswer(queryClient, order);
     },
   });
 }
@@ -566,8 +567,7 @@ export function useRecordTender() {
       return readAfterRecorded(args.orderId);
     },
     onSuccess: (order: POSOrder) => {
-      queryClient.setQueryData(["pos", "order", order.id], order);
-      invalidateOrders(queryClient);
+      keepAnswer(queryClient, order);
     },
   });
 }
@@ -600,8 +600,7 @@ export function useApplyDiscount() {
         ),
       ),
     onSuccess: (order: POSOrder) => {
-      queryClient.setQueryData(["pos", "order", order.id], order);
-      invalidateOrders(queryClient);
+      keepAnswer(queryClient, order);
     },
   });
 }
@@ -614,8 +613,7 @@ export function useChargeToRoom() {
       return readAfterRecorded(args.orderId);
     },
     onSuccess: (order: POSOrder) => {
-      queryClient.setQueryData(["pos", "order", order.id], order);
-      invalidateOrders(queryClient);
+      keepAnswer(queryClient, order);
     },
   });
 }

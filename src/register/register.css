@@ -200,9 +200,12 @@
 
 .y-ticket__title { margin: 0; font-size: var(--type-title); font-weight: 700; }
 
-/* The order type spans the ticket; a long word wraps rather than being cut. */
+/* The order type spans the ticket. Each choice takes the room its words need, so
+   "Room service" stays on one line beside "Dine in" (it wrapped at 1920, 2026-10-20);
+   a longer word still wraps rather than being cut. */
 .y-ticket__head .y-segmented { display: flex; width: 100%; }
 .y-ticket__head .y-segmented__option {
+  flex: 1 1 auto;
   min-width: 0;
   padding: 0 var(--space-2);
   line-height: 1.15;

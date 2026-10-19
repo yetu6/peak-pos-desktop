@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { noteUpdate, resetUpdateNotes } from "../lib/updateNotes";
+import { noteRequestTime, resetRequestTimes } from "../lib/requestTimes";
 import { Diagnostics } from "./Diagnostics";
 import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
 
@@ -18,7 +19,7 @@ const {
   loadHostDiagnostics: vi.fn(),
   loadDeviceKeyStorageStatus: vi.fn(),
   printTestPage: vi.fn(),
-  realtime: { phase: "connected" as string },
+  realtime: { phase: "connected" as string, lastError: null as string | null },
 }));
 
 vi.mock("../lib/diagnostics", async () => {
@@ -51,7 +52,7 @@ vi.mock("../realtime/RealtimeProvider", () => ({
     state: {
       phase: realtime.phase,
       attempt: 0,
-      lastError: null,
+      lastError: realtime.lastError,
       established: true,
       resyncGeneration: 1,
     },
@@ -84,7 +85,9 @@ describe("Diagnostics", () => {
   afterEach(() => {
     vi.clearAllMocks();
     resetUpdateNotes();
+    resetRequestTimes();
     realtime.phase = "connected";
+    realtime.lastError = null;
     Object.defineProperty(window.navigator, "onLine", { configurable: true, get: () => true });
   });
 
@@ -175,7 +178,13 @@ describe("Diagnostics", () => {
     expect(screen.getByTestId("diag-device-id")).toHaveTextContent("device-uuid");
     // Friendly words in the details for support too (owner, 2026-10-19).
     expect(screen.getByTestId("diag-os")).toHaveTextContent("Linux, 64-bit");
-    expect(screen.getByTestId("diag-technician-view")).not.toHaveTextContent(/x86_64|Realtime|Device id|HTTP|unnamed/);
+    expect(screen.getByTestId("diag-technician-view")).not.toHaveTextContent(/x86_64|Realtime|Device id|unnamed/);
+    // Yetu's own answer only in the row marked for support.
+    expect(screen.getByTestId("diag-peak-detail")).toHaveTextContent("Answers");
+    expect(screen.getByTestId("diag-peak-said")).toHaveTextContent("HTTP 200");
+    const technical = screen.getByTestId("diag-technician-view").cloneNode(true) as HTMLElement;
+    technical.querySelector("[data-testid=diag-peak-said]")?.remove();
+    expect(technical).not.toHaveTextContent(/HTTP/);
     expect(screen.getByTestId("diag-printer-name")).toHaveTextContent("front-bar");
     expect(screen.getByTestId("diag-key-storage")).toHaveTextContent("file");
     expect(screen.queryByText("SECRET_PRIVATE_KEY")).not.toBeInTheDocument();
@@ -205,6 +214,7 @@ describe("Diagnostics", () => {
     it("problems say what to do", async () => {
       Object.defineProperty(window.navigator, "onLine", { configurable: true, get: () => false });
       realtime.phase = "disconnected";
+      realtime.lastError = "websocket closed: 1006";
       probePeakServer.mockResolvedValue({ status: "unreachable", detail: "Failed to fetch", origin: "https://hotel.example" });
       loadPrinterStatus.mockResolvedValue({ available: false, name: null });
       loadHostDiagnostics.mockResolvedValue({ os: "windows", arch: "x86_64", appVersion: "0.1.1" });
@@ -219,10 +229,44 @@ describe("Diagnostics", () => {
       expect(screen.getByTestId("diag-check-receipt-printer")).toHaveTextContent("Ask support to set up the printer.");
       expect(screen.getByTestId("diag-check-keys")).toHaveTextContent("This till can't store its key safely.");
       expect(screen.getByTestId("diag-check-keys")).toHaveTextContent("Call support before taking payments.");
-      // No raw error anywhere, the details for support included (owner, 2026-10-19).
-      expect(screen.getByRole("list", { name: "Checks" })).not.toHaveTextContent(/Failed to fetch|file fallback|unreachable/);
+      // The checks are in staff words (owner, 2026-10-19)…
+      expect(screen.getByRole("list", { name: "Checks" })).not.toHaveTextContent(/Failed to fetch|websocket|file fallback|unreachable/);
       expect(screen.getByTestId("diag-peak-detail")).toHaveTextContent("Can't be reached");
-      expect(screen.getByTestId("diag-peak-detail")).not.toHaveTextContent(/Failed to fetch|unreachable/);
+      // …and the details for support keep what the till actually saw, marked as for
+      // support, so a call about a till that is offline can be answered (2026-10-20).
+      expect(screen.getByText("Yetu's answer (for support)")).toBeInTheDocument();
+      expect(screen.getByTestId("diag-peak-said")).toHaveTextContent("Failed to fetch");
+      expect(screen.getByText("Last live-updates problem (for support)")).toBeInTheDocument();
+      expect(screen.getByTestId("diag-realtime-said")).toHaveTextContent("websocket closed: 1006");
+    });
+
+    it("Yetu answering with a problem is not the hotel's internet", async () => {
+      healthy();
+      probePeakServer.mockResolvedValue({ status: "failing", detail: "HTTP 503", origin: "https://hotel.example" });
+      render(<Diagnostics />);
+      await waitFor(() => expect(screen.getByTestId("diag-check-yetu")).toHaveTextContent("Yetu answered, but has a problem right now."));
+      expect(screen.getByTestId("diag-check-yetu")).toHaveAttribute("data-state", "problem");
+      expect(screen.getByTestId("diag-check-yetu")).toHaveTextContent("It isn't this till's internet. If it lasts more than a few minutes, call support.");
+      expect(screen.getByTestId("diag-check-yetu")).not.toHaveTextContent(/503|HTTP/);
+      expect(screen.getByTestId("diag-peak-detail")).toHaveTextContent("Answers with a problem");
+      expect(screen.getByTestId("diag-peak-said")).toHaveTextContent("HTTP 503");
+    });
+
+    it("a healthy till's details say what Yetu answered and that live updates had no problem", async () => {
+      healthy();
+      render(<Diagnostics />);
+      await waitFor(() => expect(screen.getByTestId("diag-peak-said")).toHaveTextContent("HTTP 200"));
+      expect(screen.getByTestId("diag-realtime-said")).toHaveTextContent("None");
+      expect(screen.getByTestId("diag-answer-times")).toHaveTextContent("Nothing asked yet");
+    });
+
+    it("says how long Yetu takes to answer as this till waits (F-255)", async () => {
+      healthy();
+      noteRequestTime("POST", 410);
+      noteRequestTime("GET", 190);
+      render(<Diagnostics />);
+      expect(screen.getByText("How long Yetu takes to answer (for support)")).toBeInTheDocument();
+      expect(screen.getByTestId("diag-answer-times")).toHaveTextContent("Changes 0.41 s · Look-ups 0.19 s (usual of the last 2)");
     });
 
     it("in a browser there is no print path: no Print test page, and it says so", async () => {

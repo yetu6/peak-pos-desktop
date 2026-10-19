@@ -1,4 +1,5 @@
 import { ChefHat, CircleAlert, CircleCheck, CircleHelp, Cloud, KeyRound, Printer, RadioTower, ReceiptText, RefreshCw, Wifi } from "lucide-react";
+import { requestTimesWords } from "../lib/requestTimes";
 import { computerWords, liveUpdatesWords, tillKindWords, yetuAnswersWords } from "../lib/supportWords";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
@@ -71,13 +72,21 @@ export function statusChecks(input: {
       ? { id: "yetu", name: "Yetu", state: "unknown", words: "Asking Yetu…", fix: "Wait a moment." }
       : input.peak.status === "reachable"
         ? { id: "yetu", name: "Yetu", state: "ok", words: "Yetu answers.", fix: "Nothing to do." }
-        : {
-            id: "yetu",
-            name: "Yetu",
-            state: "problem",
-            words: "Can't reach Yetu.",
-            fix: "Check the internet connection. If other computers reach Yetu, call support.",
-          },
+        : input.peak.status === "failing"
+          ? {
+              id: "yetu",
+              name: "Yetu",
+              state: "problem",
+              words: "Yetu answered, but has a problem right now.",
+              fix: "It isn't this till's internet. If it lasts more than a few minutes, call support.",
+            }
+          : {
+              id: "yetu",
+              name: "Yetu",
+              state: "problem",
+              words: "Can't reach Yetu.",
+              fix: "Check the internet connection. If other computers reach Yetu, call support.",
+            },
     input.realtime === "connected"
       ? { id: "live", name: "Live updates", state: "ok", words: "On. New orders and changes show at once.", fix: "Nothing to do." }
       : input.realtime === "connecting" || input.realtime === "reconnecting"
@@ -348,8 +357,17 @@ export function StatusView({
           <TechRow label="Yetu" testId="diag-peak-detail">
             {yetuAnswersWords(peak)}
           </TechRow>
+          <TechRow label="Yetu's answer (for support)" testId="diag-peak-said">
+            {peak ? peak.detail : "Checking"}
+          </TechRow>
           <TechRow label="Live updates" testId="diag-realtime-detail">
             {liveUpdatesWords(state)}
+          </TechRow>
+          <TechRow label="Last live-updates problem (for support)" testId="diag-realtime-said">
+            {state.lastError ?? "None"}
+          </TechRow>
+          <TechRow label="How long Yetu takes to answer (for support)" testId="diag-answer-times">
+            {requestTimesWords()}
           </TechRow>
           <TechRow label="Last test page" testId="diag-test-print-detail">
             {testPrint ? (testPrint.ok ? "Sent" : `Didn't print${testPrint.detail ? `: ${testPrint.detail}` : ""}`) : "None yet"}

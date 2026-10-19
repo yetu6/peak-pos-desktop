@@ -43,9 +43,9 @@ const PROBLEM: SyncState = { ...LIVE, status: "Sync issue", exceptionOperations:
 const core = vi.hoisted(() => ({ syncState: vi.fn(), retrySync: vi.fn() }));
 vi.mock("../lib/localPosCore", () => ({ loadLocalPosCore: async () => core }));
 
-const realtime = vi.hoisted(() => ({ phase: "connected" as string }));
+const realtime = vi.hoisted(() => ({ phase: "connected" as string, lastError: null as string | null }));
 vi.mock("../realtime/RealtimeProvider", () => ({
-  useRealtime: () => ({ state: { phase: realtime.phase, attempt: 0, lastError: null, established: true, resyncGeneration: 1 } }),
+  useRealtime: () => ({ state: { phase: realtime.phase, attempt: 0, lastError: realtime.lastError, established: true, resyncGeneration: 1 } }),
 }));
 
 function renderCenter() {
@@ -185,6 +185,22 @@ describe("the Sync Center", () => {
     expect(screen.getByRole("dialog", { name: "Sending sales" })).toBeInTheDocument();
     await act(async () => finish(LIVE));
     await waitFor(() => expect(idleLockHeld()).toBe(false));
+  });
+
+  it("keeps the last live-updates problem for support, as the till saw it", async () => {
+    asTauri(false);
+    realtime.phase = "reconnecting";
+    realtime.lastError = "websocket closed: 1006";
+    try {
+      renderCenter();
+      await userEvent.click(await screen.findByRole("button", { name: /Reconnecting/ }));
+      const sheet = await screen.findByRole("dialog", { name: "Sending sales" });
+      const technical = within(sheet).getByText("Details for support").closest("details")!;
+      expect(technical).toHaveTextContent("Last live-updates problem (for support)websocket closed: 1006");
+      expect(within(sheet).getByTestId("sync-sections")).not.toHaveTextContent(/websocket/);
+    } finally {
+      realtime.lastError = null;
+    }
   });
 
   it("in a browser (no store on the till) it shows the live connection only", async () => {

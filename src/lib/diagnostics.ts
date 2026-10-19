@@ -2,7 +2,11 @@ import type { DeviceIdentityRecord, DeviceKeyStorageStatus } from "./deviceIdent
 import type { OperationalSession } from "./operationalSession";
 import { getApiBaseUrl } from "./peakConfig";
 
-export type Reachability = "reachable" | "unreachable";
+/** Yetu answers and is ready; answers with a problem (it, or its database, is down); or can't be reached. */
+export type Reachability = "reachable" | "failing" | "unreachable";
+
+/** Yetu's readiness: it answers 200 only when it and its database can serve the till. */
+export const YETU_READY_PATH = "/health/ready";
 
 export interface PeakProbe {
   status: Reachability;
@@ -50,12 +54,12 @@ export async function probePeakServer(
 ): Promise<PeakProbe> {
   const origin = baseUrl.replace(/\/+$/, "");
   try {
-    const response = await fetchImpl(origin + "/", {
+    const response = await fetchImpl(origin + YETU_READY_PATH, {
       method: "GET",
       signal: AbortSignal.timeout(4_000),
     });
     return {
-      status: "reachable",
+      status: response.ok ? "reachable" : "failing",
       detail: `HTTP ${response.status}`,
       origin,
     };

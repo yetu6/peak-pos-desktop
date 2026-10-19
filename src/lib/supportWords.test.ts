@@ -26,6 +26,9 @@ describe("details for support, in staff words", () => {
     expect(offlineReadyWords("EXPIRED")).toBe("Ran out: sign in with a connection");
     expect(offlineReadyWords("REVOKED")).toBe("Stopped by a manager");
     expect(offlineReadyWords("SUPERSEDED")).toBe("Replaced by a newer one");
+    // A state this till doesn't know yet is still there for support to read.
+    expect(offlineReadyWords("PAUSED")).toBe("Not known (PAUSED)");
+    expect(offlineReadyWords("")).toBe("Not known");
   });
 
   it("says whether live updates are on, never the engineering behind them", () => {
@@ -51,6 +54,7 @@ describe("details for support, in staff words", () => {
   it("says whether Yetu answers, without a status code", () => {
     expect(yetuAnswersWords(null)).toBe("Checking");
     expect(yetuAnswersWords({ status: "reachable" })).toBe("Answers");
+    expect(yetuAnswersWords({ status: "failing" })).toBe("Answers with a problem");
     expect(yetuAnswersWords({ status: "unreachable" })).toBe("Can't be reached");
   });
 });
