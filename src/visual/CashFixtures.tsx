@@ -1,3 +1,4 @@
+import { ORDER as ORDER_FOR_TABS } from "./registerData";
 import { AccessFrame } from "../access/AccessLayout";
 import { CloseDayCardView } from "../cash/CloseDayCard";
 import { CloseShiftSheetView } from "../cash/CloseShiftSheet";
@@ -245,7 +246,11 @@ export function CloseBalancedFixture() {
 
 /** Close shift with tabs still open (S17b): they go to the next shift, and the button says so. */
 export function CloseTabsFixture() {
-  return <Close initialCounted="74000" initialStep="check" openTabs={{ count: 2, owedMinor: 4_520_000 }} />;
+  const tabs = [
+    { ...ORDER_FOR_TABS, id: "tab-41", dailyNumber: 41, orderNumber: "POS-MR-261012-41", serviceType: "ROOM_SERVICE" as const, tableLabel: "204", remainingMinor: 2_500_000 },
+    { ...ORDER_FOR_TABS, id: "tab-43", dailyNumber: 43, orderNumber: "POS-MR-261012-43", serviceType: "DINE_IN" as const, tableLabel: "4", remainingMinor: 2_020_000 },
+  ];
+  return <Close initialCounted="74000" initialStep="check" openTabs={{ count: 2, owedMinor: 4_520_000, tabs }} />;
 }
 
 /** Close shift, step 2: over, so a manager approves. */
