@@ -415,6 +415,54 @@ describe("DeviceSessionProvider", () => {
     }
   });
 
+  // 2026-10-20, Bahari's lock screen: the till coming to the front fires focus
+  // and visibilitychange together, and each asked Yetu for a challenge (two
+  // within 3 ms in the API log). One refresh is shared while it is with Yetu.
+  it("asks Yetu once when the till comes to the front, not once per event", async () => {
+    const keys = await generateDeviceKeyPair();
+    const store = memoryStore(
+      JSON.stringify({
+        ...keys,
+        deviceCode: "dev_abc",
+        terminalId: "11111111-1111-1111-1111-111111111111",
+        deviceCredential: "device-secret",
+        approved: true,
+        terminalName: "Bar 1",
+      }),
+    );
+    const challenges = vi.fn(async () =>
+      jsonResponse({
+        challengeId: "11111111-1111-1111-1111-111111111111",
+        nonce: btoa("n".repeat(32)),
+        expiresAt: "2099-01-01T00:00:00Z",
+        staff: [{ id: "00001", displayName: "Amina Hassan", staffSuffix: "001" }],
+      }),
+    );
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/pos/device/challenges")) return challenges();
+      throw new Error(`unexpected fetch: ${String(input)}`);
+    }));
+    renderSession(store);
+    await waitFor(() => expect(screen.getByTestId("roster")).toHaveTextContent("Amina Hassan"));
+    await waitFor(() => expect(challenges).toHaveBeenCalledTimes(1));
+
+    const toTheFront = () =>
+      act(() => {
+        window.dispatchEvent(new Event("focus"));
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+    toTheFront();
+    await waitFor(() => expect(challenges).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+    expect(challenges).toHaveBeenCalledTimes(2);
+
+    // Once that answer is in, the next time it comes to the front asks again.
+    toTheFront();
+    await waitFor(() => expect(challenges).toHaveBeenCalledTimes(3));
+    await act(async () => {});
+    expect(challenges).toHaveBeenCalledTimes(3);
+  });
+
   it("unpairs when Peak withholds a challenge from a till that was already trusted", async () => {
     const keys = await generateDeviceKeyPair();
     const store = memoryStore(
