@@ -93,6 +93,10 @@ export interface POSOrder {
   discountKind: "NONE" | "AMOUNT" | "PERCENT";
   discountInput: number;
   discountReason?: string;
+  /** F-259: when the discount was given (absent before 2026-10-20), who asked and who approved; for the history. */
+  discountAppliedAt?: string;
+  discountAskedByName?: string;
+  discountApprovedByName?: string;
   /** F-229: the order's prices hold their VAT (the property writes them so); absent from a Yetu before it: VAT on top. */
   pricesIncludeTax?: boolean;
   taxMinor: number;

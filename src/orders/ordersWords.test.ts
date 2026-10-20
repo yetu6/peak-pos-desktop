@@ -262,3 +262,57 @@ describe("orderTimeline: lines taken off before they were sent (F-239)", () => {
     expect(timeline.map((entry) => entry.words).join(" ")).not.toContain("Soda");
   });
 });
+
+describe("orderTimeline: the discount (F-259)", () => {
+  const soda = { id: "l1", productId: "p1", name: "Soda", quantity: 1, unitPriceMinor: 250_000, taxMinor: 38_136, totalMinor: 250_000, status: "ADDED" as const };
+
+  it("says when, how much off as the guest saw it, why, who asked and who approved", () => {
+    const appliedAt = new Date(Date.now() - 3 * 60_000).toISOString();
+    const timeline = orderTimeline({
+      // Order 8 at Bahari: TSh 500 off a TSh 2,500 soda, VAT inside the price; Yetu keeps 423.73 net.
+      order: order({
+        pricesIncludeTax: true,
+        items: [soda],
+        subtotalMinor: 211_864,
+        discountKind: "AMOUNT",
+        discountInput: 50_000,
+        discountMinor: 42_373,
+        discountReason: "Regular guest",
+        taxMinor: 30_509,
+        totalMinor: 200_000,
+        discountAppliedAt: appliedAt,
+        discountAskedByName: "Zawadi Said",
+        discountApprovedByName: "Baraka Mushi",
+      }),
+      tickets: [],
+      currency: "TZS",
+    });
+    expect(timeline).toContainEqual({
+      time: clockTime(appliedAt),
+      words: "Discount of TSh 500 · Regular guest · asked by Zawadi Said, approved by Baraka Mushi",
+    });
+  });
+
+  it("gives a percent with its money, and a discount from before Yetu kept its time without one", () => {
+    const timeline = orderTimeline({
+      order: order({
+        subtotalMinor: 400_000,
+        discountKind: "PERCENT",
+        discountInput: 1_000,
+        discountMinor: 40_000,
+        discountReason: "Staff meal",
+        discountApprovedByName: "Baraka Mushi",
+        taxMinor: 64_800,
+        totalMinor: 424_800,
+      }),
+      tickets: [],
+      currency: "TZS",
+    });
+    expect(timeline).toContainEqual({ time: null, words: "Discount of 10% (TSh 400) · Staff meal · approved by Baraka Mushi" });
+  });
+
+  it("says nothing of a discount when there is none", () => {
+    const words = orderTimeline({ order: order({ items: [soda] }), tickets: [], currency: "TZS" }).map((entry) => entry.words);
+    expect(words.join(" ")).not.toContain("Discount");
+  });
+});

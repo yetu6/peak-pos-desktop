@@ -808,6 +808,10 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
     renderNewOrder({ resume: TABLE_4, onTicket });
     expect(await screen.findByText("Order 4 is paid already. Start a new sale.")).toBeInTheDocument();
     expect(within(screen.getByTestId("ticket-panel")).queryByRole("button", { name: /Nyama Choma/ })).toBeNull();
+    // The words can show a moment before the empty ticket is reported (flaky 2 in 5 before 2026-10-20):
+    // wait for it, then make sure it stays empty.
+    await waitFor(() => expect(onTicket).toHaveBeenLastCalledWith(null));
+    await act(async () => {});
     expect(onTicket).toHaveBeenLastCalledWith(null);
   });
 
