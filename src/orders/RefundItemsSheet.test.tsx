@@ -6,6 +6,15 @@ import userEvent from "@testing-library/user-event";
 import type { POSOrder, POSOrderRefunds, POSRefund, POSRefundQuote, POSRefundQuoteRequest } from "../lib/posContracts";
 import { RefundItemsSheet } from "./RefundItemsSheet";
 
+// The outlet's reasons (useTillReasons): the till's own lists, unless a test sets the ones its managers keep.
+const tillReasons = vi.hoisted(() => ({ kept: null as null | Record<string, string[]> }));
+vi.mock("../fnb/useTillReasons", async () => {
+  const { DISCOUNT_REASONS, VOID_REASONS, REFUND_REASONS } = await import("../orders/ordersSettings");
+  const { CASH_IN_REASONS, CASH_OUT_REASONS } = await import("../cash/cashSettings");
+  const own: Record<string, readonly string[]> = { discount: DISCOUNT_REASONS, void: VOID_REASONS, refund: REFUND_REASONS, cashIn: CASH_IN_REASONS, cashOut: CASH_OUT_REASONS };
+  return { useTillReasons: (kind: string) => tillReasons.kept?.[kind] ?? own[kind] };
+});
+
 /** The app's query provider, fresh for each render: the approval sheets ask Yetu who may approve (F-249). */
 function render(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -189,6 +198,7 @@ function nextOutcomes(...outcomes: Outcome[]) {
 }
 
 beforeEach(() => {
+  tillReasons.kept = null;
   state.refunds = refunds();
   state.payments = [{ paymentId: "pay-cash", paymentMethod: "CASH", capMinor: 1_357_000 }];
   state.quoteError = null;
@@ -277,6 +287,13 @@ describe("Refund items: choosing what goes back", () => {
     expect(screen.getByTestId("refund-ask")).toBeDisabled();
     await userEvent.type(screen.getByTestId("refund-reason-text"), "Found a hair");
     expect(screen.getByTestId("refund-ask")).toBeEnabled();
+  });
+
+  it("offers the refund reasons the outlet's managers keep, when they keep their own", () => {
+    tillReasons.kept = { refund: ["Cold food"] };
+    render(<RefundItemsSheet order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    const offered = within(screen.getByRole("radiogroup", { name: "Why" })).getAllByRole("radio").map((radio) => radio.textContent);
+    expect(offered).toEqual(["Cold food", "Another reason"]);
   });
 
   it("refunds a room charge whole: every item, no choosing", () => {

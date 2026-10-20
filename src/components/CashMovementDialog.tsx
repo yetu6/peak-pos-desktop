@@ -4,6 +4,7 @@ import type { POSApprover } from "../lib/posContracts";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { CASH_IN_REASONS, CASH_OUT_REASONS } from "../cash/cashSettings";
+import { useTillReasons } from "../fnb/useTillReasons";
 import { cashMovementProblem } from "../cash/cashWords";
 import { useIdempotencyKey, useRecordCashMovement } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
@@ -51,6 +52,8 @@ export function CashMovementDialog({
       waiting={waiting}
       error={record.error}
       errorMovementType={record.variables?.movementType}
+      inReasons={useTillReasons("cashIn")}
+      outReasons={useTillReasons("cashOut")}
       onRecord={(args) => record.mutate({ ...args, idempotencyKey: idempotencyKey.next() }, { onSuccess: onClose })}
     />
   );
@@ -77,6 +80,9 @@ export interface CashMovementSheetViewProps {
     supervisorStaffId?: string;
     supervisorPin?: string;
   }) => void;
+  /** The outlet's reasons for cash in and cash out (useTillReasons); the till's own lists by default. */
+  inReasons?: readonly string[];
+  outReasons?: readonly string[];
   /** Fixtures start part-way through. */
   initialAmount?: string;
   initialReason?: string;
@@ -94,6 +100,8 @@ export function CashMovementSheetView({
   error,
   errorMovementType,
   onRecord,
+  inReasons = CASH_IN_REASONS,
+  outReasons = CASH_OUT_REASONS,
   initialAmount = "",
   initialReason = "",
 }: CashMovementSheetViewProps) {
@@ -191,7 +199,7 @@ export function CashMovementSheetView({
         <ReasonPicker
           key={movementType}
           label={cashOut ? "What the cash is for" : "Where the cash came from"}
-          reasons={cashOut ? CASH_OUT_REASONS : CASH_IN_REASONS}
+          reasons={cashOut ? outReasons : inReasons}
           initialReason={reason}
           onChange={(chosen) => {
             setReason(chosen);

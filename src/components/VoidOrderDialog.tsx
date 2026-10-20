@@ -11,7 +11,7 @@ import { voidProblem } from "../register/registerWords";
 import { Banner, Button, ReasonPicker, Sheet, SupervisorApproval, type KeypadKey } from "./system";
 import { orderNumberWords } from "../lib/orderNumber";
 import { voidSheetWords } from "../orders/ordersWords";
-import { VOID_REASONS } from "../orders/ordersSettings";
+import { useTillReasons } from "../fnb/useTillReasons";
 
 /**
  * `POST /pos/orders/{orderId}/void`: the one certified correction for a sent
@@ -40,6 +40,7 @@ export function VoidOrderDialog({
   const { supervisors, emptyWords } = useSupervisors("VOID");
   const requesterId = device?.session?.staffId ?? "";
   const voidOrder = useVoidOrder();
+  const reasons = useTillReasons("void");
   const idempotencyKey = useIdempotencyKey();
   const [reason, setReason] = useState("");
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
@@ -112,7 +113,7 @@ export function VoidOrderDialog({
       <div className="y-form">
         <ReasonPicker
           label="Reason"
-          reasons={VOID_REASONS}
+          reasons={reasons}
           onChange={(chosen) => {
             setReason(chosen);
             setSupervisorId(null);

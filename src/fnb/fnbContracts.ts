@@ -59,3 +59,17 @@ export interface FnbTillMenu {
 
 /** The menu of a till whose outlet has menus off, or whose Yetu has no module. */
 export const NO_MENU: FnbTillMenu = { enabled: false, groups: [], unplacedCategoryIds: [], sizes: {}, products: {} };
+
+/**
+ * fbc-peak `GET /api/v1/fnb/pos/reasons` (FnbTillReasons, 2026-10-20): the
+ * reasons the till offers in one tap at its outlet, kept by the outlet's
+ * managers in the hotel app, else Yetu's standard lists. The till adds
+ * "Another reason" to each.
+ */
+export interface FnbTillReasons {
+  discount: string[];
+  void: string[];
+  refund: string[];
+  cashIn: string[];
+  cashOut: string[];
+}

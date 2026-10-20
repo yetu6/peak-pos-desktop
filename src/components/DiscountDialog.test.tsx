@@ -9,6 +9,15 @@ import type { POSOrder } from "../lib/posContracts";
 import { giveReason } from "../../tests/reasons";
 import { DISCOUNT_REASONS } from "../orders/ordersSettings";
 
+// The outlet's reasons (useTillReasons): the till's own lists, unless a test sets the ones its managers keep.
+const tillReasons = vi.hoisted(() => ({ kept: null as null | Record<string, string[]> }));
+vi.mock("../fnb/useTillReasons", async () => {
+  const { DISCOUNT_REASONS, VOID_REASONS, REFUND_REASONS } = await import("../orders/ordersSettings");
+  const { CASH_IN_REASONS, CASH_OUT_REASONS } = await import("../cash/cashSettings");
+  const own: Record<string, readonly string[]> = { discount: DISCOUNT_REASONS, void: VOID_REASONS, refund: REFUND_REASONS, cashIn: CASH_IN_REASONS, cashOut: CASH_OUT_REASONS };
+  return { useTillReasons: (kind: string) => tillReasons.kept?.[kind] ?? own[kind] };
+});
+
 /** The app's query provider, fresh for each render: the approval sheets ask Yetu who may approve (F-249). */
 function render(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -68,6 +77,7 @@ async function approveAsGrace() {
 }
 
 beforeEach(() => {
+  tillReasons.kept = null;
   applyMutate.mockClear();
   applyReset.mockClear();
   applyState.isPending = false;
@@ -75,6 +85,13 @@ beforeEach(() => {
 });
 
 describe("DiscountDialog", () => {
+  it("offers the reasons the outlet's managers keep, when they keep their own", () => {
+    tillReasons.kept = { discount: ["Birthday", "Regular guest"] };
+    render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
+    const offered = within(screen.getByRole("radiogroup", { name: "Reason" })).getAllByRole("radio").map((radio) => radio.textContent);
+    expect(offered).toEqual(["Birthday", "Regular guest", "Another reason"]);
+  });
+
   it("offers the place's discount reasons in one tap, and sends the words tapped", async () => {
     render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
     const reasons = within(screen.getByRole("radiogroup", { name: "Reason" }));

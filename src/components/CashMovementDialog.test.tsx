@@ -8,6 +8,15 @@ import { CashMovementDialog, CashMovementSheetView } from "./CashMovementDialog"
 import { giveReason } from "../../tests/reasons";
 import { CASH_IN_REASONS, CASH_OUT_REASONS } from "../cash/cashSettings";
 
+// The outlet's reasons (useTillReasons): the till's own lists, unless a test sets the ones its managers keep.
+const tillReasons = vi.hoisted(() => ({ kept: null as null | Record<string, string[]> }));
+vi.mock("../fnb/useTillReasons", async () => {
+  const { DISCOUNT_REASONS, VOID_REASONS, REFUND_REASONS } = await import("../orders/ordersSettings");
+  const { CASH_IN_REASONS, CASH_OUT_REASONS } = await import("../cash/cashSettings");
+  const own: Record<string, readonly string[]> = { discount: DISCOUNT_REASONS, void: VOID_REASONS, refund: REFUND_REASONS, cashIn: CASH_IN_REASONS, cashOut: CASH_OUT_REASONS };
+  return { useTillReasons: (kind: string) => tillReasons.kept?.[kind] ?? own[kind] };
+});
+
 /** The app's query provider, fresh for each render: the approval sheets ask Yetu who may approve (F-249). */
 function render(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -40,6 +49,7 @@ async function typePin(digits: string) {
 }
 
 beforeEach(() => {
+  tillReasons.kept = null;
   recordMutate.mockClear();
   record.error = null;
   record.isPending = false;
@@ -47,6 +57,16 @@ beforeEach(() => {
 });
 
 describe("CashMovementDialog", () => {
+  it("offers the cash reasons the outlet's managers keep, each way", async () => {
+    tillReasons.kept = { cashIn: ["Float from the office"], cashOut: ["Gas delivery"] };
+    render(<CashMovementDialog shiftId="shift-1" currency="TZS" onClose={vi.fn()} />);
+    const offered = (name: string) =>
+      within(screen.getByRole("radiogroup", { name })).getAllByRole("radio").map((radio) => radio.textContent);
+    expect(offered("Where the cash came from")).toEqual(["Float from the office", "Another reason"]);
+    await userEvent.click(screen.getByTestId("movement-type-CASH_OUT"));
+    expect(offered("What the cash is for")).toEqual(["Gas delivery", "Another reason"]);
+  });
+
   it("offers cash in and cash out their own reasons in one tap; switching starts the reason again", async () => {
     render(<CashMovementDialog shiftId="shift-1" currency="TZS" onClose={vi.fn()} />);
     const listed = (name: string) =>
