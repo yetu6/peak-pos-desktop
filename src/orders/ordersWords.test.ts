@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { POSOrder, POSOrderPayment, POSStationTicket } from "../lib/posContracts";
 import { clockTime } from "../lib/words";
-import { orderMatches, orderTimeline, quantityProblem, removeProblem, reprintProblem, sendProblem, voidedWords } from "./ordersWords";
+import { orderMatches, orderStateWords, orderTimeline, quantityProblem, removeProblem, reprintProblem, sendProblem, voidedWords } from "./ordersWords";
 
 function order(extra: Partial<POSOrder> = {}): POSOrder {
   return {
@@ -314,5 +314,31 @@ describe("orderTimeline: the discount (F-259)", () => {
   it("says nothing of a discount when there is none", () => {
     const words = orderTimeline({ order: order({ items: [soda] }), tickets: [], currency: "TZS" }).map((entry) => entry.words);
     expect(words.join(" ")).not.toContain("Discount");
+  });
+});
+
+// F-260 (fbc-peak #286): Order 10's four soups were taken off before they were
+// sent; it stayed open at TSh 0. Yetu now closes such an order itself, naming
+// no supervisor, and the till says so rather than calling it voided.
+describe("an order Yetu closed with nothing on it (F-260)", () => {
+  const removedAt = new Date(Date.now() - 3 * 60_000).toISOString();
+  const soup = { id: "l1", productId: "p1", name: "Soup of the day", quantity: 1, unitPriceMinor: 900_000, taxMinor: 0, totalMinor: 900_000 };
+  const emptied = order({ status: "VOIDED", closedAt: removedAt, items: [{ ...soup, status: "VOIDED", removedAt, removedByName: "Zawadi Said" }] });
+
+  it("its history and its state say it had nothing left on it", () => {
+    const words = orderTimeline({ order: emptied, tickets: [], currency: "TZS" }).map((entry) => entry.words);
+    expect(words).toContain("Closed by Yetu: nothing was left on it");
+    expect(words).not.toContain("Voided");
+    expect(orderStateWords(emptied)).toEqual({ words: "Nothing on it", tone: "neutral" });
+  });
+
+  it("a void says who approved it, and stays a void", () => {
+    const voided = order({ status: "VOIDED", closedAt: removedAt, voidApprovedByName: "Baraka Mushi", items: [{ ...soup, status: "VOIDED", removedAt }] });
+    expect(orderTimeline({ order: voided, tickets: [], currency: "TZS" }).map((entry) => entry.words)).toContain("Voided · approved by Baraka Mushi");
+    expect(orderStateWords(voided).words).toBe("Voided");
+    // From a Yetu before #286 no void names its supervisor: one with a line sent, or none at all, is still a void.
+    const sentThenVoided = order({ status: "VOIDED", closedAt: removedAt, items: [{ ...soup, status: "VOIDED" }] });
+    expect(orderStateWords(sentThenVoided).words).toBe("Voided");
+    expect(orderStateWords(order({ status: "VOIDED", closedAt: removedAt, items: [] })).words).toBe("Voided");
   });
 });

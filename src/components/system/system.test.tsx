@@ -342,6 +342,23 @@ describe("SupervisorApproval", () => {
     return handlers;
   }
 
+  // F-263: Baraka, the only supervisor signed in at Bahari, opened a void: the
+  // sheet said "Choose a supervisor to continue" over a keypad no one could use.
+  it("when the person asking is the only supervisor, says a colleague must ask; no dead keypad", () => {
+    renderApproval({ supervisors: [supervisors[0]] });
+    expect(screen.getByTestId("approval-only-you")).toHaveTextContent(
+      "You're the only supervisor here, and no one can approve their own request. Have a colleague sign in on this till and ask for it; you then approve it with your PIN.",
+    );
+    expect(screen.queryByRole("group", { name: "Supervisor PIN" })).toBeNull();
+    expect(screen.queryByText("Choose a supervisor to continue")).toBeNull();
+  });
+
+  it("with another supervisor to choose, the keypad is there", () => {
+    renderApproval();
+    expect(screen.queryByTestId("approval-only-you")).toBeNull();
+    expect(screen.getByText("Choose a supervisor to continue")).toBeInTheDocument();
+  });
+
   // F-242: staff PINs are six digits; the pad drew four places for them.
   it("draws a place for each digit of a PIN, filled as they are keyed", () => {
     renderApproval({ selectedId: "staff-grace", pinLength: 2 });

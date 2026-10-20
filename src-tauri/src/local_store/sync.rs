@@ -2,7 +2,7 @@ use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 
-use super::{classify_sql_error, LocalStore, LocalStoreError};
+use super::{classify_sql_error, LocalStore, LocalStoreError, OfflinePublicKeyset};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -159,6 +159,56 @@ impl LocalStore {
 
     pub fn record_sync_live(&mut self, now: i64) -> Result<SyncState, LocalStoreError> {
         self.connection.execute("UPDATE synchronization_state SET connectivity='LIVE',last_success_at_ms=?1,last_safe_error_code=NULL,updated_at_ms=?1 WHERE singleton_id=1",[now]).map_err(classify_sql_error)?;
+        self.sync_state()
+    }
+
+    /// The keyset Yetu just sent, checked against the till's trusted clock
+    /// and installed; None: go on and send. F-262: Yetu vouches for the
+    /// till's clock in its offline start-up, which it gives only while a
+    /// shift is open. A till just set up, or a computer restarted since, has
+    /// no trusted time until its shift opens: that is waiting (Online, its
+    /// sales kept), not a sync issue a manager must look at. It read "Sales
+    /// not sent" with nothing to send. A clock that went wrong since Yetu
+    /// vouched for it, in the same boot, is still a sync issue, and so is a
+    /// keyset that fails its own checks.
+    pub fn take_offline_keyset(
+        &mut self,
+        keyset: &OfflinePublicKeyset,
+        local_wall_ms: i64,
+        monotonic_ms: i64,
+        boot_id: &str,
+    ) -> Result<Option<SyncState>, LocalStoreError> {
+        // Read before trusted_now_ms, which marks a restart as a suspect clock.
+        let anchored_boot: Option<String> = self
+            .connection
+            .query_row("SELECT boot_id FROM trusted_time_state WHERE singleton_id=1", [], |r| r.get(0))
+            .optional()
+            .map_err(classify_sql_error)?;
+        let restarted = anchored_boot
+            .as_deref()
+            .is_some_and(|anchored| !boot_id.is_empty() && anchored != boot_id);
+        if anchored_boot.is_none() || restarted {
+            return self.record_sync_awaiting_trusted_time(local_wall_ms).map(Some);
+        }
+        let Ok(received_at) = self.trusted_now_ms(local_wall_ms, monotonic_ms, boot_id) else {
+            return self
+                .record_sync_issue("SYNC_CLOCK_SUSPECT", local_wall_ms)
+                .map(Some);
+        };
+        match self.install_authenticated_keyset(keyset, received_at) {
+            Ok(()) => Ok(None),
+            Err(_) => self
+                .record_sync_issue("SYNC_KEYSET_REJECTED", local_wall_ms)
+                .map(Some),
+        }
+    }
+
+    /// Yetu was reached but nothing could be sent before the till's clock is
+    /// vouched for (take_offline_keyset): sales taken for this try go back to
+    /// the queue as they were, and the till reads Online.
+    fn record_sync_awaiting_trusted_time(&mut self, now: i64) -> Result<SyncState, LocalStoreError> {
+        self.connection.execute("UPDATE outbox SET state='QUEUED',last_safe_error_code='TRUSTED_TIME_REQUIRED',updated_at_ms=?1 WHERE state='IN_FLIGHT'",[now]).map_err(classify_sql_error)?;
+        self.connection.execute("UPDATE synchronization_state SET connectivity='LIVE',last_safe_error_code='TRUSTED_TIME_REQUIRED',updated_at_ms=?1 WHERE singleton_id=1",[now]).map_err(classify_sql_error)?;
         self.sync_state()
     }
 
@@ -402,6 +452,103 @@ mod tests {
         let state = store.sync_state().unwrap();
         assert_eq!(state.queued_operations, 1);
         assert_eq!(state.status, "Offline · 1 waiting");
+    }
+
+    fn keyset(extra: Option<&str>) -> OfflinePublicKeyset {
+        let key = |kid: &str, state: &str| super::super::OfflinePublicKey {
+            kid: kid.into(),
+            algorithm: "Ed25519".into(),
+            signature_version: 1,
+            state: state.into(),
+            not_before: "2026-09-04T00:00:00Z".into(),
+            not_after: "2026-09-06T00:00:00Z".into(),
+            public_key_b64: STANDARD_NO_PAD.encode([7_u8; 32]),
+        };
+        // The rotation bootstrap.rs's own test installs; one key more is refused.
+        let mut keys = vec![key("previous", "PREVIOUS"), key("current", "CURRENT"), key("next", "NEXT")];
+        if let Some(state) = extra {
+            keys.push(key("other", state));
+        }
+        OfflinePublicKeyset { protocol_version: 1, issued_at: "2026-09-04T01:00:00Z".into(), keys }
+    }
+
+    const ANCHOR_SERVER_MS: i64 = 1_788_483_600_000;
+
+    fn anchor_trusted_time(store: &LocalStore, boot_id: &str) {
+        store.connection.execute(
+            "INSERT INTO trusted_time_state(singleton_id,server_time_ms,local_wall_at_anchor_ms,monotonic_at_anchor_ms,boot_id,updated_at_ms) VALUES(1,?1,?1,1000,?2,?1)",
+            params![ANCHOR_SERVER_MS, boot_id],
+        ).unwrap();
+    }
+
+    #[test]
+    fn a_till_whose_clock_yetu_has_not_vouched_for_waits_it_has_no_sync_issue() {
+        // F-262: a till just set up, before its shift opens, has no trusted time.
+        let mut store = empty_store();
+        let state = store
+            .take_offline_keyset(&keyset(None), ANCHOR_SERVER_MS, 2000, "boot-a")
+            .unwrap()
+            .expect("nothing is sent without a trusted clock");
+        assert_eq!(state.status, "Live");
+        assert_eq!(state.exception_operations, 0);
+
+        // Its sales, taken for the try, wait in the queue as they were.
+        let mut store = store_with_operation("ORDER_COMMIT");
+        assert_eq!(store.pending_sync_batch(ANCHOR_SERVER_MS).unwrap().len(), 1);
+        let state = store
+            .take_offline_keyset(&keyset(None), ANCHOR_SERVER_MS, 2000, "boot-a")
+            .unwrap()
+            .unwrap();
+        assert_eq!((state.status.as_str(), state.queued_operations), ("Live", 1));
+        let in_flight: i64 = store
+            .connection
+            .query_row("SELECT count(*) FROM outbox WHERE state='IN_FLIGHT'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(in_flight, 0);
+    }
+
+    #[test]
+    fn after_a_restart_the_till_waits_for_its_shift_to_vouch_for_the_clock() {
+        let mut store = empty_store();
+        anchor_trusted_time(&store, "boot-a");
+        let state = store
+            .take_offline_keyset(&keyset(None), ANCHOR_SERVER_MS + 1000, 2000, "boot-b")
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.status, "Live");
+    }
+
+    #[test]
+    fn a_clock_turned_back_since_yetu_vouched_for_it_is_still_a_sync_issue() {
+        // The same boot, the wall clock an hour behind what Yetu's time says it is.
+        let mut store = empty_store();
+        anchor_trusted_time(&store, "boot-a");
+        let state = store
+            .take_offline_keyset(&keyset(None), ANCHOR_SERVER_MS - 3_600_000, 2000, "boot-a")
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.status, "Sync issue");
+        // And it stays one, the clock now marked: not mistaken for a restart.
+        let state = store
+            .take_offline_keyset(&keyset(None), ANCHOR_SERVER_MS + 2000, 3000, "boot-a")
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.status, "Sync issue");
+    }
+
+    #[test]
+    fn a_vouched_clock_takes_the_keyset_and_a_bad_keyset_is_still_a_sync_issue() {
+        let mut store = empty_store();
+        anchor_trusted_time(&store, "boot-a");
+        assert!(store
+            .take_offline_keyset(&keyset(None), ANCHOR_SERVER_MS + 1000, 2000, "boot-a")
+            .unwrap()
+            .is_none());
+        let state = store
+            .take_offline_keyset(&keyset(Some("REVOKED")), ANCHOR_SERVER_MS + 2000, 3000, "boot-a")
+            .unwrap()
+            .expect("a keyset that fails its checks stops the send");
+        assert_eq!(state.status, "Sync issue");
     }
 
     #[test]

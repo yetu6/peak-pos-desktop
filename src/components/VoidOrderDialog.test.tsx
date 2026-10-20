@@ -29,7 +29,7 @@ const { voidOrderMutate, sessionRef, voidState, voidReset } = vi.hoisted(() => (
   voidOrderMutate: vi.fn(
     (_vars: unknown, opts?: { onSuccess?: () => void; onError?: (error: Error) => void }) => opts?.onSuccess?.(),
   ),
-  sessionRef: { roster: [] as Array<{ fullName: string; staffNumber: string }> },
+  sessionRef: { roster: [] as Array<{ fullName: string; staffNumber: string }>, staffId: "staff-amina" },
   voidState: { error: null as unknown, isPending: false },
 }));
 
@@ -39,7 +39,7 @@ vi.mock("../hooks/usePosData", () => ({
 }));
 
 vi.mock("../auth/DeviceSessionProvider", () => ({
-  useDeviceSessionOptional: () => ({ session: { staffId: "staff-amina" }, roster: sessionRef.roster }),
+  useDeviceSessionOptional: () => ({ session: { staffId: sessionRef.staffId }, roster: sessionRef.roster }),
 }));
 
 const ORDER: POSOrder = {
@@ -79,11 +79,31 @@ beforeEach(() => {
   tillReasons.kept = null;
   voidOrderMutate.mockClear();
   sessionRef.roster = ROSTER;
+  sessionRef.staffId = "staff-amina";
   voidState.error = null;
   voidState.isPending = false;
 });
 
 describe("VoidOrderDialog", () => {
+  // F-264 (to check, 2026-10-20): did an open sheet keep the person who opened
+  // it as "You" after someone else signed in? A lock or Switch person closes
+  // the shell (App.tsx); were a sheet still open, it follows who is signed in now.
+  it("marks whoever is signed in now as You, not the person who opened it", async () => {
+    const { rerender } = render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    const you = () => screen.getAllByRole("radio").find((radio) => radio.textContent?.includes("You"))?.textContent;
+    expect(you()).toContain("Amina Hassan");
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+    expect(screen.getByText("Grace Mushi, enter your PIN")).toBeInTheDocument();
+
+    sessionRef.staffId = "staff-grace";
+    rerender(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    expect(you()).toContain("Grace Mushi");
+    expect(screen.getByRole("radio", { name: /Grace Mushi/ })).toBeDisabled();
+    // Grace was chosen to approve; signed in, she is the one asking, and can't approve it herself.
+    expect(screen.getByRole("alert")).toHaveTextContent("You can't approve your own request. Ask another supervisor.");
+    expect(screen.queryByText("Grace Mushi, enter your PIN")).toBeNull();
+  });
+
   it("offers the reasons the outlet's managers keep, when they keep their own", () => {
     tillReasons.kept = { void: ["Wrong table"] };
     render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);

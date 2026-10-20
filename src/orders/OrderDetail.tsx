@@ -27,6 +27,8 @@ import { useRequestKey } from "../lib/useRequestKey";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, serviceTypeWords } from "../lib/words";
 import { REGISTER_KEYS } from "../register/TicketActions";
 import {
+  EMPTIED_WORDS,
+  emptiedOrder,
   kitchenReprintProblem,
   kitchenReprintWords,
   orderTimeline,
@@ -364,8 +366,8 @@ export function OrderDetailView({
               Waiting for a shift
             </StatusChip>
           ) : (
-            <StatusChip tone={orderStatusTone(order.status)} icon={orderStatusIcon(order.status)} data-testid="order-detail-status">
-              {orderStatusWords(order.status)}
+            <StatusChip tone={emptiedOrder(order) ? "neutral" : orderStatusTone(order.status)} icon={orderStatusIcon(order.status)} data-testid="order-detail-status">
+              {emptiedOrder(order) ? EMPTIED_WORDS : orderStatusWords(order.status)}
             </StatusChip>
           )}
           <p className="y-detail__result" role="status" data-testid="order-detail-result">
@@ -696,10 +698,15 @@ export function OrderDetail({
         idempotencyKey: removeKey.keyFor([order.id, line.id, order.version].join("|")),
       },
       {
-        onSuccess: () => {
+        onSuccess: (next) => {
           focusAfter.current = true;
           setSelectedLineId(null);
-          setResult(`${line.name} removed.`);
+          // F-260 (fbc-peak #286): the last line off, Yetu closes the order.
+          setResult(
+            next.status === "VOIDED"
+              ? `${line.name} removed. Nothing is left on ${orderName(order)}, so it's closed.`
+              : `${line.name} removed.`,
+          );
         },
         onError: (error) => {
           const refusal = removeProblem(error);

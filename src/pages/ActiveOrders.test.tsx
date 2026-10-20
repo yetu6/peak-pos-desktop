@@ -508,6 +508,30 @@ describe("Orders", () => {
     expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("Tea removed.");
   });
 
+  // F-260 (fbc-peak #286): the last line off an order never sent, Yetu closes it.
+  it("taking off the last line says the order is closed, with nothing on it", async () => {
+    const removedAt = new Date().toISOString();
+    ordersStore.set("order-1", { ...OPEN_ORDER });
+    spies.removeItem.mockImplementationOnce(async (orderId: string) => {
+      const order = ordersStore.get(orderId)!;
+      const closed: POSOrder = {
+        ...order,
+        status: "VOIDED",
+        closedAt: removedAt,
+        version: order.version + 1,
+        items: order.items.map((item) => ({ ...item, status: "VOIDED" as const, removedAt })),
+      };
+      ordersStore.set(orderId, closed);
+      return { data: closed, error: null };
+    });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(within(sheet).getByRole("button", { name: /1 × Lunch/ }));
+    await userEvent.click(within(sheet).getByRole("button", { name: "Remove Lunch" }));
+    expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("Lunch removed. Nothing is left on Order 42, so it's closed.");
+    expect(await within(sheet).findByTestId("order-detail-status")).toHaveTextContent("Nothing on it");
+  });
+
   it("a refused remove reloads the order when it changed, and the next press is a new request", async () => {
     ordersStore.set("order-1", { ...OPEN_ORDER, items: [...OPEN_ORDER.items, { ...OPEN_ORDER.items[0], id: "item-2", name: "Tea" }] });
     spies.removeItem.mockResolvedValueOnce({ data: undefined, error: { code: "STALE_VERSION" } });

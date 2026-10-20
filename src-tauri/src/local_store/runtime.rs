@@ -173,16 +173,13 @@ pub async fn retry_sync(
                 .map_err(|error| format!("{error:?}"));
         }
     };
-    if runtime
-        .with_store(|store| {
-            let received_at = trusted_now(store)?;
-            store.install_authenticated_keyset(&keyset, received_at)
-        })
-        .is_err()
-    {
-        return runtime
-            .with_store(|store| store.record_sync_issue("SYNC_KEYSET_REJECTED", now_ms()))
-            .map_err(|error| format!("{error:?}"));
+    // F-262: before a shift has vouched for the till's clock this waits; it is not a sync issue.
+    match runtime.with_store(|store| {
+        store.take_offline_keyset(&keyset, now_ms(), monotonic_ms(), &boot_id())
+    }) {
+        Ok(Some(state)) => return Ok(state),
+        Ok(None) => {}
+        Err(error) => return Err(format!("{error:?}")),
     }
     if operations.is_empty() {
         return runtime

@@ -277,7 +277,14 @@ export function NewOrder({
         version: order.version,
         idempotencyKey: removeKey.next(),
       });
-      adopt(next);
+      // F-260 (fbc-peak #286): the last line off closes the order in Yetu. The
+      // table and note stay on the ticket; the next item starts a new order.
+      if (next.status === "VOIDED") {
+        adopt(null);
+        createKey.next();
+      } else {
+        adopt(next);
+      }
       setSelectedLineId(null);
     } catch {
       // The words come from removeItem.error.
