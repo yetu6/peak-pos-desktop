@@ -16,7 +16,7 @@ import { getOperationalSession } from "../lib/operationalSession";
 import { listEveryPage } from "../orders/orderPages";
 import { OPEN_MOST_PAGES } from "../orders/ordersSettings";
 import type {
-  CashMovementType,
+  CashMoneyType,
   DiscountKind,
   PaymentMethod,
   POSOrder,
@@ -259,7 +259,7 @@ export function useRecordCashMovement(shiftId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: {
-      movementType: CashMovementType;
+      movementType: CashMoneyType;
       amountMinor: number;
       reason: string;
       supervisorStaffId?: string;
@@ -282,6 +282,18 @@ export function useRecordCashMovement(shiftId: string | undefined) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pos", "cash-movements", shiftId] });
       queryClient.invalidateQueries({ queryKey: ["pos", "shift"] });
+    },
+  });
+}
+
+/** The drawer opened without a sale (fbc-peak #289): Yetu records it, then the till opens the drawer. */
+export function useRecordDrawerOpened(shiftId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { reason: string; idempotencyKey: string }) =>
+      unwrap(createPosApi().recordDrawerOpened(args.reason, args.idempotencyKey)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pos", "cash-movements", shiftId] });
     },
   });
 }

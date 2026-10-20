@@ -1,11 +1,13 @@
-import { ArrowDownToLine, ArrowUpFromLine, Banknote } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowDownToLine, ArrowUpFromLine, Banknote, Inbox } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { CloseDayCard } from "../cash/CloseDayCard";
 import { CloseShiftSheet } from "../cash/CloseShiftSheet";
+import { OpenDrawerSheet } from "../cash/OpenDrawerSheet";
 import { useExpectedCashVisible } from "../cash/useExpectedCashVisible";
 import { CashMovementDialog } from "../components/CashMovementDialog";
-import { Button, EmptyState, ListRow, Money, PermissionNotice } from "../components/system";
+import { Banner, Button, EmptyState, ListRow, Money, PermissionNotice } from "../components/system";
 import {
   useCashMovements,
   useCatalogCurrency,
@@ -14,8 +16,11 @@ import {
   usePosShift,
 } from "../hooks/usePosData";
 import type { RosterEntry } from "../lib/deviceAuth";
-import type { CashMovementType, POSCashMovement, POSShift } from "../lib/posContracts";
+import type { CashMoneyType, POSCashMovement, POSShift } from "../lib/posContracts";
 import { cashMovementWords, clockTime, shiftChipWords } from "../lib/words";
+import { drawerFitted, openDrawer } from "../print/cashDrawer";
+import { drawerNotOpenedWords } from "../print/printProblems";
+import { loadPrinterSettings } from "../print/printerStore";
 
 /**
  * Cash: the drawer for this shift. Every figure is Yetu's own (the float it
@@ -35,8 +40,25 @@ export function Manager() {
   const isManager = useHasPermission("pos.report.manager");
   const showExpected = useExpectedCashVisible();
   const hotel = useHasCapability("LODGING");
-  const [movement, setMovement] = useState<CashMovementType | null>(null);
+  const [movement, setMovement] = useState<CashMoneyType | null>(null);
   const [closing, setClosing] = useState(false);
+  const [openingDrawer, setOpeningDrawer] = useState(false);
+  const [notice, setNotice] = useState<{ tone: "info" | "danger"; words: string } | null>(null);
+  const canOpenDrawer = useHasPermission("pos.cash_drawer.open");
+  // A till without a drawer (a laptop) never offers to open one.
+  const printers = useQuery({ queryKey: ["printers", "settings"], queryFn: loadPrinterSettings });
+  const fitted = printers.data ? drawerFitted(printers.data) : false;
+
+  /** Yetu has recorded the cash or the opening: the drawer opens, and a drawer that didn't is said. */
+  function openTheDrawer(opened: string) {
+    void openDrawer(printers.data).then((result) =>
+      setNotice(
+        result.ok
+          ? { tone: "info", words: opened }
+          : { tone: "danger", words: drawerNotOpenedWords(result.error ?? "") },
+      ),
+    );
+  }
   const roster = device?.roster ?? [];
   const requesterId = device?.session?.staffId ?? "";
 
@@ -50,12 +72,30 @@ export function Manager() {
       canCloseShift={canCloseShift}
       showExpected={showExpected}
       closeDay={isManager && !hotel ? <CloseDayCard thisTillShiftOpen={Boolean(shift)} /> : null}
+      notice={notice}
+      onOpenDrawer={fitted && canOpenDrawer ? () => setOpeningDrawer(true) : undefined}
       onCashIn={() => setMovement("CASH_IN")}
       onCashOut={() => setMovement("CASH_OUT")}
       onCloseShift={() => setClosing(true)}
     >
       {movement && shift ? (
-        <CashMovementDialog shiftId={shift.id} currency={currency} initialType={movement} onClose={() => setMovement(null)} />
+        <CashMovementDialog
+          shiftId={shift.id}
+          currency={currency}
+          initialType={movement}
+          onClose={() => setMovement(null)}
+          onRecorded={() => openTheDrawer(movement === "CASH_OUT" ? "Cash out recorded. The drawer opened." : "Cash in recorded. The drawer opened.")}
+        />
+      ) : null}
+      {openingDrawer && shift ? (
+        <OpenDrawerSheet
+          shiftId={shift.id}
+          onClose={() => setOpeningDrawer(false)}
+          onRecorded={(opening) => {
+            setOpeningDrawer(false);
+            openTheDrawer(`The drawer opened: ${opening.reason}.`);
+          }}
+        />
       ) : null}
       {closing && shift ? (
         <CloseShiftSheet
@@ -84,6 +124,10 @@ export interface CashViewProps {
   closeDay: ReactNode;
   /** Manager → Printers (S8a): shown to a manager. */
   printers?: ReactNode;
+  /** What the drawer just did, said once. */
+  notice?: { tone: "info" | "danger"; words: string } | null;
+  /** Open the drawer without a sale: only on a till with a drawer, for those allowed (2026-10-21). */
+  onOpenDrawer?: () => void;
   onCashIn: () => void;
   onCashOut: () => void;
   onCloseShift: () => void;
@@ -101,12 +145,19 @@ export function CashView({
   showExpected,
   closeDay,
   printers = null,
+  notice = null,
+  onOpenDrawer,
   onCashIn,
   onCashOut,
   onCloseShift,
   children,
 }: CashViewProps) {
   const nameOf = (staffId: string | undefined) => roster.find((entry) => entry.staffNumber === staffId)?.fullName;
+  const openDrawerButton = onOpenDrawer ? (
+    <Button variant="secondary" size={56} icon={<Inbox />} data-testid="open-drawer" disabled={!shift} onClick={onOpenDrawer}>
+      Open drawer
+    </Button>
+  ) : null;
 
   return (
     <div className="y-cash">
@@ -114,6 +165,11 @@ export function CashView({
         <h1 className="y-cash__title">Cash</h1>
         {shift ? <p className="y-cash__muted">{shiftChipWords(shift).full}</p> : null}
       </header>
+      {notice ? (
+        <Banner inline tone={notice.tone} data-testid="cash-notice">
+          {notice.words}
+        </Banner>
+      ) : null}
 
       <div className="y-cash__grid">
         <div className="y-cash__column">
@@ -166,17 +222,21 @@ export function CashView({
                 >
                   Cash out
                 </Button>
+                {openDrawerButton}
               </div>
             ) : (
-              <div data-testid="cash-movement-unavailable">
-                <PermissionNotice who="a cashier or manager" action="put cash in or take it out" next="Ask one to help." />
-              </div>
+              <>
+                <div data-testid="cash-movement-unavailable">
+                  <PermissionNotice who="a cashier or manager" action="put cash in or take it out" next="Ask one to help." />
+                </div>
+                {openDrawerButton ? <div className="y-cash__actions">{openDrawerButton}</div> : null}
+              </>
             )}
           </section>
 
           <section className="y-cash__card" aria-labelledby="movements-title">
             <h2 id="movements-title" className="y-cash__card-title">
-              Cash in and out this shift
+              The drawer this shift
             </h2>
             {shift ? (
               <div data-testid="cash-movement-list">
@@ -184,7 +244,7 @@ export function CashView({
                   <EmptyState
                     icon={<Banknote />}
                     title="No cash in or out yet"
-                    description="Cash put in or taken out during this shift is listed here."
+                    description="Cash put in or taken out during this shift, and the drawer opened without a sale, are listed here."
                   />
                 ) : (
                   movements.map((entry) => {
@@ -195,7 +255,11 @@ export function CashView({
                         key={entry.id}
                         title={cashMovementWords(entry.movementType)}
                         meta={[entry.reason, who, when].filter(Boolean).join(" · ")}
-                        trailing={<Money minor={entry.amountMinor} currency={currency} size="lead" />}
+                        trailing={
+                          entry.movementType === "DRAWER_OPENED" ? undefined : (
+                            <Money minor={entry.amountMinor} currency={currency} size="lead" />
+                          )
+                        }
                       />
                     );
                   })

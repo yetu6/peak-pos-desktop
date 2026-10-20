@@ -1,6 +1,6 @@
 import { createApiClient, type ApiResult } from "./api";
 import type { POSPrintJob,
-  CashMovementType,
+  CashMoneyType,
   DiscountKind,
   PaymentMethod,
   POSBusinessDayCloseResult,
@@ -90,9 +90,16 @@ export function createPosApi() {
         `/api/v1/pos/shifts/${encodeURIComponent(shiftId)}/cash-movements`,
       );
     },
+    /** fbc-peak #289: the drawer opened without a sale, kept on the shift's cash record. */
+    recordDrawerOpened(reason: string, idempotencyKey: string): Promise<ApiResult<POSCashMovement>> {
+      return client.POST<POSCashMovement>("/api/v1/pos/cash-drawer/openings", {
+        headers: idempotent(idempotencyKey),
+        body: { reason },
+      });
+    },
     recordCashMovement(
       body: {
-        movementType: CashMovementType;
+        movementType: CashMoneyType;
         amountMinor: number;
         reason: string;
         /** Required for CASH_OUT: a different supervisor's id and PIN. */

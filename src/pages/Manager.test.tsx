@@ -14,7 +14,7 @@ const { closeBusinessDayMutate, permissionsRef, capabilitiesRef, shiftRef, curre
   movementsRef: {
     data: [] as Array<{
       id: string;
-      movementType: "CASH_IN" | "CASH_OUT";
+      movementType: "CASH_IN" | "CASH_OUT" | "DRAWER_OPENED";
       amountMinor: number;
       reason: string;
       recordedBy?: string;
@@ -46,10 +46,44 @@ vi.mock("../hooks/usePosData", () => ({
 }));
 
 vi.mock("../components/CashMovementDialog", () => ({
-  CashMovementDialog: ({ initialType }: { initialType?: string }) => (
-    <div data-testid="cash-movement-dialog-stub" data-type={initialType} />
+  CashMovementDialog: ({ initialType, onRecorded }: { initialType?: string; onRecorded?: () => void }) => (
+    <div data-testid="cash-movement-dialog-stub" data-type={initialType}>
+      <button type="button" onClick={onRecorded}>
+        Yetu recorded it
+      </button>
+    </div>
   ),
 }));
+
+// The opening itself is tested in OpenDrawerSheet.test.tsx: here, what Cash does once Yetu has recorded it.
+vi.mock("../cash/OpenDrawerSheet", () => ({
+  OpenDrawerSheet: ({ onRecorded }: { onRecorded: (opening: { reason: string }) => void }) => (
+    <div data-testid="open-drawer-sheet-stub">
+      <button type="button" onClick={() => onRecorded({ reason: "Check the float" })}>
+        Yetu recorded the opening
+      </button>
+    </div>
+  ),
+}));
+
+// This till's printers: a drawer on the bill printer, or none (a laptop).
+const { till } = vi.hoisted(() => ({
+  till: { drawer: true, raw: [] as Uint8Array[], fails: false },
+}));
+vi.mock("../print/printerStore", () => ({
+  loadPrinterSettings: async () => ({
+    kitchenTickets: false,
+    kitchen: null,
+    stations: {},
+    receipt: { target: { kind: "network", host: "192.168.1.50", port: 9100 }, width: 48 },
+    cashDrawer: till.drawer,
+  }),
+  printRawToPrinter: async (_target: unknown, bytes: Uint8Array) => {
+    if (till.fails) throw new Error("Printer offline");
+    till.raw.push(bytes);
+  },
+}));
+const DRAWER_KICK = [0x1b, 0x70, 0, 25, 250].join(",");
 
 function renderCash() {
   return render(
@@ -72,6 +106,91 @@ describe("Manager", () => {
   afterEach(() => {
     currencyRef.currency = "TZS";
     movementsRef.data = [];
+    till.drawer = true;
+    till.raw = [];
+    till.fails = false;
+  });
+
+  // The owner, 2026-10-21: anyone who takes money may open the drawer without a sale, on the record.
+  it("offers Open drawer only on a till with a drawer, to those who may open it", async () => {
+    shiftRef.shift = SHIFT;
+    capabilitiesRef.capabilities = [];
+    permissionsRef.permissions = ["pos.cash_movement.record", "pos.cash_drawer.open"];
+    const { unmount } = renderCash();
+    expect(await screen.findByTestId("open-drawer")).toHaveTextContent("Open drawer");
+    unmount();
+    till.drawer = false; // a laptop: no drawer
+    const laptop = renderCash();
+    await screen.findByTestId("open-cash-movement");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByTestId("open-drawer")).toBeNull();
+    laptop.unmount();
+    till.drawer = true;
+    permissionsRef.permissions = ["pos.cash_movement.record"];
+    renderCash();
+    await screen.findByTestId("open-cash-movement");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByTestId("open-drawer")).toBeNull();
+  });
+
+  it("a role that may open the drawer but not move cash still sees Open drawer", async () => {
+    shiftRef.shift = SHIFT;
+    capabilitiesRef.capabilities = [];
+    permissionsRef.permissions = ["pos.cash_drawer.open"];
+    renderCash();
+    expect(await screen.findByTestId("open-drawer")).toBeInTheDocument();
+    expect(screen.getByTestId("cash-movement-unavailable")).toBeInTheDocument();
+  });
+
+  it("opens the drawer once Yetu has recorded why, and says so", async () => {
+    shiftRef.shift = SHIFT;
+    capabilitiesRef.capabilities = [];
+    permissionsRef.permissions = ["pos.cash_movement.record", "pos.cash_drawer.open"];
+    renderCash();
+    await userEvent.click(await screen.findByTestId("open-drawer"));
+    expect(till.raw).toHaveLength(0);
+    await userEvent.click(screen.getByRole("button", { name: "Yetu recorded the opening" }));
+    expect(await screen.findByTestId("cash-notice")).toHaveTextContent("The drawer opened: Check the float.");
+    expect(till.raw.map((bytes) => Array.from(bytes).join(","))).toEqual([expect.stringContaining(DRAWER_KICK)]);
+    expect(screen.queryByTestId("open-drawer-sheet-stub")).toBeNull();
+  });
+
+  it("a drawer that didn't open says so, and how to open it", async () => {
+    till.fails = true;
+    shiftRef.shift = SHIFT;
+    capabilitiesRef.capabilities = [];
+    permissionsRef.permissions = ["pos.cash_movement.record", "pos.cash_drawer.open"];
+    renderCash();
+    await userEvent.click(await screen.findByTestId("open-drawer"));
+    await userEvent.click(screen.getByRole("button", { name: "Yetu recorded the opening" }));
+    expect(await screen.findByTestId("cash-notice")).toHaveTextContent("The cash drawer didn't open: printer offline. Open it with its key");
+  });
+
+  it("cash in opens the drawer once Yetu has recorded it", async () => {
+    shiftRef.shift = SHIFT;
+    capabilitiesRef.capabilities = [];
+    permissionsRef.permissions = ["pos.cash_movement.record"];
+    renderCash();
+    await screen.findByTestId("open-cash-movement");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await userEvent.click(screen.getByTestId("open-cash-movement"));
+    await userEvent.click(screen.getByRole("button", { name: "Yetu recorded it" }));
+    expect(await screen.findByTestId("cash-notice")).toHaveTextContent("Cash in recorded. The drawer opened.");
+    expect(till.raw).toHaveLength(1);
+  });
+
+  it("lists an opening of the drawer with why, who and when, and no money", () => {
+    permissionsRef.permissions = ["pos.cash_movement.record"];
+    capabilitiesRef.capabilities = [];
+    shiftRef.shift = SHIFT;
+    movementsRef.data = [
+      { id: "o1", movementType: "DRAWER_OPENED", amountMinor: 0, reason: "Change for a guest's note", recordedBy: "staff-grace", createdAt: new Date(2026, 8, 4, 12, 15).toISOString() },
+    ];
+    renderCash();
+    const list = screen.getByTestId("cash-movement-list");
+    expect(list).toHaveTextContent("Drawer opened");
+    expect(list).toHaveTextContent("Change for a guest's note · Grace Mushi · 12:15");
+    expect(list).not.toHaveTextContent("TSh");
   });
 
   it("hides cash movements and day close from a cashier with neither grant", () => {

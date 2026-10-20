@@ -12,7 +12,7 @@ vi.mock("./printerStore", () => ({
   printRawToPrinter: async (target: unknown, bytes: Uint8Array) => void raw.push({ target, bytes }),
 }));
 
-const { openDrawerAfterCash } = await import("./cashDrawer");
+const { drawerFitted, openDrawer, openDrawerForCash } = await import("./cashDrawer");
 
 // The owner, 2026-10-20: Yetu is not connected to TRA's VFD; the EFD gives
 // the tax receipt when the guest pays. Yetu's paper is the BILL, before
@@ -119,7 +119,7 @@ describe("the bill before payment", () => {
   });
 });
 
-describe("the cash drawer after payment", () => {
+describe("the cash drawer", () => {
   const settings: PrinterSettings = {
     ...DEFAULT_PRINTER_SETTINGS,
     receipt: { target: { kind: "network", host: "192.168.1.50", port: 9100 }, width: PAPER_80MM },
@@ -129,21 +129,30 @@ describe("the cash drawer after payment", () => {
     raw.length = 0;
   });
 
-  it("opens for cash, as the receipt that no longer prints used to open it", async () => {
-    expect(await openDrawerAfterCash({ payments: [] }, "CASH", settings)).toEqual({ ok: true });
-    expect(raw).toHaveLength(1);
-    // ESC @ (the printer reset every paper starts with), then ESC p: open the drawer on pin 2.
-    expect(Array.from(raw[0].bytes)).toEqual([0x1b, 0x40, 0x1b, 0x70, 0, 25, 250]);
-    // A part paid in cash earlier opens it at the end too.
-    await openDrawerAfterCash({ payments: [{ id: "p", paymentMethod: "CASH", amountMinor: 1000, createdAt: "", recordedByName: "" }] }, "MOBILE_MONEY", settings);
+  it("opens for cash, every time it is taken (2026-10-21): ESC @, then ESC p on pin 2", async () => {
+    expect(await openDrawerForCash("CASH", settings)).toEqual({ ok: true });
+    expect(await openDrawerForCash("CASH", settings)).toEqual({ ok: true });
     expect(raw).toHaveLength(2);
+    expect(Array.from(raw[0].bytes)).toEqual([0x1b, 0x40, 0x1b, 0x70, 0, 25, 250]);
+    expect(raw[0].target).toEqual(settings.receipt?.target);
   });
 
-  it("stays shut for a card or a room charge, and with no drawer or no bill printer", async () => {
-    await openDrawerAfterCash({ payments: [] }, "CARD", settings);
-    await openDrawerAfterCash({ payments: [] }, "ROOM_CHARGE", settings);
-    await openDrawerAfterCash({ payments: [] }, "CASH", { ...settings, cashDrawer: false });
-    await openDrawerAfterCash({ payments: [] }, "CASH", { ...settings, receipt: null });
+  it("stays shut for a card, mobile money or a room charge", async () => {
+    for (const method of ["EXTERNAL_CARD", "MOBILE_MONEY", "ROOM_CHARGE", undefined]) {
+      expect(await openDrawerForCash(method, settings)).toEqual({ ok: true });
+    }
     expect(raw).toHaveLength(0);
+  });
+
+  it("a till without a drawer -- switched off, or no bill printer, as on a laptop -- never opens one", async () => {
+    expect(drawerFitted(settings)).toBe(true);
+    expect(drawerFitted({ ...settings, cashDrawer: false })).toBe(false);
+    expect(drawerFitted({ ...settings, receipt: null })).toBe(false);
+    await openDrawer({ ...settings, cashDrawer: false });
+    await openDrawer({ ...settings, receipt: null });
+    expect(raw).toHaveLength(0);
+    // Opening it without a sale goes the same way.
+    await openDrawer(settings);
+    expect(raw).toHaveLength(1);
   });
 });

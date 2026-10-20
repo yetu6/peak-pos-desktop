@@ -17,6 +17,8 @@ import { orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementM
 import { afterLostAnswer, firstAnswerLost, lostAnswerRefusalWords, roomChargeProblem, tenderProblem } from "./registerWords";
 import { PAY_CHECK_EVERY_SECONDS } from "./registerSettings";
 import { orderName } from "../lib/orderNumber";
+import { openDrawerForCash } from "../print/cashDrawer";
+import { drawerNotOpenedWords } from "../print/printProblems";
 
 const CASH_FORM = "pay-cash";
 const RECORDED_FORM = "pay-recorded";
@@ -88,14 +90,18 @@ export function PaySheet({
   onClose,
   onOrderChange,
   onPaid,
+  onDrawerProblem,
 }: {
   order: POSOrder;
   currency: string;
   onClose: () => void;
   onOrderChange?: (order: POSOrder) => void;
   onPaid: (paid: PaidInfo) => void;
+  /** The drawer didn't open for cash: said here, and by the page once the sheet has closed. */
+  onDrawerProblem?: (words: string) => void;
 }) {
   const [live, setLive] = useState(order);
+  const [drawerProblem, setDrawerProblem] = useState<string | null>(null);
   // The last part payment Yetu recorded, said back to the person.
   const [recorded, setRecorded] = useState<number | null>(null);
   const [roomQuery, setRoomQuery] = useState("");
@@ -169,8 +175,18 @@ export function PaySheet({
         setLive(updated);
         setRecorded(request.amountMinor);
         onOrderChange?.(updated);
+        // Every cash payment opens the drawer, part or whole (2026-10-21): change comes from the drawer.
+        setDrawerProblem(null);
+        void openDrawerForCash(request.method).then((result) => {
+          if (result.ok) return;
+          const words = drawerNotOpenedWords(result.error ?? "");
+          setDrawerProblem(words);
+          onDrawerProblem?.(words);
+        });
         if ((updated.remainingMinor ?? 0) <= 0 || updated.status === "CLOSED") {
-          onPaid({ order: updated, method: request.method, changeMinor: request.changeMinor, split: before.paidMinor > 0 });
+          // Split: paid more than one way (F-269); two cash payments are cash.
+          const methods = new Set([...(updated.payments ?? []).map((payment) => payment.paymentMethod), request.method]);
+          onPaid({ order: updated, method: request.method, changeMinor: request.changeMinor, split: methods.size > 1 });
         }
       },
       onError: (error) => {
@@ -253,6 +269,7 @@ export function PaySheet({
       blocked={answer?.final ?? false}
       problem={problem ?? null}
       recordedMinor={recorded}
+      drawerProblem={drawerProblem}
       onClose={onClose}
       onTender={(request) => {
         setAnswer(null);
@@ -307,6 +324,8 @@ export interface PaySheetViewProps {
   problem: Refusal | string | null;
   /** The last part payment Yetu recorded on this order, if any. */
   recordedMinor?: number | null;
+  /** The drawer didn't open for the cash just taken. */
+  drawerProblem?: string | null;
   onClose: () => void;
   onTender: (request: TenderRequest) => void;
   onChargeRoom: (candidate: POSRoomChargeCandidate) => void;
@@ -331,6 +350,7 @@ export function PaySheetView({
   blocked = false,
   problem,
   recordedMinor = null,
+  drawerProblem = null,
   onClose,
   onTender,
   onChargeRoom,
@@ -652,6 +672,11 @@ export function PaySheetView({
               ? `Recorded ${formatMoney(recordedMinor, currency)}. ${formatMoney(due, currency)} still to pay.`
               : ""}
           </p>
+          {drawerProblem ? (
+            <p className="y-pay__recorded" role="alert" data-testid="pay-drawer-problem">
+              {drawerProblem}
+            </p>
+          ) : null}
           {unsure ? (
             <Banner inline tone="danger" data-testid="pay-unsure">
               {`The connection dropped while Yetu was recording this ${unsure.room ? "charge" : "payment"}. We don't know yet if it went through. `}

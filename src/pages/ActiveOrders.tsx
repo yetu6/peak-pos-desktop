@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { drawerNotOpenedWords } from "../print/printProblems";
-import { openDrawerAfterCash } from "../print/cashDrawer";
 import { DiscountDialog } from "../components/DiscountDialog";
 import { ReceiptView } from "../components/ReceiptView";
 import { VoidOrderDialog } from "../components/VoidOrderDialog";
@@ -125,10 +123,7 @@ export function ActiveOrders({
     returnFocusTo.current = info.order.id;
     setOverlay({ kind: "done", paid: info });
     // Nothing prints after payment (2026-10-20): the EFD gives the tax receipt, the bill came before.
-    // Cash opens the drawer, as the receipt used to; one that didn't open is said.
-    void openDrawerAfterCash(info.order, info.method).then((result) => {
-      if (!result.ok) setNotice(drawerNotOpenedWords(result.error ?? ""));
-    });
+    // The drawer opened as the cash was taken (Pay); one that didn't is said here.
   }
 
   return (
@@ -185,6 +180,7 @@ export function ActiveOrders({
           currency={currency}
           onClose={() => setOverlay({ kind: "detail", orderId: current.id })}
           onPaid={afterPaid}
+          onDrawerProblem={setNotice}
         />
       ) : null}
       {overlay?.kind === "void" && current ? (
