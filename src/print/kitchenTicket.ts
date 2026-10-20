@@ -32,13 +32,20 @@ export interface KitchenTicketPaper {
   lines: { quantity: number; name: string; options: string[]; tags?: string }[];
 }
 
+/**
+ * What the paper is, at its top: an order to make, and where (2026-10-20,
+ * the owner: "the orders to be processed"). "TO PREPARE · BAR".
+ */
+export function kitchenTicketTitle(station: string | undefined): string {
+  return `TO PREPARE - ${(station ? stationWords(station) : "Kitchen").toUpperCase()}`;
+}
+
 export function kitchenTicketBytes(ticket: KitchenTicketPaper, width: PaperWidth): Uint8Array {
-  const out = new EscPos(width).align("center").bold(true).size(2, 2);
+  const out = new EscPos(width).align("center").bold(true).line(kitchenTicketTitle(ticket.station)).size(2, 2);
   const number = ticket.dailyNumber ?? ticket.orderNumber;
   out.line(number !== undefined ? `ORDER ${number}` : "ORDER");
   if (ticket.roundNumber && ticket.roundNumber > 1) out.size(1, 2).line(`ROUND ${ticket.roundNumber}`);
   out.size(1, 1);
-  if (ticket.station) out.line(stationWords(ticket.station).toUpperCase());
   if (ticket.copy) {
     out.line("*** COPY: printed again ***");
     if (ticket.printedAgainByName) out.wrapped(`by ${ticket.printedAgainByName}`, width);

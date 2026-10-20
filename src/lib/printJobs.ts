@@ -13,7 +13,7 @@ import type { POSPrintJob, PrintJobStatus } from "./posContracts";
 import { kitchenTicketBytes } from "../print/kitchenTicket";
 import { paperFromPrintDocument, type KitchenPrintRoutes } from "../print/kitchenRouting";
 import { printerFor, stationPrintsNoPaper } from "../print/printerSettings";
-import { receiptPaperFor } from "../print/receiptRouting";
+import { hotelHere, receiptPaperFor } from "../print/receiptRouting";
 import { yetuFetch } from "./yetuFetch";
 
 /**
@@ -28,6 +28,8 @@ import { yetuFetch } from "./yetuFetch";
 const KITCHEN_TICKET = "KITCHEN_TICKET";
 const RECEIPT = "RECEIPT";
 const REFUND_RECEIPT = "REFUND_RECEIPT";
+/** 2026-10-20: the bill before payment (printBill); a paid order's RECEIPT is kept ON_FILE and prints only as a copy. */
+const BILL = "BILL";
 
 function tryDevIdentity(): DevIdentity | null {
   try {
@@ -112,6 +114,7 @@ export function ticketCopyFromPrintDocument(document: Record<string, unknown>): 
           ? document.tableNumber
           : undefined,
     serviceType: typeof document.serviceType === "string" ? document.serviceType : undefined,
+    station: typeof document.station === "string" ? document.station : undefined,
     notes: typeof document.notes === "string" ? document.notes : undefined,
     waiterName: typeof document.waiterName === "string" ? document.waiterName : undefined,
     sentAt: typeof document.sentAt === "string" ? document.sentAt : undefined,
@@ -120,8 +123,8 @@ export function ticketCopyFromPrintDocument(document: Record<string, unknown>): 
 }
 
 export function formatPrintDocument(job: POSPrintJob): { title: string; text: string } {
-  if (job.jobType === RECEIPT) {
-    return { title: "yetu-invoice", text: formatReceipt(receiptCopyFromPrintDocument(job.document)) };
+  if (job.jobType === RECEIPT || job.jobType === BILL) {
+    return { title: "yetu-bill", text: formatReceipt(receiptCopyFromPrintDocument(job.document, { hotel: hotelHere() })) };
   }
   if (job.jobType === REFUND_RECEIPT) {
     return { title: "yetu-refund-receipt", text: formatRefundReceipt(refundReceiptCopyFromPrintDocument(job.document)) };
@@ -214,7 +217,7 @@ export async function processPrintJob(
   try {
     const station = typeof claimed.document.station === "string" ? claimed.document.station : undefined;
     const printer = kitchen ? printerFor(routes.settings, station) : null;
-    const receiptPrinter = (claimed.jobType === RECEIPT || claimed.jobType === REFUND_RECEIPT) ? routes?.settings.receipt : null;
+    const receiptPrinter = (claimed.jobType === RECEIPT || claimed.jobType === REFUND_RECEIPT || claimed.jobType === BILL) ? routes?.settings.receipt : null;
     if (kitchen && printer) {
       // A thermal printer of the kitchen's: the ticket in large type, with a cut (S8a).
       await routes.printRaw(printer.target, kitchenTicketBytes(paperFromPrintDocument(claimed.document, routes.tagsOf), printer.width));

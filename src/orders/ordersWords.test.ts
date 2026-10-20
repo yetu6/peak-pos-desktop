@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { POSOrder, POSOrderPayment, POSStationTicket } from "../lib/posContracts";
 import { clockTime } from "../lib/words";
-import { orderMatches, orderStateWords, orderTimeline, quantityProblem, removeProblem, reprintProblem, sendProblem, voidedWords } from "./ordersWords";
+import { billProblem, orderMatches, orderStateWords, orderTimeline, quantityProblem, removeProblem, reprintProblem, sendProblem, voidedWords } from "./ordersWords";
 
 function order(extra: Partial<POSOrder> = {}): POSOrder {
   return {
@@ -201,8 +201,8 @@ describe("refusals", () => {
   });
 
   it("print a copy: a person who can't, no receipt, anything else", () => {
-    expect(reprintProblem(refused({ code: "FORBIDDEN" }))?.words).toBe("Only a cashier or manager can print a copy of the receipt. Ask one to help.");
-    expect(reprintProblem(refused({ code: "NOT_FOUND" }))?.words).toBe("Yetu has no receipt for this order.");
+    expect(reprintProblem(refused({ code: "FORBIDDEN" }))?.words).toBe("Only a cashier or manager can print the bill again. Ask one to help.");
+    expect(reprintProblem(refused({ code: "NOT_FOUND" }))?.words).toBe("Yetu has no bill for this order.");
     expect(reprintProblem(refused({ code: "CONFLICT" }))?.words).toBe("The copy wasn't printed. Try again.");
   });
 
@@ -340,5 +340,26 @@ describe("an order Yetu closed with nothing on it (F-260)", () => {
     const sentThenVoided = order({ status: "VOIDED", closedAt: removedAt, items: [{ ...soup, status: "VOIDED" }] });
     expect(orderStateWords(sentThenVoided).words).toBe("Voided");
     expect(orderStateWords(order({ status: "VOIDED", closedAt: removedAt, items: [] })).words).toBe("Voided");
+  });
+});
+
+// fbc-peak #288 (2026-10-20): the guest gets the bill before paying; each one is in the order's history.
+describe("the bill before payment", () => {
+  it("each bill printed is in the history, with who printed it", () => {
+    const printedAt = new Date(Date.now() - 4 * 60_000).toISOString();
+    const words = orderTimeline({
+      order: order({ billPrints: [{ printedAt, printedByName: "Zawadi Said" }, { printedAt }] }),
+      tickets: [],
+      currency: "TZS",
+    });
+    expect(words).toContainEqual({ time: clockTime(printedAt), words: "Bill printed by Zawadi Said" });
+    expect(words).toContainEqual({ time: clockTime(printedAt), words: "Bill printed" });
+  });
+
+  it("says why a bill wasn't printed", () => {
+    expect(billProblem(refused({ code: "BILL_NOTHING_ON_IT" }))?.words).toBe("Nothing is on this order yet, so there is no bill to print.");
+    expect(billProblem(refused({ code: "BILL_ORDER_NOT_OPEN" }))).toEqual({ kind: "moved", words: "This order is paid or voided now. It's been reloaded." });
+    expect(billProblem(refused({ code: "FORBIDDEN" }))?.kind).toBe("permission");
+    expect(billProblem(refused({ code: "TAB_WAITING_FOR_SHIFT" }))?.words).toBe("Take this tab over first, then print its bill.");
   });
 });

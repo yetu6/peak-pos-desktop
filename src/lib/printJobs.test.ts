@@ -204,8 +204,11 @@ describe("printJobs", () => {
         lines: [{ name: "Stew", quantity: "2", unitPrice: "10.00", total: "23.60" }],
       },
     });
-    expect(formatted.title).toBe("yetu-invoice");
-    expect(formatted.text).toContain("INVOICE");
+    expect(formatted.title).toBe("yetu-bill");
+    // A paid order's bill, printed again on request (2026-10-20); nothing about TRA on it (the owner).
+    expect(formatted.text).toContain("BILL · PAID");
+    expect(formatted.text).not.toContain("INVOICE");
+    expect(formatted.text).not.toMatch(/TRA|tax receipt/);
     expect(formatted.text).toContain("POS-1");
     expect(formatted.text).toContain("TOTAL  23.60");
     expect(formatted.text).toContain("VAT  3.60");
@@ -457,6 +460,19 @@ describe("printJobs: receipts on a thermal printer, the cash drawer (S8b)", () =
     expect(raw[0].target).toEqual(RECEIPT_PRINTER.target);
     expect(words(raw[0].bytes)).toContain("Discount (Regular guest)");
     expect(drawer).toBe(true);
+  });
+
+  // fbc-peak #288 (2026-10-20): the bill before payment.
+  it("a bill prints on the bill printer and opens no drawer; with no thermal printer it prints as words", async () => {
+    const BILL_DOCUMENT = { ...SALE, kind: "BILL", paidMinor: 500_000, remainingMinor: 582_000, tenderMethod: undefined, cashMinor: 500_000, settledAt: undefined };
+    const thermal = await printed(job("BILL", BILL_DOCUMENT));
+    expect(thermal.raw[0].target).toEqual(RECEIPT_PRINTER.target);
+    expect(words(thermal.raw[0].bytes)).toContain("TO PAY");
+    expect(thermal.drawer).toBe(false);
+    const plain = await printed(job("BILL", BILL_DOCUMENT), true, null);
+    expect(plain.raw).toEqual([]);
+    expect(plain.text[0]).toContain("BILL\nOrder 7");
+    expect(plain.text[0]).toContain("TO PAY  TSh 5,820");
   });
 
   it("a card sale opens no drawer; a split with a cash part does", async () => {

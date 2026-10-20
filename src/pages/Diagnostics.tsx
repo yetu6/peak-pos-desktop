@@ -107,7 +107,7 @@ export function statusChecks(input: {
     !input.native
       ? {
           id: "receipt-printer",
-          name: "Receipt printer",
+          name: "Bill printer",
           state: "unknown",
           words: "Printing works only in the till app on the counter computer.",
           fix: "Use the till app to print.",
@@ -115,14 +115,14 @@ export function statusChecks(input: {
       : input.printer?.available
         ? {
             id: "receipt-printer",
-            name: "Receipt printer",
+            name: "Bill printer",
             state: "ok",
             words: `The till can send receipts to ${printerName}. It can't tell whether the printer is on or has paper.`,
             fix: "If nothing prints, check the printer is on, has paper and is this computer's default printer, then print a test page.",
           }
         : {
             id: "receipt-printer",
-            name: "Receipt printer",
+            name: "Bill printer",
             state: "problem",
             words: "This computer has no way to print yet.",
             fix: "Ask support to set up the printer.",

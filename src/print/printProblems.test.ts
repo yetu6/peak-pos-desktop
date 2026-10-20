@@ -28,9 +28,9 @@ describe("printProblemOnce", () => {
       "The kitchen ticket didn't print: no printer is set up on this till. A manager sets up printers in Status (F12), under Printers.",
     );
     expect(printProblemOnce(failed, "kitchen ticket")).toBeNull();
-    // A receipt is its own thing to say.
-    expect(printProblemOnce(failed, "receipt")).toBe(
-      "The receipt didn't print: no printer is set up on this till. A manager sets up printers in Status (F12), under Printers.",
+    // A bill is its own thing to say.
+    expect(printProblemOnce(failed, "bill")).toBe(
+      "The bill didn't print: no printer is set up on this till. A manager sets up printers in Status (F12), under Printers.",
     );
     // The next person to sign in is told too.
     signIn("baraka-session");
@@ -47,7 +47,7 @@ describe("printProblemOnce", () => {
 
   it("a copy that didn't print says why and that Yetu has the receipt", () => {
     expect(copyNotPrintedWords("Print failed: printer out of paper.")).toBe(
-      "The copy didn't print: print failed: printer out of paper. Yetu has the receipt; try again once the printer is ready.",
+      "The copy didn't print: print failed: printer out of paper. Yetu has the bill; try again once the printer is ready.",
     );
   });
 });

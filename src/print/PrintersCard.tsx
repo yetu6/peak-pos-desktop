@@ -28,9 +28,9 @@ const TEST_TICKET = {
   lines: [{ quantity: 1, name: "Test ticket: this printer works", options: ["Nothing to make"] }],
 };
 
-/** A sample receipt for "Print a test receipt": the layout, no amounts, nothing sold. */
+/** A sample bill for "Print a test bill": the layout, no amounts, nothing sold. */
 const TEST_RECEIPT = {
-  propertyName: "Test receipt",
+  propertyName: "Test bill",
   lines: [{ name: "Test: this printer works", quantity: "1" }],
 };
 
@@ -39,7 +39,7 @@ function savedWords(settings: PrinterSettings): string {
   const kitchen = settings.kitchenTickets
     ? `Kitchen tickets print at ${printerWords(settings.kitchen)}.`
     : "This till won't print kitchen tickets.";
-  const receipts = `Receipts print at ${printerWords(settings.receipt)}${settings.cashDrawer ? ", and its cash drawer opens for cash" : ""}.`;
+  const receipts = `Bills print at ${printerWords(settings.receipt)}${settings.cashDrawer ? ", and its cash drawer opens for cash" : ""}.`;
   return `Saved. ${kitchen} ${receipts}`;
 }
 
@@ -144,9 +144,9 @@ export function PrintersCard() {
           </details>
         </>
       ) : null}
-      <h3 className="y-printers__subtitle">Receipts</h3>
+      <h3 className="y-printers__subtitle">Bills</h3>
       <PrinterPicker
-        label="Receipt printer"
+        label="Bill printer"
         value={settings.receipt}
         printers={printers}
         allowOwn
@@ -177,7 +177,7 @@ export function PrintersCard() {
         </Button>
         {settings.receipt ? (
           <Button variant="quiet" size={56} icon={<Printer />} disabled={busy} onClick={() => void test(settings.receipt, "receipt")} data-testid="test-receipt-printer">
-            Print a test receipt
+            Print a test bill
           </Button>
         ) : null}
       </div>

@@ -139,7 +139,7 @@ describe("OrderDetailView: refunds (S7)", () => {
     renderDetail({ order: order(PAID), receipt: RECEIPT, refunds: refundsOf([]), refundOffer: { offer: true, why: null }, onRefund });
     const refund = within(footer()).getByRole("button", { name: "Refund items" });
     expect(refund).toBeEnabled();
-    expect(within(footer()).getByRole("button", { name: "Print receipt" })).toHaveClass("y-button--primary");
+    expect(within(footer()).getByRole("button", { name: "Print bill again" })).toHaveClass("y-button--primary");
     await userEvent.click(refund);
     expect(onRefund).toHaveBeenCalled();
   });
@@ -249,7 +249,7 @@ describe("OrderDetailView", () => {
     expect(screen.getByTestId("order-detail-payment")).toHaveTextContent("Printed again 2 times");
     expect(within(footer()).queryByRole("button", { name: /Pay/ })).toBeNull();
     expect(within(footer()).queryByRole("button", { name: "Void order" })).toBeNull();
-    const print = within(footer()).getByRole("button", { name: "Print receipt" });
+    const print = within(footer()).getByRole("button", { name: "Print bill again" });
     expect(print).toHaveClass("y-button--primary");
     await userEvent.click(print);
     expect(handlers.onReprint).toHaveBeenCalled();
@@ -286,7 +286,7 @@ describe("OrderDetailView", () => {
 
   it("a paid order waits for its receipt before it can print a copy", () => {
     renderDetail({ order: order({ status: "CLOSED", paidMinor: 1_534_000, remainingMinor: 0 }), receipt: undefined });
-    expect(within(footer()).getByRole("button", { name: "Print receipt" })).toBeDisabled();
+    expect(within(footer()).getByRole("button", { name: "Print bill again" })).toBeDisabled();
   });
 
   it("says who can, instead of actions the person can't use", () => {
@@ -300,7 +300,7 @@ describe("OrderDetailView", () => {
 
   it("says who can print a copy to a person who can't", () => {
     renderDetail({ order: order({ status: "CLOSED", paidMinor: 1_534_000, remainingMinor: 0 }), receipt: RECEIPT, canPay: false });
-    expect(within(footer()).getByRole("note")).toHaveTextContent("Only a cashier or manager can print a copy of the receipt.");
+    expect(within(footer()).getByRole("note")).toHaveTextContent("Only a cashier or manager can print the bill again.");
   });
 
   it("a voided order has nothing left to do but close", () => {
@@ -442,5 +442,24 @@ describe("OrderDetail: prices that include VAT", () => {
     expect(totals).toHaveTextContent("VAT included");
     expect(totals).not.toHaveTextContent("Subtotal");
     expect(totals).not.toHaveTextContent("TSh 18,644.07");
+  });
+});
+
+// fbc-peak #288 (2026-10-20): the bill before payment, above Pay; a paid order prints its bill again.
+describe("OrderDetailView: the bill", () => {
+  it("an open order offers Print bill, and presses it", async () => {
+    const onPrintBill = vi.fn();
+    renderDetail({ onPrintBill });
+    await userEvent.click(screen.getByTestId("detail-print-bill"));
+    expect(onPrintBill).toHaveBeenCalledTimes(1);
+  });
+
+  it("not for an order with nothing on it, nor for a paid one", () => {
+    renderDetail({ onPrintBill: vi.fn(), order: order({ items: [] }) });
+    expect(screen.getByTestId("detail-print-bill")).toBeDisabled();
+    cleanup();
+    renderDetail({ onPrintBill: vi.fn(), order: order(PAID) });
+    expect(screen.queryByTestId("detail-print-bill")).toBeNull();
+    expect(screen.getByRole("button", { name: "Print bill again" })).toBeInTheDocument();
   });
 });

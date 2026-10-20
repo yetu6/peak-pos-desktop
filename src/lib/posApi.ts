@@ -1,5 +1,5 @@
 import { createApiClient, type ApiResult } from "./api";
-import type {
+import type { POSPrintJob,
   CashMovementType,
   DiscountKind,
   PaymentMethod,
@@ -262,6 +262,12 @@ export function createPosApi() {
     // ---- Receipts -------------------------------------------------------
     getReceipt(orderId: string): Promise<ApiResult<POSReceipt>> {
       return client.GET<POSReceipt>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/receipt`);
+    },
+    /** fbc-peak #288: the bill for an open order, before the guest pays: a BILL print job this till prints. */
+    printBill(orderId: string, idempotencyKey: string): Promise<ApiResult<POSPrintJob>> {
+      return client.POST<POSPrintJob>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/bill`, {
+        headers: idempotent(idempotencyKey),
+      });
     },
     reprintReceipt(orderId: string, idempotencyKey: string): Promise<ApiResult<POSReceipt>> {
       return client.POST<POSReceipt>(

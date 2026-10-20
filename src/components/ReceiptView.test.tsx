@@ -49,13 +49,13 @@ const RECEIPT: POSReceipt = {
 };
 
 describe("ReceiptView", () => {
-  it("shows the settled document as Yetu kept it, in words, called a receipt", () => {
+  it("shows the settled document as Yetu kept it, in words, called a bill", () => {
     receiptRef.data = RECEIPT;
     receiptRef.isLoading = false;
     receiptRef.isError = false;
     render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
 
-    const sheet = screen.getByRole("dialog", { name: "Receipt" });
+    const sheet = screen.getByRole("dialog", { name: "Bill" });
     const doc = screen.getByTestId("receipt-document");
     expect(screen.getByTestId("receipt-property")).toHaveTextContent("Mama Rose Hotel");
     expect(doc).toHaveTextContent("Order POS-1");
@@ -66,7 +66,7 @@ describe("ReceiptView", () => {
     expect(doc).toHaveTextContent("VAT");
     expect(screen.getByTestId("receipt-taken-by")).toHaveTextContent("Taken by Amina Hassan");
     expect(screen.getByTestId("receipt-footer")).toHaveTextContent(
-      "This is not a tax receipt. Use your EFD machine for tax receipts.",
+      "Powered by Yetu",
     );
     expect(sheet).not.toHaveTextContent(/invoice/i);
     expect(screen.queryByTestId("receipt-error")).not.toBeInTheDocument();
@@ -105,7 +105,7 @@ describe("ReceiptView", () => {
     try {
       render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
       expect(screen.getByTestId("reprint-error")).toHaveTextContent(
-        "The copy didn't print: no printer is set up on this till. Yetu has the receipt; try again once the printer is ready.",
+        "The copy didn't print: no printer is set up on this till. Yetu has the bill; try again once the printer is ready.",
       );
     } finally {
       reprintState.data = undefined;

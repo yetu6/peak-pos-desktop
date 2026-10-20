@@ -1,4 +1,5 @@
-import { processPendingPrintJobs } from "../lib/printJobs";
+import { processPendingPrintJobs, processPrintJob } from "../lib/printJobs";
+import type { POSPrintJob } from "../lib/posContracts";
 import type { PrintResult } from "../lib/kitchenTicketPrint";
 import type { PrinterSettings } from "./printerSettings";
 import { loadPrinterSettings, printRawToPrinter } from "./printerStore";
@@ -18,5 +19,16 @@ export async function printFor(
     settings: settings ?? (await loadPrinterSettings()),
     printRaw: printRawToPrinter,
     tagsOf,
+  });
+}
+
+/**
+ * Prints the one job Yetu just made (a bill, 2026-10-20) on this till's bill
+ * printer, without anything else that waits for the same order.
+ */
+export async function printJobNow(job: POSPrintJob, settings?: PrinterSettings): Promise<PrintResult> {
+  return processPrintJob(job, undefined, {
+    settings: settings ?? (await loadPrinterSettings()),
+    printRaw: printRawToPrinter,
   });
 }

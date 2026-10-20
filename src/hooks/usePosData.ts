@@ -1,7 +1,7 @@
 import type { FnbTillMenu } from "../fnb/fnbContracts";
 import type { PrintResult } from "../lib/kitchenTicketPrint";
 import { tagNote } from "../fnb/fnbWords";
-import { printFor } from "../print/printFor";
+import { printFor, printJobNow } from "../print/printFor";
 import { PRINTERS_PLACE } from "../print/printProblems";
 import { loadPrinterSettings } from "../print/printerStore";
 import { useMemo, useRef, useState } from "react";
@@ -697,6 +697,26 @@ export function useReceipt(orderId: string | undefined) {
     queryFn: () => unwrap(createPosApi().getReceipt(orderId!)),
     enabled: Boolean(orderId),
     retry: false,
+  });
+}
+
+/**
+ * The bill for an open order, before the guest pays (fbc-peak #288): Yetu
+ * makes it and records it in the order's history; this till prints it on
+ * its bill printer. `failed` is what the printer said when it didn't.
+ */
+export function usePrintBill() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { orderId: string; idempotencyKey: string }) => {
+      const job = await unwrap(createPosApi().printBill(args.orderId, args.idempotencyKey));
+      const result = await printJobNow(job);
+      return { job, failed: result.ok ? undefined : result.error };
+    },
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ["pos", "order", variables.orderId] });
+      void queryClient.invalidateQueries({ queryKey: ["pos", "orders"] });
+    },
   });
 }
 
