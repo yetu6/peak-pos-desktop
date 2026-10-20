@@ -28,18 +28,24 @@ const TEST_TICKET = {
   lines: [{ quantity: 1, name: "Test ticket: this printer works", options: ["Nothing to make"] }],
 };
 
-/** A sample bill for "Print a test bill": the layout, no amounts, nothing sold. */
+/** A sample bill for "Print a test bill": the layout, no amounts, nothing sold, nothing paid. */
 const TEST_RECEIPT = {
   propertyName: "Test bill",
+  beforePayment: true,
   lines: [{ name: "Test: this printer works", quantity: "1" }],
 };
+
+/** A printer inside a sentence: "this till's own printer" in lower case. */
+function printerPlace(choice: PrinterChoice | null): string {
+  return choice ? printerWords(choice) : "this till's own printer";
+}
 
 /** What the saved settings do, in words. */
 function savedWords(settings: PrinterSettings): string {
   const kitchen = settings.kitchenTickets
-    ? `Kitchen tickets print at ${printerWords(settings.kitchen)}.`
+    ? `Kitchen tickets print at ${printerPlace(settings.kitchen)}.`
     : "This till won't print kitchen tickets.";
-  const receipts = `Bills print at ${printerWords(settings.receipt)}${settings.cashDrawer ? ", and its cash drawer opens for cash" : ""}.`;
+  const receipts = `Bills print at ${printerPlace(settings.receipt)}${settings.cashDrawer ? ", and its cash drawer opens for cash" : ""}.`;
   return `Saved. ${kitchen} ${receipts}`;
 }
 
@@ -87,7 +93,8 @@ export function PrintersCard() {
           ? receiptBytes(TEST_RECEIPT, choice.width, { drawer: settings.cashDrawer })
           : kitchenTicketBytes(TEST_TICKET, choice.width),
       );
-      setWords({ ok: true, text: `A test ticket went to ${printerWords(choice)}. If nothing came out, check the printer is on and has paper.` });
+      const sample = what === "receipt" ? "A test bill" : "A test ticket";
+      setWords({ ok: true, text: `${sample} went to ${printerWords(choice)}. If nothing came out, check the printer is on and has paper.` });
     } catch (error) {
       setWords({ ok: false, text: error instanceof Error ? error.message : String(error) });
     } finally {

@@ -21,6 +21,8 @@ import "./gallery.css";
 /** A shift as the backend sends it: opened 07:02 on business day 2026-10-12. */
 const BUSINESS_DATE = "2026-10-12";
 const OPENED_AT = new Date(2026, 9, 12, 7, 2).toISOString();
+/** The screens are seen at 14:32 on that same day, the shell's clock. */
+const SEEN_AT = new Date(2026, 9, 12, 14, 32);
 
 /** The Orders list as the shell shows it, with the Orders fixtures' own orders (ordersData.ts). */
 function OrdersPreview() {
@@ -70,7 +72,7 @@ export function FixtureShell({
       onNavigate={setPage}
       place={FIXTURE_PLACE}
       person={{ name: "Amina Hassan", initials: "AH" }}
-      shift={shiftChipWords({ status: "OPEN", openedAt: OPENED_AT, businessDate: BUSINESS_DATE })}
+      shift={shiftChipWords({ status: "OPEN", openedAt: OPENED_AT, businessDate: BUSINESS_DATE }, SEEN_AT)}
       clock="14:32"
       connection={
         connection ? (

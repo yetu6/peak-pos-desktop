@@ -153,18 +153,27 @@ describe("the business day in words", () => {
   });
 
   it("puts the shift and its business day in the top bar chip, with a shorter form", () => {
-    const opened = new Date(2026, 9, 12, 7, 2).toISOString();
-    expect(shiftChipWords({ status: "OPEN", openedAt: opened, businessDate: "2026-10-12" })).toEqual({
+    const opened = new Date(2026, 9, 12, 7, 2);
+    const later = new Date(2026, 9, 12, 14, 30);
+    expect(shiftChipWords({ status: "OPEN", openedAt: opened.toISOString(), businessDate: "2026-10-12" }, later)).toEqual({
       full: "Shift open since 07:02 · Mon 12 Oct",
       short: "Since 07:02 · Mon 12 Oct",
     });
-    expect(shiftChipWords({ status: "OPEN", openedAt: opened, businessDate: "not a day" })).toEqual({
+    // F-266: opened at 00:12 on Wed 21 before the night audit, it counts for Tuesday, and says so.
+    const afterMidnight = new Date(2026, 9, 21, 0, 12);
+    expect(
+      shiftChipWords({ status: "OPEN", openedAt: afterMidnight.toISOString(), businessDate: "2026-10-20" }, afterMidnight),
+    ).toEqual({
+      full: "Shift open since 00:12 · business day Tue 20 Oct",
+      short: "Since 00:12 · business day Tue 20 Oct",
+    });
+    expect(shiftChipWords({ status: "OPEN", openedAt: opened.toISOString(), businessDate: "not a day" }, later)).toEqual({
       full: "Shift open since 07:02",
       short: "Since 07:02",
     });
     expect(shiftChipWords(null)).toEqual({ full: "No shift open", short: "No shift open" });
     expect(
-      shiftChipWords({ status: "PENDING_VARIANCE_APPROVAL", openedAt: opened, businessDate: "2026-10-12" }),
+      shiftChipWords({ status: "PENDING_VARIANCE_APPROVAL", openedAt: opened.toISOString(), businessDate: "2026-10-12" }, later),
     ).toEqual({ full: "Shift waiting for a supervisor · Mon 12 Oct", short: "Waiting for a supervisor · Mon 12 Oct" });
   });
 });
