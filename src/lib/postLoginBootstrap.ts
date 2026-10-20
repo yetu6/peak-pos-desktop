@@ -7,6 +7,7 @@ import type {
   SignedAuthorizationBundle,
 } from "./offlineAuthorization";
 import type { CatalogActivationResult, SignedCatalogSnapshot } from "./localPosCore";
+import { yetuFetch } from "./yetuFetch";
 
 export class PostLoginBootstrapError extends Error {
   constructor(message = "Peak could not load this register") {
@@ -51,7 +52,7 @@ export interface PostLoginBootstrapOptions extends OfflineStartOptions {
 async function getJSON(baseUrl: string, path: string, token: string): Promise<unknown> {
   let response: Response;
   try {
-    response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
+    response = await yetuFetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
   } catch (error) {
@@ -148,7 +149,7 @@ export async function prepareOfflineStart(
     try { await options.installTrustKeyset(); } catch { /* the start-up below then says it can't be checked */ }
   }
   let response:Response;
-  try { response=await fetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/offline/bootstrap`,{method:"POST",headers:{Authorization:`Bearer ${session.token}`,"Content-Type":"application/json"},body:"{}"}); }
+  try { response=await yetuFetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/offline/bootstrap`,{method:"POST",headers:{Authorization:`Bearer ${session.token}`,"Content-Type":"application/json"},body:"{}"}); }
   catch { return {offlineAuthorization:{state:"UNAVAILABLE"}}; }
   if(response.status===401)throw new SessionExpiredError();
   if(response.status===404||response.status===501)return {offlineAuthorization:{state:"BACKEND_GAP"}};
@@ -156,7 +157,7 @@ export async function prepareOfflineStart(
   try{
     const bootstrap:unknown=await response.json();
     const installed=await options.installOfflineBootstrap(session.terminalId,session.propertyId,session.outletId,bootstrap);
-    await fetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/offline/catalog-acknowledge`,{method:"POST",headers:{Authorization:`Bearer ${session.token}`,"Content-Type":"application/json"},body:JSON.stringify({catalogSnapshotId:installed.catalog.snapshotId,activatedAtMs:Date.now()})});
+    await yetuFetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/offline/catalog-acknowledge`,{method:"POST",headers:{Authorization:`Bearer ${session.token}`,"Content-Type":"application/json"},body:JSON.stringify({catalogSnapshotId:installed.catalog.snapshotId,activatedAtMs:Date.now()})});
     return {offlineAuthorization:installed.authorization,certifiedCatalog:installed.catalog};
   }catch{return {offlineAuthorization:{state:"INVALID"}}}
 }
@@ -170,7 +171,7 @@ async function bootstrapCertifiedCatalog(
 ): Promise<PostLoginBootstrap["certifiedCatalog"]> {
   let response: Response;
   try {
-    response = await fetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/catalog/snapshots/${encodeURIComponent(version)}`, {
+    response = await yetuFetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/catalog/snapshots/${encodeURIComponent(version)}`, {
       headers: { Authorization: `Bearer ${session.token}` },
     });
   } catch { return { state: "UNAVAILABLE" }; }
@@ -190,7 +191,7 @@ async function bootstrapOfflineAuthorization(
 ): Promise<PostLoginBootstrap["offlineAuthorization"]> {
   let response: Response;
   try {
-    response = await fetch(
+    response = await yetuFetch(
       `${baseUrl.replace(/\/$/, "")}/api/v1/pos/terminals/${encodeURIComponent(session.terminalId)}/offline-leases`,
       {
         method: "POST",

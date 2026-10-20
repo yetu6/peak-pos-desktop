@@ -1,6 +1,7 @@
 import type { DeviceIdentityRecord, DeviceKeyStorageStatus } from "./deviceIdentity";
 import type { OperationalSession } from "./operationalSession";
 import { getApiBaseUrl } from "./peakConfig";
+import { yetuFetch } from "./yetuFetch";
 
 /** Yetu answers and is ready; answers with a problem (it, or its database, is down); or can't be reached. */
 export type Reachability = "reachable" | "failing" | "unreachable";
@@ -50,7 +51,7 @@ export function packagedAppVersion(): string {
 
 export async function probePeakServer(
   baseUrl: string = getApiBaseUrl(),
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: (url: string, init?: RequestInit) => Promise<Response> = yetuFetch,
 ): Promise<PeakProbe> {
   const origin = baseUrl.replace(/\/+$/, "");
   try {

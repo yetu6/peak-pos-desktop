@@ -2,6 +2,7 @@ import { bytesToB64Url, signChallengeNonce } from "./deviceCrypto";
 import type { OperationalSession } from "./operationalSession";
 import type { TerminalBinding } from "./offlineAuthorization";
 import { placeFrom, type TillPlace } from "./tillPlace";
+import { yetuFetch } from "./yetuFetch";
 
 export class DeviceNotApprovedError extends Error {
   constructor(message = "This register has not been approved yet") {
@@ -150,7 +151,7 @@ export async function requestPairing(
   publicKey: string,
   deviceCredentialHash: string,
 ): Promise<PairingRequest> {
-  const response = await fetch(`${baseUrl}/api/v1/pos/pairing-requests`, {
+  const response = await yetuFetch(`${baseUrl}/api/v1/pos/pairing-requests`, {
     method: "POST",
     headers: publicJsonHeaders(),
     body: JSON.stringify({ publicKey, deviceCredentialHash }),
@@ -185,7 +186,7 @@ export async function getPairingStatus(
   pairingRequestId: string,
   claimToken: string,
 ): Promise<PairingStatus> {
-  const response = await fetch(
+  const response = await yetuFetch(
     `${baseUrl}/api/v1/pos/pairing-requests/${pairingRequestId}`,
     { headers: { "X-Peak-Pairing-Token": claimToken } },
   );
@@ -247,7 +248,7 @@ export async function issueChallenge(
 	terminalId: string,
 	deviceCredential = terminalId,
 ): Promise<DeviceChallenge | null> {
-	const response = await fetch(`${baseUrl}/api/v1/pos/device/challenges`, {
+	const response = await yetuFetch(`${baseUrl}/api/v1/pos/device/challenges`, {
     method: "POST",
     headers: publicJsonHeaders(),
 		body: JSON.stringify({ terminalId, deviceCredential }),
@@ -269,7 +270,7 @@ export async function sendHeartbeat(
   terminalId: string,
   deviceCredential: string,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await yetuFetch(
     `${baseUrl}/api/v1/pos/terminals/${encodeURIComponent(terminalId)}/heartbeat`,
     {
       method: "POST",
@@ -354,7 +355,7 @@ export async function createStaffSession(args: {
   } else {
     throw new Error("Device signing authority is unavailable");
   }
-	const response = await fetch(`${args.baseUrl}/api/v1/pos/sessions`, {
+	const response = await yetuFetch(`${args.baseUrl}/api/v1/pos/sessions`, {
     method: "POST",
     headers: publicJsonHeaders(),
     body: JSON.stringify({

@@ -6,6 +6,7 @@ pub mod local_store;
 mod printer;
 mod raw_print;
 mod socket;
+mod yetu_http;
 
 use tauri::Manager;
 
@@ -19,6 +20,7 @@ pub fn run() {
         .setup(|app| {
             let runtime = local_store::runtime::LocalStoreRuntime::initialize_for_app(app.handle());
             app.manage(runtime);
+            app.manage(yetu_http::YetuHttp::new()?);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -41,6 +43,7 @@ pub fn run() {
             socket::open_peak_socket,
             socket::send_peak_socket,
             socket::close_peak_socket,
+            yetu_http::yetu_request,
             local_store::runtime::local_store_status,
             local_store::runtime::get_sync_state,
             local_store::runtime::retry_sync,
