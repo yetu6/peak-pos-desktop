@@ -33,6 +33,9 @@ export function discountProblem(error: unknown): RegisterProblem | null {
       return { kind: "no-approver", words: noApproverWords("discounts") };
     case "ORDER_HAS_PAYMENT":
       return { kind: "paid", words: "A discount can't be added once part of the bill is paid." };
+    // fbc-peak #285: refused before the supervisor's PIN is checked.
+    case "DISCOUNT_MORE_THAN_BILL":
+      return { kind: "other", words: "That's more than the bill. Take off no more than the bill comes to." };
     case "ORDER_STATE_CHANGED":
       return { kind: "paid", words: "This order is paid or voided, so it can't take a discount." };
   }

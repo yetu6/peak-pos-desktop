@@ -22,6 +22,10 @@ describe("discount and void refusals in words", () => {
   });
 
   it("says a paid order can't take a discount or be voided", () => {
+    // fbc-peak #285: an amount off more than the bill, refused before the supervisor's PIN is checked.
+    expect(discountProblem(problem("DISCOUNT_MORE_THAN_BILL", "A discount can't be more than the bill."))?.words).toBe(
+      "That's more than the bill. Take off no more than the bill comes to.",
+    );
     expect(discountProblem(problem("ORDER_HAS_PAYMENT", "discount cannot be changed after a tender has been recorded"))?.words).toBe(
       "A discount can't be added once part of the bill is paid.",
     );
