@@ -11,7 +11,7 @@ import { toMinor } from "../lib/posMoney";
 import { discountProblem } from "../register/registerWords";
 import { Banner, Button, Field, MoneyField, ReasonPicker, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
 import { orderNumberWords } from "../lib/orderNumber";
-import { DISCOUNT_REASONS } from "../orders/ordersSettings";
+import { useTillReasons } from "../fnb/useTillReasons";
 
 /**
  * A percentage as Yetu takes it: basis points (12.5% → 1250), from more than
@@ -49,6 +49,7 @@ export function DiscountDialog({
   const { supervisors, emptyWords } = useSupervisors("DISCOUNT");
   const requesterId = device?.session?.staffId ?? "";
   const applyDiscount = useApplyDiscount();
+  const reasons = useTillReasons("discount");
   const idempotencyKey = useIdempotencyKey();
   const [kind, setKind] = useState<DiscountKind>("AMOUNT");
   const [valueText, setValueText] = useState("");
@@ -164,7 +165,7 @@ export function DiscountDialog({
         )}
         <ReasonPicker
           label="Reason"
-          reasons={DISCOUNT_REASONS}
+          reasons={reasons}
           onChange={(chosen) => {
             setReason(chosen);
             clearApproval();

@@ -22,7 +22,7 @@ import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRateLimitWait } from "../lib/useRateLimitWait";
 import { useRequestKey } from "../lib/useRequestKey";
 import { paymentMethodWords, type SettlementMethod } from "../lib/words";
-import { REFUND_REASONS } from "./ordersSettings";
+import { useTillReasons } from "../fnb/useTillReasons";
 import { refundDoneWords, refundProblem, refundSummaryWords, type RefundProblem } from "./refundWords";
 
 type Stage = "build" | "approve" | "done";
@@ -81,6 +81,7 @@ export function RefundItemsSheet({
   const propertyId = usePropertyId();
   const refunds = useOrderRefunds(order.id);
   const record = useRecordRefund();
+  const reasons = useTillReasons("refund");
   const requestKey = useRequestKey();
 
   const [stage, setStage] = useState<Stage>("build");
@@ -372,7 +373,7 @@ export function RefundItemsSheet({
             <ReasonPicker
               label="Why"
               labelledBy="refund-reason-heading"
-              reasons={REFUND_REASONS}
+              reasons={reasons}
               onChange={setReason}
               otherHint="Written on the refund slip and in the records."
               testIdPrefix="refund-reason"
