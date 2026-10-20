@@ -97,6 +97,8 @@ export interface POSOrder {
   discountAppliedAt?: string;
   discountAskedByName?: string;
   discountApprovedByName?: string;
+  /** The percent discount is kept to the money off its supervisor approved; more lines would take more off (the owner, 2026-10-20). */
+  discountCapped?: boolean;
   /** F-229: the order's prices hold their VAT (the property writes them so); absent from a Yetu before it: VAT on top. */
   pricesIncludeTax?: boolean;
   taxMinor: number;
