@@ -6,6 +6,7 @@ import { NewOrder } from "./NewOrder";
 import { REGISTER_AUTO_RETURN_SECONDS, REGISTER_QUIET_AFTER_RETURN_MS } from "../register/registerSettings";
 import { clearOperationalSession, getOperationalSession, setOperationalSession } from "../lib/operationalSession";
 import type { POSCatalog, POSOrder } from "../lib/posContracts";
+import { giveReason } from "../../tests/reasons";
 
 // The printer: done at once unless a test holds it.
 const { printForSpy } = vi.hoisted(() => ({ printForSpy: vi.fn(async () => [] as unknown[]) }));
@@ -893,7 +894,7 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
       const voiding = await screen.findByTestId("void-order-dialog");
       // Said before the approval too, not only after it.
       expect(voiding).toHaveTextContent(says);
-      await userEvent.type(within(voiding).getByTestId("void-reason"), "Wrong table");
+      await giveReason("void-reason", "Wrong table", voiding);
       await userEvent.click(within(voiding).getByRole("radio", { name: /Grace Mushi/ }));
       for (const digit of "123456") await userEvent.click(within(voiding).getByTestId(`void-pin-key-${digit}`));
       await userEvent.click(within(voiding).getByTestId("confirm-void-order"));

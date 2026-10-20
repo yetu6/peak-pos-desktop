@@ -19,3 +19,21 @@ export function expectedCashVisible(
 ): boolean {
   return audience === "everyone" || isManager;
 }
+
+/**
+ * cash.inReasons and cash.outReasons: the reasons staff pick from when putting
+ * cash into the drawer or taking it out, besides typing their own
+ * (ReasonPicker). Cash out also needs a supervisor.
+ */
+export const CASH_IN_REASONS: readonly string[] = [
+  "Float top-up from the safe",
+  "Change from the bank",
+  "Cash from another till",
+];
+
+export const CASH_OUT_REASONS: readonly string[] = [
+  "Paid a supplier",
+  "Bought supplies",
+  "Cash to the safe",
+  "Change for another till",
+];

@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render as renderInDom, screen } from "@testing-library/react";
+import { act, render as renderInDom, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement, ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { idleLockHeld } from "../lib/idleLock";
 import { CashMovementDialog, CashMovementSheetView } from "./CashMovementDialog";
+import { giveReason } from "../../tests/reasons";
+import { CASH_IN_REASONS, CASH_OUT_REASONS } from "../cash/cashSettings";
 
 /** The app's query provider, fresh for each render: the approval sheets ask Yetu who may approve (F-249). */
 function render(ui: ReactElement) {
@@ -45,6 +47,27 @@ beforeEach(() => {
 });
 
 describe("CashMovementDialog", () => {
+  it("offers cash in and cash out their own reasons in one tap; switching starts the reason again", async () => {
+    render(<CashMovementDialog shiftId="shift-1" currency="TZS" onClose={vi.fn()} />);
+    const listed = (name: string) =>
+      within(screen.getByRole("radiogroup", { name })).getAllByRole("radio").map((radio) => radio.textContent);
+    expect(listed("Where the cash came from")).toEqual([...CASH_IN_REASONS, "Another reason"]);
+    await userEvent.type(screen.getByTestId("movement-amount"), "5000");
+    await userEvent.click(screen.getByRole("radio", { name: CASH_IN_REASONS[1] }));
+    expect(screen.getByTestId("confirm-movement")).toBeEnabled();
+
+    await userEvent.click(screen.getByTestId("movement-type-CASH_OUT"));
+    expect(listed("What the cash is for")).toEqual([...CASH_OUT_REASONS, "Another reason"]);
+    expect(screen.getByRole("radio", { name: CASH_OUT_REASONS[0] })).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(screen.getByTestId("movement-type-CASH_IN"));
+    expect(screen.getByRole("radio", { name: CASH_IN_REASONS[1] })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByTestId("confirm-movement")).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("radio", { name: CASH_IN_REASONS[0] }));
+    await userEvent.click(screen.getByTestId("confirm-movement"));
+    expect(recordMutate).toHaveBeenCalledWith(expect.objectContaining({ movementType: "CASH_IN", reason: CASH_IN_REASONS[0] }), expect.anything());
+  });
+
   it("defaults to cash in and requires a positive amount and a reason", async () => {
     const onClose = vi.fn();
     render(<CashMovementDialog shiftId="shift-1" currency="TZS" onClose={onClose} />);
@@ -53,7 +76,7 @@ describe("CashMovementDialog", () => {
     expect(submit).toBeDisabled();
     await userEvent.type(screen.getByTestId("movement-amount"), "5000");
     expect(submit).toBeDisabled();
-    await userEvent.type(screen.getByTestId("movement-reason"), "Change float top-up");
+    await giveReason("movement-reason", "Change float top-up");
     expect(submit).not.toBeDisabled();
     await userEvent.click(submit);
     expect(recordMutate).toHaveBeenCalledWith(
@@ -70,7 +93,7 @@ describe("CashMovementDialog", () => {
     render(<CashMovementDialog shiftId="shift-1" currency="TZS" onClose={vi.fn()} />);
     await userEvent.click(screen.getByTestId("movement-type-CASH_OUT"));
     await userEvent.type(screen.getByTestId("movement-amount"), "2000");
-    await userEvent.type(screen.getByTestId("movement-reason"), "Petty cash");
+    await giveReason("movement-reason", "Petty cash");
     const submit = screen.getByTestId("confirm-movement");
     expect(submit).toBeDisabled();
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
@@ -98,7 +121,7 @@ describe("CashMovementDialog", () => {
   it("never allows a zero or negative amount to submit", async () => {
     render(<CashMovementDialog shiftId="shift-1" currency="TZS" onClose={vi.fn()} />);
     await userEvent.type(screen.getByTestId("movement-amount"), "0");
-    await userEvent.type(screen.getByTestId("movement-reason"), "Test");
+    await giveReason("movement-reason", "Test");
     expect(screen.getByTestId("confirm-movement")).toBeDisabled();
   });
 
@@ -112,7 +135,7 @@ describe("CashMovementDialog", () => {
     };
     render(<CashMovementDialog shiftId="shift-1" currency="TZS" initialType="CASH_OUT" onClose={vi.fn()} />);
     await userEvent.type(screen.getByTestId("movement-amount"), "20000");
-    await userEvent.type(screen.getByTestId("movement-reason"), "Gas delivery");
+    await giveReason("movement-reason", "Gas delivery");
     expect(screen.getByText("Take TSh 20,000 out of the drawer: Gas delivery")).toBeInTheDocument();
     const own = screen.getByRole("radio", { name: /Amina Hassan/ });
     expect(own).toBeDisabled();
@@ -133,7 +156,7 @@ describe("CashMovementDialog", () => {
     sessionRef.value = { session: { staffId: "staff-amina" }, roster: [] };
     render(<CashMovementDialog shiftId="shift-1" currency="TZS" initialType="CASH_OUT" onClose={vi.fn()} />);
     await userEvent.type(screen.getByTestId("movement-amount"), "20000");
-    await userEvent.type(screen.getByTestId("movement-reason"), "Gas delivery");
+    await giveReason("movement-reason", "Gas delivery");
     expect(screen.queryByRole("textbox", { name: /staff number/i })).not.toBeInTheDocument();
     expect(screen.getByText(/can't show its staff list right now/)).toBeInTheDocument();
     expect(screen.getByTestId("confirm-movement")).toBeDisabled();
@@ -144,7 +167,7 @@ describe("CashMovementDialog", () => {
       sessionRef.value = { session: { staffId: "staff-amina" }, roster: ROSTER };
       render(<CashMovementDialog shiftId="shift-1" currency="TZS" initialType="CASH_OUT" onClose={vi.fn()} />);
       await userEvent.type(screen.getByTestId("movement-amount"), "20000");
-      await userEvent.type(screen.getByTestId("movement-reason"), "Gas delivery");
+      await giveReason("movement-reason", "Gas delivery");
       await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
       await typePin("736251");
       expect(screen.getByTestId("confirm-movement")).not.toBeDisabled();
@@ -166,7 +189,7 @@ describe("CashMovementDialog", () => {
 
     it("asks again after the reason changes", async () => {
       await approvedCashOut();
-      await userEvent.type(screen.getByTestId("movement-reason"), " and charcoal");
+      await giveReason("movement-reason", " and charcoal");
       expectApprovalCleared();
     });
 
@@ -235,7 +258,7 @@ describe("CashMovementDialog after too many attempts (429)", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Too many attempts. Wait a minute and try again.");
     await userEvent.click(screen.getByTestId("movement-type-CASH_OUT"));
     await userEvent.type(screen.getByTestId("movement-amount"), "2000");
-    await userEvent.type(screen.getByTestId("movement-reason"), "Petty cash");
+    await giveReason("movement-reason", "Petty cash");
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
     await typePin("736251");
     expect(screen.getByTestId("confirm-movement")).toBeDisabled();

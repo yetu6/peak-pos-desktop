@@ -10,6 +10,7 @@ import { idleLockHeld } from "../lib/idleLock";
 import { clockTime } from "../lib/words";
 import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
 import type { POSCatalog, POSOrder, POSReceipt, POSShift, POSStationTicket } from "../lib/posContracts";
+import { giveReason } from "../../tests/reasons";
 
 vi.mock("../lib/env", () => ({
   devIdentityFromEnv: () => ({
@@ -554,7 +555,7 @@ describe("Orders", () => {
     const sheet = await openDetail("order-1");
     await userEvent.click(within(sheet).getByRole("button", { name: "Void order" }));
     const voiding = await screen.findByTestId("void-order-dialog");
-    await userEvent.type(within(voiding).getByTestId("void-reason"), "Wrong table");
+    await giveReason("void-reason", "Wrong table", voiding);
     await userEvent.click(within(voiding).getByRole("radio", { name: /Grace Mushi/ }));
     for (const digit of "123456") await userEvent.click(within(voiding).getByTestId(`void-pin-key-${digit}`));
     await userEvent.click(within(voiding).getByTestId("confirm-void-order"));
@@ -860,7 +861,7 @@ describe("Orders: carrying on with an open order (F-236)", () => {
       const sheet = await openDetail("order-1");
       await userEvent.click(within(sheet).getByRole("button", { name: "Void order" }));
       const voiding = await screen.findByTestId("void-order-dialog");
-      await userEvent.type(within(voiding).getByTestId("void-reason"), "Wrong table");
+      await giveReason("void-reason", "Wrong table", voiding);
       await userEvent.click(within(voiding).getByRole("radio", { name: /Grace Mushi/ }));
       for (const digit of "123456") await userEvent.click(within(voiding).getByTestId(`void-pin-key-${digit}`));
       spies.voidOrder.mockImplementationOnce(async () => {

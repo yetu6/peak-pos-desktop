@@ -3,7 +3,7 @@ import { useSupervisors } from "../approvals/supervisors";
 import { useRef, useState } from "react";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
-import { Banner, Button, Field, MoneyField, RefusalNotice, Sheet, Skeleton, Stepper, SupervisorApproval, type KeypadKey } from "../components/system";
+import { Banner, Button, MoneyField, ReasonPicker, RefusalNotice, Sheet, Skeleton, Stepper, SupervisorApproval, type KeypadKey } from "../components/system";
 import { useOrderRefunds, usePropertyId, useRecordRefund, useRefundQuote } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
 import { orderName } from "../lib/orderNumber";
@@ -26,7 +26,6 @@ import { REFUND_REASONS } from "./ordersSettings";
 import { refundDoneWords, refundProblem, refundSummaryWords, type RefundProblem } from "./refundWords";
 
 type Stage = "build" | "approve" | "done";
-const OTHER_REASON = "other";
 
 /** Refusals that mean the order or the drawer is not as the screen showed it: back to the items, asked again. */
 const CHANGED: ReadonlySet<RefundProblem["kind"]> = new Set(["not-allowed", "quantity", "drawer", "room", "split"]);
@@ -86,8 +85,7 @@ export function RefundItemsSheet({
 
   const [stage, setStage] = useState<Stage>("build");
   const [chosen, setChosen] = useState<Record<string, number>>({});
-  const [reasonChoice, setReasonChoice] = useState<string | null>(null);
-  const [otherReason, setOtherReason] = useState("");
+  const [reason, setReason] = useState("");
   const [editingSplit, setEditingSplit] = useState(false);
   const [split, setSplit] = useState<Record<string, { text: string; minor: number | null }>>({});
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
@@ -109,7 +107,6 @@ export function RefundItemsSheet({
   const lines: POSRefundLineRequest[] = Object.entries(quantities)
     .filter(([, quantity]) => quantity > 0)
     .map(([orderItemId, quantity]) => ({ orderItemId, quantity }));
-  const reason = reasonChoice === OTHER_REASON ? otherReason.trim() : (reasonChoice ?? "");
 
   // Yetu's figures for these items, with its own split of the money.
   const baseQuery = useRefundQuote(order.id, lines.length > 0 ? { lines } : null);
@@ -372,32 +369,14 @@ export function RefundItemsSheet({
             <h3 id="refund-reason-heading" className="y-detail__heading">
               Why
             </h3>
-            <div role="radiogroup" aria-labelledby="refund-reason-heading" className="y-refund__reasons">
-              {[...REFUND_REASONS, OTHER_REASON].map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  role="radio"
-                  aria-checked={reasonChoice === option}
-                  className="y-refund__reason"
-                  data-testid={option === OTHER_REASON ? "refund-reason-other" : `refund-reason-${REFUND_REASONS.indexOf(option)}`}
-                  onClick={() => setReasonChoice(option)}
-                >
-                  {option === OTHER_REASON ? "Another reason" : option}
-                </button>
-              ))}
-            </div>
-            {reasonChoice === OTHER_REASON ? (
-              <Field
-                label="The reason"
-                hint="Written on the refund slip and in the records."
-                value={otherReason}
-                onChange={setOtherReason}
-                maxLength={500}
-                autoComplete="off"
-                data-testid="refund-reason-text"
-              />
-            ) : null}
+            <ReasonPicker
+              label="Why"
+              labelledBy="refund-reason-heading"
+              reasons={REFUND_REASONS}
+              onChange={setReason}
+              otherHint="Written on the refund slip and in the records."
+              testIdPrefix="refund-reason"
+            />
           </section>
 
           {lines.length > 0 ? (

@@ -8,9 +8,10 @@ import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRateLimitWait } from "../lib/useRateLimitWait";
 import type { POSOrder } from "../lib/posContracts";
 import { voidProblem } from "../register/registerWords";
-import { Banner, Button, Field, Sheet, SupervisorApproval, type KeypadKey } from "./system";
+import { Banner, Button, ReasonPicker, Sheet, SupervisorApproval, type KeypadKey } from "./system";
 import { orderNumberWords } from "../lib/orderNumber";
 import { voidSheetWords } from "../orders/ordersWords";
+import { VOID_REASONS } from "../orders/ordersSettings";
 
 /**
  * `POST /pos/orders/{orderId}/void`: the one certified correction for a sent
@@ -109,17 +110,16 @@ export function VoidOrderDialog({
       }
     >
       <div className="y-form">
-        <Field
+        <ReasonPicker
           label="Reason"
-          hint="For example, the wrong table or a guest who left."
-          value={reason}
-          onChange={(text) => {
-            setReason(text);
+          reasons={VOID_REASONS}
+          onChange={(chosen) => {
+            setReason(chosen);
             setSupervisorId(null);
             setPin("");
           }}
-          autoComplete="off"
-          data-testid="void-reason"
+          otherHint="Written in the order's history."
+          testIdPrefix="void-reason"
         />
         <SupervisorApproval
           request={

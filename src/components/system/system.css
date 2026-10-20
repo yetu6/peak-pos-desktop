@@ -236,6 +236,39 @@
 }
 
 /* ------------------------------------------------------------------ Fields */
+/* ReasonPicker: "why" in one tap; "Another reason" opens a field. */
+.y-reasons {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.y-reasons__choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-2);
+}
+
+.y-reason {
+  min-height: var(--target-min);
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.y-reason:hover:not([aria-checked="true"]) { background: var(--surface-hover); }
+
+.y-reason[aria-checked="true"] {
+  border-color: var(--action);
+  background: var(--action);
+  color: var(--on-action);
+}
+
 .y-field {
   display: grid;
   gap: var(--space-1);
