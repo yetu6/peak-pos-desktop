@@ -97,6 +97,8 @@ export interface POSOrder {
   discountAppliedAt?: string;
   discountAskedByName?: string;
   discountApprovedByName?: string;
+  /** F-260 (fbc-peak #286): the supervisor who approved voiding the order; a VOIDED order without one, Yetu closed with nothing on it. */
+  voidApprovedByName?: string;
   /** The percent discount is kept to the money off its supervisor approved; more lines would take more off (the owner, 2026-10-20). */
   discountCapped?: boolean;
   /** F-229: the order's prices hold their VAT (the property writes them so); absent from a Yetu before it: VAT on top. */

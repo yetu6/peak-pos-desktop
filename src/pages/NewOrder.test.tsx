@@ -399,6 +399,27 @@ describe("NewOrder", () => {
     await waitFor(() => expect(removeItemSpy).toHaveBeenCalledWith("order-1", "item-1", 2, expect.any(String)));
   });
 
+  // F-260 (fbc-peak #286): the last line off, Yetu closes the order. The
+  // ticket starts again with the same table; the next item is a new order,
+  // never "This order is finished".
+  it("taking off the last line starts the ticket again, at the same table", async () => {
+    renderNewOrder();
+    const tile = await screen.findByTestId("menu-Nyama Choma");
+    await waitFor(() => expect(tile).toBeEnabled());
+    await userEvent.type(screen.getByRole("textbox", { name: "Table" }), "12");
+    await userEvent.click(tile);
+    await userEvent.click(await ticket().findByRole("button", { name: /Nyama Choma/ }));
+    removeItemSpy.mockResolvedValueOnce({ data: { ...OPEN_ORDER, status: "VOIDED", items: [], version: 3 }, error: null });
+    await userEvent.click(ticket().getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(removeItemSpy).toHaveBeenCalled());
+    await waitFor(() => expect(ticket().queryByRole("button", { name: /Nyama Choma/ })).toBeNull());
+
+    await userEvent.click(tile);
+    await waitFor(() => expect(createOrderSpy).toHaveBeenCalledTimes(2));
+    expect(createOrderSpy).toHaveBeenLastCalledWith(expect.objectContaining({ tableLabel: "12" }), expect.any(String));
+    expect(screen.queryByText("This order is finished. Start a new sale.")).toBeNull();
+  });
+
   it("sends no table for takeaway, even one typed for dine in first", async () => {
     renderNewOrder();
     const tile = await screen.findByTestId("menu-Nyama Choma");

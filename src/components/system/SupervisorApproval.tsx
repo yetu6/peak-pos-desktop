@@ -45,6 +45,10 @@ export interface SupervisorApprovalProps {
   className?: string;
 }
 
+/** F-263: the person asking is the only supervisor; a colleague asks, and they approve. */
+export const ONLY_REQUESTER_WORDS =
+  "You're the only supervisor here, and no one can approve their own request. Have a colleague sign in on this till and ask for it; you then approve it with your PIN.";
+
 /** Cancel and Approve, for a sheet's footer. */
 export function SupervisorApprovalActions({
   onCancel,
@@ -101,6 +105,9 @@ export function SupervisorApproval({
   const selfApproval = selected !== null && selected.id === requesterId;
   const settled = status.kind === "checking" || status.kind === "approved";
   const pinOpen = selected !== null && !selfApproval && !settled;
+  // F-263: the person asking is the only supervisor offered. No one can be
+  // chosen, so a keypad would be dead: say who can get it approved instead.
+  const onlyRequester = supervisors.length > 0 && supervisors.every((supervisor) => supervisor.id === requesterId);
 
   return (
     <div className={cn("y-approval", className)}>
@@ -164,23 +171,29 @@ export function SupervisorApproval({
         </p>
       ) : null}
 
-      <section className="y-approval__pin" aria-labelledby="approval-pin-heading">
-        <h3 id="approval-pin-heading" className="y-approval__pin-heading">
-          {selected && !selfApproval ? `${selected.name}, enter your PIN` : "Choose a supervisor to continue"}
-        </h3>
-        <div
-          className="y-pin-dots"
-          data-testid="pin-dots"
-          role="img"
-          aria-label={`${pinLength} ${pinLength === 1 ? "digit" : "digits"} entered`}
-        >
-          {/* One dot for each digit of a PIN (F-242: it drew four for six). */}
-          {Array.from({ length: Math.max(PIN_LENGTH, pinLength) }, (_, index) => (
-            <span key={index} className={cn("y-pin-dots__dot", index < pinLength && "y-pin-dots__dot--filled")} />
-          ))}
-        </div>
-        <Keypad label="Supervisor PIN" variant="pin" onKey={onPinKey} disabled={!pinOpen} testIdPrefix={keyTestIdPrefix} />
-      </section>
+      {onlyRequester ? (
+        <p className="y-approval__message" role="status" data-testid="approval-only-you">
+          {ONLY_REQUESTER_WORDS}
+        </p>
+      ) : (
+        <section className="y-approval__pin" aria-labelledby="approval-pin-heading">
+          <h3 id="approval-pin-heading" className="y-approval__pin-heading">
+            {selected && !selfApproval ? `${selected.name}, enter your PIN` : "Choose a supervisor to continue"}
+          </h3>
+          <div
+            className="y-pin-dots"
+            data-testid="pin-dots"
+            role="img"
+            aria-label={`${pinLength} ${pinLength === 1 ? "digit" : "digits"} entered`}
+          >
+            {/* One dot for each digit of a PIN (F-242: it drew four for six). */}
+            {Array.from({ length: Math.max(PIN_LENGTH, pinLength) }, (_, index) => (
+              <span key={index} className={cn("y-pin-dots__dot", index < pinLength && "y-pin-dots__dot--filled")} />
+            ))}
+          </div>
+          <Keypad label="Supervisor PIN" variant="pin" onKey={onPinKey} disabled={!pinOpen} testIdPrefix={keyTestIdPrefix} />
+        </section>
+      )}
 
       {status.kind === "checking" ? (
         <p className="y-approval__message" role="status">

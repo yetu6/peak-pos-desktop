@@ -132,8 +132,12 @@ export function orderTimeline({
   }
   for (const payment of order.payments ?? []) add(payment.createdAt, paymentWords(payment, currency));
   if (order.status === "VOIDED") {
-    if (timeOf(order.closedAt) !== null) add(order.closedAt, orderStatusWords("VOIDED"));
-    else untimed.push({ time: null, words: orderStatusWords("VOIDED") });
+    const approved = order.voidApprovedByName?.trim();
+    const words = emptiedOrder(order)
+      ? "Closed by Yetu: nothing was left on it"
+      : `${orderStatusWords("VOIDED")}${approved ? ` · approved by ${approved}` : ""}`;
+    if (timeOf(order.closedAt) !== null) add(order.closedAt, words);
+    else untimed.push({ time: null, words });
   }
 
   // Array sort is stable: what happened at the same minute keeps the order above.
@@ -236,12 +240,33 @@ export function removeProblem(error: unknown): OrderProblem | null {
 }
 
 /**
- * An order's state on a list, in words: Partly refunded or Refunded once
- * money went back on it (Yetu's refundedMinor, S10a), else its status.
+ * F-260 (fbc-peak #286): Yetu closes an order whose last line was taken off
+ * before it was sent: VOIDED, with no supervisor. Every line taken off too,
+ * so a void from a Yetu before #286 (none named a supervisor) isn't taken for one.
  */
-export function orderStateWords(order: Pick<POSOrder, "status" | "totalMinor" | "refundedMinor">): { words: string; tone: Tone } {
+export function emptiedOrder(order: Pick<POSOrder, "status" | "voidApprovedByName" | "items">): boolean {
+  return (
+    order.status === "VOIDED" &&
+    !order.voidApprovedByName?.trim() &&
+    order.items.length > 0 &&
+    order.items.every((line) => line.status === "VOIDED" && Boolean(line.removedAt))
+  );
+}
+
+/** An emptied order's state, on the list and its sheet. */
+export const EMPTIED_WORDS = "Nothing on it";
+
+/**
+ * An order's state on a list, in words: Partly refunded or Refunded once
+ * money went back on it (Yetu's refundedMinor, S10a), Nothing on it once Yetu
+ * closed it emptied (F-260), else its status.
+ */
+export function orderStateWords(
+  order: Pick<POSOrder, "status" | "totalMinor" | "refundedMinor" | "voidApprovedByName" | "items">,
+): { words: string; tone: Tone } {
   const refunded = order.refundedMinor ?? 0;
   if (refunded > 0) return { words: refunded >= order.totalMinor ? "Refunded" : "Partly refunded", tone: "danger" };
+  if (emptiedOrder(order)) return { words: EMPTIED_WORDS, tone: "neutral" };
   return { words: orderStatusWords(order.status), tone: orderStatusTone(order.status) };
 }
 
