@@ -1,8 +1,9 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { POSOrder, POSOrderPayment, POSOrderItem, POSOrderRefunds, POSReceipt, POSRefund } from "../lib/posContracts";
 import { OrderDetailView, type OrderDetailViewProps } from "./OrderDetail";
+import { DISCOUNT_HELD_WORDS } from "../register/registerWords";
 
 function line(id: string, name: string, status: POSOrderItem["status"], options: string[] = []): POSOrderItem {
   return {
@@ -414,6 +415,18 @@ describe("OrderDetail: Add items and Discount", () => {
     renderDetail({ order: order(PAID), onAddItems: vi.fn(), onDiscount: vi.fn() });
     expect(within(footer()).queryByTestId("detail-add-items")).toBeNull();
     expect(within(footer()).queryByTestId("detail-discount")).toBeNull();
+  });
+});
+
+// The owner, 2026-10-20: a percent discount never comes to more money off than its supervisor approved.
+describe("OrderDetail: a discount kept to what was approved", () => {
+  it("says so under the discount, and only when Yetu says it is kept", () => {
+    const discounted = { discountKind: "PERCENT" as const, discountInput: 1000, discountMinor: 25_000, discountReason: "Staff meal" };
+    renderDetail({ order: order({ ...discounted, discountCapped: true }) });
+    expect(screen.getByTestId("discount-held")).toHaveTextContent(DISCOUNT_HELD_WORDS);
+    cleanup();
+    renderDetail({ order: order(discounted) });
+    expect(screen.queryByTestId("discount-held")).not.toBeInTheDocument();
   });
 });
 

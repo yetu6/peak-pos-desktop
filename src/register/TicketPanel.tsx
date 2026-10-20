@@ -8,6 +8,7 @@ import type { POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 import { MAX_LINE_QUANTITY } from "../lib/posContracts";
 import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
 import { orderName } from "../lib/orderNumber";
+import { DISCOUNT_HELD_WORDS } from "./registerWords";
 
 /** The order types the backend accepts (posContracts ServiceType), in this order. */
 export const SERVICE_TYPES: readonly ServiceType[] = ["DINE_IN", "TAKEAWAY", "ROOM_SERVICE"];
@@ -233,6 +234,14 @@ export function TicketPanel({
               <dt>Discount{order.discountReason ? ` · ${order.discountReason}` : ""}</dt>
               <dd data-testid="cart-discount">
                 <Money minor={-figures.discountMinor} currency={currency} />
+              </dd>
+            </div>
+          ) : null}
+          {order?.discountCapped && figures && figures.discountMinor > 0 ? (
+            <div className="y-ticket__held-row">
+              <dt className="sr-only">About the discount</dt>
+              <dd className="y-ticket__held" data-testid="discount-held">
+                {DISCOUNT_HELD_WORDS}
               </dd>
             </div>
           ) : null}

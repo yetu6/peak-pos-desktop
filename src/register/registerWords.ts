@@ -233,3 +233,9 @@ export function lostAnswerRefusalWords(error: unknown, room: boolean): string {
   }
   return refusal?.words ?? `The ${what} wasn't recorded. Try again.`;
 }
+
+/**
+ * Under a discount Yetu keeps to the money off its supervisor approved (the
+ * owner, 2026-10-20): the percent would take more off the bill as it is now.
+ */
+export const DISCOUNT_HELD_WORDS = "Kept to what the supervisor approved. Use Discount again to cover the whole bill.";

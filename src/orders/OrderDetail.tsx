@@ -40,6 +40,7 @@ import {
 import { orderName, orderReference } from "../lib/orderNumber";
 import { refundAvailability, refundGivenWords } from "./refundWords";
 import { copyNotPrintedWords, printProblemOnce } from "../print/printProblems";
+import { DISCOUNT_HELD_WORDS } from "../register/registerWords";
 
 export type DetailPending = "send" | "remove" | "quantity" | "reprint" | "kitchen" | "take-over" | null;
 
@@ -458,6 +459,14 @@ export function OrderDetailView({
             <div>
               <dt>Discount{order.discountReason ? ` · ${order.discountReason}` : ""}</dt>
               <dd>{formatMoney(-figures.discountMinor, currency)}</dd>
+            </div>
+          ) : null}
+          {order.discountCapped && figures.discountMinor > 0 ? (
+            <div className="y-ticket__held-row">
+              <dt className="sr-only">About the discount</dt>
+              <dd className="y-ticket__held" data-testid="discount-held">
+                {DISCOUNT_HELD_WORDS}
+              </dd>
             </div>
           ) : null}
           <div>

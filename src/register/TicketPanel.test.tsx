@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { POSOrder, POSOrderItem } from "../lib/posContracts";
 import { TicketPanel, type TicketPanelProps } from "./TicketPanel";
+import { DISCOUNT_HELD_WORDS } from "./registerWords";
 
 function line(id: string, name: string, quantity: number, totalMinor: number, extra: Partial<POSOrderItem> = {}): POSOrderItem {
   return { id, productId: `p-${id}`, name, quantity, unitPriceMinor: totalMinor, taxMinor: 0, totalMinor, status: "ADDED", ...extra };
@@ -157,6 +158,15 @@ describe("TicketPanel", () => {
     expect(totals).toHaveTextContent("VAT");
     expect(totals).toHaveTextContent("TSh 6,120");
     expect(screen.getByTestId("cart-preview-total")).toHaveTextContent("TSh 40,120");
+  });
+
+  // The owner, 2026-10-20: a percent discount never comes to more money off than its supervisor approved.
+  it("says when the discount is kept to what the supervisor approved, and only then", () => {
+    renderTicket({ order: { ...ORDER, discountKind: "PERCENT", discountInput: 1000, discountCapped: true } });
+    expect(screen.getByTestId("discount-held")).toHaveTextContent(DISCOUNT_HELD_WORDS);
+    cleanup();
+    renderTicket({ order: { ...ORDER, discountKind: "PERCENT", discountInput: 1000 } });
+    expect(screen.queryByTestId("discount-held")).not.toBeInTheDocument();
   });
 
   it("shows what is paid and what is left once part of it is paid", () => {

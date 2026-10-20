@@ -305,6 +305,10 @@
 .y-ticket__totals dd { margin: 0; font-variant-numeric: tabular-nums; }
 .y-ticket__total dt { color: var(--text); font-size: var(--type-lead); font-weight: 700; }
 
+/* A discount kept to what its supervisor approved (the owner, 2026-10-20). */
+.y-ticket__totals > .y-ticket__held-row { display: block; }
+.y-ticket__held { color: var(--text-muted); font-size: var(--type-small); }
+
 .y-ticket__error-row {
   display: flex;
   align-items: center;
