@@ -84,12 +84,18 @@ describe("Status → Printers (S8a)", () => {
     await userEvent.click(screen.getByTestId("test-receipt-printer"));
     await waitFor(() => expect(till.raw).toHaveLength(1));
     expect(Array.from(till.raw[0].bytes).join(",")).toContain([0x1b, 0x70, 0, 25, 250].join(","));
+    // A test bill is a bill before payment: nothing on it says paid (seen live, 2026-10-21).
+    const paper = String.fromCharCode(...Array.from(till.raw[0].bytes).filter((b) => b === 0x0a || (b >= 0x20 && b < 0x7f)));
+    expect(paper).toContain("BILL\n");
+    expect(paper).not.toContain("PAID");
+    expect(screen.getByTestId("printers-words")).toHaveTextContent("A test bill went to EPSON TM-T20 (80 mm).");
     // Back to this till's own printer: no drawer to open.
     await userEvent.selectOptions(picker.getByRole("combobox"), "own");
     expect(screen.queryByTestId("cash-drawer-on")).toBeNull();
     await userEvent.click(screen.getByTestId("save-printers"));
     await waitFor(() => expect(till.saved).toHaveLength(2));
     expect(till.saved[1]).toMatchObject({ receipt: null, cashDrawer: false });
+    expect(screen.getByTestId("printers-words")).toHaveTextContent("Bills print at this till's own printer.");
   });
 
   it("a station can print no paper on this till", async () => {

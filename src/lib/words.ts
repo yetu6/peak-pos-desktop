@@ -166,10 +166,14 @@ export function dateTimeWords(value: Date | string | null | undefined): string {
 /**
  * The top bar's shift chip: the shift and its business day, in full
  * ("Shift open since 07:02 · Mon 12 Oct") and shorter for compact screens
- * ("Since 07:02 · Mon 12 Oct").
+ * ("Since 07:02 · Mon 12 Oct"). A business day that isn't today is named as
+ * one (F-266): after midnight, until the night audit, a shift opened at
+ * 00:12 on Wed 21 counts for Tue 20, and "· Tue 20 Oct" alone read as the
+ * day it opened. On any other day the chip stays short.
  */
 export function shiftChipWords(
   shift: Pick<POSShift, "status" | "openedAt" | "businessDate"> | null | undefined,
+  now: Date = new Date(),
 ): { full: string; short: string } {
   if (!shift) return { full: "No shift open", short: "No shift open" };
   const full = shiftWords(shift);
@@ -178,8 +182,11 @@ export function shiftChipWords(
     : full.startsWith("Shift ")
       ? full.charAt(6).toUpperCase() + full.slice(7)
       : full;
-  const day = businessDayWords(shift.businessDate);
-  return day ? { full: `${full} · ${day}`, short: `${short} · ${day}` } : { full, short };
+  const named = businessDayWords(shift.businessDate);
+  if (!named) return { full, short };
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const day = shift.businessDate === today ? named : `business day ${named}`;
+  return { full: `${full} · ${day}`, short: `${short} · ${day}` };
 }
 
 /** The shift as the top bar says it: "Shift open since 07:02". */

@@ -203,7 +203,7 @@ describe("Diagnostics", () => {
         "The till can send receipts to front-bar. It can't tell whether the printer is on or has paper.",
       );
       expect(screen.getByTestId("diag-check-kitchen-printer")).toHaveTextContent(
-        "Kitchen tickets print on the same printer as receipts (front-bar). Kitchen and bar displays show them too.",
+        "Kitchen tickets print on the same printer as bills (front-bar). Kitchen and bar displays show them too.",
       );
       expect(screen.getByTestId("diag-check-keys")).toHaveTextContent("The till's key is in this computer's secure store.");
       for (const id of ["internet", "yetu", "live", "receipt-printer", "kitchen-printer", "keys"]) {

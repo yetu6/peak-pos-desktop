@@ -139,7 +139,7 @@ export function statusChecks(input: {
           id: "kitchen-printer",
           name: "Kitchen printer",
           state: input.printer?.available ? "ok" : "problem",
-          words: `Kitchen tickets print on the same printer as receipts (${input.printer?.name?.trim() || "the default printer"}). Kitchen and bar displays show them too.`,
+          words: `Kitchen tickets print on the same printer as bills (${input.printer?.name?.trim() || "the default printer"}). Kitchen and bar displays show them too.`,
           fix: input.printer?.available ? "A separate kitchen printer isn't possible yet." : "Ask support to set up the printer.",
         },
     input.keyStorage === null
