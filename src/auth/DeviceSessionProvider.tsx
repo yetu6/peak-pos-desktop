@@ -222,7 +222,7 @@ export function DeviceSessionProvider({
     [clearExpiry, switchStaff],
   );
 
-  const refreshRoster = useCallback(async () => {
+  const loadRoster = useCallback(async () => {
     const current = identityRef.current;
     if (!current?.deviceCode) {
       setRoster([]);
@@ -251,6 +251,18 @@ export function DeviceSessionProvider({
     const local=await offlineAuthorityRef.current?.staffRoster?.().catch(()=>[]);
     setRoster((local??[]).map(entry=>({fullName:entry.displayName,staffNumber:entry.staffId})));
   }, [peakUrl, persist]);
+
+  // Each refresh asks Yetu for a challenge, a row it writes. The till coming to
+  // the front fires focus and visibilitychange together, which sent two at once
+  // (18:58:54 and 18:59:04 on 2026-10-20). A refresh asked for while one is with
+  // Yetu shares it.
+  const rosterInFlight = useRef<Promise<void> | null>(null);
+  const refreshRoster = useCallback(() => {
+    rosterInFlight.current ??= loadRoster().finally(() => {
+      rosterInFlight.current = null;
+    });
+    return rosterInFlight.current;
+  }, [loadRoster]);
 
   useEffect(() => {
     if (phase !== "locked") return;
