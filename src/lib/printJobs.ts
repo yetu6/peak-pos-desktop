@@ -14,6 +14,7 @@ import { kitchenTicketBytes } from "../print/kitchenTicket";
 import { paperFromPrintDocument, type KitchenPrintRoutes } from "../print/kitchenRouting";
 import { printerFor, stationPrintsNoPaper } from "../print/printerSettings";
 import { receiptPaperFor } from "../print/receiptRouting";
+import { yetuFetch } from "./yetuFetch";
 
 /**
  * The `pos_print_jobs.job_type` values Yetu writes: a kitchen ticket at
@@ -54,7 +55,7 @@ class PrintJobRequestError extends Error {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+  const response = await yetuFetch(`${getApiBaseUrl()}${path}`, {
     ...init,
     headers: { ...headers(), ...(init.headers as Record<string, string> | undefined) },
   });
