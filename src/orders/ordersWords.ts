@@ -10,6 +10,7 @@ import type { POSOrder, POSOrderPayment, POSStationTicket } from "../lib/posCont
 import { otherWords, problemOf, stepRefusal, UNREACHABLE } from "../lib/problemWords";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, ticketStepWords, type Tone } from "../lib/words";
 import { orderName, orderReference } from "../lib/orderNumber";
+import { vatFigures } from "../lib/vatWords";
 
 const AMOUNT_TYPED = /^\d+(\.\d*)?$/;
 
@@ -52,6 +53,19 @@ function timeOf(at: string | null | undefined): string | null {
   return at && Number.isFinite(Date.parse(at)) ? clockTime(at) || null : null;
 }
 
+/**
+ * F-259: the discount as the history says it, off what the guest saw (vatFigures):
+ * "Discount of TSh 500 · Regular guest · asked by Zawadi Said, approved by Baraka Mushi".
+ */
+function discountWords(order: POSOrder, currency: string | undefined): string {
+  const off = formatMoney(vatFigures(order).discountMinor, currency);
+  const what = order.discountKind === "PERCENT" ? `${Number((order.discountInput / 100).toFixed(2))}% (${off})` : off;
+  const asked = order.discountAskedByName?.trim();
+  const approved = order.discountApprovedByName?.trim();
+  const who = [asked ? `asked by ${asked}` : null, approved ? `approved by ${approved}` : null].filter(Boolean).join(", ");
+  return [`Discount of ${what}`, order.discountReason?.trim() || null, who || null].filter(Boolean).join(" · ");
+}
+
 function paymentWords(payment: POSOrderPayment, currency: string | undefined): string {
   const amount = formatMoney(payment.amountMinor, currency);
   if (payment.paymentMethod === "ROOM_CHARGE") return `Charged to the room · ${amount}`;
@@ -61,8 +75,8 @@ function paymentWords(payment: POSOrderPayment, currency: string | undefined): s
 /**
  * What happened to an order, in time order, from the times Yetu keeps
  * (S5b): when it was started, when it was sent (its earliest station
- * ticket), when each station moved to the step it is at, each payment, and
- * when it was voided. What Yetu keeps no time for (not sent yet, a sent time
+ * ticket), when each station moved to the step it is at, the discount
+ * (F-259), each payment, and when it was voided. What Yetu keeps no time for (not sent yet, a sent time
  * whose tickets have left Yetu's list, the order's own step) comes after.
  */
 export function orderTimeline({
@@ -110,6 +124,11 @@ export function orderTimeline({
     if (line.status !== "VOIDED" || !line.removedAt) continue;
     const who = line.removedByName?.trim();
     add(line.removedAt, `${line.quantity} × ${line.name} taken off before it was sent${who ? ` by ${who}` : ""}`);
+  }
+  // The discount, when it was given (F-259); one from before Yetu kept the time comes after, untimed.
+  if (order.discountKind !== "NONE") {
+    if (timeOf(order.discountAppliedAt) !== null) add(order.discountAppliedAt, discountWords(order, currency));
+    else untimed.push({ time: null, words: discountWords(order, currency) });
   }
   for (const payment of order.payments ?? []) add(payment.createdAt, paymentWords(payment, currency));
   if (order.status === "VOIDED") {

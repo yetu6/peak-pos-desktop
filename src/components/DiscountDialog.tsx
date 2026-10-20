@@ -29,7 +29,8 @@ function percentBasisPoints(text: string): number | null {
 /**
  * A discount on the order, approved by a different supervisor with their
  * PIN. Yetu applies it to the subtotal before VAT (to what the guest pays
- * when the prices include VAT, F-229) and works out the new figures; it clears it when a line is added or removed, and refuses it
+ * when the prices include VAT, F-229) and works out the new figures. The discount stays when lines are added or taken
+ * off (the owner, 2026-10-20): a percent applies to the bill as it grows, an amount stays the same money. Yetu refuses it
  * once part of the bill is paid. The approval is for one amount, kind and
  * reason: changing any of them asks again.
  */
