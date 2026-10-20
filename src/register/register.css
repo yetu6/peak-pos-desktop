@@ -544,6 +544,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The tax receipt comes from the restaurant's EFD (2026-10-20): said plainly, not as a warning. */
+.y-done__efd {
+  margin: 0;
+  font-size: var(--type-body);
+  font-weight: 600;
+  color: var(--text);
+}
+
 .y-done__actions {
   display: flex;
   width: 100%;

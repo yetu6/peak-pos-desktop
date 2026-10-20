@@ -100,7 +100,7 @@ export function formatRefundReceipt(refund: RefundReceiptCopy): string {
     .filter(Boolean)
     .join("\n");
 
-  const footer = ["----------------", "Powered by Yetu", "Not a TRA fiscal receipt — use EFD for tax invoices."].join("\n");
+  const footer = ["----------------", "Powered by Yetu"].join("\n");
 
   return [header, lines || "(no items)", totals, how, who, footer].filter(Boolean).join("\n\n") + "\n";
 }

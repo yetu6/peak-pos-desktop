@@ -1,3 +1,4 @@
+import { kitchenTicketTitle } from "../print/kitchenTicket";
 import { orderName } from "./orderNumber";
 export interface KitchenTicketLine {
   name: string;
@@ -14,6 +15,8 @@ export interface KitchenTicketCopy {
   dailyNumber?: number;
   tableNumber?: string;
   serviceType?: string;
+  /** The station it goes to (Kitchen, Bar), for the title. */
+  station?: string;
   notes?: string;
   waiterName?: string;
   sentAt?: string;
@@ -28,7 +31,8 @@ export interface PrintResult {
 
 export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
   const header = [
-    "KITCHEN TICKET",
+    // The paper's title (2026-10-20): an order to make, and where.
+    kitchenTicketTitle(ticket.station),
     ticket.ticketNumber ? ticket.ticketNumber : null,
     ticket.dailyNumber || ticket.orderNumber ? orderName(ticket) : null,
     [

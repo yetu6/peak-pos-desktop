@@ -80,7 +80,7 @@ describe("Status → Printers (S8a)", () => {
     await userEvent.click(screen.getByTestId("save-printers"));
     await waitFor(() => expect(till.saved).toHaveLength(1));
     expect(till.saved[0]).toMatchObject({ receipt: { target: { kind: "system", name: "EPSON TM-T20" }, width: 48 }, cashDrawer: true });
-    expect(screen.getByTestId("printers-words")).toHaveTextContent("Receipts print at EPSON TM-T20 (80 mm), and its cash drawer opens for cash.");
+    expect(screen.getByTestId("printers-words")).toHaveTextContent("Bills print at EPSON TM-T20 (80 mm), and its cash drawer opens for cash.");
     await userEvent.click(screen.getByTestId("test-receipt-printer"));
     await waitFor(() => expect(till.raw).toHaveLength(1));
     expect(Array.from(till.raw[0].bytes).join(",")).toContain([0x1b, 0x70, 0, 25, 250].join(","));

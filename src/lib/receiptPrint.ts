@@ -2,6 +2,17 @@ import { formatMoney } from "./money";
 import { vatFigures } from "./vatWords";
 import { orderName, orderReference } from "./orderNumber";
 import { dateTimeWords, paymentMethodWords, type SettlementMethod } from "./words";
+/**
+ * The owner, 2026-10-20: Yetu is not connected to TRA's VFD, so nothing it
+ * prints is the tax receipt. The restaurant's EFD issues that when the guest
+ * pays; Yetu's paper is the BILL, handed over before they pay. The owner
+ * chose to say nothing about TRA on it: the heading says what it is.
+ */
+export const BILL_HEADING = "BILL";
+/** A hotel's bill (2026-10-20): the guest who charges it to their room signs it first. */
+export const CHARGE_TO_ROOM = "Charge to room";
+export const GUEST_SIGNATURE = "Guest signature";
+
 export interface ReceiptLine {
   name: string;
   quantity: string;
@@ -29,6 +40,22 @@ export interface ReceiptCopy {
   totalAmount?: string;
   /** F-229: the prices hold their VAT: "Items" and "VAT included" in place of "Subtotal" and "VAT". */
   vatIncluded?: boolean;
+  /**
+   * A bill printed before payment (Yetu's kind BILL, 2026-10-20): what is
+   * paid already, what is still to pay, and who printed it when. Absent on a
+   * paid order's bill.
+   */
+  beforePayment?: boolean;
+  paidAlready?: string;
+  toPay?: string;
+  printedBy?: string;
+  printedAt?: string;
+  /**
+   * At a hotel, a bill before payment ends with lines for the guest who
+   * charges it to their room: the room (filled in for room service) and
+   * their signature. The restaurant keeps the signed bill (2026-10-20).
+   */
+  roomCharge?: { room?: string };
   lines: ReceiptLine[];
 }
 
@@ -42,7 +69,7 @@ function amountWords(words: unknown, minor: unknown, currency: string | undefine
   return typeof minor === "number" ? formatMoney(minor, currency) : undefined;
 }
 
-export function receiptCopyFromPrintDocument(document: Record<string, unknown>): ReceiptCopy {
+export function receiptCopyFromPrintDocument(document: Record<string, unknown>, place: { hotel?: boolean } = {}): ReceiptCopy {
   const currency = typeof document.currency === "string" ? document.currency : undefined;
   const lines = Array.isArray(document.lines)
     ? document.lines.flatMap((line) => {
@@ -110,7 +137,30 @@ export function receiptCopyFromPrintDocument(document: Record<string, unknown>):
     discountReason: typeof document.discountReason === "string" && document.discountReason.trim() ? document.discountReason.trim() : undefined,
     taxAmount: amountWords(document.taxAmount, document.taxMinor, currency),
     totalAmount: amountWords(document.totalAmount, document.totalMinor, currency),
+    ...billFigures(document, currency),
+    roomCharge:
+      place.hotel && document.kind === "BILL"
+        ? { room: document.serviceType === "ROOM_SERVICE" && typeof document.tableLabel === "string" && document.tableLabel.trim() ? document.tableLabel.trim() : undefined }
+        : undefined,
     lines,
+  };
+}
+
+/** A bill before payment (kind BILL): what is paid already, still to pay, and who printed it when. */
+function billFigures(document: Record<string, unknown>, currency: string | undefined): Partial<ReceiptCopy> {
+  if (document.kind !== "BILL") return {};
+  const paid = typeof document.paidMinor === "number" ? document.paidMinor : 0;
+  const toPay = typeof document.remainingMinor === "number" ? document.remainingMinor : typeof document.totalMinor === "number" ? document.totalMinor : undefined;
+  return {
+    beforePayment: true,
+    paidAlready: paid > 0 ? formatMoney(paid, currency) : undefined,
+    toPay: toPay !== undefined ? formatMoney(toPay, currency) : undefined,
+    printedBy: typeof document.printedByName === "string" && document.printedByName.trim() ? document.printedByName.trim() : undefined,
+    printedAt: typeof document.printedAt === "string" ? dateTimeWords(document.printedAt) || undefined : undefined,
+    // A bill is printed before payment: no tender, no settlement time on it.
+    settledAt: undefined,
+    settledBy: undefined,
+    settlementMethod: undefined,
   };
 }
 
@@ -145,14 +195,15 @@ function guestFigures(document: Record<string, unknown>, currency: string | unde
 }
 
 /**
- * Guest invoice (operational settlement snapshot). Property brand at the top,
- * Yetu at the bottom. Not a TRA EFD fiscal receipt.
+ * The guest's bill as text: before payment (kind BILL) it ends with what is
+ * still to pay; a paid order's bill, printed again on request, says it was
+ * paid. Property at the top, Yetu at the bottom (2026-10-20).
  */
 export function formatReceipt(receipt: ReceiptCopy): string {
   const header = [
     (receipt.propertyName ?? "PROPERTY").toUpperCase(),
     receipt.outletName ? receipt.outletName : null,
-    "INVOICE",
+    receipt.beforePayment ? BILL_HEADING : `${BILL_HEADING} · PAID`,
     receipt.dailyNumber || receipt.orderNumber ? orderName(receipt) : "order",
     orderReference(receipt) ? `Ref ${orderReference(receipt)}` : null,
     [
@@ -166,6 +217,7 @@ export function formatReceipt(receipt: ReceiptCopy): string {
       ? `Settled by ${receipt.settledBy}`
       : null,
     receipt.settledAt ? `Paid ${receipt.settledAt}` : null,
+    receipt.printedAt ? `Printed ${receipt.printedAt}` : null,
   ]
     .filter((line) => line && line.length > 0)
     .join("\n");
@@ -183,15 +235,17 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     receipt.discount ? `${receipt.discountReason ? `Discount (${receipt.discountReason})` : "Discount"}  -${receipt.discount}` : null,
     receipt.taxAmount ? `${receipt.vatIncluded ? "VAT included" : "VAT"}  ${receipt.taxAmount}` : null,
     receipt.totalAmount ? `TOTAL  ${receipt.totalAmount}` : null,
+    receipt.paidAlready ? `Paid already  ${receipt.paidAlready}` : null,
+    receipt.toPay ? `TO PAY  ${receipt.toPay}` : null,
   ]
     .filter(Boolean)
     .join("\n");
 
-  const footer = [
-    "----------------",
-    "Powered by Yetu",
-    "Not a TRA fiscal receipt — use EFD for tax invoices.",
-  ].join("\n");
+  const signing = receipt.roomCharge
+    ? ["----------------", CHARGE_TO_ROOM, `Room ${receipt.roomCharge.room ?? "________"}`, GUEST_SIGNATURE, "", "________________________"].join("\n") + "\n\n"
+    : "";
 
-  return `${header}\n\n${lines || "(no items)"}\n\n${totals}\n\n${footer}\n`;
+  const footer = ["----------------", "Powered by Yetu"].join("\n");
+
+  return `${header}\n\n${lines || "(no items)"}\n\n${totals}\n\n${signing}${footer}\n`;
 }

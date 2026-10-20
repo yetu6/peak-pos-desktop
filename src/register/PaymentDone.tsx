@@ -88,8 +88,14 @@ export function PaymentDone({
         <CircleCheck className="y-done__tick" aria-hidden="true" />
         <Money minor={paid.order.totalMinor} currency={currency} size="display" />
         <p className="y-done__how">
-          {room ? `${orderName(paid.order)} is on the guest's bill.` : `${how} · ${orderName(paid.order)}`}
+          {room ? `${orderName(paid.order)} is on the guest's room account.` : `${how} · ${orderName(paid.order)}`}
         </p>
+        {/* 2026-10-20: Yetu is not connected to TRA's VFD; the restaurant's EFD gives the tax receipt. */}
+        {room ? null : (
+          <p className="y-done__efd" data-testid="done-efd">
+            Give the guest their EFD receipt.
+          </p>
+        )}
         {paid.changeMinor > 0 ? (
           <p className="y-done__change" data-testid="done-change">
             Change to give {formatMoney(paid.changeMinor, currency)}
@@ -108,7 +114,7 @@ export function PaymentDone({
           onBlur={() => setButtonFocused(false)}
         >
           <Button size={56} icon={<Receipt />} onClick={onViewReceipt}>
-            View receipt
+            View bill
           </Button>
           <Button ref={newSaleButton} variant="primary" size={64} onClick={() => finish()}>
             {returnTo.action}

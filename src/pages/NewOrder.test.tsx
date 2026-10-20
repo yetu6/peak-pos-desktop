@@ -9,8 +9,17 @@ import type { POSCatalog, POSOrder } from "../lib/posContracts";
 import { giveReason } from "../../tests/reasons";
 
 // The printer: done at once unless a test holds it.
-const { printForSpy } = vi.hoisted(() => ({ printForSpy: vi.fn(async () => [] as unknown[]) }));
-vi.mock("../print/printFor", () => ({ printFor: printForSpy }));
+const { printForSpy, printJobNowSpy, printBillSpy } = vi.hoisted(() => ({
+  printForSpy: vi.fn(async () => [] as unknown[]),
+  printJobNowSpy: vi.fn(async (..._args: unknown[]) => ({ ok: true }) as { ok: boolean; error?: string }),
+  printBillSpy: vi.fn(async (orderId: string, ..._rest: unknown[]) => ({
+    data: { id: `bill-${orderId}`, sourceType: "POS_ORDER", sourceId: orderId, jobType: "BILL", document: { kind: "BILL" }, status: "PENDING", attempts: 0, createdAt: "2026-10-20T17:20:00Z" },
+    error: null,
+  })),
+}));
+vi.mock("../print/printFor", () => ({ printFor: printForSpy, printJobNow: printJobNowSpy }));
+const { openDrawerSpy } = vi.hoisted(() => ({ openDrawerSpy: vi.fn(async (..._args: unknown[]) => ({ ok: true })) }));
+vi.mock("../print/cashDrawer", () => ({ openDrawerAfterCash: openDrawerSpy }));
 
 // Supervisors at this till, for Void and Discount.
 vi.mock("../auth/DeviceSessionProvider", async (importOriginal) => ({
@@ -262,6 +271,7 @@ vi.mock("../lib/posApi", () => ({
     getOrder: getOrderSpy,
     recordTender: recordTenderSpy,
     listPrintJobs: vi.fn(async () => ({ data: [], error: null })),
+    printBill: printBillSpy,
     removeItem: removeItemSpy,
     setItemQuantity: setItemQuantitySpy,
     voidOrder: voidOrderSpy,
@@ -463,6 +473,27 @@ describe("NewOrder", () => {
     expect(screen.queryByTestId("amount-received")).toBeNull();
   });
 
+  // The owner, 2026-10-20: the guest gets the bill before paying (fbc-peak #288).
+  it("More, Print bill prints the ticket's bill and says so", async () => {
+    await startOrder();
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    await userEvent.click(screen.getByRole("button", { name: /Print bill/ }));
+    await waitFor(() => expect(printBillSpy).toHaveBeenCalledWith("order-1", expect.any(String)));
+    await waitFor(() => expect(printJobNowSpy).toHaveBeenCalledWith(expect.objectContaining({ id: "bill-order-1", jobType: "BILL" })));
+    expect(await screen.findByText("The bill for Order 1 was sent to the printer.")).toBeInTheDocument();
+  });
+
+  it("isn't in More for a person who can't send an order", async () => {
+    setOperationalSession({
+      ...getOperationalSession()!,
+      permissions: ["pos.shift.open", "pos.order.create", "pos.order.item.add", "pos.payment.record"],
+    });
+    await startOrder();
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(screen.getByRole("button", { name: /Order note/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Print bill/ })).toBeNull();
+  });
+
   it("after payment shows Paid with the change, and New sale clears the ticket", async () => {
     await startOrder();
     // The order reads back closed once the payment is recorded (the Pay sheet also reads it on opening).
@@ -476,9 +507,15 @@ describe("NewOrder", () => {
     await userEvent.click(screen.getByTestId("pay-order"));
     await userEvent.type(await screen.findByTestId("amount-received"), "15000");
     expect(sendOrderSpy).toHaveBeenCalledTimes(1);
+    const printsBeforePayment = printForSpy.mock.calls.length;
     await userEvent.click(screen.getByTestId("confirm-settle"));
     const done = await screen.findByRole("dialog", { name: "Paid" });
     expect(within(done).getByTestId("done-change")).toHaveTextContent("Change to give TSh 3,000");
+    // 2026-10-20: nothing prints after payment; the EFD gives the tax receipt, and the cashier is told to.
+    expect(within(done).getByTestId("done-efd")).toHaveTextContent("Give the guest their EFD receipt.");
+    expect(printForSpy.mock.calls.length).toBe(printsBeforePayment);
+    // The cash drawer still opens for cash.
+    expect(openDrawerSpy).toHaveBeenCalledWith(expect.objectContaining({ id: "order-1" }), "CASH");
     await userEvent.click(within(done).getByRole("button", { name: /New sale/ }));
     expect(screen.queryByRole("dialog", { name: "Paid" })).not.toBeInTheDocument();
     expect(ticket().getByText("Tap an item to start an order.")).toBeInTheDocument();

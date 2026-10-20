@@ -13,7 +13,8 @@ export type OrderItemStatus = "ADDED" | "SENT" | "VOIDED";
 export type PaymentMethod = "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER" | "EXTERNAL_CARD" | "OTHER";
 export type ShiftStatus = "OPEN" | "PENDING_VARIANCE_APPROVAL" | "CLOSED";
 export type CashMovementType = "CASH_IN" | "CASH_OUT";
-export type PrintJobStatus = "PENDING" | "CLAIMED" | "PRINTED" | "FAILED";
+/** ON_FILE (fbc-peak #288): a paid order's document, kept and never printed by itself. */
+export type PrintJobStatus = "PENDING" | "CLAIMED" | "PRINTED" | "FAILED" | "ON_FILE";
 
 export interface POSOrderItemModifier {
   id: string;
@@ -99,6 +100,8 @@ export interface POSOrder {
   discountApprovedByName?: string;
   /** F-260 (fbc-peak #286): the supervisor who approved voiding the order; a VOIDED order without one, Yetu closed with nothing on it. */
   voidApprovedByName?: string;
+  /** fbc-peak #288: each bill printed before payment, oldest first, for the history. */
+  billPrints?: { printedAt: string; printedByName?: string }[];
   /** The percent discount is kept to the money off its supervisor approved; more lines would take more off (the owner, 2026-10-20). */
   discountCapped?: boolean;
   /** F-229: the order's prices hold their VAT (the property writes them so); absent from a Yetu before it: VAT on top. */

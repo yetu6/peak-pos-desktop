@@ -23,6 +23,8 @@ export interface TicketActionsProps {
   onDiscount: () => void;
   onVoid: () => void;
   onNote: () => void;
+  /** The bill before payment (fbc-peak #288); absent for staff who can't send an order. */
+  onPrintBill?: () => void;
   onNewSale: () => void;
   /** Fixtures start with More open. */
   initialMoreOpen?: boolean;
@@ -46,6 +48,7 @@ export function TicketActions({
   onDiscount,
   onVoid,
   onNote,
+  onPrintBill,
   onNewSale,
   initialMoreOpen = false,
 }: TicketActionsProps) {
@@ -162,6 +165,20 @@ export function TicketActions({
               disabled={changeBlocked !== null}
               onClick={() => choose(onVoid)}
             />
+            {onPrintBill ? (
+              <MoreItem
+                title="Print bill"
+                meta={
+                  !order || lines.length === 0
+                    ? "Add an item first."
+                    : settled
+                      ? "This order is finished."
+                      : "What the guest is to pay, before they pay."
+                }
+                disabled={!order || lines.length === 0 || settled || busy}
+                onClick={() => choose(onPrintBill)}
+              />
+            ) : null}
             <MoreItem title="Order note" meta="A note that goes with the order to the kitchen." onClick={() => choose(onNote)} />
             {order ? (
               <MoreItem

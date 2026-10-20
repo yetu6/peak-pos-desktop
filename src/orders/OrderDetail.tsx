@@ -1,4 +1,4 @@
-import { BadgePercent, ChefHat, Plus, Printer, Trash2, Undo2, Wallet } from "lucide-react";
+import { BadgePercent, ChefHat, Plus, Printer, ReceiptText, Trash2, Undo2, Wallet } from "lucide-react";
 import { vatFigures } from "../lib/vatWords";
 import { linesByRound, sendWords, takesMore } from "../register/rounds";
 import { orderStatusIcon } from "./orderStatusIcon";
@@ -14,6 +14,7 @@ import {
   useSetLineQuantity,
   useReprintKitchenTickets,
   useTakeOverTab,
+  usePrintBill,
   useReprintReceipt,
   useSendOrder,
   useStationTickets,
@@ -29,6 +30,7 @@ import { REGISTER_KEYS } from "../register/TicketActions";
 import {
   EMPTIED_WORDS,
   emptiedOrder,
+  billProblem,
   kitchenReprintProblem,
   kitchenReprintWords,
   orderTimeline,
@@ -41,10 +43,10 @@ import {
 } from "./ordersWords";
 import { orderName, orderReference } from "../lib/orderNumber";
 import { refundAvailability, refundGivenWords } from "./refundWords";
-import { copyNotPrintedWords, printProblemOnce } from "../print/printProblems";
+import { billNotPrintedWords, copyNotPrintedWords, printProblemOnce } from "../print/printProblems";
 import { DISCOUNT_HELD_WORDS } from "../register/registerWords";
 
-export type DetailPending = "send" | "remove" | "quantity" | "reprint" | "kitchen" | "take-over" | null;
+export type DetailPending = "send" | "remove" | "quantity" | "reprint" | "kitchen" | "take-over" | "bill" | null;
 
 export interface OrderDetailViewProps {
   order: POSOrder;
@@ -69,6 +71,8 @@ export interface OrderDetailViewProps {
   /** How many of a line not yet sent (round 2 on): Yetu keeps its price. */
   onQuantity: (line: POSOrderItem, quantity: number) => void;
   onReprint: () => void;
+  /** The bill before payment (fbc-peak #288); absent for staff who can't send an order. */
+  onPrintBill?: () => void;
   /** S8a: print the latest round's kitchen ticket again, marked COPY; absent when nothing has gone to the kitchen or this person can't send orders. */
   onKitchenReprint?: () => void;
   /** S17b: take a tab handed over to the next shift onto this till's shift. */
@@ -131,6 +135,7 @@ export function OrderDetailView({
   onRemoveLine,
   onQuantity,
   onReprint,
+  onPrintBill,
   onKitchenReprint,
   onTakeOver,
   onAddItems,
@@ -291,6 +296,18 @@ export function OrderDetailView({
                     : "An order can't be voided once part of it is paid."}
                 </p>
               ) : null}
+              {onPrintBill ? (
+                <Button
+                  size={56}
+                  block
+                  icon={<ReceiptText />}
+                  data-testid="detail-print-bill"
+                  disabled={busy || lines.length === 0}
+                  onClick={onPrintBill}
+                >
+                  {pending === "bill" ? "Sending to the printer…" : "Print bill"}
+                </Button>
+              ) : null}
               {canPay ? (
                 <Button
                   ref={primaryRef}
@@ -338,10 +355,10 @@ export function OrderDetailView({
                     disabled={busy || !receipt}
                     onClick={onReprint}
                   >
-                    {pending === "reprint" ? "Sending to the printer…" : "Print receipt"}
+                    {pending === "reprint" ? "Sending to the printer…" : "Print bill again"}
                   </Button>
                 ) : (
-                  <PermissionNotice who="a cashier or manager" action="print a copy of the receipt" next="Ask one to help." />
+                  <PermissionNotice who="a cashier or manager" action="print the bill again" next="Ask one to help." />
                 )
               ) : null}
             </div>
@@ -589,6 +606,7 @@ export function OrderDetail({
   const removeItem = useRemoveOrderItem();
   const setLineQuantity = useSetLineQuantity();
   const reprint = useReprintReceipt();
+  const printBill = usePrintBill();
   const kitchenReprint = useReprintKitchenTickets();
   const takeOver = useTakeOverTab();
   const takeOverKey = useRequestKey();
@@ -597,6 +615,7 @@ export function OrderDetail({
   const quantityKey = useRequestKey();
   const reprintKey = useRequestKey();
   const kitchenKey = useRequestKey();
+  const billKey = useRequestKey();
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [problem, setProblem] = useState<Refusal | null>(null);
@@ -614,7 +633,9 @@ export function OrderDetail({
           ? "kitchen"
           : takeOver.isPending
             ? "take-over"
-            : null;
+            : printBill.isPending
+              ? "bill"
+              : null;
   // The till doesn't lock itself while a request is with Yetu.
   useHoldIdleLock(pending !== null);
 
@@ -749,12 +770,34 @@ export function OrderDetail({
       {
         onSuccess: ({ failed }) => {
           if (failed) setProblem({ kind: "other", words: copyNotPrintedWords(failed) });
-          else setResult("A copy of the receipt was sent to the printer.");
+          else setResult("A copy of the bill was sent to the printer.");
         },
         onError: (error) => {
           const refusal = reprintProblem(error);
           setProblem(refusal ?? { kind: "other", words: "The copy wasn't printed. Try again." });
           if (refusal?.kind !== "network") reprintKey.forget();
+        },
+      },
+    );
+  }
+
+  // The bill before payment (fbc-peak #288): a new one for each version of the order.
+  function printTheBill() {
+    if (pending !== null) return;
+    begin();
+    printBill.mutate(
+      { orderId: order.id, idempotencyKey: billKey.keyFor([order.id, order.version, order.billPrints?.length ?? 0].join("|")) },
+      {
+        onSuccess: ({ failed }) => {
+          billKey.forget();
+          if (failed) setProblem({ kind: "other", words: billNotPrintedWords(failed) });
+          else setResult("The bill was sent to the printer.");
+        },
+        onError: (error) => {
+          const refusal = billProblem(error);
+          setProblem(refusal ?? { kind: "other", words: "The bill wasn't printed. Try again." });
+          if (refusal?.kind !== "network") billKey.forget();
+          if (refusal?.kind === "moved") onReload();
         },
       },
     );
@@ -826,6 +869,7 @@ export function OrderDetail({
       onRemoveLine={remove}
       onQuantity={changeQuantity}
       onReprint={printCopy}
+      onPrintBill={canSend ? printTheBill : undefined}
       onKitchenReprint={canSend && sentToKitchen(order) ? printKitchenAgain : undefined}
       onTakeOver={canSend ? takeTabOver : undefined}
       onAddItems={onAddItems}

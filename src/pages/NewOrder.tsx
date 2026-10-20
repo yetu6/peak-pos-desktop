@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { printProblemOnce } from "../print/printProblems";
+import { billNotPrintedWords, drawerNotOpenedWords, printProblemOnce } from "../print/printProblems";
+import { openDrawerAfterCash } from "../print/cashDrawer";
 import { DiscountDialog } from "../components/DiscountDialog";
 import { VoidOrderDialog } from "../components/VoidOrderDialog";
 import {
@@ -13,6 +14,7 @@ import {
   usePosShift,
   usePrintAfter,
   usePropertyId,
+  usePrintBill,
   useRemoveOrderItem,
   useSetLineQuantity,
   useSendOrder,
@@ -35,7 +37,7 @@ import { REGISTER_QUIET_AFTER_RETURN_MS } from "../register/registerSettings";
 import { useRequestKey } from "../lib/useRequestKey";
 import type { POSCatalogProduct, POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 import { orderName } from "../lib/orderNumber";
-import { voidedWords } from "../orders/ordersWords";
+import { billProblem, voidedWords } from "../orders/ordersWords";
 
 /**
  * Sell, against the live API: the catalog from GET /pos/catalog and the
@@ -90,6 +92,8 @@ export function NewOrder({
   // A send whose answer was lost is the same request again (same key); a refused one is new.
   const sendRequest = useRequestKey();
   const removeKey = useIdempotencyKey();
+  const billKey = useRequestKey();
+  const printBill = usePrintBill();
   const quantityKey = useIdempotencyKey();
 
   function adopt(next: POSOrder | null) {
@@ -337,11 +341,32 @@ export function NewOrder({
   function afterPaid(info: PaidInfo) {
     setSettleOpen(false);
     setPaid(info);
-    // The receipt Yetu made on closing is printed as before; one that didn't print is said on Sell (F-233).
-    void printAfter(info.order.id).then((results) => {
-      const words = printProblemOnce(results, "receipt");
-      if (words) setNotice(words);
+    // Nothing prints after payment (2026-10-20): the EFD gives the tax receipt, the bill came before.
+    // Cash opens the drawer, as the receipt used to; one that didn't open is said on Sell.
+    void openDrawerAfterCash(info.order, info.method).then((result) => {
+      if (!result.ok) setNotice(drawerNotOpenedWords(result.error ?? ""));
     });
+  }
+
+  // The bill before payment (fbc-peak #288): printed for the ticket's order; said on Sell.
+  function printTheBill() {
+    const current = orderRef.current;
+    if (!current || printBill.isPending) return;
+    setNotice(null);
+    printBill.mutate(
+      { orderId: current.id, idempotencyKey: billKey.keyFor([current.id, current.version, current.billPrints?.length ?? 0].join("|")) },
+      {
+        onSuccess: ({ failed }) => {
+          billKey.forget();
+          setNotice(failed ? billNotPrintedWords(failed) : `The bill for ${orderName(current)} was sent to the printer.`);
+        },
+        onError: (error) => {
+          const refusal = billProblem(error);
+          setNotice(refusal?.words ?? "The bill wasn't printed. Try again.");
+          if (refusal?.kind !== "network") billKey.forget();
+        },
+      },
+    );
   }
 
   function newSale(byItself = false) {
@@ -403,6 +428,7 @@ export function NewOrder({
                 onDiscount={() => setDiscountOpen(true)}
                 onVoid={() => setVoidOpen(true)}
                 onNote={() => setNoteOpen(true)}
+                onPrintBill={canSend ? printTheBill : undefined}
                 onNewSale={clearTicket}
               />
             }

@@ -167,3 +167,29 @@ describe("TicketActions: rounds (S17a)", () => {
     expect(screen.queryByTestId("pay-waits")).toBeNull();
   });
 });
+
+// fbc-peak #288 (2026-10-20): the bill before payment, in More.
+describe("TicketActions: Print bill", () => {
+  it("offers the bill for an order with something on it, and prints it", async () => {
+    const onPrintBill = vi.fn();
+    renderActions({ onPrintBill });
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    await userEvent.click(screen.getByRole("button", { name: /Print bill/ }));
+    expect(onPrintBill).toHaveBeenCalledTimes(1);
+  });
+
+  it("isn't offered to staff who can't send an order", async () => {
+    renderActions();
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(screen.queryByRole("button", { name: /Print bill/ })).toBeNull();
+  });
+
+  it("nothing on the ticket: no bill, and why", async () => {
+    const onPrintBill = vi.fn();
+    renderActions({ onPrintBill, order: { ...ORDER, items: [] } });
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    const item = screen.getByRole("button", { name: /Print bill/ });
+    expect(item).toBeDisabled();
+    expect(item).toHaveTextContent("Add an item first.");
+  });
+});

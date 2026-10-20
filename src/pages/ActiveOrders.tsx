@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { printProblemOnce } from "../print/printProblems";
+import { drawerNotOpenedWords } from "../print/printProblems";
+import { openDrawerAfterCash } from "../print/cashDrawer";
 import { DiscountDialog } from "../components/DiscountDialog";
 import { ReceiptView } from "../components/ReceiptView";
 import { VoidOrderDialog } from "../components/VoidOrderDialog";
@@ -9,8 +10,6 @@ import {
   useHasPermission,
   useOrder,
   usePosShift,
-  usePrintAfter,
-  usePropertyId,
   useStationTickets,
 } from "../hooks/usePosData";
 import { sentTimesByOrder } from "../kitchen/kitchenTickets";
@@ -55,8 +54,6 @@ export function ActiveOrders({
   const tickets = useStationTickets(true);
   const canSend = useHasPermission("pos.order.send");
   const canPay = useHasPermission("pos.payment.record");
-  const propertyId = usePropertyId();
-  const printAfter = usePrintAfter(propertyId);
   const [tab, setTab] = useState<OrdersTab>("open");
   const [query, setQuery] = useState("");
   const [overlay, setOverlay] = useState<Overlay>(null);
@@ -127,10 +124,10 @@ export function ActiveOrders({
   function afterPaid(info: PaidInfo) {
     returnFocusTo.current = info.order.id;
     setOverlay({ kind: "done", paid: info });
-    // The receipt Yetu made on closing is printed as before; one that didn't print is said (F-233).
-    void printAfter(info.order.id).then((results) => {
-      const words = printProblemOnce(results, "receipt");
-      if (words) setNotice(words);
+    // Nothing prints after payment (2026-10-20): the EFD gives the tax receipt, the bill came before.
+    // Cash opens the drawer, as the receipt used to; one that didn't open is said.
+    void openDrawerAfterCash(info.order, info.method).then((result) => {
+      if (!result.ok) setNotice(drawerNotOpenedWords(result.error ?? ""));
     });
   }
 

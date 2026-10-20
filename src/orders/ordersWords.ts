@@ -130,6 +130,11 @@ export function orderTimeline({
     if (timeOf(order.discountAppliedAt) !== null) add(order.discountAppliedAt, discountWords(order, currency));
     else untimed.push({ time: null, words: discountWords(order, currency) });
   }
+  // Each bill printed before payment (fbc-peak #288), and who printed it.
+  for (const bill of order.billPrints ?? []) {
+    const who = bill.printedByName?.trim();
+    add(bill.printedAt, `Bill printed${who ? ` by ${who}` : ""}`);
+  }
   for (const payment of order.payments ?? []) add(payment.createdAt, paymentWords(payment, currency));
   if (order.status === "VOIDED") {
     const approved = order.voidApprovedByName?.trim();
@@ -172,9 +177,22 @@ export function reprintProblem(error: unknown): OrderProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
-  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a cashier or manager can print a copy of the receipt. Ask one to help." };
-  if (problem.code === "NOT_FOUND") return { kind: "missing", words: "Yetu has no receipt for this order." };
+  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a cashier or manager can print the bill again. Ask one to help." };
+  if (problem.code === "NOT_FOUND") return { kind: "missing", words: "Yetu has no bill for this order." };
   return { kind: "other", words: otherWords(problem, "The copy wasn't printed. Try again.") };
+}
+
+/** The bill before payment (fbc-peak #288; needs pos.order.send). */
+export function billProblem(error: unknown): OrderProblem | null {
+  const problem = problemOf(error);
+  if (!problem) return null;
+  if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only staff who take orders can print the bill. Ask one to help." };
+  if (problem.code === "BILL_NOTHING_ON_IT") return { kind: "other", words: "Nothing is on this order yet, so there is no bill to print." };
+  if (problem.code === "BILL_ORDER_NOT_OPEN") return { kind: "moved", words: "This order is paid or voided now. It's been reloaded." };
+  if (problem.code === "TAB_WAITING_FOR_SHIFT") return { kind: "other", words: "Take this tab over first, then print its bill." };
+  if (problem.code === "NOT_FOUND") return { kind: "missing", words: "Yetu doesn't have this order." };
+  return { kind: "other", words: otherWords(problem, "The bill wasn't printed. Try again.") };
 }
 
 /** Printing a kitchen ticket again (S8a; needs pos.order.send, and paper kitchen tickets on this till). */

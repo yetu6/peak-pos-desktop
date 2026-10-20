@@ -19,7 +19,7 @@ describe("kitchen ticket print", () => {
         { name: "Tusker", quantity: "1" },
       ],
     });
-    expect(text).toContain("KITCHEN TICKET");
+    expect(text).toContain("TO PREPARE - KITCHEN");
     expect(text).toContain("KT-12");
     expect(text).toContain("Order POS-1");
     expect(text).toContain("Table T4");

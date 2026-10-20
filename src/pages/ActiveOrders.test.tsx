@@ -81,6 +81,20 @@ const spies = vi.hoisted(() => ({
   // S8a: Yetu's copies of a round's kitchen tickets.
   reprintKitchenTickets: vi.fn(async (..._args: unknown[]): Promise<Result> => ({ data: { roundNumber: 2, printJobs: [] }, error: null })),
   processPendingPrintJobs: vi.fn(async (..._args: unknown[]): Promise<{ ok: boolean; error?: string }[]> => [{ ok: false, error: "No printer is configured" }]),
+  // fbc-peak #288: the bill before payment, and the one job this till prints for it.
+  printBill: vi.fn(async (orderId: string, ..._rest: unknown[]): Promise<Result> => ({
+    data: { id: `bill-${orderId}`, sourceType: "POS_ORDER", sourceId: orderId, jobType: "BILL", document: { kind: "BILL" }, status: "PENDING", attempts: 0, createdAt: "2026-10-20T17:20:00Z" },
+    error: null,
+  })),
+  processPrintJob: vi.fn(async (..._args: unknown[]): Promise<{ ok: boolean; error?: string }> => ({ ok: true })),
+  // A payment that pays the order in full.
+  recordTender: vi.fn(async (orderId: string, ..._rest: unknown[]): Promise<Result> => {
+    const order = ordersStore.get(orderId)!;
+    const paid = { ...order, status: "CLOSED" as const, paidMinor: order.totalMinor, remainingMinor: 0, version: order.version + 1 };
+    ordersStore.set(orderId, paid);
+    return { data: { paymentId: "pay-1", orderClosed: true, paidMinor: paid.paidMinor, remainingMinor: 0, version: paid.version }, error: null };
+  }),
+  openDrawerAfterCash: vi.fn(async (..._args: unknown[]) => ({ ok: true })),
   listPOSOrderRefunds: vi.fn(async (): Promise<Result> => ({
     data: { status: "CLOSED", refundedMinor: 0, remainingMinor: 118_000, lastRefundDate: "2099-12-31", refunds: [], lines: [] },
     error: null,
@@ -108,6 +122,8 @@ vi.mock("../lib/posApi", () => ({
     getShift: spies.getShift,
     getReceipt: spies.getReceipt,
     reprintReceipt: spies.reprintReceipt,
+    printBill: spies.printBill,
+    recordTender: spies.recordTender,
     reprintKitchenTickets: spies.reprintKitchenTickets,
     takeOverTab: spies.takeOverTab,
     voidOrder: spies.voidOrder,
@@ -139,8 +155,11 @@ vi.mock("../auth/DeviceSessionProvider", () => ({
   }),
 }));
 
+vi.mock("../print/cashDrawer", () => ({ openDrawerAfterCash: spies.openDrawerAfterCash }));
+
 vi.mock("../lib/printJobs", () => ({
   processPendingPrintJobs: spies.processPendingPrintJobs,
+  processPrintJob: spies.processPrintJob,
 }));
 
 // This till's printer settings (Status, Printers), as the till app holds them.
@@ -547,6 +566,55 @@ describe("Orders", () => {
     expect(spies.removeItem.mock.calls[1][3]).not.toBe(spies.removeItem.mock.calls[0][3]);
   });
 
+  // The owner, 2026-10-20: the guest gets the bill before paying (fbc-peak #288).
+  it("prints the bill for an open order: Yetu makes it, this till prints that one job, and says so", async () => {
+    ordersStore.set("order-1", { ...OPEN_ORDER });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Print bill" }));
+    await waitFor(() => expect(spies.printBill).toHaveBeenCalledWith("order-1", expect.any(String)));
+    await waitFor(() => expect(spies.processPrintJob).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "bill-order-1", jobType: "BILL" }), undefined, expect.objectContaining({ settings: expect.any(Object) })));
+    expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("The bill was sent to the printer.");
+    // Only the bill: nothing else waiting for the order is printed with it.
+    expect(spies.processPendingPrintJobs).not.toHaveBeenCalled();
+  });
+
+  it("isn't offered to a person who can't send an order", async () => {
+    signIn(["pos.order.read", "pos.payment.record"]);
+    ordersStore.set("order-1", { ...OPEN_ORDER });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    expect(within(sheet).getByTestId("detail-pay")).toBeInTheDocument();
+    expect(within(sheet).queryByTestId("detail-print-bill")).toBeNull();
+  });
+
+  // 2026-10-20: nothing prints after payment; cash still opens the drawer.
+  it("a cash payment from Orders prints nothing and opens the cash drawer", async () => {
+    ordersStore.set("order-1", { ...OPEN_ORDER, status: "SENT", version: 2 });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(within(sheet).getByTestId("detail-pay"));
+    const pay = await screen.findByTestId("settle-dialog");
+    await userEvent.type(within(pay).getByTestId("amount-received"), "2000");
+    await userEvent.click(within(pay).getByTestId("confirm-settle"));
+    expect(await screen.findByRole("dialog", { name: "Paid" })).toBeInTheDocument();
+    await waitFor(() => expect(spies.openDrawerAfterCash).toHaveBeenCalledWith(expect.objectContaining({ id: "order-1" }), "CASH"));
+    expect(spies.processPendingPrintJobs).not.toHaveBeenCalled();
+    expect(spies.processPrintJob).not.toHaveBeenCalled();
+  });
+
+  it("a bill the printer didn't print says so, and where printers are set up", async () => {
+    ordersStore.set("order-1", { ...OPEN_ORDER });
+    spies.processPrintJob.mockResolvedValueOnce({ ok: false, error: "No printer is set up on this till" });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Print bill" }));
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent(
+      "The bill didn't print: no printer is set up on this till. Print it again once the printer is ready; a manager sets up printers in Status (F12), under Printers.",
+    );
+  });
+
   it("opens Pay over the order and comes back to it on Cancel", async () => {
     ordersStore.set("order-1", { ...OPEN_ORDER, status: "SENT", version: 2 });
     renderOrders();
@@ -605,7 +673,7 @@ describe("Orders", () => {
     await userEvent.click(print);
     expect(await within(sheet).findByRole("alert")).toHaveTextContent("Can't reach Yetu.");
     await userEvent.click(print);
-    expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("A copy of the receipt was sent to the printer.");
+    expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("A copy of the bill was sent to the printer.");
     await waitFor(() => expect(within(sheet).getByTestId("order-detail-payment")).toHaveTextContent("Printed again 1 time"));
     await userEvent.click(print);
     await waitFor(() => expect(spies.reprintReceipt).toHaveBeenCalledTimes(3));
@@ -629,9 +697,9 @@ describe("Orders", () => {
     await waitFor(() => expect(print).toBeEnabled());
     await userEvent.click(print);
     expect(await within(sheet).findByRole("alert")).toHaveTextContent(
-      "The copy didn't print: no printer is set up on this till. Yetu has the receipt; try again once the printer is ready.",
+      "The copy didn't print: no printer is set up on this till. Yetu has the bill; try again once the printer is ready.",
     );
-    expect(within(sheet).queryByText("A copy of the receipt was sent to the printer.")).toBeNull();
+    expect(within(sheet).queryByText("A copy of the bill was sent to the printer.")).toBeNull();
   });
 
   it("keeps an open order's detail when another till takes payment for it, now showing it paid", async () => {
@@ -659,7 +727,7 @@ describe("Orders", () => {
     const print = within(sheet).getByTestId("detail-reprint");
     await waitFor(() => expect(print).toBeEnabled());
     await userEvent.click(print);
-    expect(await within(sheet).findByRole("alert")).toHaveTextContent("Only a cashier or manager can print a copy of the receipt.");
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent("Only a cashier or manager can print the bill again.");
     await userEvent.click(print);
     await waitFor(() => expect(spies.reprintReceipt).toHaveBeenCalledTimes(2));
     expect(spies.reprintReceipt.mock.calls[1][1]).not.toBe(spies.reprintReceipt.mock.calls[0][1]);
@@ -868,6 +936,7 @@ describe("Orders: carrying on with an open order (F-236)", () => {
     renderOrders(vi.fn(), vi.fn());
     const sheet = await openDetail("order-1");
     expect(within(sheet).queryByTestId("detail-add-items")).toBeNull();
+    expect(within(sheet).queryByTestId("detail-print-bill")).toBeNull();
   });
 
   it("opens Discount with a supervisor and comes back to the order on Cancel", async () => {

@@ -22,7 +22,8 @@ describe("kitchen ticket on paper (S8a)", () => {
   it("says the order large, its round, the station, where it goes and who took it", () => {
     const text = readable(kitchenTicketBytes(TICKET, PAPER_58MM));
     const lines = text.split("\n");
-    expect(lines.slice(0, 3)).toEqual(["ORDER 42", "ROUND 2", "HOT KITCHEN"]);
+    // The paper's title first (2026-10-20): an order to make, and where.
+    expect(lines.slice(0, 3)).toEqual(["TO PREPARE - HOT KITCHEN", "ORDER 42", "ROUND 2"]);
     expect(text).toContain("Table 12 - Dine in");
     expect(text).toContain("Taken by Amina Hassan");
     expect(text).toContain("Sent by Juma Said");

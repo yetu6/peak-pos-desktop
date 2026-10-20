@@ -76,7 +76,7 @@ export function ReceiptSheet({
         // While a copy is with Yetu the receipt stays open, so its answer is seen.
         if (!open && !reprinting) onClose();
       }}
-      title="Receipt"
+      title="Bill"
       testId="receipt-view"
       footer={
         <div className="y-options__footer">
@@ -96,7 +96,7 @@ export function ReceiptSheet({
     >
       <div className="y-receipt">
         {loading ? (
-          <div className="y-receipt__loading" aria-label="Loading the receipt">
+          <div className="y-receipt__loading" aria-label="Loading the bill">
             <Skeleton height={24} width="60%" />
             <Skeleton height={120} />
           </div>
@@ -181,7 +181,7 @@ export function ReceiptSheet({
               </p>
             ) : null}
             <p className="y-receipt__footer" data-testid="receipt-footer">
-              This is not a tax receipt. Use your EFD machine for tax receipts.
+              Powered by Yetu
             </p>
           </div>
         ) : null}

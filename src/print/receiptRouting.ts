@@ -1,5 +1,6 @@
 import type { POSPrintJob } from "../lib/posContracts";
 import { receiptCopyFromPrintDocument } from "../lib/receiptPrint";
+import { getOperationalSession } from "../lib/operationalSession";
 import type { PaperWidth } from "./escpos";
 import { receiptBytes, textPaperBytes } from "./receipt";
 
@@ -16,12 +17,18 @@ export function cashMoved(job: POSPrintJob): boolean {
 }
 
 /**
- * A receipt or refund slip as the thermal receipt printer takes it. The cash
- * drawer opens for an original only, never for a copy printed again.
+ * A bill or refund slip as the thermal bill printer takes it. The cash
+ * drawer opens for an original only, never for a copy printed again, and
+ * never for a bill: nothing is paid when it prints (2026-10-20).
  */
 export function receiptPaperFor(job: POSPrintJob, width: PaperWidth, cashDrawer: boolean, formattedText: string): Uint8Array {
   const copy = Boolean(job.reprintedFromId);
   const drawer = cashDrawer && !copy && cashMoved(job);
-  if (job.jobType === "RECEIPT") return receiptBytes(receiptCopyFromPrintDocument(job.document), width, { drawer, copy });
+  if (job.jobType === "RECEIPT" || job.jobType === "BILL") return receiptBytes(receiptCopyFromPrintDocument(job.document, { hotel: hotelHere() }), width, { drawer, copy });
   return textPaperBytes(formattedText, width, { drawer, copy });
+}
+
+/** This till's property has rooms (LODGING, from the signed-in session): its bills carry the room-charge lines. */
+export function hotelHere(): boolean {
+  return getOperationalSession()?.capabilities?.includes("LODGING") === true;
 }

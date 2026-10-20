@@ -116,12 +116,12 @@ describe("a refusal for a role without the permission (403)", () => {
   });
 
   it("printing a copy of a receipt from an order", () => {
-    expect(reprintProblem(FORBIDDEN)).toEqual({ kind: "permission", words: "Only a cashier or manager can print a copy of the receipt. Ask one to help." });
+    expect(reprintProblem(FORBIDDEN)).toEqual({ kind: "permission", words: "Only a cashier or manager can print the bill again. Ask one to help." });
   });
 
   it("printing a copy from the receipt", () => {
     render(<ReceiptSheet receipt={RECEIPT} loading={false} failed={false} reprinting={false} reprintError={reprintProblem(FORBIDDEN)} onReprint={nothing} onClose={vi.fn()} />);
-    expectPermissionNotice("Only a cashier or manager can print a copy of the receipt. Ask one to help.");
+    expectPermissionNotice("Only a cashier or manager can print the bill again. Ask one to help.");
   });
 
   it("moving a kitchen ticket", () => {

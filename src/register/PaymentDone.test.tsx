@@ -69,12 +69,14 @@ describe("PaymentDone", () => {
     renderDone({ paid: { order: ORDER, method: "ROOM_CHARGE", changeMinor: 0, roomNumber: "12" } });
     expect(screen.getByRole("dialog", { name: "Charged to room 12" })).toHaveTextContent("TSh 42,500");
     expect(screen.queryByTestId("done-change")).not.toBeInTheDocument();
+    // The guest signed the bill for the room; the EFD receipt comes with the room's bill at check-out.
+    expect(screen.queryByTestId("done-efd")).not.toBeInTheDocument();
   });
 
   it("claims nothing about printing; the receipt is there to see", () => {
     const { onViewReceipt } = renderDone();
     expect(screen.getByRole("dialog")).not.toHaveTextContent(/print/i);
-    fireEvent.click(screen.getByRole("button", { name: "View receipt" }));
+    fireEvent.click(screen.getByRole("button", { name: "View bill" }));
     expect(onViewReceipt).toHaveBeenCalled();
   });
 
@@ -126,10 +128,10 @@ describe("PaymentDone", () => {
     expect(onNewSale).not.toHaveBeenCalled();
     expect(screen.getByTestId("done-countdown")).toHaveTextContent("Waiting while you look");
     fireEvent.mouseLeave(done);
-    fireEvent.focus(screen.getByRole("button", { name: "View receipt" }));
+    fireEvent.focus(screen.getByRole("button", { name: "View bill" }));
     act(() => vi.advanceTimersByTime(20_000));
     expect(onNewSale).not.toHaveBeenCalled();
-    fireEvent.blur(screen.getByRole("button", { name: "View receipt" }));
+    fireEvent.blur(screen.getByRole("button", { name: "View bill" }));
     act(() => vi.advanceTimersByTime(REGISTER_AUTO_RETURN_SECONDS * 1000));
     expect(onNewSale).toHaveBeenCalledTimes(1);
   });
