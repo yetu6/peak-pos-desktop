@@ -247,7 +247,8 @@ test("a cashier's shift on the redesigned till, against the live API", async ({ 
     const dialog = page.getByTestId("cash-movement-dialog");
     await expect(dialog).toBeVisible();
     await page.getByTestId("movement-amount").fill(typed(CASH_OUT_MINOR));
-    await page.getByTestId("movement-reason").fill("Gas delivery");
+    await page.getByTestId("movement-reason-other").click();
+    await page.getByTestId("movement-reason-text").fill("Gas delivery");
     // The cashier can't approve their own cash out.
     await expect(dialog.getByRole("radio", { name: new RegExp(cashier.displayName) })).toBeDisabled();
     await expect(page.getByTestId("confirm-movement")).toBeDisabled();

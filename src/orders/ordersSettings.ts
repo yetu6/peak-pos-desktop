@@ -42,3 +42,28 @@ export const REFUND_REASONS: readonly string[] = [
   "Guest changed their mind",
   "Charged twice",
 ];
+
+/**
+ * orders.discountReasons: the reasons a cashier picks from when asking for a
+ * discount, besides typing their own (ReasonPicker). The supervisor approves
+ * the reason with the amount.
+ */
+export const DISCOUNT_REASONS: readonly string[] = [
+  "Regular guest",
+  "Staff meal",
+  "Slow service",
+  "Problem with the food or drink",
+  "Manager's guest",
+];
+
+/**
+ * orders.voidReasons: the reasons a cashier picks from when voiding an unpaid
+ * order, besides typing their own.
+ */
+export const VOID_REASONS: readonly string[] = [
+  "Entered by mistake",
+  "Entered twice",
+  "Guest changed their mind",
+  "Guest left",
+  "Kitchen ran out",
+];

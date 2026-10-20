@@ -9,8 +9,9 @@ import { useRateLimitWait } from "../lib/useRateLimitWait";
 import type { DiscountKind, POSOrder } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
 import { discountProblem } from "../register/registerWords";
-import { Banner, Button, Field, MoneyField, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
+import { Banner, Button, Field, MoneyField, ReasonPicker, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
 import { orderNumberWords } from "../lib/orderNumber";
+import { DISCOUNT_REASONS } from "../orders/ordersSettings";
 
 /**
  * A percentage as Yetu takes it: basis points (12.5% → 1250), from more than
@@ -160,16 +161,15 @@ export function DiscountDialog({
             data-testid="discount-value"
           />
         )}
-        <Field
+        <ReasonPicker
           label="Reason"
-          hint="For example, a regular guest or a staff meal."
-          value={reason}
-          onChange={(text) => {
-            setReason(text);
+          reasons={DISCOUNT_REASONS}
+          onChange={(chosen) => {
+            setReason(chosen);
             clearApproval();
           }}
-          autoComplete="off"
-          data-testid="discount-reason"
+          otherHint="Written in the order's history."
+          testIdPrefix="discount-reason"
         />
         <SupervisorApproval
           request={

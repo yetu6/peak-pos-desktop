@@ -6,6 +6,8 @@ import userEvent from "@testing-library/user-event";
 import { idleLockHeld } from "../lib/idleLock";
 import { VoidOrderDialog } from "./VoidOrderDialog";
 import type { POSOrder } from "../lib/posContracts";
+import { giveReason } from "../../tests/reasons";
+import { VOID_REASONS } from "../orders/ordersSettings";
 
 /** The app's query provider, fresh for each render: the approval sheets ask Yetu who may approve (F-249). */
 function render(ui: ReactElement) {
@@ -72,11 +74,22 @@ beforeEach(() => {
 });
 
 describe("VoidOrderDialog", () => {
+  it("offers the place's void reasons in one tap, and sends the words tapped", async () => {
+    render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    const reasons = within(screen.getByRole("radiogroup", { name: "Reason" }));
+    expect(reasons.getAllByRole("radio").map((radio) => radio.textContent)).toEqual([...VOID_REASONS, "Another reason"]);
+    await userEvent.click(reasons.getByRole("radio", { name: VOID_REASONS[0] }));
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+    await typePin("123456");
+    await userEvent.click(screen.getByTestId("confirm-void-order"));
+    expect(voidOrderMutate).toHaveBeenCalledWith(expect.objectContaining({ reason: VOID_REASONS[0] }), expect.anything());
+  });
+
   it("needs a reason and a different supervisor's 6-digit PIN before voiding", async () => {
     render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
     const submit = screen.getByTestId("confirm-void-order");
     expect(submit).toBeDisabled();
-    await userEvent.type(screen.getByTestId("void-reason"), "Wrong table");
+    await giveReason("void-reason", "Wrong table");
     expect(screen.getByText("Void order 42 (TSh 24,000): Wrong table")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Amina Hassan/ })).toBeDisabled();
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
@@ -103,7 +116,7 @@ describe("VoidOrderDialog", () => {
       opts?.onError?.(new Error(JSON.stringify({ code: "FORBIDDEN", detail: "That approval was not accepted. A different person who may approve this, and is active at this property, must enter their own PIN. Several wrong PINs lock it for a while." }))),
     );
     render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
-    await userEvent.type(screen.getByTestId("void-reason"), "Wrong table");
+    await giveReason("void-reason", "Wrong table");
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
     await typePin("123456");
     await userEvent.click(screen.getByTestId("confirm-void-order"));
@@ -115,17 +128,17 @@ describe("VoidOrderDialog", () => {
 
   it("asks again when the reason changes after approval", async () => {
     render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
-    await userEvent.type(screen.getByTestId("void-reason"), "Wrong table");
+    await giveReason("void-reason", "Wrong table");
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
     await typePin("123456");
-    await userEvent.type(screen.getByTestId("void-reason"), " 4");
+    await giveReason("void-reason", " 4");
     expect(screen.getByRole("radio", { name: /Grace Mushi/ })).not.toBeChecked();
     expect(screen.getByTestId("confirm-void-order")).toBeDisabled();
   });
 
   it("asks again when the order changes (a new version): a PIN typed for one version never voids another", async () => {
     const view = render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
-    await userEvent.type(screen.getByTestId("void-reason"), "Wrong table");
+    await giveReason("void-reason", "Wrong table");
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
     await typePin("123456");
     expect(screen.getByTestId("confirm-void-order")).toBeEnabled();
@@ -133,7 +146,7 @@ describe("VoidOrderDialog", () => {
     expect(screen.getByRole("radio", { name: /Grace Mushi/ })).not.toBeChecked();
     expect(screen.getByTestId("pin-dots")).toHaveAccessibleName("0 digits entered");
     expect(screen.getByTestId("confirm-void-order")).toBeDisabled();
-    expect(screen.getByTestId("void-reason")).toHaveValue("Wrong table");
+    expect(screen.getByTestId("void-reason-text")).toHaveValue("Wrong table");
   });
 
   it("asks for the order again when Yetu says it changed on another till", async () => {
@@ -142,7 +155,7 @@ describe("VoidOrderDialog", () => {
       opts?.onError?.(new Error(JSON.stringify({ code: "STALE_VERSION", detail: "resource has changed" }))),
     );
     render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} onStale={onStale} />);
-    await userEvent.type(screen.getByTestId("void-reason"), "Wrong table");
+    await giveReason("void-reason", "Wrong table");
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
     await typePin("123456");
     await userEvent.click(screen.getByTestId("confirm-void-order"));
@@ -177,7 +190,7 @@ describe("VoidOrderDialog after too many attempts (429)", () => {
     voidState.error = new Error(JSON.stringify({ type: "about:blank", title: "Too many requests.", status: 429, code: "RATE_LIMITED", detail: "Too many requests. Try again in 41 seconds.", request_id: "req-9", retryAfterSeconds: 41 }));
     render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} />);
     expect(screen.getByRole("alert")).toHaveTextContent("Too many attempts. Wait a minute and try again.");
-    await userEvent.type(screen.getByTestId("void-reason"), "Guest left");
+    await giveReason("void-reason", "Guest left");
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
     await typePin("736251");
     expect(screen.getByTestId("confirm-void-order")).toBeDisabled();

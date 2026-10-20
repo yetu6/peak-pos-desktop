@@ -182,7 +182,7 @@ test("S6: one realtime connection, lost payment answers resolved by Yetu, refusa
     await tap(page.getByRole("button", { name: "More" }));
     await tap(page.getByRole("button", { name: /Void the order/ }));
     const sheet = page.getByTestId("void-order-dialog");
-    await sheet.getByTestId("void-reason").fill("Guest left before ordering");
+    await sheet.getByRole("radio", { name: "Guest left" }).click();
     const manager = staff.find((person) => person.id === seeded.managerStaffId)!;
     await tap(sheet.getByRole("radio", { name: new RegExp(manager.displayName) }));
     return order;

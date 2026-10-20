@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render as renderInDom, screen } from "@testing-library/react";
+import { act, cleanup, render as renderInDom, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement, ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { idleLockHeld } from "../lib/idleLock";
 import { DiscountDialog } from "./DiscountDialog";
 import type { POSOrder } from "../lib/posContracts";
+import { giveReason } from "../../tests/reasons";
+import { DISCOUNT_REASONS } from "../orders/ordersSettings";
 
 /** The app's query provider, fresh for each render: the approval sheets ask Yetu who may approve (F-249). */
 function render(ui: ReactElement) {
@@ -73,6 +75,17 @@ beforeEach(() => {
 });
 
 describe("DiscountDialog", () => {
+  it("offers the place's discount reasons in one tap, and sends the words tapped", async () => {
+    render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
+    const reasons = within(screen.getByRole("radiogroup", { name: "Reason" }));
+    expect(reasons.getAllByRole("radio").map((radio) => radio.textContent)).toEqual([...DISCOUNT_REASONS, "Another reason"]);
+    await userEvent.type(screen.getByTestId("discount-value"), "1000");
+    await userEvent.click(reasons.getByRole("radio", { name: DISCOUNT_REASONS[2] }));
+    await approveAsGrace();
+    await userEvent.click(screen.getByTestId("confirm-discount"));
+    expect(applyMutate).toHaveBeenCalledWith(expect.objectContaining({ reason: DISCOUNT_REASONS[2] }), expect.anything());
+  });
+
   // F-229: with VAT inside the prices, a discount comes off what the guest pays.
   it("says where the discount comes off: before VAT, or off what the guest pays when the prices include VAT", () => {
     render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
@@ -91,7 +104,7 @@ describe("DiscountDialog", () => {
     render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={onApplied} />);
     const submit = screen.getByTestId("confirm-discount");
     await userEvent.type(screen.getByTestId("discount-value"), "2000");
-    await userEvent.type(screen.getByTestId("discount-reason"), "Regular guest");
+    await giveReason("discount-reason", "Regular guest");
     expect(screen.getByText("Take TSh 2,000 off order 42: Regular guest")).toBeInTheDocument();
     expect(submit).toBeDisabled();
     await approveAsGrace();
@@ -110,7 +123,7 @@ describe("DiscountDialog", () => {
     );
     render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
     await userEvent.type(screen.getByTestId("discount-value"), "2000");
-    await userEvent.type(screen.getByTestId("discount-reason"), "Regular guest");
+    await giveReason("discount-reason", "Regular guest");
     await approveAsGrace();
     await userEvent.click(screen.getByTestId("confirm-discount"));
     expect(screen.getByTestId("pin-dots")).toHaveAccessibleName("0 digits entered");
@@ -123,7 +136,7 @@ describe("DiscountDialog", () => {
     render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
     await userEvent.click(screen.getByRole("radio", { name: "Percent" }));
     await userEvent.type(screen.getByTestId("discount-value"), "12.5");
-    await userEvent.type(screen.getByTestId("discount-reason"), "Staff meal");
+    await giveReason("discount-reason", "Staff meal");
     expect(screen.getByText("Take 12.5% off order 42: Staff meal")).toBeInTheDocument();
     await approveAsGrace();
     await userEvent.click(screen.getByTestId("confirm-discount"));
@@ -134,7 +147,7 @@ describe("DiscountDialog", () => {
     render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
     await userEvent.click(screen.getByRole("radio", { name: "Percent" }));
     await userEvent.type(screen.getByTestId("discount-value"), "120");
-    await userEvent.type(screen.getByTestId("discount-reason"), "Staff meal");
+    await giveReason("discount-reason", "Staff meal");
     await approveAsGrace();
     expect(screen.getByTestId("confirm-discount")).toBeDisabled();
   });
@@ -143,7 +156,7 @@ describe("DiscountDialog", () => {
     render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
     await userEvent.click(screen.getByRole("radio", { name: "Percent" }));
     await userEvent.type(screen.getByTestId("discount-value"), "12.345");
-    await userEvent.type(screen.getByTestId("discount-reason"), "Staff meal");
+    await giveReason("discount-reason", "Staff meal");
     await approveAsGrace();
     expect(screen.getByTestId("confirm-discount")).toBeDisabled();
     expect(screen.getByText("Up to two decimals, for example 12.5.")).toBeInTheDocument();
@@ -164,13 +177,13 @@ describe("DiscountDialog", () => {
   it("asks again when the amount, kind or reason changes after approval", async () => {
     render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
     await userEvent.type(screen.getByTestId("discount-value"), "2000");
-    await userEvent.type(screen.getByTestId("discount-reason"), "Regular guest");
+    await giveReason("discount-reason", "Regular guest");
     await approveAsGrace();
     await userEvent.type(screen.getByTestId("discount-value"), "0");
     expect(screen.getByRole("radio", { name: /Grace Mushi/ })).not.toBeChecked();
     expect(screen.getByTestId("confirm-discount")).toBeDisabled();
     await approveAsGrace();
-    await userEvent.type(screen.getByTestId("discount-reason"), "!");
+    await giveReason("discount-reason", "!");
     expect(screen.getByTestId("confirm-discount")).toBeDisabled();
     await approveAsGrace();
     await userEvent.click(screen.getByRole("radio", { name: "Percent" }));
@@ -191,7 +204,7 @@ describe("DiscountDialog after too many attempts (429)", () => {
     render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
     expect(screen.getByRole("alert")).toHaveTextContent("Too many attempts. Wait a minute and try again.");
     await userEvent.type(screen.getByTestId("discount-value"), "2000");
-    await userEvent.type(screen.getByTestId("discount-reason"), "Regular guest");
+    await giveReason("discount-reason", "Regular guest");
     await approveAsGrace();
     expect(screen.getByTestId("confirm-discount")).toBeDisabled();
     try {

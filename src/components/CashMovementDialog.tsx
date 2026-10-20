@@ -3,6 +3,7 @@ import { supervisorChoice, useApprovers } from "../approvals/supervisors";
 import type { POSApprover } from "../lib/posContracts";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
+import { CASH_IN_REASONS, CASH_OUT_REASONS } from "../cash/cashSettings";
 import { cashMovementProblem } from "../cash/cashWords";
 import { useIdempotencyKey, useRecordCashMovement } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
@@ -11,7 +12,7 @@ import { useRateLimitWait } from "../lib/useRateLimitWait";
 import type { RosterEntry } from "../lib/deviceAuth";
 import type { CashMovementType } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
-import { Button, Field, MoneyField, RefusalNotice, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
+import { Button, MoneyField, ReasonPicker, RefusalNotice, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
 
 /** Cash in / Cash out against the open shift. Append-only: there is no edit
  *  or delete on `POSCashMovement` in the certified contract, and none is
@@ -166,6 +167,8 @@ export function CashMovementSheetView({
           value={movementType}
           onChange={(type) => {
             setMovementType(type);
+            // Cash in and cash out have their own reasons.
+            if (type !== movementType) setReason("");
             clearApproval();
           }}
           options={[
@@ -185,16 +188,17 @@ export function CashMovementSheetView({
           inputTestId="movement-amount"
           autoFocus
         />
-        <Field
-          label="Reason"
-          hint={cashOut ? "What the cash is for, for example the gas delivery." : "Where the cash came from, for example a float top-up."}
-          value={reason}
-          onChange={(text) => {
-            setReason(text);
+        <ReasonPicker
+          key={movementType}
+          label={cashOut ? "What the cash is for" : "Where the cash came from"}
+          reasons={cashOut ? CASH_OUT_REASONS : CASH_IN_REASONS}
+          initialReason={reason}
+          onChange={(chosen) => {
+            setReason(chosen);
             clearApproval();
           }}
-          data-testid="movement-reason"
-          autoComplete="off"
+          otherHint="Written in the shift's cash record."
+          testIdPrefix="movement-reason"
         />
         {cashOut ? (
           <SupervisorApproval
