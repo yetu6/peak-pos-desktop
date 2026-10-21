@@ -17,6 +17,7 @@ import {
   usePropertyId,
   usePrintBill,
   useRemoveOrderItem,
+  useReprintKitchenTickets,
   useSetLineQuantity,
   useSendOrder,
   useSetProductAvailability,
@@ -38,7 +39,7 @@ import { REGISTER_QUIET_AFTER_RETURN_MS } from "../register/registerSettings";
 import { useRequestKey } from "../lib/useRequestKey";
 import type { POSCatalogProduct, POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 import { orderName } from "../lib/orderNumber";
-import { billProblem, voidedWords } from "../orders/ordersWords";
+import { billProblem, voidedWords, kitchenReprintProblem, kitchenReprintWords } from "../orders/ordersWords";
 
 /**
  * Sell, against the live API: the catalog from GET /pos/catalog and the
@@ -108,6 +109,8 @@ export function NewOrder({
   const removeKey = useIdempotencyKey();
   const billKey = useRequestKey();
   const printBill = usePrintBill();
+  const reprintKitchen = useReprintKitchenTickets();
+  const reprintKey = useIdempotencyKey();
   const quantityKey = useIdempotencyKey();
 
   function adopt(next: POSOrder | null) {
@@ -409,6 +412,22 @@ export function NewOrder({
     );
   }
 
+  // Print order with nothing new: the last round's papers again, marked COPY
+  // (the reprint Orders already has); said on Sell.
+  function printOrderAgain() {
+    const current = orderRef.current;
+    const round = current?.roundsSent ?? 0;
+    if (!current || round === 0 || reprintKitchen.isPending) return;
+    setNotice(null);
+    reprintKitchen.mutate(
+      { orderId: current.id, idempotencyKey: reprintKey.next(), roundNumber: round },
+      {
+        onSuccess: ({ failed }) => setNotice(kitchenReprintWords(round, current.roundsSent, failed)),
+        onError: (error) => setNotice(kitchenReprintProblem(error)?.words ?? "The order wasn't printed again. Try again."),
+      },
+    );
+  }
+
   function newSale(byItself = false) {
     if (byItself) quietUntil.current = Date.now() + REGISTER_QUIET_AFTER_RETURN_MS;
     setPaid(null);
@@ -465,11 +484,13 @@ export function NewOrder({
                 canSend={canSend}
                 canPay={canPay}
                 onSend={() => void sendToKitchen()}
+                onReprint={printOrderAgain}
                 onPay={() => void pay()}
                 onDiscount={() => setDiscountOpen(true)}
                 onVoid={() => setVoidOpen(true)}
                 onNote={() => setNoteOpen(true)}
                 onPrintBill={canSend ? printTheBill : undefined}
+                printingBill={printBill.isPending}
                 onNewSale={clearTicket}
               />
             }

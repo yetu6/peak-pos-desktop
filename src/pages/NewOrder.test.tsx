@@ -18,6 +18,13 @@ const { printForSpy, printJobNowSpy, printBillSpy } = vi.hoisted(() => ({
   })),
 }));
 vi.mock("../print/printFor", () => ({ printFor: printForSpy, printJobNow: printJobNowSpy }));
+vi.mock("../print/printerStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../print/printerStore")>()),
+  loadPrinterSettings: async () => ({ kitchenTickets: true, kitchen: null, stations: {}, receipt: null, cashDrawer: false }),
+}));
+const { reprintKitchenSpy } = vi.hoisted(() => ({
+  reprintKitchenSpy: vi.fn(async (..._args: unknown[]) => ({ data: { roundNumber: 1, printJobs: [] }, error: null })),
+}));
 const { openDrawerSpy } = vi.hoisted(() => ({ openDrawerSpy: vi.fn(async (..._args: unknown[]) => ({ ok: true })) }));
 vi.mock("../print/cashDrawer", () => ({ openDrawerForCash: openDrawerSpy }));
 
@@ -272,6 +279,7 @@ vi.mock("../lib/posApi", () => ({
     recordTender: recordTenderSpy,
     listPrintJobs: vi.fn(async () => ({ data: [], error: null })),
     printBill: printBillSpy,
+    reprintKitchenTickets: reprintKitchenSpy,
     removeItem: removeItemSpy,
     setItemQuantity: setItemQuantitySpy,
     voidOrder: voidOrderSpy,
@@ -491,13 +499,25 @@ describe("NewOrder", () => {
   });
 
   // The owner, 2026-10-20: the guest gets the bill before paying (fbc-peak #288).
-  it("More, Print bill prints the ticket's bill and says so", async () => {
+  it("Print bill, beside Print order, prints the ticket's bill and says so", async () => {
     await startOrder();
-    await userEvent.click(screen.getByRole("button", { name: "More" }));
     await userEvent.click(screen.getByRole("button", { name: /Print bill/ }));
     await waitFor(() => expect(printBillSpy).toHaveBeenCalledWith("order-1", expect.any(String)));
     await waitFor(() => expect(printJobNowSpy).toHaveBeenCalledWith(expect.objectContaining({ id: "bill-order-1", jobType: "BILL" })));
     expect(await screen.findByText("The bill for Order 1 was sent to the printer.")).toBeInTheDocument();
+  });
+
+  // With everything sent, Print order prints the last round again, marked COPY.
+  it("Print order with nothing new prints the last papers again and says so", async () => {
+    const sent = { ...OPEN_ORDER, status: "SENT" as const, roundsSent: 1, items: OPEN_ORDER.items.map((line) => ({ ...line, status: "SENT" as const, roundNumber: 1 })) };
+    getOrderSpy.mockResolvedValue({ data: sent, error: null } as never);
+    renderNewOrder({ resume: sent });
+    const print = await screen.findByTestId("send-order");
+    await waitFor(() => expect(print).toBeEnabled());
+    await userEvent.click(print);
+    await waitFor(() => expect(reprintKitchenSpy).toHaveBeenCalledWith(sent.id, expect.any(String), 1));
+    expect(sendOrderSpy).not.toHaveBeenCalled();
+    expect(await screen.findByText("The kitchen ticket went to the printer again, marked COPY.")).toBeInTheDocument();
   });
 
   it("isn't in More for a person who can't send an order", async () => {

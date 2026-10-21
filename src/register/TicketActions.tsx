@@ -1,5 +1,5 @@
-import { payWaitsWords, sendWords, takesMore, unsentLines } from "./rounds";
-import { ChefHat, Ellipsis, Wallet } from "lucide-react";
+import { payWaitsWords, takesMore, unsentLines } from "./rounds";
+import { Ellipsis, Printer, ReceiptText, Wallet } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button, Dialog, PermissionNotice } from "../components/system";
 import { isComposing } from "../lib/keyboard";
@@ -19,22 +19,27 @@ export interface TicketActionsProps {
   /** pos.payment.record */
   canPay: boolean;
   onSend: () => void;
+  /** Prints the last round's papers again, when everything is already sent. */
+  onReprint?: () => void;
   onPay: () => void;
   onDiscount: () => void;
   onVoid: () => void;
   onNote: () => void;
   /** The bill before payment (fbc-peak #288); absent for staff who can't send an order. */
   onPrintBill?: () => void;
+  printingBill?: boolean;
   onNewSale: () => void;
   /** Fixtures start with More open. */
   initialMoreOpen?: boolean;
 }
 
 /**
- * The ticket's actions, kept apart by design: Send to kitchen is secondary,
- * on its own row at the left with a kitchen icon; Pay is the primary action,
- * full width at the bottom, larger, blue, with the amount still to pay. More
- * holds Discount, Void, the order note and a new sale.
+ * The ticket's actions (owner, 2026-10-21: printing in plain sight). One row
+ * of Print order -- the new items' papers for the kitchen and the bar, which
+ * also sends them to any kitchen screen; with nothing new, the last papers
+ * again -- Print bill and More; Pay is the primary action, full width
+ * below, larger, with the amount still to pay. More holds Discount, Cancel
+ * order, the order note and a new sale.
  */
 export function TicketActions({
   order,
@@ -44,11 +49,13 @@ export function TicketActions({
   canSend,
   canPay,
   onSend,
+  onReprint,
   onPay,
   onDiscount,
   onVoid,
   onNote,
   onPrintBill,
+  printingBill = false,
   onNewSale,
   initialMoreOpen = false,
 }: TicketActionsProps) {
@@ -63,6 +70,9 @@ export function TicketActions({
   const sendsOnPay = canSend && sendable;
   const payWaits = sendsOnPay ? null : payWaitsWords(order);
   const payable = Boolean(order && lines.length > 0 && !settled && order.remainingMinor > 0 && !payWaits) && !busy;
+  // With nothing new to send, Print order prints the last papers again.
+  const reprintable = Boolean(onReprint && order && !settled && (order.roundsSent ?? 0) > 0 && unsentLines(order) === 0) && !busy;
+  const billable = Boolean(order && lines.length > 0 && !settled) && !busy && !printingBill;
 
   const keys = useRef({ sendable, payable, canSend, canPay, onSend, onPay });
   keys.current = { sendable, payable, canSend, canPay, onSend, onPay };
@@ -102,21 +112,31 @@ export function TicketActions({
         {canSend ? (
           <Button
             size={56}
-            icon={<ChefHat />}
+            icon={<Printer />}
             keyHint={REGISTER_KEYS.send}
             data-testid="send-order"
-            disabled={!sendable}
-            onClick={onSend}
+            disabled={!sendable && !reprintable}
+            onClick={sendable ? onSend : onReprint}
           >
-            {sending ? "Sending…" : sendWords(order)}
+            {sending ? "Printing…" : "Print order"}
           </Button>
         ) : (
-          <PermissionNotice who="staff who take orders" action="send them to the kitchen" next="Ask one to help." />
+          <PermissionNotice who="staff who take orders" action="print them for the kitchen" next="Ask one to help." />
         )}
+        {onPrintBill ? (
+          <Button size={56} icon={<ReceiptText />} data-testid="print-bill" disabled={!billable} onClick={onPrintBill}>
+            {printingBill ? "Printing…" : "Print bill"}
+          </Button>
+        ) : null}
         <Button variant="quiet" size={56} icon={<Ellipsis />} onClick={() => setMoreOpen(true)} className="y-actions__more">
           More
         </Button>
       </div>
+      {sendsOnPay && canPay && payable ? (
+        <p className="y-actions__why" data-testid="pay-prints-first">
+          New items print for the kitchen first.
+        </p>
+      ) : null}
       {payWaits && canPay ? (
         <p className="y-actions__why" data-testid="pay-waits">
           {payWaits}
@@ -133,9 +153,7 @@ export function TicketActions({
           disabled={!payable}
           onClick={onPay}
         >
-          {order && lines.length > 0 && !settled
-            ? `${sendsOnPay ? "Send and pay" : "Pay"} ${formatMoney(order.remainingMinor, currency)}`
-            : "Pay"}
+          {order && lines.length > 0 && !settled ? `Pay ${formatMoney(order.remainingMinor, currency)}` : "Pay"}
         </Button>
       ) : (
         <PermissionNotice who="a cashier or manager" action="take payment" next="Ask one to help." />
@@ -165,20 +183,6 @@ export function TicketActions({
               disabled={changeBlocked !== null}
               onClick={() => choose(onVoid)}
             />
-            {onPrintBill ? (
-              <MoreItem
-                title="Print bill"
-                meta={
-                  !order || lines.length === 0
-                    ? "Add an item first."
-                    : settled
-                      ? "This order is finished."
-                      : "What the guest is to pay, before they pay."
-                }
-                disabled={!order || lines.length === 0 || settled || busy}
-                onClick={() => choose(onPrintBill)}
-              />
-            ) : null}
             <MoreItem title="Order note" meta="A note that goes with the order to the kitchen." onClick={() => choose(onNote)} />
             {order ? (
               <MoreItem

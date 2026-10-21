@@ -55,11 +55,17 @@ function renderActions(props: Partial<TicketActionsProps> = {}) {
 }
 
 describe("TicketActions", () => {
-  it("keeps Send to kitchen and Pay apart: place, colour, icon, size and words", () => {
-    renderActions();
-    const send = screen.getByRole("button", { name: /Send to kitchen/ });
-    // Nothing is sent yet: Pay sends it first, and says so.
-    const pay = screen.getByRole("button", { name: /Send and pay TSh 40,120/ });
+  // The owner, 2026-10-21: printing in plain sight, one row; Pay below.
+  it("one row of Print order, Print bill and More, and Pay below: place, colour, icon, size and words", () => {
+    renderActions({ onPrintBill: vi.fn() });
+    const send = screen.getByRole("button", { name: /Print order/ });
+    const bill = screen.getByRole("button", { name: /Print bill/ });
+    const more = screen.getByRole("button", { name: "More" });
+    expect(send.parentElement).toBe(bill.parentElement);
+    expect(bill.parentElement).toBe(more.parentElement);
+    // Nothing is sent yet: Pay prints it for the kitchen first, and says so.
+    const pay = screen.getByRole("button", { name: /^Pay TSh 40,120/ });
+    expect(screen.getByTestId("pay-prints-first")).toHaveTextContent("New items print for the kitchen first.");
     expect(send.compareDocumentPosition(pay) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(send).toHaveClass("y-button--secondary", "y-button--56");
     expect(pay).toHaveClass("y-button--primary", "y-button--64");
@@ -69,15 +75,25 @@ describe("TicketActions", () => {
     expect(pay).toHaveTextContent("F9");
   });
 
-  it("offers Send only for an open order with lines not yet sent, and Pay only when something is owed", () => {
-    renderActions({ order: { ...ORDER, status: "SENT", items: [{ ...ORDER.items[0], status: "SENT" }] } });
-    expect(screen.getByRole("button", { name: /Send to kitchen/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Pay TSh 40,120/ })).toBeEnabled();
+  it("with everything sent, Print order prints the last papers again; Pay only when something is owed", async () => {
+    const onReprint = vi.fn();
+    const { onSend } = renderActions({
+      onReprint,
+      order: { ...ORDER, status: "SENT", roundsSent: 1, items: [{ ...ORDER.items[0], status: "SENT", roundNumber: 1 }] },
+    });
+    const print = screen.getByRole("button", { name: /Print order/ });
+    expect(print).toBeEnabled();
+    await userEvent.click(print);
+    expect(onReprint).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /^Pay TSh 40,120/ })).toBeEnabled();
+    expect(screen.queryByTestId("pay-prints-first")).toBeNull();
   });
 
-  it("with nothing on the ticket, Send and Pay wait", () => {
-    renderActions({ order: null });
-    expect(screen.getByRole("button", { name: /Send to kitchen/ })).toBeDisabled();
+  it("with nothing on the ticket, Print order, Print bill and Pay wait", () => {
+    renderActions({ order: null, onPrintBill: vi.fn() });
+    expect(screen.getByRole("button", { name: /Print order/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Print bill/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /^Pay/ })).toBeDisabled();
   });
 
@@ -87,10 +103,10 @@ describe("TicketActions", () => {
     expect(screen.getByRole("note")).toHaveTextContent("Only a cashier or manager can take payment. Ask one to help.");
   });
 
-  it("says who can send to the kitchen, instead of Send, without pos.order.send", () => {
+  it("says who can print for the kitchen, instead of Print order, without pos.order.send", () => {
     renderActions({ canSend: false });
-    expect(screen.queryByRole("button", { name: /Send to kitchen/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("note")).toHaveTextContent("Only staff who take orders can send them to the kitchen. Ask one to help.");
+    expect(screen.queryByRole("button", { name: /Print order/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("Only staff who take orders can print them for the kitchen. Ask one to help.");
   });
 
   it("F8 sends and F9 opens Pay, but not while a sheet is open", () => {
@@ -120,7 +136,7 @@ describe("TicketActions", () => {
 
   it("Discount and Void wait until there is an order not yet paid, and say why", async () => {
     renderActions({ order: { ...ORDER, paidMinor: 1_000_000, remainingMinor: 3_012_000 } });
-    expect(screen.getByRole("button", { name: /Send and pay TSh 30,120/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /^Pay TSh 30,120/ })).toBeEnabled();
     await userEvent.click(screen.getByRole("button", { name: "More" }));
     const more = screen.getByRole("dialog", { name: "More for this order" });
     expect(within(more).getByRole("button", { name: /Discount/ })).toBeDisabled();
@@ -141,14 +157,15 @@ describe("TicketActions: rounds (S17a)", () => {
     ],
   };
 
-  it("sends what was added after a round as the next round; Pay sends it first", async () => {
-    const handlers = renderActions({ order: served });
+  it("prints what was added after a round as the next round; Pay prints it first", async () => {
+    const handlers = renderActions({ order: served, onReprint: vi.fn() });
     const send = screen.getByTestId("send-order");
-    expect(send).toHaveTextContent("Send round 2");
+    expect(send).toHaveTextContent("Print order");
     expect(send).toBeEnabled();
     const pay = screen.getByTestId("pay-order");
     expect(pay).toBeEnabled();
-    expect(pay).toHaveTextContent("Send and pay TSh");
+    expect(pay).toHaveTextContent("Pay TSh");
+    expect(screen.getByTestId("pay-prints-first")).toBeInTheDocument();
     expect(screen.queryByTestId("pay-waits")).toBeNull();
     await userEvent.click(send);
     expect(handlers.onSend).toHaveBeenCalledTimes(1);
@@ -157,7 +174,7 @@ describe("TicketActions: rounds (S17a)", () => {
   it("someone who can't send waits for someone who can, in Yetu's words", () => {
     renderActions({ order: served, canSend: false });
     expect(screen.getByTestId("pay-order")).toBeDisabled();
-    expect(screen.getByTestId("pay-waits")).toHaveTextContent("Send or remove what isn't sent yet, then take payment.");
+    expect(screen.getByTestId("pay-waits")).toHaveTextContent("Print the new items first, or remove them, then take payment.");
   });
 
   it("a Yetu before rounds sends an order once: nothing to send after it", () => {
@@ -168,28 +185,32 @@ describe("TicketActions: rounds (S17a)", () => {
   });
 });
 
-// fbc-peak #288 (2026-10-20): the bill before payment, in More.
+// fbc-peak #288 (2026-10-20): the bill before payment -- in plain sight
+// since 2026-10-21, no longer in More.
 describe("TicketActions: Print bill", () => {
   it("offers the bill for an order with something on it, and prints it", async () => {
     const onPrintBill = vi.fn();
     renderActions({ onPrintBill });
-    await userEvent.click(screen.getByRole("button", { name: "More" }));
     await userEvent.click(screen.getByRole("button", { name: /Print bill/ }));
     expect(onPrintBill).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(within(screen.getByRole("dialog", { name: "More for this order" })).queryByRole("button", { name: /Print bill/ })).toBeNull();
   });
 
-  it("isn't offered to staff who can't send an order", async () => {
+  it("isn't offered to staff who can't send an order", () => {
     renderActions();
-    await userEvent.click(screen.getByRole("button", { name: "More" }));
     expect(screen.queryByRole("button", { name: /Print bill/ })).toBeNull();
   });
 
-  it("nothing on the ticket: no bill, and why", async () => {
-    const onPrintBill = vi.fn();
-    renderActions({ onPrintBill, order: { ...ORDER, items: [] } });
-    await userEvent.click(screen.getByRole("button", { name: "More" }));
-    const item = screen.getByRole("button", { name: /Print bill/ });
-    expect(item).toBeDisabled();
-    expect(item).toHaveTextContent("Add an item first.");
+  it("nothing on the ticket, or while it prints: the bill waits", () => {
+    renderActions({ onPrintBill: vi.fn(), order: { ...ORDER, items: [] } });
+    expect(screen.getByRole("button", { name: /Print bill/ })).toBeDisabled();
+  });
+
+  it("says it is printing", () => {
+    renderActions({ onPrintBill: vi.fn(), printingBill: true });
+    const bill = screen.getByTestId("print-bill");
+    expect(bill).toBeDisabled();
+    expect(bill).toHaveTextContent("Printing…");
   });
 });

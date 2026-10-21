@@ -23,7 +23,7 @@ describe("rounds on the till (S17a)", () => {
   it("paying waits for what isn't sent, once the order has had a round; a quick sale pays first", () => {
     const waiting = { status: "SERVED" as const, items: [line("SENT", 1), line("ADDED")], roundsSent: 1 };
     expect(unsentLines(waiting)).toBe(1);
-    expect(payWaitsWords(waiting)).toBe("Send or remove what isn't sent yet, then take payment.");
+    expect(payWaitsWords(waiting)).toBe("Print the new items first, or remove them, then take payment.");
     expect(payWaitsWords({ status: "OPEN", items: [line("ADDED")], roundsSent: 0 })).toBeNull();
     expect(payWaitsWords({ status: "SERVED", items: [line("SENT", 1)], roundsSent: 1 })).toBeNull();
   });

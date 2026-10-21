@@ -30,7 +30,7 @@ export function sendWords(order: OrderState | null): string {
 /** Why the order can't be paid just now, as Yetu says it (UNSENT_LINES); null when it can. */
 export function payWaitsWords(order: OrderState | null): string | null {
   if (!order || (order.roundsSent ?? 0) === 0 || unsentLines(order) === 0) return null;
-  return "Send or remove what isn't sent yet, then take payment.";
+  return "Print the new items first, or remove them, then take payment.";
 }
 
 /** A sent line's round, said on the ticket once there is more than one. */
