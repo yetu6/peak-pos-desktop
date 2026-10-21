@@ -203,7 +203,7 @@ describe("OrderDetailView", () => {
     expect(pay).toHaveTextContent("F9");
     await userEvent.click(within(actions).getByRole("button", { name: /Send to kitchen/ }));
     await userEvent.click(pay);
-    await userEvent.click(within(actions).getByRole("button", { name: "Void order" }));
+    await userEvent.click(within(actions).getByRole("button", { name: "Cancel order" }));
     expect(handlers.onSend).toHaveBeenCalled();
     expect(handlers.onPay).toHaveBeenCalled();
     expect(handlers.onVoid).toHaveBeenCalled();
@@ -213,7 +213,7 @@ describe("OrderDetailView", () => {
     renderDetail({ order: order({ status: "PREPARING", items: [line("l1", "Cappuccino", "SENT")] }) });
     expect(within(footer()).queryByRole("button", { name: /Send to kitchen/ })).toBeNull();
     expect(within(footer()).getByRole("button", { name: /Pay TSh 15,340/ })).toBeEnabled();
-    expect(within(footer()).getByRole("button", { name: "Void order" })).toBeEnabled();
+    expect(within(footer()).getByRole("button", { name: "Cancel order" })).toBeEnabled();
   });
 
   const at = (hour: number, minute: number) => new Date(2026, 9, 12, hour, minute).toISOString();
@@ -233,9 +233,9 @@ describe("OrderDetailView", () => {
     // Each payment, with who took it and when (S5b).
     expect(screen.getByTestId("order-detail-payments")).toHaveTextContent("Cash · TSh 10,000Taken by Amina Hassan at 14:05");
     expect(within(footer()).getByRole("button", { name: /Pay TSh 5,340/ })).toBeEnabled();
-    const voidButton = within(footer()).getByRole("button", { name: "Void order" });
+    const voidButton = within(footer()).getByRole("button", { name: "Cancel order" });
     expect(voidButton).toBeDisabled();
-    expect(voidButton).toHaveAccessibleDescription("An order can't be voided once part of it is paid.");
+    expect(voidButton).toHaveAccessibleDescription("An order can't be cancelled once part of it is paid.");
   });
 
   it("a paid order: each payment, who took it and when, from the order itself; and Print receipt", async () => {
@@ -248,7 +248,7 @@ describe("OrderDetailView", () => {
     ]);
     expect(screen.getByTestId("order-detail-payment")).toHaveTextContent("Printed again 2 times");
     expect(within(footer()).queryByRole("button", { name: /Pay/ })).toBeNull();
-    expect(within(footer()).queryByRole("button", { name: "Void order" })).toBeNull();
+    expect(within(footer()).queryByRole("button", { name: "Cancel order" })).toBeNull();
     const print = within(footer()).getByRole("button", { name: "Print bill again" });
     expect(print).toHaveClass("y-button--primary");
     await userEvent.click(print);
@@ -312,7 +312,7 @@ describe("OrderDetailView", () => {
     const handlers = renderDetail({ pending: "send" });
     expect(within(footer()).getByRole("button", { name: /Sending…/ })).toBeDisabled();
     expect(within(footer()).getByRole("button", { name: /pay/i })).toBeDisabled();
-    expect(within(footer()).getByRole("button", { name: "Void order" })).toBeDisabled();
+    expect(within(footer()).getByRole("button", { name: "Cancel order" })).toBeDisabled();
     await userEvent.keyboard("{Escape}");
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(handlers.onClose).not.toHaveBeenCalled();
@@ -408,7 +408,7 @@ describe("OrderDetail: Add items and Discount", () => {
   it("no discount once part of the bill is paid, and the sheet says why", () => {
     renderDetail({ order: order({ status: "SENT", roundsSent: 1, paidMinor: 500_000, remainingMinor: 1_034_000 }), onAddItems: vi.fn(), onDiscount: vi.fn() });
     expect(within(footer()).getByTestId("detail-discount")).toBeDisabled();
-    expect(footer()).toHaveTextContent("An order can't be voided or discounted once part of it is paid.");
+    expect(footer()).toHaveTextContent("An order can't be cancelled or discounted once part of it is paid.");
   });
 
   it("a paid order offers neither", () => {

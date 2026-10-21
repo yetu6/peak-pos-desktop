@@ -148,7 +148,7 @@ export function TicketActions({
           title="More for this order"
           footer={
             <Button variant="quiet" onClick={() => setMoreOpen(false)}>
-              Close
+              Back
             </Button>
           }
         >
@@ -160,8 +160,8 @@ export function TicketActions({
               onClick={() => choose(onDiscount)}
             />
             <MoreItem
-              title="Void the order"
-              meta={changeBlocked ?? "Take the whole order off, with a supervisor. Not a refund."}
+              title="Cancel order"
+              meta={changeBlocked ?? "Takes the whole order off. Needs a supervisor. Not a refund."}
               disabled={changeBlocked !== null}
               onClick={() => choose(onVoid)}
             />

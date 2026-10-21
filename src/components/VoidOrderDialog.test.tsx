@@ -131,7 +131,7 @@ describe("VoidOrderDialog", () => {
     const submit = screen.getByTestId("confirm-void-order");
     expect(submit).toBeDisabled();
     await giveReason("void-reason", "Wrong table");
-    expect(screen.getByText("Void order 42 (TSh 24,000): Wrong table")).toBeInTheDocument();
+    expect(screen.getByText("Cancel order 42 (TSh 24,000): Wrong table")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Amina Hassan/ })).toBeDisabled();
     await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
     await typePin("12345");
@@ -212,7 +212,7 @@ describe("VoidOrderDialog", () => {
     await typePin("123456");
     await userEvent.click(screen.getByTestId("confirm-void-order"));
     expect(printAfter).toHaveBeenCalledWith("order-1");
-    await waitFor(() => expect(onPrintProblem).toHaveBeenCalledWith(expect.stringContaining("The void slip didn't print: the bar printer didn't answer")));
+    await waitFor(() => expect(onPrintProblem).toHaveBeenCalledWith(expect.stringContaining("The cancel slip didn't print: the bar printer didn't answer")));
   });
 
   it("with no staff list, the void can't be approved here and it says why", () => {
@@ -226,7 +226,7 @@ describe("VoidOrderDialog", () => {
     voidState.error = new Error(JSON.stringify({ code: "FORBIDDEN", detail: "That approval was not accepted. A different person who may approve this, and is active at this property, must enter their own PIN. Several wrong PINs lock it for a while." }));
     render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
     expect(within(screen.getByTestId("void-order-dialog")).getByRole("alert")).toHaveTextContent(
-      "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
+      "A different supervisor must approve this. Their PIN wasn't accepted, or they can't approve cancellations.",
     );
   });
 
@@ -282,7 +282,7 @@ describe("VoidOrderDialog: only those who can approve voids (F-249)", () => {
       approvers = [];
       render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
       expect(await screen.findByTestId("approval-no-one")).toHaveTextContent(
-        "No one is set to approve voids here yet. The owner chooses in Team rules.",
+        "No one is set to approve cancellations here yet. The owner chooses in Team rules.",
       );
     } finally {
       clearOperationalSession();

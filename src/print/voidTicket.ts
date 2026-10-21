@@ -29,9 +29,9 @@ export interface VoidSlipPaper {
   lines: { quantity: number; name: string; options: string[] }[];
 }
 
-/** What the paper is, at its top: "VOID - BAR", beside the kitchen's "TO PREPARE - BAR". */
+/** What the paper is, at its top: "CANCELLED - BAR", beside the kitchen's "TO PREPARE - BAR". */
 export function voidSlipTitle(station: string | undefined): string {
-  return `VOID - ${(station ? stationWords(station) : "Kitchen").toUpperCase()}`;
+  return `CANCELLED - ${(station ? stationWords(station) : "Kitchen").toUpperCase()}`;
 }
 
 /** Who asked and who approved, in one line: "Asked by Baraka Mushi, approved by Neema Kweka". */
@@ -56,7 +56,7 @@ export function voidSlipBytes(slip: VoidSlipPaper, width: PaperWidth): Uint8Arra
   if (where) out.bold(true).size(1, 2).wrapped(where).size(1, 1).bold(false);
   if (slip.waiterName) out.wrapped(`Taken by ${slip.waiterName}`);
   const voided = clockTime(slip.voidedAt);
-  if (voided) out.line(`Voided ${voided}`);
+  if (voided) out.line(`Cancelled ${voided}`);
   out.rule();
 
   for (const line of slip.lines) {

@@ -970,7 +970,7 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
   it("a void says the kitchen was told only of an order it had (F-243)", async () => {
     async function voidTheTicket(says: string) {
       await userEvent.click(screen.getByRole("button", { name: "More" }));
-      await userEvent.click(await screen.findByRole("button", { name: /Void the order/ }));
+      await userEvent.click(await screen.findByRole("button", { name: /Cancel order/ }));
       const voiding = await screen.findByTestId("void-order-dialog");
       // Said before the approval too, not only after it.
       expect(voiding).toHaveTextContent(says);
@@ -986,14 +986,14 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
     await userEvent.click(tile);
     await within(screen.getByTestId("ticket-panel")).findByRole("button", { name: /Nyama Choma/ });
     await voidTheTicket("Takes the whole order off. It never went to the kitchen.");
-    expect(await screen.findByText("Order 1 was voided.")).toBeInTheDocument();
+    expect(await screen.findByText("Order 1 was cancelled.")).toBeInTheDocument();
 
     cleanup();
     vi.clearAllMocks();
     renderNewOrder({ resume: TABLE_4 });
     await within(screen.getByTestId("ticket-panel")).findByRole("button", { name: /Nyama Choma/ });
     await voidTheTicket("Takes the whole order off and tells the kitchen.");
-    expect(await screen.findByText("Order 4 was voided. The kitchen has been told.")).toBeInTheDocument();
+    expect(await screen.findByText("Order 4 was cancelled. The kitchen has been told.")).toBeInTheDocument();
   });
 
   // F-233: no printer, and the till said nothing.

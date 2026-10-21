@@ -38,7 +38,7 @@ export function discountProblem(error: unknown): RegisterProblem | null {
     case "DISCOUNT_MORE_THAN_BILL":
       return { kind: "other", words: "That's more than the bill. Take off no more than the bill comes to." };
     case "ORDER_STATE_CHANGED":
-      return { kind: "paid", words: "This order is paid or voided, so it can't take a discount." };
+      return { kind: "paid", words: "This order is paid or cancelled, so it can't take a discount." };
   }
   return { kind: "other", words: otherWords(problem, "The discount wasn't applied. Try again.") };
 }
@@ -52,20 +52,20 @@ export function voidProblem(error: unknown): RegisterProblem | null {
     case "FORBIDDEN":
       return {
         kind: "supervisor",
-        words: "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
+        words: "A different supervisor must approve this. Their PIN wasn't accepted, or they can't approve cancellations.",
       };
     case "NO_APPROVER_SET":
-      return { kind: "no-approver", words: noApproverWords("voids") };
+      return { kind: "no-approver", words: noApproverWords("cancellations") };
     // Another till changed the order first; the screen asks Yetu for it again (onStale).
     case "STALE_VERSION":
       return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then ask a supervisor again." };
     // Part of it is paid: INVALID_STATE (ErrOrderHasPayment, unchanged by S5b).
     case "INVALID_STATE":
-      return { kind: "paid", words: "This order has already taken payment, so it can't be voided." };
+      return { kind: "paid", words: "This order has already taken payment, so it can't be cancelled." };
     case "ORDER_STATE_CHANGED":
-      return { kind: "paid", words: "This order is already paid or voided, so it can't be voided." };
+      return { kind: "paid", words: "This order is already paid or cancelled." };
   }
-  return { kind: "other", words: otherWords(problem, "The order wasn't voided. Try again.") };
+  return { kind: "other", words: otherWords(problem, "The order wasn't cancelled. Try again.") };
 }
 
 /**
@@ -81,14 +81,14 @@ export function voidItemProblem(error: unknown): RegisterProblem | null {
     // PIN); otherwise the supervisor's PIN or role was refused.
     case "FORBIDDEN":
       if (/permission denied/i.test(problem.detail ?? "")) {
-        return { kind: "permission", words: "Your role can't void items. Ask a manager to do it." };
+        return { kind: "permission", words: "Your role can't cancel items. Ask a manager to do it." };
       }
       return {
         kind: "supervisor",
-        words: "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
+        words: "A different supervisor must approve this. Their PIN wasn't accepted, or they can't approve cancellations.",
       };
     case "NO_APPROVER_SET":
-      return { kind: "no-approver", words: noApproverWords("voids") };
+      return { kind: "no-approver", words: noApproverWords("cancellations") };
     // The order changed first, on another till: the screen reloads it.
     case "STALE_VERSION":
       return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then ask a supervisor again." };
@@ -97,20 +97,20 @@ export function voidItemProblem(error: unknown): RegisterProblem | null {
     // and asking again would only meet it again.
     case "ITEM_NOT_VOIDABLE":
       if (/already voided/i.test(problem.detail ?? "")) {
-        return { kind: "stale", words: "This item was already voided on another till. The order has been reloaded." };
+        return { kind: "stale", words: "This item was already cancelled on another till. The order has been reloaded." };
       }
-      return { kind: "other", words: problem.detail?.trim() || "This item can't be voided." };
+      return { kind: "other", words: problem.detail?.trim() || "This item can't be cancelled." };
     case "INVALID_STATE":
       if (/taken payment/i.test(problem.detail ?? "")) {
-        return { kind: "paid", words: "Part of this bill is paid, so items can't be voided. Refund it after it's paid." };
+        return { kind: "paid", words: "Part of this bill is paid, so items can't be cancelled. Refund it after it's paid." };
       }
-      return { kind: "other", words: otherWords(problem, "The item wasn't voided. Try again.") };
+      return { kind: "other", words: otherWords(problem, "The item wasn't cancelled. Try again.") };
     case "ORDER_STATE_CHANGED":
-      return { kind: "paid", words: "This order is already paid or voided." };
+      return { kind: "paid", words: "This order is already paid or cancelled." };
     case "TAB_WAITING_FOR_SHIFT":
-      return { kind: "other", words: "Take this tab over first, then void the item." };
+      return { kind: "other", words: "Take this tab over first, then cancel the item." };
   }
-  return { kind: "other", words: otherWords(problem, "The item wasn't voided. Try again.") };
+  return { kind: "other", words: otherWords(problem, "The item wasn't cancelled. Try again.") };
 }
 
 /** Who is told when an item is voided: "The bar", "The kitchen". */
@@ -127,9 +127,9 @@ export function voidItemSheetWords(station: string | undefined): string {
   return `Takes it off the order and tells ${toldWho(station).toLowerCase()}. This is not a refund: no money moves.`;
 }
 
-/** What voiding an item did: "1 × Soda voided. The bar has been told." */
+/** What cancelling an item did: "1 × Soda cancelled. The bar has been told." */
 export function itemVoidedWords(quantity: number, name: string, station: string | undefined): string {
-  return `${quantity} × ${name} voided. ${toldWho(station)} has been told.`;
+  return `${quantity} × ${name} cancelled. ${toldWho(station)} has been told.`;
 }
 
 /** Recording a payment (fbc-peak internal/pos/controls.go RecordTender). */

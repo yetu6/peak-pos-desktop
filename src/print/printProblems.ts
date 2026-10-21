@@ -14,10 +14,10 @@ const said = new Set<string>();
  */
 export const PRINTERS_PLACE = "Status (F12), under Printers";
 
-export function printProblemOnce(results: readonly PrintResult[], what: "kitchen ticket" | "bill" | "void slip"): string | null {
+export function printProblemOnce(results: readonly PrintResult[], what: "kitchen ticket" | "bill" | "cancel slip"): string | null {
   // A void reports its own slips: an older paper waiting on the same order
-  // that failed is not "the void slip" (review 2026-10-21).
-  const failed = results.find((result) => !result.ok && (what !== "void slip" || result.jobType === undefined || result.jobType === "KITCHEN_VOID"));
+  // that failed is not "the cancel slip" (review 2026-10-21).
+  const failed = results.find((result) => !result.ok && (what !== "cancel slip" || result.jobType === undefined || result.jobType === "KITCHEN_VOID"));
   if (!failed) return null;
   const reason = (failed.error ?? "").trim().replace(/\.$/, "");
   const key = [getOperationalSession()?.token ?? "", what, reason].join("|");

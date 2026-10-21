@@ -144,13 +144,13 @@ export function TicketPanel({
               </>
             ) : onVoidLine && order && order.paidMinor === 0 ? (
               <Button variant="danger-outline" icon={<Ban />} disabled={lineBusy} onClick={() => onVoidLine(line)} data-testid="void-line">
-                Void item
+                Cancel item
               </Button>
             ) : (
               <p className="y-ticket__line-note">
                 {order && order.paidMinor > 0
                   ? "Sent to the kitchen, and part of the bill is paid: refund it after it's paid."
-                  : "Sent to the kitchen. A supervisor can void it."}
+                  : "Sent to the kitchen. A supervisor can cancel it."}
               </p>
             )}
           </div>

@@ -98,7 +98,7 @@ export function dayCloseProblem(
     const n = Number(tabs[1]);
     return {
       kind: "tabs-open",
-      words: `${n} ${n === 1 ? "tab is" : "tabs are"} still open today. Take payment for ${n === 1 ? "it" : "them"}, charge ${n === 1 ? "it" : "them"} to a room or void ${n === 1 ? "it" : "them"}, then close the day.`,
+      words: `${n} ${n === 1 ? "tab is" : "tabs are"} still open today. Take payment for ${n === 1 ? "it" : "them"}, charge ${n === 1 ? "it" : "them"} to a room or cancel ${n === 1 ? "it" : "them"}, then close the day.`,
     };
   }
   const offline = /(\d+) unresolved offline cash/.exec(detail);

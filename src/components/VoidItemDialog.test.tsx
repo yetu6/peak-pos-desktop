@@ -98,15 +98,15 @@ describe("VoidItemDialog (the owner, 2026-10-21)", () => {
     render(<VoidItemDialog order={ORDER} line={TUSKER} currency="TZS" onClose={vi.fn()} onVoided={onVoided} />);
     expect(screen.getByText("Takes it off the order and tells the bar. This is not a refund: no money moves.")).toBeInTheDocument();
     const submit = screen.getByTestId("confirm-void-item");
-    expect(submit).toHaveTextContent("Void 3 × Tusker");
+    expect(submit).toHaveTextContent("Cancel 3 × Tusker");
     // One of the three: the rest stay on the order.
     expect(within(screen.getByTestId("void-item-quantity")).getByText("The order has 3. The rest stay on it.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /fewer|less|decrease|minus/i }));
     await userEvent.click(screen.getByRole("button", { name: /fewer|less|decrease|minus/i }));
-    expect(submit).toHaveTextContent("Void 1 × Tusker");
+    expect(submit).toHaveTextContent("Cancel 1 × Tusker");
     await giveReason("void-item-reason", "Spilled");
     // Not all of it: no money is promised before Yetu says.
-    expect(screen.getByText("Void 1 × Tusker on order 7: Spilled")).toBeInTheDocument();
+    expect(screen.getByText("Cancel 1 × Tusker on order 7: Spilled")).toBeInTheDocument();
     expect(submit).toBeDisabled();
     await approve();
     expect(screen.getByRole("radio", { name: /Baraka Mushi/ })).toBeDisabled();
@@ -115,7 +115,7 @@ describe("VoidItemDialog (the owner, 2026-10-21)", () => {
       expect.objectContaining({ orderId: "order-1", itemId: "line-tusker", quantity: 1, reason: "Spilled", supervisorStaffId: "staff-neema", supervisorPin: "123456", version: 5 }),
       expect.anything(),
     );
-    expect(onVoided).toHaveBeenCalledWith(answered.order, "1 × Tusker voided. The bar has been told.");
+    expect(onVoided).toHaveBeenCalledWith(answered.order, "1 × Tusker cancelled. The bar has been told.");
     expect(printAfter).toHaveBeenCalledWith("order-1");
   });
 
@@ -133,7 +133,7 @@ describe("VoidItemDialog (the owner, 2026-10-21)", () => {
     render(<VoidItemDialog order={ORDER} line={one} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} />);
     expect(screen.queryByTestId("void-item-quantity")).toBeNull();
     await giveReason("void-item-reason", "Wrong item");
-    expect(screen.getByText("Void 1 × Tusker on order 7 (TSh 5,000): Wrong item")).toBeInTheDocument();
+    expect(screen.getByText("Cancel 1 × Tusker on order 7 (TSh 5,000): Wrong item")).toBeInTheDocument();
   });
 
   it("asks for the order again when Yetu says it changed, and clears a refused PIN", async () => {
@@ -156,7 +156,7 @@ describe("VoidItemDialog (the owner, 2026-10-21)", () => {
     await giveReason("void-item-reason", "Spilled");
     await approve();
     await userEvent.click(screen.getByTestId("confirm-void-item"));
-    await waitFor(() => expect(onPrintProblem).toHaveBeenCalledWith(expect.stringContaining("The void slip didn't print")));
+    await waitFor(() => expect(onPrintProblem).toHaveBeenCalledWith(expect.stringContaining("The cancel slip didn't print")));
   });
 
   // Review 2026-10-21: a refusal Yetu will always give is said, not reloaded forever.
@@ -176,7 +176,7 @@ describe("VoidItemDialog (the owner, 2026-10-21)", () => {
     // Another till voided some of it: a new version, and the line holds one.
     view.rerender(<VoidItemDialog order={{ ...ORDER, version: ORDER.version + 1 }} line={{ ...TUSKER, quantity: 1 }} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} />);
     expect(screen.getByTestId("confirm-void-item")).toBeDisabled();
-    expect(screen.getByTestId("confirm-void-item")).toHaveTextContent(`Void 1 × ${TUSKER.name}`);
+    expect(screen.getByTestId("confirm-void-item")).toHaveTextContent(`Cancel 1 × ${TUSKER.name}`);
   });
 
   it("reports a failed void slip, never an older paper waiting on the same order", async () => {
@@ -195,7 +195,7 @@ describe("VoidItemDialog (the owner, 2026-10-21)", () => {
     voidState.error = new Error(JSON.stringify({ code: "INVALID_STATE", detail: "This order has already taken payment." }));
     render(<VoidItemDialog order={ORDER} line={TUSKER} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} />);
     expect(within(screen.getByTestId("void-item-dialog")).getByRole("alert")).toHaveTextContent(
-      "Part of this bill is paid, so items can't be voided. Refund it after it's paid.",
+      "Part of this bill is paid, so items can't be cancelled. Refund it after it's paid.",
     );
   });
 });

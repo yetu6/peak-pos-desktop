@@ -57,7 +57,7 @@ describe("plain words for backend codes", () => {
       "Ready",
       "Served",
       "Paid",
-      "Voided",
+      "Cancelled",
     ]);
     ORDER_STATUSES.forEach((status) => expectPlain(orderStatusWords(status), status));
   });

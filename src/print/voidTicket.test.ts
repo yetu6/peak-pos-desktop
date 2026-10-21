@@ -40,7 +40,7 @@ describe("void slip on paper (fbc-peak 00125)", () => {
 
   it("says what it is and where at the top, the order large, and not to make it", () => {
     const text = readable(voidSlipBytes(voidSlipFromPrintDocument(DOCUMENT), PAPER_58MM));
-    expect(text.split("\n").slice(0, 3)).toEqual(["VOID - BAR", "ORDER 1", "DO NOT MAKE"]);
+    expect(text.split("\n").slice(0, 3)).toEqual(["CANCELLED - BAR", "ORDER 1", "DO NOT MAKE"]);
     expect(text).toContain("Table 7 - Dine in");
     expect(text).toContain("Taken by Baraka Mushi");
     expect(text).toContain("1 x Tusker\n   - Cold\n");
@@ -57,13 +57,13 @@ describe("void slip on paper (fbc-peak 00125)", () => {
   });
 
   it("names the kitchen when Yetu sends no station", () => {
-    expect(voidSlipTitle(undefined)).toBe("VOID - KITCHEN");
-    expect(voidSlipTitle("HOT")).toBe("VOID - HOT KITCHEN");
+    expect(voidSlipTitle(undefined)).toBe("CANCELLED - KITCHEN");
+    expect(voidSlipTitle("HOT")).toBe("CANCELLED - HOT KITCHEN");
   });
 
   it("reads the same through the system's own printer", () => {
     const text = formatVoidSlip(voidSlipFromPrintDocument(DOCUMENT));
-    expect(text).toContain("VOID - BAR\nORDER 1\nDO NOT MAKE");
+    expect(text).toContain("CANCELLED - BAR\nORDER 1\nDO NOT MAKE");
     expect(text).toContain("  1  Tusker\n      Cold");
     expect(text).toContain("Why: Spilled\nAsked by Baraka Mushi, approved by Neema Kweka");
   });

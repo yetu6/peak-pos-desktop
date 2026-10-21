@@ -114,7 +114,7 @@ describe("TicketActions", () => {
     await userEvent.click(within(more).getByRole("button", { name: /Discount/ }));
     expect(handlers.onDiscount).toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "More" }));
-    await userEvent.click(within(screen.getByRole("dialog", { name: "More for this order" })).getByRole("button", { name: /Void the order/ }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "More for this order" })).getByRole("button", { name: /Cancel order/ }));
     expect(handlers.onVoid).toHaveBeenCalled();
   });
 
@@ -124,7 +124,7 @@ describe("TicketActions", () => {
     await userEvent.click(screen.getByRole("button", { name: "More" }));
     const more = screen.getByRole("dialog", { name: "More for this order" });
     expect(within(more).getByRole("button", { name: /Discount/ })).toBeDisabled();
-    expect(within(more).getByRole("button", { name: /Void the order/ })).toBeDisabled();
+    expect(within(more).getByRole("button", { name: /Cancel order/ })).toBeDisabled();
     expect(more).toHaveTextContent("Not once part of the bill is paid.");
     expect(within(more).getByRole("button", { name: /Order note/ })).toBeEnabled();
   });

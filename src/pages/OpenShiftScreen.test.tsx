@@ -166,7 +166,7 @@ describe("Close the day", () => {
     const card = screen.getByTestId("close-day");
     expect(within(card).getByRole("list", { name: "Before the day closes" })).toHaveTextContent("This till's shift is closed");
     // S17b: the day closes once its tabs are settled.
-    expect(within(card).getByRole("list", { name: "Before the day closes" })).toHaveTextContent("Today's tabs are paid, charged to a room or voided");
+    expect(within(card).getByRole("list", { name: "Before the day closes" })).toHaveTextContent("Today's tabs are paid, charged to a room or cancelled");
     await userEvent.click(screen.getByTestId("close-business-day"));
     expect(dayCloseMutate).toHaveBeenCalledWith("key-1");
   });

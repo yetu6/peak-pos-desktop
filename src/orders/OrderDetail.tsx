@@ -236,7 +236,7 @@ export function OrderDetailView({
                   aria-describedby={partPaid ? voidReasonId : undefined}
                   onClick={onVoid}
                 >
-                  Void order
+                  Cancel order
                 </Button>
                 {takesLines ? (
                   canSend ? (
@@ -292,8 +292,8 @@ export function OrderDetailView({
               {partPaid ? (
                 <p className="y-detail__why" id={voidReasonId}>
                   {onDiscount
-                    ? "An order can't be voided or discounted once part of it is paid."
-                    : "An order can't be voided once part of it is paid."}
+                    ? "An order can't be cancelled or discounted once part of it is paid."
+                    : "An order can't be cancelled once part of it is paid."}
                 </p>
               ) : null}
               {onPrintBill ? (

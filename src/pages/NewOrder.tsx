@@ -125,7 +125,7 @@ export function NewOrder({
       const fresh = await fetchOrder(current.id);
       if (fresh.status === "CLOSED" || fresh.status === "VOIDED") {
         clearTicket();
-        setNotice(`${orderName(fresh)} is ${fresh.status === "CLOSED" ? "paid" : "voided"} already. Start a new sale.`);
+        setNotice(`${orderName(fresh)} is ${fresh.status === "CLOSED" ? "paid" : "cancelled"} already. Start a new sale.`);
       } else {
         adopt(fresh);
       }
@@ -154,7 +154,7 @@ export function NewOrder({
     if (current?.id !== fresh.id) return;
     if (fresh.status === "CLOSED" || fresh.status === "VOIDED") {
       clearTicket();
-      setNotice(`${orderName(fresh)} is ${fresh.status === "CLOSED" ? "paid" : "voided"} already. Start a new sale.`);
+      setNotice(`${orderName(fresh)} is ${fresh.status === "CLOSED" ? "paid" : "cancelled"} already. Start a new sale.`);
     } else if (fresh.version > current.version) {
       adopt(fresh);
     }

@@ -454,7 +454,7 @@ describe("Orders", () => {
     // Not sent yet: Pay sends it to the kitchen first.
     expect(within(sheet).getByTestId("detail-pay")).toHaveTextContent("Send and pay TSh 1,180");
     expect(within(sheet).getByTestId("detail-pay")).toHaveFocus();
-    expect(within(sheet).getByRole("button", { name: "Void order" })).toBeEnabled();
+    expect(within(sheet).getByRole("button", { name: "Cancel order" })).toBeEnabled();
   });
 
   it("shows Pay as closed, with who can, to a person without pos.payment.record; Send and Void stay", async () => {
@@ -465,7 +465,7 @@ describe("Orders", () => {
     expect(within(sheet).queryByTestId("detail-pay")).toBeNull();
     expect(within(sheet).getByRole("note")).toHaveTextContent("Only a cashier or manager can take payment.");
     expect(within(sheet).getByTestId("detail-send")).toBeEnabled();
-    expect(within(sheet).getByRole("button", { name: "Void order" })).toBeEnabled();
+    expect(within(sheet).getByRole("button", { name: "Cancel order" })).toBeEnabled();
   });
 
   it("sends it to the kitchen with its version, prints the tickets, says so and moves focus to Pay", async () => {
@@ -645,9 +645,9 @@ describe("Orders", () => {
     ordersStore.set("order-1", OPEN_ORDER);
     renderOrders();
     const sheet = await openDetail("order-1");
-    await userEvent.click(within(sheet).getByRole("button", { name: "Void order" }));
+    await userEvent.click(within(sheet).getByRole("button", { name: "Cancel order" }));
     const voiding = await screen.findByTestId("void-order-dialog");
-    await userEvent.click(within(voiding).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(within(voiding).getByRole("button", { name: "Back" }));
     expect(await screen.findByRole("dialog", { name: "Order 42" })).toBeInTheDocument();
   });
 
@@ -660,7 +660,7 @@ describe("Orders", () => {
     });
     renderOrders();
     const sheet = await openDetail("order-1");
-    await userEvent.click(within(sheet).getByRole("button", { name: "Void order" }));
+    await userEvent.click(within(sheet).getByRole("button", { name: "Cancel order" }));
     const voiding = await screen.findByTestId("void-order-dialog");
     await giveReason("void-reason", "Wrong table", voiding);
     await userEvent.click(within(voiding).getByRole("radio", { name: /Grace Mushi/ }));
@@ -967,7 +967,7 @@ describe("Orders: carrying on with an open order (F-236)", () => {
   it("a void says the kitchen was told only of an order it had (F-243)", async () => {
     async function voidIt() {
       const sheet = await openDetail("order-1");
-      await userEvent.click(within(sheet).getByRole("button", { name: "Void order" }));
+      await userEvent.click(within(sheet).getByRole("button", { name: "Cancel order" }));
       const voiding = await screen.findByTestId("void-order-dialog");
       await giveReason("void-reason", "Wrong table", voiding);
       await userEvent.click(within(voiding).getByRole("radio", { name: /Grace Mushi/ }));
@@ -982,7 +982,7 @@ describe("Orders: carrying on with an open order (F-236)", () => {
     ordersStore.set("order-1", OPEN_ORDER);
     renderOrders();
     await voidIt();
-    expect(await screen.findByText("Order 42 was voided.")).toBeInTheDocument();
+    expect(await screen.findByText("Order 42 was cancelled.")).toBeInTheDocument();
 
     cleanup();
     // Sent: the kitchen is told. Here no printer is set up, so the slip's problem follows
@@ -990,7 +990,7 @@ describe("Orders: carrying on with an open order (F-236)", () => {
     ordersStore.set("order-1", TABLE_4);
     renderOrders();
     await voidIt();
-    expect(await screen.findByText(/^Order 42 was voided\. The kitchen has been told\. The void slip didn't print/)).toBeInTheDocument();
+    expect(await screen.findByText(/^Order 42 was cancelled\. The kitchen has been told\. The cancel slip didn't print/)).toBeInTheDocument();
   });
 });
 

@@ -129,11 +129,11 @@ describe("KitchenBoard", () => {
       ],
     });
     const voided = screen.getByTestId("kitchen-voided-a1");
-    expect(voided).toHaveTextContent("Voided: don't make1TuskerCold");
+    expect(voided).toHaveTextContent("Cancelled: don't make1TuskerCold");
     expect(within(voided).getByText("Tusker").tagName).toBe("S");
     expect(within(screen.getByTestId("kitchen-ticket-a1")).getAllByRole("listitem")[0]).toHaveTextContent("2Tusker");
     // Nothing left to make on a ticket: it says so.
-    expect(screen.getByTestId("kitchen-voided-b1")).toHaveTextContent("All voided: don't make");
+    expect(screen.getByTestId("kitchen-voided-b1")).toHaveTextContent("All cancelled: don't make");
   });
 
   it("marks a ticket nobody has started as New for its first 30 seconds", () => {

@@ -99,7 +99,7 @@ export function VoidItemDialog({
           onVoided(fresh, itemVoidedWords(quantity, line.name, line.prepStation));
           // The slip for the station making it prints on its own time.
           void printAfter(order.id).then((results) => {
-            const words = printProblemOnce(results, "void slip");
+            const words = printProblemOnce(results, "cancel slip");
             if (words) onPrintProblem?.(words);
           });
           onClose();
@@ -119,16 +119,16 @@ export function VoidItemDialog({
       onOpenChange={(open) => {
         if (!open && !voidItem.isPending) onClose();
       }}
-      title={`Void ${line.name}`}
+      title={`Cancel ${line.name}`}
       description={voidItemSheetWords(line.prepStation)}
       testId="void-item-dialog"
       footer={
         <div className="y-options__footer">
           <Button variant="quiet" disabled={voidItem.isPending} onClick={onClose}>
-            Cancel
+            Back
           </Button>
           <Button variant="danger" size={56} data-testid="confirm-void-item" disabled={!ready} onClick={submit}>
-            {voidItem.isPending ? "Voiding…" : `Void ${what}`}
+            {voidItem.isPending ? "Cancelling…" : `Cancel ${what}`}
           </Button>
         </div>
       }
@@ -136,7 +136,7 @@ export function VoidItemDialog({
       <div className="y-form">
         {line.quantity > 1 ? (
           <div className="y-field" data-testid="void-item-quantity">
-            <span className="y-field__label">How many to void</span>
+            <span className="y-field__label">How many to cancel</span>
             <span className="y-field__hint">The order has {line.quantity}. The rest stay on it.</span>
             <Stepper
               label={line.name}
@@ -162,7 +162,7 @@ export function VoidItemDialog({
           testIdPrefix="void-item-reason"
         />
         <SupervisorApproval
-          request={`Void ${what} on order ${orderNumberWords(order)}${all && currency ? ` (${formatMoney(line.totalMinor, currency)})` : ""}${reason.trim() ? `: ${reason.trim()}` : ""}`}
+          request={`Cancel ${what} on order ${orderNumberWords(order)}${all && currency ? ` (${formatMoney(line.totalMinor, currency)})` : ""}${reason.trim() ? `: ${reason.trim()}` : ""}`}
           supervisors={supervisors}
           emptyWords={emptyWords}
           requesterId={requesterId}

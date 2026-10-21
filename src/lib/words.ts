@@ -27,7 +27,7 @@ const ORDER_STATUS: Record<OrderStatus, { words: string; tone: Tone }> = {
   READY: { words: "Ready", tone: "success" },
   SERVED: { words: "Served", tone: "neutral" },
   CLOSED: { words: "Paid", tone: "success" },
-  VOIDED: { words: "Voided", tone: "danger" },
+  VOIDED: { words: "Cancelled", tone: "danger" },
 };
 
 const TICKET_STEP: Record<TicketStep, { words: string; next: string | null }> = {
