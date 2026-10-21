@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DiscountDialog } from "../components/DiscountDialog";
 import { ReceiptView } from "../components/ReceiptView";
 import { VoidOrderDialog } from "../components/VoidOrderDialog";
@@ -56,6 +56,8 @@ export function ActiveOrders({
   const [query, setQuery] = useState("");
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // A late word (a slip that didn't print) follows what the till already said, never replaces it.
+  const addNotice = useCallback((words: string) => setNotice((now) => (now ? `${now} ${words}` : words)), []);
   const paid = usePaidOrders(shift ?? undefined, tab === "paid", query.trim().length > 0);
   const voided = useRef(false);
   const refunded = useRef(false);
@@ -196,6 +198,7 @@ export function ActiveOrders({
             else setOverlay({ kind: "detail", orderId: current.id });
           }}
           onStale={reloadOrders}
+          onPrintProblem={addNotice}
         />
       ) : null}
       {overlay?.kind === "refund" && current && currency ? (

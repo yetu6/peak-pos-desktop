@@ -193,11 +193,25 @@ describe("TicketPanel", () => {
     expect(handlers.onRemoveLine).toHaveBeenCalledWith(ORDER.items[0]);
   });
 
-  it("a sent line can't be removed here: it says to void the order with a supervisor", () => {
-    renderTicket({ selectedLineId: "l2" });
+  it("a sent line can't be removed here: a supervisor voids it (the owner, 2026-10-21)", async () => {
+    const onVoidLine = vi.fn();
+    renderTicket({ selectedLineId: "l2", onVoidLine });
     const actions = screen.getByRole("group", { name: "House burger" });
     expect(within(actions).queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
-    expect(actions).toHaveTextContent("Sent to the kitchen. To take it off, void the order with a supervisor (More).");
+    await userEvent.click(within(actions).getByRole("button", { name: "Void item" }));
+    expect(onVoidLine).toHaveBeenCalledWith(ORDER.items[1]);
+  });
+
+  it("once part of the bill is paid, a sent line is refunded after payment, not voided", () => {
+    renderTicket({ selectedLineId: "l2", onVoidLine: vi.fn(), order: { ...ORDER, paidMinor: 100_000, remainingMinor: ORDER.totalMinor - 100_000 } });
+    const actions = screen.getByRole("group", { name: "House burger" });
+    expect(within(actions).queryByRole("button", { name: "Void item" })).not.toBeInTheDocument();
+    expect(actions).toHaveTextContent("Sent to the kitchen, and part of the bill is paid: refund it after it's paid.");
+  });
+
+  it("a till that can't void says who can", () => {
+    renderTicket({ selectedLineId: "l2" });
+    expect(screen.getByRole("group", { name: "House burger" })).toHaveTextContent("Sent to the kitchen. A supervisor can void it.");
   });
 
   it("Esc lets go of the selected line", () => {

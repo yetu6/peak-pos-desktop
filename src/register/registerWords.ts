@@ -7,6 +7,7 @@
  */
 import { describePosError } from "../lib/posErrors";
 import { otherWords, problemOf, READ_AFTER_RECORD_FAILED, UNREACHABLE } from "../lib/problemWords";
+import { stationWords } from "../kitchen/kitchenWords";
 
 export interface RegisterProblem {
   kind: "supervisor" | "no-approver" | "paid" | "stale" | "network" | "permission" | "other";
@@ -65,6 +66,56 @@ export function voidProblem(error: unknown): RegisterProblem | null {
       return { kind: "paid", words: "This order is already paid or voided, so it can't be voided." };
   }
   return { kind: "other", words: otherWords(problem, "The order wasn't voided. Try again.") };
+}
+
+/**
+ * Voiding one sent item (fbc-peak 00125, item_void.go VoidItem): a
+ * supervisor's PIN and a reason, before the order has taken money.
+ */
+export function voidItemProblem(error: unknown): RegisterProblem | null {
+  const problem = problemOf(error);
+  if (!problem) return null;
+  if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  switch (problem.code) {
+    // A refused supervisor PIN or role, as for a whole-order void.
+    case "FORBIDDEN":
+      return {
+        kind: "supervisor",
+        words: "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
+      };
+    case "NO_APPROVER_SET":
+      return { kind: "no-approver", words: noApproverWords("voids") };
+    // The order or the line changed first (another till, or voided already): the screen reloads it.
+    case "STALE_VERSION":
+    case "ITEM_NOT_VOIDABLE":
+      return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then ask a supervisor again." };
+    case "INVALID_STATE":
+      return { kind: "paid", words: "Part of this bill is paid, so items can't be voided. Refund it after it's paid." };
+    case "ORDER_STATE_CHANGED":
+      return { kind: "paid", words: "This order is already paid or voided." };
+    case "TAB_WAITING_FOR_SHIFT":
+      return { kind: "other", words: "Take this tab over first, then void the item." };
+  }
+  return { kind: "other", words: otherWords(problem, "The item wasn't voided. Try again.") };
+}
+
+/** Who is told when an item is voided: "The bar", "The kitchen". */
+function toldWho(station: string | undefined): string {
+  if (!station) return "The kitchen";
+  const name = stationWords(station);
+  if (name === "Other station") return "The kitchen";
+  if (name === "Pastry") return "The pastry station";
+  return `The ${name.toLowerCase()}`;
+}
+
+/** What voiding an item does, said before the supervisor approves it. */
+export function voidItemSheetWords(station: string | undefined): string {
+  return `Takes it off the order and tells ${toldWho(station).toLowerCase()}. This is not a refund: no money moves.`;
+}
+
+/** What voiding an item did: "1 × Soda voided. The bar has been told." */
+export function itemVoidedWords(quantity: number, name: string, station: string | undefined): string {
+  return `${quantity} × ${name} voided. ${toldWho(station)} has been told.`;
 }
 
 /** Recording a payment (fbc-peak internal/pos/controls.go RecordTender). */

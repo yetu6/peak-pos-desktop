@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { billNotPrintedWords, printProblemOnce } from "../print/printProblems";
 import { DiscountDialog } from "../components/DiscountDialog";
+import { VoidItemDialog } from "../components/VoidItemDialog";
 import { VoidOrderDialog } from "../components/VoidOrderDialog";
 import {
   useAddOrderItem,
   useCatalog,
   useCatalogCurrency,
   useCreateOrder,
+  useFetchOrder,
   useHasPermission,
   useIdempotencyKey,
   useOrder,
@@ -70,8 +72,12 @@ export function NewOrder({
   const [settleOpen, setSettleOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
+  // The sent line being voided (fbc-peak 00125), while its sheet is open.
+  const [voidingLine, setVoidingLine] = useState<POSOrderItem | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // A late word (a slip that didn't print) follows what the till already said, never replaces it.
+  const addNotice = useCallback((words: string) => setNotice((now) => (now ? `${now} ${words}` : words)), []);
   const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
   const [paid, setPaid] = useState<PaidInfo | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -98,6 +104,25 @@ export function NewOrder({
   function adopt(next: POSOrder | null) {
     orderRef.current = next;
     setOrder(next);
+  }
+
+  // A sheet refused because the order changed on another till: the ticket
+  // takes Yetu's order as it is now, as the sheet's words say.
+  const fetchOrder = useFetchOrder();
+  async function reloadOrder() {
+    const current = orderRef.current;
+    if (!current) return;
+    try {
+      const fresh = await fetchOrder(current.id);
+      if (fresh.status === "CLOSED" || fresh.status === "VOIDED") {
+        clearTicket();
+        setNotice(`${orderName(fresh)} is ${fresh.status === "CLOSED" ? "paid" : "voided"} already. Start a new sale.`);
+      } else {
+        adopt(fresh);
+      }
+    } catch {
+      // The sheet still says what was refused; the next action asks Yetu again.
+    }
   }
 
   // The ticket's open order is told to the shell, so it is still here when the person comes back.
@@ -404,6 +429,7 @@ export function NewOrder({
             onSelectLine={setSelectedLineId}
             onQuantity={(line, quantity) => void changeQuantity(line, quantity)}
             onRemoveLine={(line) => void removeLine(line)}
+            onVoidLine={setVoidingLine}
             waiting={waiting}
             lineBusy={busy}
             sentAt={sentAt}
@@ -468,10 +494,33 @@ export function NewOrder({
           order={order}
           currency={currency}
           onClose={() => setVoidOpen(false)}
+          onStale={() => void reloadOrder()}
+          onPrintProblem={addNotice}
           onVoided={() => {
             const words = voidedWords(order);
             clearTicket();
             setNotice(words);
+          }}
+        />
+      )}
+      {voidingLine && order && (
+        <VoidItemDialog
+          order={order}
+          line={voidingLine}
+          currency={currency}
+          onClose={() => setVoidingLine(null)}
+          onStale={() => void reloadOrder()}
+          onPrintProblem={addNotice}
+          onVoided={(fresh, words) => {
+            setSelectedLineId(null);
+            // Nothing left to serve: Yetu closed the order. The next item starts a new one.
+            if (fresh.status === "VOIDED") {
+              clearTicket();
+              setNotice(`${words} Nothing is left on ${orderName(fresh)}, so it's closed.`);
+            } else {
+              adopt(fresh);
+              setNotice(words);
+            }
           }}
         />
       )}

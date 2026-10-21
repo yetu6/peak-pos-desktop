@@ -500,6 +500,70 @@ describe("printJobs: receipts on a thermal printer, the cash drawer (S8b)", () =
   });
 });
 
+describe("printJobs: a void slip (fbc-peak 00125)", () => {
+  // Yetu's void print document, as createVoidPrintJobs writes it.
+  const VOID: POSPrintJob = {
+    ...KITCHEN_JOB,
+    id: "job-void",
+    jobType: "KITCHEN_VOID",
+    document: {
+      orderId: "order-1", dailyNumber: 42, station: "BAR", tableLabel: "12", serviceType: "DINE_IN",
+      waiterName: "Amina Hassan", askedByName: "Amina Hassan", approvedByName: "Grace Mushi", reason: "Spilled",
+      voidedAt: "2026-10-21T09:40:00Z", wholeOrder: false,
+      items: [{ id: "i1", productId: "p-tusker", name: "Tusker", quantity: 1, modifiers: [] }],
+    },
+  };
+  const BAR = { target: { kind: "network" as const, host: "192.168.1.51", port: 9100 }, width: 48 as const };
+  const KITCHEN = { target: { kind: "network" as const, host: "192.168.1.50", port: 9100 }, width: 48 as const };
+  const text = (bytes: Uint8Array) => Array.from(bytes, (b) => (b >= 0x20 && b < 0x7f) || b === 0x0a ? String.fromCharCode(b) : "").join("");
+
+  async function run(stations: Record<string, unknown>, kitchenTickets = true) {
+    const requests: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const url = String(input);
+        requests.push(url);
+        if (url.endsWith("/claim")) return json({ ...VOID, status: "CLAIMED" });
+        if (url.endsWith("/printed")) return json({ ...VOID, status: "PRINTED" });
+        if (url.includes("/pos/print-jobs")) return json([VOID]);
+        return json({}, 500);
+      }),
+    );
+    const raw: { target: unknown; bytes: Uint8Array }[] = [];
+    const printFn = vi.fn();
+    await processPendingPrintJobs("prop", "order-1", printFn, {
+      settings: { kitchenTickets, kitchen: KITCHEN, stations: stations as never, receipt: null, cashDrawer: false },
+      printRaw: async (target, bytes) => void raw.push({ target, bytes }),
+    });
+    return { requests, raw, printFn };
+  }
+
+  it("prints where the station's kitchen tickets print, telling it not to make the item", async () => {
+    const { raw, printFn, requests } = await run({ BAR: BAR });
+    expect(printFn).not.toHaveBeenCalled();
+    expect(raw).toHaveLength(1);
+    expect(raw[0].target).toEqual(BAR.target);
+    const paper = text(raw[0].bytes);
+    expect(paper).toContain("VOID - BAR");
+    expect(paper).toContain("DO NOT MAKE");
+    expect(paper).toContain("1 x Tusker");
+    expect(paper).toContain("Why: Spilled");
+    expect(paper).not.toContain("TO PREPARE");
+    expect(requests.some((url) => url.endsWith("/printed"))).toBe(true);
+  });
+
+  it("is left, like the station's tickets, where they print no paper", async () => {
+    expect((await run({ BAR: "none" })).requests.some((url) => url.endsWith("/claim"))).toBe(false);
+    expect((await run({ BAR: BAR }, false)).requests.some((url) => url.endsWith("/claim"))).toBe(false);
+  });
+
+  it("reads as a void slip through the system's own printer", () => {
+    expect(formatPrintDocument(VOID)).toMatchObject({ title: "yetu-void-slip" });
+    expect(formatPrintDocument(VOID).text).toContain("VOID - BAR\nORDER 42\nDO NOT MAKE");
+  });
+});
+
 describe("printJobs: no paper for a station on this till", () => {
   const job = (station: string): POSPrintJob => ({ ...KITCHEN_JOB, id: `job-${station}`, document: { dailyNumber: 7, station, items: [{ name: "Tusker lager", quantity: 2 }] } });
   const KITCHEN = { target: { kind: "network" as const, host: "192.168.1.50", port: 9100 }, width: 48 as const };

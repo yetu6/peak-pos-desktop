@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useSupervisors } from "../approvals/supervisors";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
-import { useIdempotencyKey, useVoidOrder } from "../hooks/usePosData";
+import { useIdempotencyKey, usePrintAfter, usePropertyId, useVoidOrder } from "../hooks/usePosData";
+import { printProblemOnce } from "../print/printProblems";
+import { reachedTheKitchen } from "../orders/ordersWords";
 import { formatMoney } from "../lib/money";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRateLimitWait } from "../lib/useRateLimitWait";
@@ -26,6 +28,7 @@ export function VoidOrderDialog({
   onClose,
   onVoided,
   onStale,
+  onPrintProblem,
 }: {
   order: POSOrder;
   /** The currency the backend returned; without it the request says no amount. */
@@ -35,11 +38,14 @@ export function VoidOrderDialog({
   onVoided?: () => void;
   /** Yetu says the order changed on another till: ask for it again. */
   onStale?: () => void;
+  /** The void slip for the kitchen didn't print: what to say. */
+  onPrintProblem?: (words: string) => void;
 }) {
   const device = useDeviceSessionOptional();
   const { supervisors, emptyWords } = useSupervisors("VOID");
   const requesterId = device?.session?.staffId ?? "";
   const voidOrder = useVoidOrder();
+  const printAfter = usePrintAfter(usePropertyId());
   const reasons = useTillReasons("void");
   const idempotencyKey = useIdempotencyKey();
   const [reason, setReason] = useState("");
@@ -79,6 +85,14 @@ export function VoidOrderDialog({
       {
         onSuccess: () => {
           onVoided?.();
+          // A slip for each station that was making something prints on its own time (fbc-peak 00125).
+          // An order never sent was only ever on this till: there is no slip to print, nor a problem to tell.
+          if (reachedTheKitchen(order)) {
+            void printAfter(order.id).then((results) => {
+              const words = printProblemOnce(results, "void slip");
+              if (words) onPrintProblem?.(words);
+            });
+          }
           onClose();
         },
         // A refused PIN counts toward the supervisor's lockout: never send it again.

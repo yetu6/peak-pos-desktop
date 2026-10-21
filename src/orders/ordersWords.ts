@@ -6,7 +6,7 @@
  */
 import { stationWords } from "../kitchen/kitchenWords";
 import { formatMoney, majorDigits } from "../lib/money";
-import type { POSOrder, POSOrderPayment, POSStationTicket } from "../lib/posContracts";
+import type { POSOrder, POSOrderPayment, POSOrderVoid, POSStationTicket } from "../lib/posContracts";
 import { otherWords, problemOf, stepRefusal, UNREACHABLE } from "../lib/problemWords";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, ticketStepWords, type Tone } from "../lib/words";
 import { orderName, orderReference } from "../lib/orderNumber";
@@ -125,6 +125,9 @@ export function orderTimeline({
     const who = line.removedByName?.trim();
     add(line.removedAt, `${line.quantity} × ${line.name} taken off before it was sent${who ? ` by ${who}` : ""}`);
   }
+  // Each item voided after it was sent (fbc-peak 00125): what, why, who asked and who approved.
+  const itemVoids = (order.voids ?? []).filter((v) => !v.wholeOrder);
+  for (const v of itemVoids) add(v.createdAt, itemVoidWords(v));
   // The discount, when it was given (F-259); one from before Yetu kept the time comes after, untimed.
   if (order.discountKind !== "NONE") {
     if (timeOf(order.discountAppliedAt) !== null) add(order.discountAppliedAt, discountWords(order, currency));
@@ -138,9 +141,14 @@ export function orderTimeline({
   for (const payment of order.payments ?? []) add(payment.createdAt, paymentWords(payment, currency));
   if (order.status === "VOIDED") {
     const approved = order.voidApprovedByName?.trim();
+    const whole = (order.voids ?? []).find((v) => v.wholeOrder);
+    const asked = whole?.askedByName.trim();
+    const who = asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
     const words = emptiedOrder(order)
       ? "Closed by Yetu: nothing was left on it"
-      : `${orderStatusWords("VOIDED")}${approved ? ` · approved by ${approved}` : ""}`;
+      : !approved && itemVoids.length > 0
+        ? "Closed by Yetu: every item was voided"
+        : `${orderStatusWords("VOIDED")}${whole?.reason.trim() ? `: ${whole.reason.trim()}` : ""}${who}`;
     if (timeOf(order.closedAt) !== null) add(order.closedAt, words);
     else untimed.push({ time: null, words });
   }
@@ -255,6 +263,14 @@ export function removeProblem(error: unknown): OrderProblem | null {
     return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then try again." };
   }
   return { kind: "other", words: otherWords(problem, "The item wasn't removed. Try again.") };
+}
+
+/** One item void in the order's history: "1 × Soda voided: Spilled · asked by Baraka Mushi, approved by Neema Kweka". */
+export function itemVoidWords(v: Pick<POSOrderVoid, "quantity" | "name" | "reason" | "askedByName" | "approvedByName">): string {
+  const asked = v.askedByName.trim();
+  const approved = v.approvedByName.trim();
+  const who = asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
+  return `${v.quantity} × ${v.name} voided${v.reason.trim() ? `: ${v.reason.trim()}` : ""}${who}`;
 }
 
 /**

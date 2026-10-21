@@ -358,6 +358,13 @@ export function useStationTickets(enabled = true) {
   return query;
 }
 
+/** Asks Yetu for one order as it is now: after a refusal that says it changed on another till. */
+export function useFetchOrder() {
+  const queryClient = useQueryClient();
+  return (orderId: string) =>
+    queryClient.fetchQuery({ queryKey: ["pos", "order", orderId], queryFn: () => unwrap(createPosApi().getOrder(orderId)), staleTime: 0 });
+}
+
 export function useOrder(orderId: string | undefined) {
   return useQuery({
     queryKey: ["pos", "order", orderId],
@@ -632,6 +639,38 @@ export function useChargeToRoom() {
 
 /** Whole-order correction with a different supervisor's PIN. There is no
  *  per-line void-after-send in the certified contract — do not invent one. */
+/** Voids some or all of a sent line with a supervisor (fbc-peak 00125); Yetu answers the order. */
+export function useVoidItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      orderId: string;
+      itemId: string;
+      quantity: number;
+      reason: string;
+      supervisorStaffId: string;
+      supervisorPin: string;
+      version: number;
+      idempotencyKey: string;
+    }) =>
+      unwrap(
+        createPosApi().voidItem(
+          args.orderId,
+          args.itemId,
+          {
+            quantity: args.quantity,
+            reason: args.reason,
+            supervisorStaffId: args.supervisorStaffId,
+            supervisorPin: args.supervisorPin,
+            version: args.version,
+          },
+          args.idempotencyKey,
+        ),
+      ),
+    onSuccess: () => invalidateOrders(queryClient),
+  });
+}
+
 export function useVoidOrder() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -202,6 +202,32 @@
   font-weight: 600;
 }
 
+/* Voided after it was sent: what not to make, struck through in its own box. */
+.y-kticket__voided {
+  display: grid;
+  gap: var(--space-1);
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius-control);
+  background: var(--danger-subtle);
+  padding: var(--space-2) var(--space-3);
+}
+.y-kticket__voided-title {
+  margin: 0;
+  color: var(--danger);
+  font-weight: 700;
+}
+.y-kticket__voided-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.y-kticket__item--voided { font-size: var(--type-body); }
+.y-kticket__item--voided .y-kticket__name,
+.y-kticket__voided-option { text-decoration-thickness: 2px; }
+.y-kticket__voided-option { color: var(--text); font-size: var(--type-small); }
+
 .y-kticket__note {
   margin: 0;
   border: 1px solid var(--warning-line);

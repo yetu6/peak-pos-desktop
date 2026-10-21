@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { POSOrder, POSOrderItem, POSStationTicket } from "../lib/posContracts";
-import { boardColumns, sentTimesByOrder, ticketsFromOrders, ticketsFromStations } from "./kitchenTickets";
+import { boardColumns, sentTimesByOrder, ticketsFromOrders, ticketsFromStations, voidedOnOrder } from "./kitchenTickets";
 
 const NOW = Date.now();
 const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
@@ -127,5 +127,29 @@ describe("boardColumns", () => {
       ["PREPARING", "Preparing", ["t-1"]],
       ["READY", "Ready", []],
     ]);
+  });
+});
+
+describe("what the kitchen must not make (fbc-peak 00125)", () => {
+  const voidRow = (itemId: string, quantity: number, wholeOrder = false) => ({
+    id: `v-${itemId}`, itemId, name: "Chips", quantity, taxMinor: 0, totalMinor: 100_000, reason: "Spilled", wholeOrder,
+    askedByName: "Amina Hassan", approvedByName: "Grace Mushi", createdAt: ago(1),
+  });
+
+  it("a station's ticket carries what Yetu says it must stop making", () => {
+    const voided = [{ ...item("x", "Tusker", "VOIDED"), quantity: 1 }];
+    const [board] = ticketsFromStations([{ ...ticket("t1", "order-5", "SENT", ago(3)), voided }]);
+    expect(board.voided).toEqual(voided);
+    // A Yetu before 00125 sends none: nothing struck through.
+    expect(ticketsFromStations([ticket("t2", "order-6", "SENT", ago(3))])[0].voided).toEqual([]);
+  });
+
+  it("a selling till strikes through each item voided on its own, at the quantity voided", () => {
+    const chips = { ...item("order-7-a", "Chips"), quantity: 3, modifiers: [{ id: "m1", groupName: "Salt", optionName: "No salt", priceDeltaMinor: 0 }] };
+    const struck = voidedOnOrder({ items: [chips], voids: [voidRow("order-7-a", 1), voidRow("order-7-a", 2, true), voidRow("gone", 1)] });
+    expect(struck).toHaveLength(1);
+    expect(struck[0]).toMatchObject({ id: "order-7-a", name: "Chips", quantity: 1, status: "VOIDED", modifiers: chips.modifiers });
+    const [board] = ticketsFromOrders([order("order-7", "SENT", { items: [chips], voids: [voidRow("order-7-a", 1)] })], []);
+    expect(board.voided.map((line) => line.quantity)).toEqual([1]);
   });
 });

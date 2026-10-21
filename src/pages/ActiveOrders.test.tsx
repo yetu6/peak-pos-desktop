@@ -978,16 +978,19 @@ describe("Orders: carrying on with an open order (F-236)", () => {
       });
       await userEvent.click(within(voiding).getByTestId("confirm-void-order"));
     }
+    // Never sent: only ever on this till -- no kitchen told, and no void slip tried (exactly these words).
     ordersStore.set("order-1", OPEN_ORDER);
     renderOrders();
     await voidIt();
     expect(await screen.findByText("Order 42 was voided.")).toBeInTheDocument();
 
     cleanup();
+    // Sent: the kitchen is told. Here no printer is set up, so the slip's problem follows
+    // the void's words -- it never replaces them.
     ordersStore.set("order-1", TABLE_4);
     renderOrders();
     await voidIt();
-    expect(await screen.findByText("Order 42 was voided. The kitchen has been told.")).toBeInTheDocument();
+    expect(await screen.findByText(/^Order 42 was voided\. The kitchen has been told\. The void slip didn't print/)).toBeInTheDocument();
   });
 });
 
