@@ -98,10 +98,18 @@ export function serviceTypeWords(type: ServiceType): string {
 }
 
 /** Where the order goes, from the free-text label: Table 12, Room 204; nothing for takeaway. */
+/**
+ * Where an order goes, as staff and the kitchen read it. A table is a short
+ * code with a number in it and no spaces ("9", "T4", "12A", "B-3") and reads
+ * "Table T4"; anything else is the name the waiter typed ("Window", "Mama
+ * Neema", "Bar stool 3") and reads as typed -- many places name no tables
+ * and the waiter keeps track (owner, 2026-10-21).
+ */
 export function orderPlaceWords(type: ServiceType, label: string | null | undefined): string {
   const place = label?.trim();
   if (!place || type === "TAKEAWAY") return "";
-  return type === "ROOM_SERVICE" ? `Room ${place}` : `Table ${place}`;
+  if (type === "ROOM_SERVICE") return `Room ${place}`;
+  return /^(?=.*\d)[A-Za-z0-9-]{1,5}$/.test(place) ? `Table ${place}` : place;
 }
 
 export function shiftStatusWords(status: ShiftStatus): string {

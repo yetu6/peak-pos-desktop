@@ -56,16 +56,37 @@ vi.mock("./pages/ActiveOrders", () => ({
   ),
 }));
 
-vi.mock("./pages/NewOrder", () => ({
-  NewOrder: ({ resume, onTicket }: { resume?: POSOrder | null; onTicket?: (order: POSOrder | null) => void }) => (
-    <div>
-      <p data-testid="sell-ticket">{resume ? `Ticket: ${resume.id}` : "Ticket: empty"}</p>
-      <button type="button" onClick={() => onTicket?.(TABLE_7)}>
-        Ring up order 7
-      </button>
-    </div>
-  ),
-}));
+vi.mock("./pages/NewOrder", async () => {
+  const { useState } = await import("react");
+  return {
+    NewOrder: ({ resume, onTicket, onSwitch }: {
+      resume?: POSOrder | null;
+      onTicket?: (order: POSOrder | null) => void;
+      onSwitch?: (order: POSOrder | null) => void;
+    }) => {
+      // Sell's own state for the order on it (a line selected, a sheet open).
+      const [selected, setSelected] = useState(false);
+      return (
+        <div>
+          <p data-testid="sell-ticket">{resume ? `Ticket: ${resume.id}` : "Ticket: empty"}</p>
+          <p data-testid="sell-selected">{selected ? "A line selected" : "Nothing selected"}</p>
+          <button type="button" onClick={() => setSelected(true)}>
+            Select a line
+          </button>
+          <button type="button" onClick={() => onTicket?.(TABLE_7)}>
+            Ring up order 7
+          </button>
+          <button type="button" onClick={() => onSwitch?.(TABLE_4)}>
+            Switch to order 4
+          </button>
+          <button type="button" onClick={() => onSwitch?.(null)}>
+            New order
+          </button>
+        </div>
+      );
+    },
+  };
+});
 
 function renderApp() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -91,5 +112,29 @@ describe("the till shell keeps Sell's order (F-236)", () => {
     renderApp();
     await userEvent.click(screen.getByRole("button", { name: "Add items to order 4" }));
     expect(screen.getByTestId("sell-ticket")).toHaveTextContent("Ticket: order-4");
+  });
+});
+
+// The owner, 2026-10-21: a waiter works on several orders from the bar above the ticket.
+describe("the open-orders bar switches Sell's order", () => {
+  it("a switch puts that order on Sell and starts Sell again; nothing selected follows", async () => {
+    renderApp();
+    await userEvent.click(screen.getByTestId("nav-new"));
+    await userEvent.click(screen.getByRole("button", { name: "Ring up order 7" }));
+    await userEvent.click(screen.getByRole("button", { name: "Select a line" }));
+    // The ticket's own updates keep Sell as it is.
+    await userEvent.click(screen.getByRole("button", { name: "Ring up order 7" }));
+    expect(screen.getByTestId("sell-selected")).toHaveTextContent("A line selected");
+    await userEvent.click(screen.getByRole("button", { name: "Switch to order 4" }));
+    expect(screen.getByTestId("sell-ticket")).toHaveTextContent("Ticket: order-4");
+    expect(screen.getByTestId("sell-selected")).toHaveTextContent("Nothing selected");
+  });
+
+  it("New starts an empty ticket", async () => {
+    renderApp();
+    await userEvent.click(screen.getByTestId("nav-new"));
+    await userEvent.click(screen.getByRole("button", { name: "Ring up order 7" }));
+    await userEvent.click(screen.getByRole("button", { name: "New order" }));
+    expect(screen.getByTestId("sell-ticket")).toHaveTextContent("Ticket: empty");
   });
 });

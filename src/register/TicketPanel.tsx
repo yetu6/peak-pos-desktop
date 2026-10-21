@@ -15,7 +15,7 @@ export const SERVICE_TYPES: readonly ServiceType[] = ["DINE_IN", "TAKEAWAY", "RO
 
 /** Where the order goes, as free text until tables and rooms are picked from lists (S14). */
 function labelFor(type: ServiceType): string | null {
-  if (type === "DINE_IN") return "Table";
+  if (type === "DINE_IN") return "Table or name";
   if (type === "ROOM_SERVICE") return "Room";
   return null;
 }
@@ -27,6 +27,8 @@ export interface WaitingTap {
 }
 
 export interface TicketPanelProps {
+  /** The open orders, above the ticket (Sell's own; Orders has none). */
+  bar?: ReactNode;
   order: POSOrder | null;
   currency: string | undefined;
   serviceType: ServiceType;
@@ -90,6 +92,7 @@ export function TicketPanel({
   notice = null,
   actions,
   tagsOf,
+  bar,
 }: TicketPanelProps) {
   const locked = order !== null;
   const type = order?.serviceType ?? serviceType;
@@ -163,6 +166,7 @@ export function TicketPanel({
 
   return (
     <div className="y-ticket">
+      {bar}
       <header className="y-ticket__head">
         <div className="y-ticket__title-row">
           <h2 className="y-ticket__title">{order ? orderName(order) : "New order"}</h2>

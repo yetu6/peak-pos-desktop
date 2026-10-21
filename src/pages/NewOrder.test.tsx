@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { RealtimeClient } from "../realtime/RealtimeClient";
+import { RealtimeProvider } from "../realtime/RealtimeProvider";
 import { NewOrder } from "./NewOrder";
 import { REGISTER_AUTO_RETURN_SECONDS, REGISTER_QUIET_AFTER_RETURN_MS } from "../register/registerSettings";
 import { clearOperationalSession, getOperationalSession, setOperationalSession } from "../lib/operationalSession";
@@ -22,8 +24,9 @@ vi.mock("../print/printerStore", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../print/printerStore")>()),
   loadPrinterSettings: async () => ({ kitchenTickets: true, kitchen: null, stations: {}, receipt: null, cashDrawer: false }),
 }));
-const { reprintKitchenSpy } = vi.hoisted(() => ({
+const { reprintKitchenSpy, listOrderPageSpy } = vi.hoisted(() => ({
   reprintKitchenSpy: vi.fn(async (..._args: unknown[]) => ({ data: { roundNumber: 1, printJobs: [] }, error: null })),
+  listOrderPageSpy: vi.fn(async (..._args: unknown[]) => ({ data: { items: [] as unknown[], nextCursor: null }, error: null })),
 }));
 const { openDrawerSpy } = vi.hoisted(() => ({ openDrawerSpy: vi.fn(async (..._args: unknown[]) => ({ ok: true })) }));
 vi.mock("../print/cashDrawer", () => ({ openDrawerForCash: openDrawerSpy }));
@@ -280,6 +283,7 @@ vi.mock("../lib/posApi", () => ({
     listPrintJobs: vi.fn(async () => ({ data: [], error: null })),
     printBill: printBillSpy,
     reprintKitchenTickets: reprintKitchenSpy,
+    listOrderPage: listOrderPageSpy,
     removeItem: removeItemSpy,
     setItemQuantity: setItemQuantitySpy,
     voidOrder: voidOrderSpy,
@@ -424,7 +428,7 @@ describe("NewOrder", () => {
     renderNewOrder();
     const tile = await screen.findByTestId("menu-Nyama Choma");
     await waitFor(() => expect(tile).toBeEnabled());
-    await userEvent.type(screen.getByRole("textbox", { name: "Table" }), "12");
+    await userEvent.type(screen.getByRole("textbox", { name: "Table or name" }), "12");
     await userEvent.click(tile);
     await userEvent.click(await ticket().findByRole("button", { name: /Nyama Choma/ }));
     removeItemSpy.mockResolvedValueOnce({ data: { ...OPEN_ORDER, status: "VOIDED", items: [], version: 3 }, error: null });
@@ -442,7 +446,7 @@ describe("NewOrder", () => {
     renderNewOrder();
     const tile = await screen.findByTestId("menu-Nyama Choma");
     await waitFor(() => expect(tile).toBeEnabled());
-    await userEvent.type(screen.getByRole("textbox", { name: "Table" }), "12");
+    await userEvent.type(screen.getByRole("textbox", { name: "Table or name" }), "12");
     await userEvent.click(screen.getByRole("radio", { name: "Takeaway" }));
     await userEvent.click(tile);
     await waitFor(() =>
@@ -518,6 +522,30 @@ describe("NewOrder", () => {
     await waitFor(() => expect(reprintKitchenSpy).toHaveBeenCalledWith(sent.id, expect.any(String), 1));
     expect(sendOrderSpy).not.toHaveBeenCalled();
     expect(await screen.findByText("The kitchen ticket went to the printer again, marked COPY.")).toBeInTheDocument();
+  });
+
+  // The owner, 2026-10-21: a waiter serving three customers works on three orders.
+  it("shows the open orders above the ticket, and a tap moves Sell to another", async () => {
+    const other = { ...OPEN_ORDER, id: "order-2", orderNumber: "0002", dailyNumber: 2, tableLabel: "Window" };
+    listOrderPageSpy.mockResolvedValue({ data: { items: [OPEN_ORDER, other], nextCursor: null }, error: null } as never);
+    const onSwitch = vi.fn();
+    // The bar keeps up with orders as they change: Sell in the app sits inside live events.
+    const socket = { readyState: 0, onopen: null, onmessage: null, onerror: null, onclose: null, binaryType: "blob",
+      addEventListener: vi.fn(), removeEventListener: vi.fn(), send: vi.fn(), close: vi.fn() };
+    const client = new RealtimeClient({ createSocket: () => socket as unknown as WebSocket, cursorStorage: { get: () => null, set: () => {} } });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RealtimeProvider client={client} queryClient={queryClient}>
+          <NewOrder resume={OPEN_ORDER} onSwitch={onSwitch} />
+        </RealtimeProvider>
+      </QueryClientProvider>,
+    );
+    const bar = await screen.findByRole("navigation", { name: "Open orders" });
+    await userEvent.click(await within(bar).findByRole("button", { name: /^Window/ }));
+    expect(onSwitch).toHaveBeenCalledWith(expect.objectContaining({ id: "order-2" }));
+    await userEvent.click(within(bar).getByTestId("open-orders-new"));
+    expect(onSwitch).toHaveBeenLastCalledWith(null);
   });
 
   it("isn't in More for a person who can't send an order", async () => {

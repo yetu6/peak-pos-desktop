@@ -1,3 +1,4 @@
+import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { billNotPrintedWords, printProblemOnce } from "../print/printProblems";
 import { DiscountDialog } from "../components/DiscountDialog";
@@ -33,6 +34,7 @@ import { PaySheet, type PaidInfo } from "../register/PaySheet";
 import { NoteSheet } from "../register/NoteSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
 import { TicketActions } from "../register/TicketActions";
+import { LiveOpenOrdersBar } from "../register/OpenOrdersBar";
 import { TicketPanel, type WaitingTap } from "../register/TicketPanel";
 import { sellProblem } from "../register/registerWords";
 import { REGISTER_QUIET_AFTER_RETURN_MS } from "../register/registerSettings";
@@ -52,8 +54,15 @@ import { billProblem, voidedWords, kitchenReprintProblem, kitchenReprintWords } 
 export function NewOrder({
   resume = null,
   onTicket,
-}: { resume?: POSOrder | null; onTicket?: (order: POSOrder | null) => void } = {}) {
+  onSwitch,
+}: {
+  resume?: POSOrder | null;
+  onTicket?: (order: POSOrder | null) => void;
+  /** Another open order onto the ticket, or a new one (null): Sell starts again on it. */
+  onSwitch?: (order: POSOrder | null) => void;
+} = {}) {
   const { shift } = usePosShift();
+  const staffId = useDeviceSessionOptional()?.session?.staffId;
   const catalog = useCatalog();
   // The Restaurant & Bar module's menu (groups, sizes, tags); none: sell as before.
   const tillMenu = useTillMenu();
@@ -456,6 +465,19 @@ export function NewOrder({
         }
         ticket={
           <TicketPanel
+            bar={
+              // The open orders above the ticket (owner, 2026-10-21).
+              onSwitch ? (
+                <LiveOpenOrdersBar
+                  current={order}
+                  staffId={staffId}
+                  currency={currency}
+                  disabled={busy}
+                  onPick={onSwitch}
+                  onNew={() => onSwitch(null)}
+                />
+              ) : undefined
+            }
             order={order}
             currency={currency}
             tagsOf={(productId) => (menu ? tagNote(menu, productId) : undefined)}

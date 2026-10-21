@@ -102,7 +102,7 @@ describe("TicketPanel", () => {
 
   it("asks for a table for dine in", () => {
     renderTicket({ order: null, serviceType: "DINE_IN" });
-    expect(screen.getByRole("textbox", { name: "Table" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Table or name" })).toBeInTheDocument();
   });
 
   it("asks for a room for room service and nothing for takeaway", () => {
@@ -135,7 +135,7 @@ describe("TicketPanel", () => {
     for (const type of within(screen.getByRole("radiogroup", { name: "Order type" })).getAllByRole("radio")) {
       expect(type).toBeDisabled();
     }
-    expect(screen.queryByRole("textbox", { name: "Table" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Table or name" })).not.toBeInTheDocument();
     expect(screen.getByTestId("table-label")).toHaveTextContent("Table 12 · Saved with the order.");
   });
 
