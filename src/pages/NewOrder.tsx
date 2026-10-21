@@ -35,6 +35,7 @@ import { NoteSheet } from "../register/NoteSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
 import { TicketActions } from "../register/TicketActions";
 import { LiveOpenOrdersBar } from "../register/OpenOrdersBar";
+import { PaperPreviewSheet } from "../register/PaperPreviewSheet";
 import { TicketPanel, type WaitingTap } from "../register/TicketPanel";
 import { sellProblem } from "../register/registerWords";
 import { REGISTER_QUIET_AFTER_RETURN_MS } from "../register/registerSettings";
@@ -119,6 +120,8 @@ export function NewOrder({
   const billKey = useRequestKey();
   const printBill = usePrintBill();
   const reprintKitchen = useReprintKitchenTickets();
+  // Every paper is shown before it prints (owner, 2026-10-21): which preview is open.
+  const [preview, setPreview] = useState<"ROUND" | "BILL" | null>(null);
   const reprintKey = useIdempotencyKey();
   const quantityKey = useIdempotencyKey();
 
@@ -505,13 +508,13 @@ export function NewOrder({
                 sending={sendOrder.isPending}
                 canSend={canSend}
                 canPay={canPay}
-                onSend={() => void sendToKitchen()}
-                onReprint={printOrderAgain}
+                onSend={() => setPreview("ROUND")}
+                onReprint={() => setPreview("ROUND")}
                 onPay={() => void pay()}
                 onDiscount={() => setDiscountOpen(true)}
                 onVoid={() => setVoidOpen(true)}
                 onNote={() => setNoteOpen(true)}
-                onPrintBill={canSend ? printTheBill : undefined}
+                onPrintBill={canSend ? () => setPreview("BILL") : undefined}
                 printingBill={printBill.isPending}
                 onNewSale={clearTicket}
               />
@@ -519,6 +522,23 @@ export function NewOrder({
           />
         }
       />
+
+      {preview && order ? (
+        <PaperPreviewSheet
+          orderId={order.id}
+          kind={preview}
+          busy={sendOrder.isPending || printBill.isPending || reprintKitchen.isPending}
+          tagsOf={(productId) => (menu ? tagNote(menu, productId) : undefined)}
+          onBack={() => setPreview(null)}
+          onPrint={() => {
+            const kind = preview;
+            setPreview(null);
+            if (kind === "BILL") printTheBill();
+            else if (unsentLines(order) > 0) void sendToKitchen();
+            else printOrderAgain();
+          }}
+        />
+      ) : null}
 
       {configuring && (
         <OptionsSheet

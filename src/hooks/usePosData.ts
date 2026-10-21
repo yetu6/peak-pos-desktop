@@ -841,6 +841,21 @@ function menuTags(queryClient: ReturnType<typeof useQueryClient>, outletId: stri
   return (productId: string) => (menu ? tagNote(menu, productId) : undefined);
 }
 
+/** What Print order (ROUND) or Print bill (BILL) would print now, for the preview; asked afresh each time. */
+export function usePaperPreview(orderId: string, kind: "ROUND" | "BILL") {
+  return useQuery({
+    queryKey: ["pos", "papers", orderId, kind],
+    queryFn: async () => (await unwrap(createPosApi().previewPapers(orderId, kind))).papers,
+    retry: false,
+    gcTime: 0,
+  });
+}
+
+/** This till's printers, for the preview of what they will print. */
+export function usePrinterSettings() {
+  return useQuery({ queryKey: ["pos", "printer-settings"], queryFn: loadPrinterSettings, retry: false });
+}
+
 /** This till prints no kitchen tickets (Status, Printers): a copy would print nowhere. */
 export class KitchenPaperOff extends Error {
   constructor() {

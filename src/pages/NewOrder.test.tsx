@@ -290,6 +290,12 @@ vi.mock("../lib/posApi", () => ({
   }),
 }));
 
+/** Print order, then Print in its preview (owner, 2026-10-21: every paper is shown before it prints). */
+async function sendFromPreview() {
+  await userEvent.click(screen.getByTestId("send-order"));
+  await userEvent.click(await screen.findByTestId("paper-print"));
+}
+
 function renderNewOrder(props: Parameters<typeof NewOrder>[0] = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -503,9 +509,20 @@ describe("NewOrder", () => {
   });
 
   // The owner, 2026-10-20: the guest gets the bill before paying (fbc-peak #288).
+  // Every paper is shown before it prints: Back from the preview prints and sends nothing.
+  it("Print order shows the papers first; Back sends nothing", async () => {
+    await startOrder();
+    await userEvent.click(screen.getByTestId("send-order"));
+    const sheet = await screen.findByRole("dialog", { name: "Print order" });
+    await userEvent.click(within(sheet).getByRole("button", { name: "Back" }));
+    expect(screen.queryByRole("dialog", { name: "Print order" })).toBeNull();
+    expect(sendOrderSpy).not.toHaveBeenCalled();
+  });
+
   it("Print bill, beside Print order, prints the ticket's bill and says so", async () => {
     await startOrder();
     await userEvent.click(screen.getByRole("button", { name: /Print bill/ }));
+    await userEvent.click(await screen.findByTestId("paper-print"));
     await waitFor(() => expect(printBillSpy).toHaveBeenCalledWith("order-1", expect.any(String)));
     await waitFor(() => expect(printJobNowSpy).toHaveBeenCalledWith(expect.objectContaining({ id: "bill-order-1", jobType: "BILL" })));
     expect(await screen.findByText("The bill for Order 1 was sent to the printer.")).toBeInTheDocument();
@@ -519,6 +536,7 @@ describe("NewOrder", () => {
     const print = await screen.findByTestId("send-order");
     await waitFor(() => expect(print).toBeEnabled());
     await userEvent.click(print);
+    await userEvent.click(await screen.findByTestId("paper-print"));
     await waitFor(() => expect(reprintKitchenSpy).toHaveBeenCalledWith(sent.id, expect.any(String), 1));
     expect(sendOrderSpy).not.toHaveBeenCalled();
     expect(await screen.findByText("The kitchen ticket went to the printer again, marked COPY.")).toBeInTheDocument();
@@ -625,6 +643,7 @@ describe("NewOrder", () => {
     await startOrder();
     screen.getByTestId("send-order").focus();
     await userEvent.keyboard(" ");
+    await userEvent.click(await screen.findByTestId("paper-print"));
     await waitFor(() => expect(sendOrderSpy).toHaveBeenCalled());
     const pay = screen.getByTestId("pay-order");
     await waitFor(() => expect(pay).toBeEnabled());
@@ -669,7 +688,7 @@ describe("NewOrder", () => {
     it("a refused send says who may send, as a permission notice, never the code", async () => {
       sendOrderSpy.mockResolvedValueOnce({ data: undefined, error: FORBIDDEN } as never);
       await ticketWithOneLine();
-      await userEvent.click(screen.getByTestId("send-order"));
+      await sendFromPreview();
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent("Only staff who take orders can send them to the kitchen. Ask one to help.");
       expect(alert).toHaveClass("y-permission");
@@ -690,7 +709,7 @@ describe("NewOrder", () => {
     it("a send whose answer was lost keeps the order and tries again with the same key", async () => {
       sendOrderSpy.mockRejectedValueOnce(new TypeError("Failed to fetch"));
       await ticketWithOneLine();
-      await userEvent.click(screen.getByTestId("send-order"));
+      await sendFromPreview();
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent("Can't reach Yetu. Check the internet connection, then try again.");
       // The order is still on the ticket.
@@ -705,9 +724,9 @@ describe("NewOrder", () => {
     it("a send Yetu refused is a new request the next time", async () => {
       sendOrderSpy.mockResolvedValueOnce({ data: undefined, error: { ...FORBIDDEN, status: 409, code: "CONFLICT", detail: "x" } } as never);
       await ticketWithOneLine();
-      await userEvent.click(screen.getByTestId("send-order"));
+      await sendFromPreview();
       await screen.findByRole("alert");
-      await userEvent.click(screen.getByTestId("send-order"));
+      await sendFromPreview();
       await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledTimes(2));
       const [first, second] = sendOrderSpy.mock.calls as unknown as Array<[string, number, string]>;
       expect(second[2]).not.toBe(first[2]);
@@ -847,7 +866,7 @@ describe("NewOrder: rounds (S17a)", () => {
     // Sell reads the order again after sending it: Yetu's sent order, with its round.
     getOrderSpy.mockResolvedValueOnce({ data: { ...OPEN_ORDER, status: "SENT", version: 3, roundsSent: 1, items: sentLines }, error: null } as never);
     await ringUp();
-    await userEvent.click(screen.getByTestId("send-order"));
+    await sendFromPreview();
     await waitFor(() => expect(sendOrderSpy).toHaveBeenCalled());
     // The order is Yetu's sent one now (its line says so), and the menu still takes more.
     expect(await within(screen.getByTestId("ticket-panel")).findByTestId("ticket-sent")).toBeInTheDocument();
@@ -859,7 +878,7 @@ describe("NewOrder: rounds (S17a)", () => {
     cleanup();
     localStorage.clear();
     await ringUp();
-    await userEvent.click(screen.getByTestId("send-order"));
+    await sendFromPreview();
     expect(await screen.findByText("This order has gone to the kitchen. Start a new sale to add more.")).toBeInTheDocument();
   });
 });
@@ -1053,7 +1072,7 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
     await waitFor(() => expect(tile).toBeEnabled());
     await userEvent.click(tile);
     await within(screen.getByTestId("ticket-panel")).findByRole("button", { name: /Nyama Choma/ });
-    await userEvent.click(screen.getByTestId("send-order"));
+    await sendFromPreview();
     expect(
       await screen.findByText("The kitchen ticket didn't print: no printer is set up on this till. A manager sets up printers in Status (F12), under Printers."),
     ).toBeInTheDocument();

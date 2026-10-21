@@ -711,3 +711,31 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------------------------------------------------------------- Paper preview (owner, 2026-10-21) */
+.y-paper {
+  box-sizing: content-box;
+  width: calc(var(--paper-chars, 48) * 1ch);
+  max-width: 100%;
+  max-height: 60vh;
+  margin: var(--space-3) auto 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  padding: var(--space-4);
+  color: var(--text);
+  font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace;
+  font-size: var(--type-small);
+  line-height: 1.35;
+  white-space: pre;
+}
+
+.y-paper-preview__status { margin: var(--space-4) 0 0; color: var(--text-muted); }
+
+.y-paper-preview__footer {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+  gap: var(--target-gap);
+}
