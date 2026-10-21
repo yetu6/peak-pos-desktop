@@ -265,11 +265,6 @@ export function removeProblem(error: unknown): OrderProblem | null {
   return { kind: "other", words: otherWords(problem, "The item wasn't removed. Try again.") };
 }
 
-/**
- * F-260 (fbc-peak #286): Yetu closes an order whose last line was taken off
- * before it was sent: VOIDED, with no supervisor. Every line taken off too,
- * so a void from a Yetu before #286 (none named a supervisor) isn't taken for one.
- */
 /** One item void in the order's history: "1 × Soda voided: Spilled · asked by Baraka Mushi, approved by Neema Kweka". */
 export function itemVoidWords(v: Pick<POSOrderVoid, "quantity" | "name" | "reason" | "askedByName" | "approvedByName">): string {
   const asked = v.askedByName.trim();
@@ -278,6 +273,11 @@ export function itemVoidWords(v: Pick<POSOrderVoid, "quantity" | "name" | "reaso
   return `${v.quantity} × ${v.name} voided${v.reason.trim() ? `: ${v.reason.trim()}` : ""}${who}`;
 }
 
+/**
+ * F-260 (fbc-peak #286): Yetu closes an order whose last line was taken off
+ * before it was sent: VOIDED, with no supervisor. Every line taken off too,
+ * so a void from a Yetu before #286 (none named a supervisor) isn't taken for one.
+ */
 export function emptiedOrder(order: Pick<POSOrder, "status" | "voidApprovedByName" | "items">): boolean {
   return (
     order.status === "VOIDED" &&

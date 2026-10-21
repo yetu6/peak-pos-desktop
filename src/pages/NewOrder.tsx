@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { billNotPrintedWords, printProblemOnce } from "../print/printProblems";
 import { DiscountDialog } from "../components/DiscountDialog";
 import { VoidItemDialog } from "../components/VoidItemDialog";
@@ -76,6 +76,8 @@ export function NewOrder({
   const [voidingLine, setVoidingLine] = useState<POSOrderItem | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // A late word (a slip that didn't print) follows what the till already said, never replaces it.
+  const addNotice = useCallback((words: string) => setNotice((now) => (now ? `${now} ${words}` : words)), []);
   const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
   const [paid, setPaid] = useState<PaidInfo | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -493,7 +495,7 @@ export function NewOrder({
           currency={currency}
           onClose={() => setVoidOpen(false)}
           onStale={() => void reloadOrder()}
-          onPrintProblem={setNotice}
+          onPrintProblem={addNotice}
           onVoided={() => {
             const words = voidedWords(order);
             clearTicket();
@@ -508,7 +510,7 @@ export function NewOrder({
           currency={currency}
           onClose={() => setVoidingLine(null)}
           onStale={() => void reloadOrder()}
-          onPrintProblem={setNotice}
+          onPrintProblem={addNotice}
           onVoided={(fresh, words) => {
             setSelectedLineId(null);
             // Nothing left to serve: Yetu closed the order. The next item starts a new one.

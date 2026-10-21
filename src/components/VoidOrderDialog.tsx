@@ -4,6 +4,7 @@ import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { useIdempotencyKey, usePrintAfter, usePropertyId, useVoidOrder } from "../hooks/usePosData";
 import { printProblemOnce } from "../print/printProblems";
+import { reachedTheKitchen } from "../orders/ordersWords";
 import { formatMoney } from "../lib/money";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRateLimitWait } from "../lib/useRateLimitWait";
@@ -85,10 +86,13 @@ export function VoidOrderDialog({
         onSuccess: () => {
           onVoided?.();
           // A slip for each station that was making something prints on its own time (fbc-peak 00125).
-          void printAfter(order.id).then((results) => {
-            const words = printProblemOnce(results, "void slip");
-            if (words) onPrintProblem?.(words);
-          });
+          // An order never sent was only ever on this till: there is no slip to print, nor a problem to tell.
+          if (reachedTheKitchen(order)) {
+            void printAfter(order.id).then((results) => {
+              const words = printProblemOnce(results, "void slip");
+              if (words) onPrintProblem?.(words);
+            });
+          }
           onClose();
         },
         // A refused PIN counts toward the supervisor's lockout: never send it again.
