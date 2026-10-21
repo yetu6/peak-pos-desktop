@@ -40,13 +40,13 @@ describe("Button and IconButton", () => {
         <Button variant="primary" size={64}>Pay TSh 42,500</Button>
         <Button variant="secondary" size={56}>Send to kitchen</Button>
         <Button variant="quiet">More</Button>
-        <Button variant="danger">Void order</Button>
+        <Button variant="danger">Cancel order</Button>
       </>,
     );
     expect(screen.getByRole("button", { name: "Pay TSh 42,500" })).toHaveClass("y-button--primary", "y-button--64");
     expect(screen.getByRole("button", { name: "Send to kitchen" })).toHaveClass("y-button--secondary", "y-button--56");
     expect(screen.getByRole("button", { name: "More" })).toHaveClass("y-button--quiet", "y-button--48");
-    expect(screen.getByRole("button", { name: "Void order" })).toHaveClass("y-button--danger");
+    expect(screen.getByRole("button", { name: "Cancel order" })).toHaveClass("y-button--danger");
     expect(screen.getByRole("button", { name: "More" })).toHaveAttribute("type", "button");
   });
 

@@ -178,7 +178,7 @@ describe("orderTimeline", () => {
   });
 
   it("a voided order says when it was voided", () => {
-    expect(timeline({ status: "VOIDED", closedAt: minutesAgo(2) })).toEqual([STARTED, { time: clockTime(minutesAgo(2)), words: "Voided" }]);
+    expect(timeline({ status: "VOIDED", closedAt: minutesAgo(2) })).toEqual([STARTED, { time: clockTime(minutesAgo(2)), words: "Cancelled" }]);
   });
 
   it("leaves out a time Yetu didn't give, rather than guess", () => {
@@ -230,15 +230,15 @@ describe("refusals", () => {
 // F-243: the kitchen is told of a void only when it had heard of the order.
 describe("voidedWords", () => {
   it("an order never sent was only on this till", () => {
-    expect(voidedWords(order({ status: "OPEN", roundsSent: 0 }))).toBe("Order 42 was voided.");
-    expect(voidedWords(order({ status: "OPEN" }))).toBe("Order 42 was voided.");
+    expect(voidedWords(order({ status: "OPEN", roundsSent: 0 }))).toBe("Order 42 was cancelled.");
+    expect(voidedWords(order({ status: "OPEN" }))).toBe("Order 42 was cancelled.");
   });
   it("an order the kitchen has says it was told", () => {
-    expect(voidedWords(order({ status: "SENT", roundsSent: 1 }))).toBe("Order 42 was voided. The kitchen has been told.");
+    expect(voidedWords(order({ status: "SENT", roundsSent: 1 }))).toBe("Order 42 was cancelled. The kitchen has been told.");
     // Round 2 being taken on an order whose first round went: still the kitchen's.
-    expect(voidedWords(order({ status: "OPEN", roundsSent: 1 }))).toBe("Order 42 was voided. The kitchen has been told.");
+    expect(voidedWords(order({ status: "OPEN", roundsSent: 1 }))).toBe("Order 42 was cancelled. The kitchen has been told.");
     // A Yetu before rounds: sent is a status.
-    expect(voidedWords(order({ status: "PREPARING" }))).toBe("Order 42 was voided. The kitchen has been told.");
+    expect(voidedWords(order({ status: "PREPARING" }))).toBe("Order 42 was cancelled. The kitchen has been told.");
   });
 });
 
@@ -270,7 +270,7 @@ describe("orderTimeline: items voided after they were sent (fbc-peak 00125)", ()
 
   it("says what was voided, why, who asked and who approved", () => {
     const timeline = orderTimeline({ order: order({ status: "SENT", items: [tusker], voids: [spilled] }), tickets: [], currency: "TZS" });
-    expect(timeline).toContainEqual({ time: clockTime(voidedAt), words: "1 × Tusker voided: Spilled · asked by Baraka Mushi, approved by Neema Kweka" });
+    expect(timeline).toContainEqual({ time: clockTime(voidedAt), words: "1 × Tusker cancelled: Spilled · asked by Baraka Mushi, approved by Neema Kweka" });
   });
 
   it("an order whose items were all voided says Yetu closed it", () => {
@@ -279,7 +279,7 @@ describe("orderTimeline: items voided after they were sent (fbc-peak 00125)", ()
       tickets: [],
       currency: "TZS",
     });
-    expect(timeline.map((entry) => entry.words)).toContain("Closed by Yetu: every item was voided");
+    expect(timeline.map((entry) => entry.words)).toContain("Closed automatically: every item was cancelled");
   });
 
   // Review 2026-10-21: one item voided, the other taken off before it was sent.
@@ -291,8 +291,8 @@ describe("orderTimeline: items voided after they were sent (fbc-peak 00125)", ()
       currency: "TZS",
     });
     const words = timeline.map((entry) => entry.words);
-    expect(words).toContain("Closed by Yetu: nothing was left on it");
-    expect(words).not.toContain("Closed by Yetu: every item was voided");
+    expect(words).toContain("Closed automatically: nothing was left on it");
+    expect(words).not.toContain("Closed automatically: every item was cancelled");
   });
 
   it("a whole-order void says why and who asked, once, not line by line", () => {
@@ -302,12 +302,12 @@ describe("orderTimeline: items voided after they were sent (fbc-peak 00125)", ()
       tickets: [],
       currency: "TZS",
     }).map((entry) => entry.words);
-    expect(words).toContain("Voided: Wrong table · asked by Baraka Mushi, approved by Neema Kweka");
-    expect(words.join(" ")).not.toContain("2 × Tusker voided");
+    expect(words).toContain("Cancelled: Wrong table · asked by Baraka Mushi, approved by Neema Kweka");
+    expect(words.join(" ")).not.toContain("2 × Tusker cancelled");
   });
 
   it("names nobody it wasn't told", () => {
-    expect(itemVoidWords({ quantity: 1, name: "Soda", reason: "Spilled", askedByName: "", approvedByName: "Neema Kweka" })).toBe("1 × Soda voided: Spilled · approved by Neema Kweka");
+    expect(itemVoidWords({ quantity: 1, name: "Soda", reason: "Spilled", askedByName: "", approvedByName: "Neema Kweka" })).toBe("1 × Soda cancelled: Spilled · approved by Neema Kweka");
   });
 });
 
@@ -375,19 +375,19 @@ describe("an order Yetu closed with nothing on it (F-260)", () => {
 
   it("its history and its state say it had nothing left on it", () => {
     const words = orderTimeline({ order: emptied, tickets: [], currency: "TZS" }).map((entry) => entry.words);
-    expect(words).toContain("Closed by Yetu: nothing was left on it");
-    expect(words).not.toContain("Voided");
+    expect(words).toContain("Closed automatically: nothing was left on it");
+    expect(words).not.toContain("Cancelled");
     expect(orderStateWords(emptied)).toEqual({ words: "Nothing on it", tone: "neutral" });
   });
 
   it("a void says who approved it, and stays a void", () => {
     const voided = order({ status: "VOIDED", closedAt: removedAt, voidApprovedByName: "Baraka Mushi", items: [{ ...soup, status: "VOIDED", removedAt }] });
-    expect(orderTimeline({ order: voided, tickets: [], currency: "TZS" }).map((entry) => entry.words)).toContain("Voided · approved by Baraka Mushi");
-    expect(orderStateWords(voided).words).toBe("Voided");
+    expect(orderTimeline({ order: voided, tickets: [], currency: "TZS" }).map((entry) => entry.words)).toContain("Cancelled · approved by Baraka Mushi");
+    expect(orderStateWords(voided).words).toBe("Cancelled");
     // From a Yetu before #286 no void names its supervisor: one with a line sent, or none at all, is still a void.
     const sentThenVoided = order({ status: "VOIDED", closedAt: removedAt, items: [{ ...soup, status: "VOIDED" }] });
-    expect(orderStateWords(sentThenVoided).words).toBe("Voided");
-    expect(orderStateWords(order({ status: "VOIDED", closedAt: removedAt, items: [] })).words).toBe("Voided");
+    expect(orderStateWords(sentThenVoided).words).toBe("Cancelled");
+    expect(orderStateWords(order({ status: "VOIDED", closedAt: removedAt, items: [] })).words).toBe("Cancelled");
   });
 });
 
@@ -406,7 +406,7 @@ describe("the bill before payment", () => {
 
   it("says why a bill wasn't printed", () => {
     expect(billProblem(refused({ code: "BILL_NOTHING_ON_IT" }))?.words).toBe("Nothing is on this order yet, so there is no bill to print.");
-    expect(billProblem(refused({ code: "BILL_ORDER_NOT_OPEN" }))).toEqual({ kind: "moved", words: "This order is paid or voided now. It's been reloaded." });
+    expect(billProblem(refused({ code: "BILL_ORDER_NOT_OPEN" }))).toEqual({ kind: "moved", words: "This order is paid or cancelled now. It's been reloaded." });
     expect(billProblem(refused({ code: "FORBIDDEN" }))?.kind).toBe("permission");
     expect(billProblem(refused({ code: "TAB_WAITING_FOR_SHIFT" }))?.words).toBe("Take this tab over first, then print its bill.");
   });

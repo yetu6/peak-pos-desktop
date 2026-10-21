@@ -220,8 +220,8 @@ describe("OrdersView", () => {
   });
 
   it("announces what just happened to an order", () => {
-    render(<Harness notice="Order 0142 was voided. The kitchen has been told." />);
-    expect(screen.getByRole("status")).toHaveTextContent("Order 0142 was voided. The kitchen has been told.");
+    render(<Harness notice="Order 0142 was cancelled. The kitchen has been told." />);
+    expect(screen.getByRole("status")).toHaveTextContent("Order 0142 was cancelled. The kitchen has been told.");
   });
 });
 

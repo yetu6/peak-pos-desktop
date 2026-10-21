@@ -11,7 +11,7 @@ import type { ApprovalKind, POSApprover } from "../lib/posContracts";
 export const APPROVERS_FRESH_MS = 60_000;
 
 const NOUN: Record<ApprovalKind, string> = {
-  VOID: "voids",
+  VOID: "cancellations",
   REFUND: "refunds",
   DISCOUNT: "discounts",
   CASH_OUT: "cash-outs",

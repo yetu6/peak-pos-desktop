@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { EXACT_WORDS, ignoreHeldEnter, startAmount, useFilledAmount } from "./moneyEntry";
 import { moneyFieldText } from "../cash/NoteCounterSheet";
 import { Banner, Button, Keypad, Money, MoneyField, QuickCash, Sheet, type KeypadKey } from "../components/system";
 import { formatMoney } from "../lib/money";
@@ -31,14 +31,15 @@ export function OfflineCashSheet({
   /** Fixtures start part-way through. */
   initialReceived?: string;
 }) {
-  const [received, setReceived] = useState(initialReceived);
+  // The cash received starts at what is owed (owner, 2026-10-21; register.fillAmountDue);
+  // the first key replaces it.
+  const cash = useFilledAmount(startAmount(dueMinor, initialReceived));
+  const received = cash.text;
   const receivedMinor = toMinor(received);
   const enough = receivedMinor !== null && receivedMinor >= dueMinor;
 
   function onKey(key: KeypadKey) {
-    if (key === "delete") setReceived((text) => text.slice(0, -1));
-    else if (key === "clear") setReceived("");
-    else setReceived((text) => (text === "" && /^0+$/.test(key) ? text : text + key));
+    cash.keyed(key);
   }
 
   function confirm() {
@@ -69,6 +70,7 @@ export function OfflineCashSheet({
       <form
         id={FORM}
         className="y-pay__pane y-offline-cash"
+        onKeyDown={ignoreHeldEnter}
         onSubmit={(event) => {
           event.preventDefault();
           confirm();
@@ -76,12 +78,13 @@ export function OfflineCashSheet({
       >
         <p className="y-pay__label">Amount due</p>
         <Money minor={dueMinor} currency={currency} size="display" data-testid="amount-due" />
-        <QuickCash dueMinor={dueMinor} currency={currency} onPick={(minor) => setReceived(moneyFieldText(minor))} />
+        <QuickCash dueMinor={dueMinor} currency={currency} onPick={(minor) => cash.picked(moneyFieldText(minor))} />
         <MoneyField
           label="Cash received"
           currency={currency}
           value={received}
-          onValueChange={(text) => setReceived(text)}
+          selectOnFocus
+          onValueChange={(text, _minor, edit) => cash.typed(text, edit)}
           inputTestId="offline-cash-received"
           autoFocus
         />
@@ -89,6 +92,8 @@ export function OfflineCashSheet({
         <p className="y-pay__change" data-testid="change-due" aria-live="polite">
           {receivedMinor === null || receivedMinor <= 0
             ? "Type or pick the cash the guest gives you."
+            : receivedMinor === dueMinor
+              ? EXACT_WORDS
             : enough
               ? `Change to give ${formatMoney(receivedMinor - dueMinor, currency)}`
               : `Offline, a sale is paid in full in cash. ${formatMoney(dueMinor - receivedMinor, currency)} more is needed.`}

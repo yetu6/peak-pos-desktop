@@ -1,3 +1,4 @@
+import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { billNotPrintedWords, printProblemOnce } from "../print/printProblems";
 import { DiscountDialog } from "../components/DiscountDialog";
@@ -17,6 +18,7 @@ import {
   usePropertyId,
   usePrintBill,
   useRemoveOrderItem,
+  useReprintKitchenTickets,
   useSetLineQuantity,
   useSendOrder,
   useSetProductAvailability,
@@ -32,13 +34,15 @@ import { PaySheet, type PaidInfo } from "../register/PaySheet";
 import { NoteSheet } from "../register/NoteSheet";
 import { RegisterLayout } from "../register/RegisterLayout";
 import { TicketActions } from "../register/TicketActions";
+import { LiveOpenOrdersBar } from "../register/OpenOrdersBar";
+import { PaperPreviewSheet } from "../register/PaperPreviewSheet";
 import { TicketPanel, type WaitingTap } from "../register/TicketPanel";
 import { sellProblem } from "../register/registerWords";
 import { REGISTER_QUIET_AFTER_RETURN_MS } from "../register/registerSettings";
 import { useRequestKey } from "../lib/useRequestKey";
 import type { POSCatalogProduct, POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 import { orderName } from "../lib/orderNumber";
-import { billProblem, voidedWords } from "../orders/ordersWords";
+import { billProblem, voidedWords, kitchenReprintProblem, kitchenReprintWords } from "../orders/ordersWords";
 
 /**
  * Sell, against the live API: the catalog from GET /pos/catalog and the
@@ -51,8 +55,15 @@ import { billProblem, voidedWords } from "../orders/ordersWords";
 export function NewOrder({
   resume = null,
   onTicket,
-}: { resume?: POSOrder | null; onTicket?: (order: POSOrder | null) => void } = {}) {
+  onSwitch,
+}: {
+  resume?: POSOrder | null;
+  onTicket?: (order: POSOrder | null) => void;
+  /** Another open order onto the ticket, or a new one (null): Sell starts again on it. */
+  onSwitch?: (order: POSOrder | null) => void;
+} = {}) {
   const { shift } = usePosShift();
+  const staffId = useDeviceSessionOptional()?.session?.staffId;
   const catalog = useCatalog();
   // The Restaurant & Bar module's menu (groups, sizes, tags); none: sell as before.
   const tillMenu = useTillMenu();
@@ -108,6 +119,15 @@ export function NewOrder({
   const removeKey = useIdempotencyKey();
   const billKey = useRequestKey();
   const printBill = usePrintBill();
+  const reprintKitchen = useReprintKitchenTickets();
+  // Every paper is shown before it prints (owner, 2026-10-21): which preview is open.
+  const [preview, setPreview] = useState<"ROUND" | "BILL" | null>(null);
+  // Pay with new items shows their papers first, then takes payment.
+  const [payAfterPrint, setPayAfterPrint] = useState(false);
+  // The kitchen papers of a send, still on their way to the printer: the
+  // ticket stays on this order until the printer has answered (F-233).
+  const [printing, setPrinting] = useState(false);
+  const reprintKey = useIdempotencyKey();
   const quantityKey = useIdempotencyKey();
 
   function adopt(next: POSOrder | null) {
@@ -125,7 +145,7 @@ export function NewOrder({
       const fresh = await fetchOrder(current.id);
       if (fresh.status === "CLOSED" || fresh.status === "VOIDED") {
         clearTicket();
-        setNotice(`${orderName(fresh)} is ${fresh.status === "CLOSED" ? "paid" : "voided"} already. Start a new sale.`);
+        setNotice(`${orderName(fresh)} is ${fresh.status === "CLOSED" ? "paid" : "cancelled"} already. Start a new sale.`);
       } else {
         adopt(fresh);
       }
@@ -154,7 +174,7 @@ export function NewOrder({
     if (current?.id !== fresh.id) return;
     if (fresh.status === "CLOSED" || fresh.status === "VOIDED") {
       clearTicket();
-      setNotice(`${orderName(fresh)} is ${fresh.status === "CLOSED" ? "paid" : "voided"} already. Start a new sale.`);
+      setNotice(`${orderName(fresh)} is ${fresh.status === "CLOSED" ? "paid" : "cancelled"} already. Start a new sale.`);
     } else if (fresh.version > current.version) {
       adopt(fresh);
     }
@@ -341,10 +361,13 @@ export function NewOrder({
       setSentAt(new Date());
       // The kitchen ticket prints on its own time: the send is done, and Send
       // and pay opens the payment now (F-241), whatever the printer does.
-      void printAfter(next.id).then((results) => {
-        const words = printProblemOnce(results, "kitchen ticket");
-        if (words) setNotice(words);
-      });
+      setPrinting(true);
+      void printAfter(next.id)
+        .then((results) => {
+          const words = printProblemOnce(results, "kitchen ticket");
+          if (words) setNotice(words);
+        })
+        .finally(() => setPrinting(false));
       return true;
     } catch (error) {
       // The words come from sendOrder.error. Yetu refused it: the next press is a new request.
@@ -356,7 +379,10 @@ export function NewOrder({
   /** Pay: what isn't sent goes to the kitchen first (Send and pay), then the payment opens. */
   async function pay() {
     if (order && canSend && takesMore(order) && unsentLines(order) > 0) {
-      if (!(await sendToKitchen())) return;
+      // Every paper is shown before it prints (owner, 2026-10-21): the new items' first.
+      setPayAfterPrint(true);
+      setPreview("ROUND");
+      return;
     }
     setSettleOpen(true);
   }
@@ -409,6 +435,22 @@ export function NewOrder({
     );
   }
 
+  // Print order with nothing new: the last round's papers again, marked COPY
+  // (the reprint Orders already has); said on Sell.
+  function printOrderAgain() {
+    const current = orderRef.current;
+    const round = current?.roundsSent ?? 0;
+    if (!current || round === 0 || reprintKitchen.isPending) return;
+    setNotice(null);
+    reprintKitchen.mutate(
+      { orderId: current.id, idempotencyKey: reprintKey.next(), roundNumber: round },
+      {
+        onSuccess: ({ failed }) => setNotice(kitchenReprintWords(round, current.roundsSent, failed)),
+        onError: (error) => setNotice(kitchenReprintProblem(error)?.words ?? "The order wasn't printed again. Try again."),
+      },
+    );
+  }
+
   function newSale(byItself = false) {
     if (byItself) quietUntil.current = Date.now() + REGISTER_QUIET_AFTER_RETURN_MS;
     setPaid(null);
@@ -437,6 +479,20 @@ export function NewOrder({
         }
         ticket={
           <TicketPanel
+            bar={
+              // The open orders above the ticket (owner, 2026-10-21).
+              onSwitch ? (
+                <LiveOpenOrdersBar
+                  current={order}
+                  staffId={staffId}
+                  currency={currency}
+                  // Nothing in flight is left behind: a switch waits for the printer's answer.
+                  disabled={busy || printing || printBill.isPending || reprintKitchen.isPending}
+                  onPick={onSwitch}
+                  onNew={() => onSwitch(null)}
+                />
+              ) : undefined
+            }
             order={order}
             currency={currency}
             tagsOf={(productId) => (menu ? tagNote(menu, productId) : undefined)}
@@ -464,18 +520,50 @@ export function NewOrder({
                 sending={sendOrder.isPending}
                 canSend={canSend}
                 canPay={canPay}
-                onSend={() => void sendToKitchen()}
+                onSend={() => setPreview("ROUND")}
+                onReprint={() => setPreview("ROUND")}
                 onPay={() => void pay()}
                 onDiscount={() => setDiscountOpen(true)}
                 onVoid={() => setVoidOpen(true)}
                 onNote={() => setNoteOpen(true)}
-                onPrintBill={canSend ? printTheBill : undefined}
+                onPrintBill={canSend ? () => setPreview("BILL") : undefined}
+                printingBill={printBill.isPending}
                 onNewSale={clearTicket}
               />
             }
           />
         }
       />
+
+      {preview && order ? (
+        <PaperPreviewSheet
+          orderId={order.id}
+          kind={preview}
+          busy={sendOrder.isPending || printBill.isPending || reprintKitchen.isPending}
+          nothingNew={unsentLines(order) === 0}
+          refusalOf={(error) => {
+            const refusal = preview === "BILL" ? billProblem(error) : sellProblem(error, "send");
+            return refusal && refusal.kind !== "network" ? refusal.words : null;
+          }}
+          tagsOf={(productId) => (menu ? tagNote(menu, productId) : undefined)}
+          onBack={() => {
+            setPreview(null);
+            setPayAfterPrint(false);
+          }}
+          onPrint={() => {
+            const kind = preview;
+            const thenPay = payAfterPrint;
+            setPreview(null);
+            setPayAfterPrint(false);
+            if (kind === "BILL") printTheBill();
+            else if (unsentLines(order) > 0) {
+              void sendToKitchen().then((sent) => {
+                if (sent && thenPay) setSettleOpen(true);
+              });
+            } else printOrderAgain();
+          }}
+        />
+      ) : null}
 
       {configuring && (
         <OptionsSheet

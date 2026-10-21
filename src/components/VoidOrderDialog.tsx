@@ -89,7 +89,7 @@ export function VoidOrderDialog({
           // An order never sent was only ever on this till: there is no slip to print, nor a problem to tell.
           if (reachedTheKitchen(order)) {
             void printAfter(order.id).then((results) => {
-              const words = printProblemOnce(results, "void slip");
+              const words = printProblemOnce(results, "cancel slip");
               if (words) onPrintProblem?.(words);
             });
           }
@@ -110,16 +110,16 @@ export function VoidOrderDialog({
       onOpenChange={(open) => {
         if (!open && !voidOrder.isPending) onClose();
       }}
-      title="Void the order"
+      title="Cancel order"
       description={voidSheetWords(order)}
       testId="void-order-dialog"
       footer={
         <div className="y-options__footer">
           <Button variant="quiet" disabled={voidOrder.isPending} onClick={onClose}>
-            Cancel
+            Back
           </Button>
           <Button variant="danger" size={56} data-testid="confirm-void-order" disabled={!ready} onClick={submit}>
-            {voidOrder.isPending ? "Voiding…" : "Void order"}
+            {voidOrder.isPending ? "Cancelling…" : "Cancel order"}
           </Button>
         </div>
       }
@@ -139,8 +139,8 @@ export function VoidOrderDialog({
         <SupervisorApproval
           request={
             reason.trim()
-              ? `Void order ${orderNumberWords(order)}${currency ? ` (${formatMoney(order.totalMinor, currency)})` : ""}: ${reason.trim()}`
-              : `Void order ${orderNumberWords(order)}`
+              ? `Cancel order ${orderNumberWords(order)}${currency ? ` (${formatMoney(order.totalMinor, currency)})` : ""}: ${reason.trim()}`
+              : `Cancel order ${orderNumberWords(order)}`
           }
           supervisors={supervisors}
           emptyWords={emptyWords}

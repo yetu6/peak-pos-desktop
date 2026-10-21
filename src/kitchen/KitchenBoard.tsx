@@ -349,7 +349,7 @@ function TicketCard({
         // Voided after it was sent (fbc-peak 00125): struck through, never dropped unseen.
         <section className="y-kticket__voided" aria-labelledby={`${headingId}-voided`} data-testid={`kitchen-voided-${ticket.id}`}>
           <p id={`${headingId}-voided`} className="y-kticket__voided-title">
-            {ticket.items.length === 0 ? "All voided: don't make" : "Voided: don't make"}
+            {ticket.items.length === 0 ? "All cancelled: don't make" : "Cancelled: don't make"}
           </p>
           <ul className="y-kticket__voided-list">
             {ticket.voided.map((item, index) => (

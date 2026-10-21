@@ -81,6 +81,9 @@ function PosShell() {
   // kitchen and back (F-236); Orders' "Add items" puts an open order here.
   // It goes with the person: locking the till starts the next one empty.
   const [sellOrder, setSellOrder] = useState<POSOrder | null>(null);
+  // A switch from the open-orders bar starts Sell again on that order: what
+  // was selected or open on the last one never follows to the next.
+  const [sellStart, setSellStart] = useState(0);
 
   if (!nav.some((item) => item.page === page)) {
     setPage(nav[0]?.page ?? "orders");
@@ -111,7 +114,19 @@ function PosShell() {
           }}
         />
       ) : page === "new" ? (
-        offlineCash ? <OfflineNewOrder /> : <NewOrder resume={sellOrder} onTicket={setSellOrder} />
+        offlineCash ? (
+          <OfflineNewOrder />
+        ) : (
+          <NewOrder
+            key={sellStart}
+            resume={sellOrder}
+            onTicket={setSellOrder}
+            onSwitch={(order) => {
+              setSellOrder(order);
+              setSellStart((n) => n + 1);
+            }}
+          />
+        )
       ) : page === "kitchen" ? (
         <Kitchen />
       ) : page === "manager" ? (

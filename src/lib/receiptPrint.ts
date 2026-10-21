@@ -1,7 +1,7 @@
 import { formatMoney } from "./money";
 import { vatFigures } from "./vatWords";
 import { orderName, orderReference } from "./orderNumber";
-import { dateTimeWords, paymentMethodWords, type SettlementMethod } from "./words";
+import { dateTimeWords, paymentMethodWords, placeWords, type SettlementMethod } from "./words";
 /**
  * The owner, 2026-10-20: Yetu is not connected to TRA's VFD, so nothing it
  * prints is the tax receipt. The restaurant's EFD issues that when the guest
@@ -28,6 +28,8 @@ export interface ReceiptCopy {
   /** S5b: the order's number for the day ("Order 42"); absent on receipts made before S5b. */
   dailyNumber?: number;
   tableNumber?: string;
+  /** The order's type, so its place reads as a table, a room or a name. */
+  serviceType?: string;
   takenBy?: string;
   settledBy?: string;
   settledAt?: string;
@@ -124,6 +126,7 @@ export function receiptCopyFromPrintDocument(document: Record<string, unknown>, 
         : typeof document.tableNumber === "string"
           ? document.tableNumber
           : undefined,
+    serviceType: typeof document.serviceType === "string" ? document.serviceType : undefined,
     takenBy,
     settledBy,
     settledAt: typeof document.settledAt === "string" ? dateTimeWords(document.settledAt) || undefined : undefined,
@@ -207,7 +210,7 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     receipt.dailyNumber || receipt.orderNumber ? orderName(receipt) : "order",
     orderReference(receipt) ? `Ref ${orderReference(receipt)}` : null,
     [
-      receipt.tableNumber ? `Table ${receipt.tableNumber}` : null,
+      placeWords(receipt.serviceType, receipt.tableNumber) || null,
       receipt.settlementMethod ? receipt.settlementMethod : null,
     ]
       .filter(Boolean)

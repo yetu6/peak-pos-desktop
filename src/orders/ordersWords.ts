@@ -144,15 +144,15 @@ export function orderTimeline({
     const whole = (order.voids ?? []).find((v) => v.wholeOrder);
     const asked = whole?.askedByName.trim();
     const who = asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
-    // Closed by Yetu (no supervisor of its own): "every item was voided" only
+    // Closed automatically (no supervisor of its own): "every item was cancelled" only
     // when every line went by a void; lines also taken off before they were
     // sent make it "nothing was left on it" (review 2026-10-21).
     const voidedLines = new Set(itemVoids.map((v) => v.itemId));
     const allByVoid = (order.items ?? []).length > 0 && (order.items ?? []).every((line) => voidedLines.has(line.id));
     const words = emptiedOrder(order)
-      ? "Closed by Yetu: nothing was left on it"
+      ? "Closed automatically: nothing was left on it"
       : !approved && itemVoids.length > 0
-        ? allByVoid ? "Closed by Yetu: every item was voided" : "Closed by Yetu: nothing was left on it"
+        ? allByVoid ? "Closed automatically: every item was cancelled" : "Closed automatically: nothing was left on it"
         : `${orderStatusWords("VOIDED")}${whole?.reason.trim() ? `: ${whole.reason.trim()}` : ""}${who}`;
     if (timeOf(order.closedAt) !== null) add(order.closedAt, words);
     else untimed.push({ time: null, words });
@@ -202,7 +202,7 @@ export function billProblem(error: unknown): OrderProblem | null {
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
   if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only staff who take orders can print the bill. Ask one to help." };
   if (problem.code === "BILL_NOTHING_ON_IT") return { kind: "other", words: "Nothing is on this order yet, so there is no bill to print." };
-  if (problem.code === "BILL_ORDER_NOT_OPEN") return { kind: "moved", words: "This order is paid or voided now. It's been reloaded." };
+  if (problem.code === "BILL_ORDER_NOT_OPEN") return { kind: "moved", words: "This order is paid or cancelled now. It's been reloaded." };
   if (problem.code === "TAB_WAITING_FOR_SHIFT") return { kind: "other", words: "Take this tab over first, then print its bill." };
   if (problem.code === "NOT_FOUND") return { kind: "missing", words: "Yetu doesn't have this order." };
   return { kind: "other", words: otherWords(problem, "The bill wasn't printed. Try again.") };
@@ -270,12 +270,12 @@ export function removeProblem(error: unknown): OrderProblem | null {
   return { kind: "other", words: otherWords(problem, "The item wasn't removed. Try again.") };
 }
 
-/** One item void in the order's history: "1 × Soda voided: Spilled · asked by Baraka Mushi, approved by Neema Kweka". */
+/** One item cancelled in the order's history: "1 × Soda cancelled: Spilled · asked by Baraka Mushi, approved by Neema Kweka". */
 export function itemVoidWords(v: Pick<POSOrderVoid, "quantity" | "name" | "reason" | "askedByName" | "approvedByName">): string {
   const asked = v.askedByName.trim();
   const approved = v.approvedByName.trim();
   const who = asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
-  return `${v.quantity} × ${v.name} voided${v.reason.trim() ? `: ${v.reason.trim()}` : ""}${who}`;
+  return `${v.quantity} × ${v.name} cancelled${v.reason.trim() ? `: ${v.reason.trim()}` : ""}${who}`;
 }
 
 /**
@@ -319,7 +319,7 @@ export function reachedTheKitchen(order: Pick<POSOrder, "status" | "roundsSent">
  * order it had heard of (F-243); one never sent was only ever on this till.
  */
 export function voidedWords(order: Pick<POSOrder, "dailyNumber" | "orderNumber" | "status" | "roundsSent">): string {
-  return `${orderName(order)} was voided.${reachedTheKitchen(order) ? " The kitchen has been told." : ""}`;
+  return `${orderName(order)} was cancelled.${reachedTheKitchen(order) ? " The kitchen has been told." : ""}`;
 }
 
 /** What voiding does, said before the supervisor approves it (F-243). */

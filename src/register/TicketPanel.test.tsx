@@ -102,7 +102,7 @@ describe("TicketPanel", () => {
 
   it("asks for a table for dine in", () => {
     renderTicket({ order: null, serviceType: "DINE_IN" });
-    expect(screen.getByRole("textbox", { name: "Table" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Table or name" })).toBeInTheDocument();
   });
 
   it("asks for a room for room service and nothing for takeaway", () => {
@@ -135,7 +135,7 @@ describe("TicketPanel", () => {
     for (const type of within(screen.getByRole("radiogroup", { name: "Order type" })).getAllByRole("radio")) {
       expect(type).toBeDisabled();
     }
-    expect(screen.queryByRole("textbox", { name: "Table" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Table or name" })).not.toBeInTheDocument();
     expect(screen.getByTestId("table-label")).toHaveTextContent("Table 12 · Saved with the order.");
   });
 
@@ -198,20 +198,20 @@ describe("TicketPanel", () => {
     renderTicket({ selectedLineId: "l2", onVoidLine });
     const actions = screen.getByRole("group", { name: "House burger" });
     expect(within(actions).queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
-    await userEvent.click(within(actions).getByRole("button", { name: "Void item" }));
+    await userEvent.click(within(actions).getByRole("button", { name: "Cancel item" }));
     expect(onVoidLine).toHaveBeenCalledWith(ORDER.items[1]);
   });
 
   it("once part of the bill is paid, a sent line is refunded after payment, not voided", () => {
     renderTicket({ selectedLineId: "l2", onVoidLine: vi.fn(), order: { ...ORDER, paidMinor: 100_000, remainingMinor: ORDER.totalMinor - 100_000 } });
     const actions = screen.getByRole("group", { name: "House burger" });
-    expect(within(actions).queryByRole("button", { name: "Void item" })).not.toBeInTheDocument();
+    expect(within(actions).queryByRole("button", { name: "Cancel item" })).not.toBeInTheDocument();
     expect(actions).toHaveTextContent("Sent to the kitchen, and part of the bill is paid: refund it after it's paid.");
   });
 
   it("a till that can't void says who can", () => {
     renderTicket({ selectedLineId: "l2" });
-    expect(screen.getByRole("group", { name: "House burger" })).toHaveTextContent("Sent to the kitchen. A supervisor can void it.");
+    expect(screen.getByRole("group", { name: "House burger" })).toHaveTextContent("Sent to the kitchen. A supervisor can cancel it.");
   });
 
   it("Esc lets go of the selected line", () => {

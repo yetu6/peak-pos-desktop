@@ -545,7 +545,7 @@ describe("printJobs: a void slip (fbc-peak 00125)", () => {
     expect(raw).toHaveLength(1);
     expect(raw[0].target).toEqual(BAR.target);
     const paper = text(raw[0].bytes);
-    expect(paper).toContain("VOID - BAR");
+    expect(paper).toContain("CANCELLED - BAR");
     expect(paper).toContain("DO NOT MAKE");
     expect(paper).toContain("1 x Tusker");
     expect(paper).toContain("Why: Spilled");
@@ -560,7 +560,7 @@ describe("printJobs: a void slip (fbc-peak 00125)", () => {
 
   it("reads as a void slip through the system's own printer", () => {
     expect(formatPrintDocument(VOID)).toMatchObject({ title: "yetu-void-slip" });
-    expect(formatPrintDocument(VOID).text).toContain("VOID - BAR\nORDER 42\nDO NOT MAKE");
+    expect(formatPrintDocument(VOID).text).toContain("CANCELLED - BAR\nORDER 42\nDO NOT MAKE");
   });
 });
 

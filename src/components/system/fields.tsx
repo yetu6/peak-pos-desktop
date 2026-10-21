@@ -122,18 +122,22 @@ export function MoneyField({
   id,
   inputTestId,
   autoFocus,
+  selectOnFocus,
 }: {
   label: string;
   /** The currency the backend returned; until it is known the field shows no unit. */
   currency: string | null | undefined;
   value: string;
-  onValueChange: (value: string, minor: number | null) => void;
+  /** edit: what the browser says was typed or deleted (InputEvent), when it says. */
+  onValueChange: (value: string, minor: number | null, edit?: { inputType: string; data: string | null }) => void;
   hint?: string;
   error?: string;
   className?: string;
   id?: string;
   inputTestId?: string;
   autoFocus?: boolean;
+  /** A filled-in amount is selected when the field is entered, so typing replaces it. */
+  selectOnFocus?: boolean;
 }) {
   const autoId = useId();
   const inputId = id ?? `money-${autoId}`;
@@ -163,11 +167,13 @@ export function MoneyField({
           inputMode="decimal"
           autoComplete="off"
           autoFocus={autoFocus}
+          onFocus={selectOnFocus ? (event) => event.currentTarget.select() : undefined}
           // Shown as money is read (50,000); kept as the digits typed.
           value={groupedDigits(value)}
           onChange={(event) => {
             const text = event.target.value.replace(/[^\d.]/g, "");
-            onValueChange(text, toMinor(text));
+            const native = event.nativeEvent as Partial<InputEvent>;
+            onValueChange(text, toMinor(text), native.inputType ? { inputType: native.inputType, data: native.data ?? null } : undefined);
           }}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy(currency ? unitId : undefined, hintId, errorId)}

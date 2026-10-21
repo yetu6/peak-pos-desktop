@@ -1,6 +1,6 @@
 import { stationWords } from "../kitchen/kitchenWords";
 import type { ServiceType } from "../lib/posContracts";
-import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
+import { clockTime, orderPlaceWords, placeWords, serviceTypeWords } from "../lib/words";
 import { EscPos, type PaperWidth } from "./escpos";
 
 /**
@@ -29,9 +29,9 @@ export interface VoidSlipPaper {
   lines: { quantity: number; name: string; options: string[] }[];
 }
 
-/** What the paper is, at its top: "VOID - BAR", beside the kitchen's "TO PREPARE - BAR". */
+/** What the paper is, at its top: "CANCELLED - BAR", beside the kitchen's "TO PREPARE - BAR". */
 export function voidSlipTitle(station: string | undefined): string {
-  return `VOID - ${(station ? stationWords(station) : "Kitchen").toUpperCase()}`;
+  return `CANCELLED - ${(station ? stationWords(station) : "Kitchen").toUpperCase()}`;
 }
 
 /** Who asked and who approved, in one line: "Asked by Baraka Mushi, approved by Neema Kweka". */
@@ -50,13 +50,13 @@ export function voidSlipBytes(slip: VoidSlipPaper, width: PaperWidth): Uint8Arra
   out.size(1, 2).line(slip.wholeOrder ? "WHOLE ORDER - DO NOT MAKE" : "DO NOT MAKE").size(1, 1);
   out.bold(false).align("left").rule();
 
-  const place = slip.serviceType ? orderPlaceWords(slip.serviceType, slip.label) : slip.label ? `Table ${slip.label}` : "";
+  const place = slip.serviceType ? orderPlaceWords(slip.serviceType, slip.label) : placeWords(undefined, slip.label);
   const service = slip.serviceType ? serviceTypeWords(slip.serviceType) : "";
   const where = [place, service].filter(Boolean).join(" - ");
   if (where) out.bold(true).size(1, 2).wrapped(where).size(1, 1).bold(false);
   if (slip.waiterName) out.wrapped(`Taken by ${slip.waiterName}`);
   const voided = clockTime(slip.voidedAt);
-  if (voided) out.line(`Voided ${voided}`);
+  if (voided) out.line(`Cancelled ${voided}`);
   out.rule();
 
   for (const line of slip.lines) {
@@ -106,7 +106,7 @@ export function voidSlipFromPrintDocument(document: Record<string, unknown>): Vo
 /** The slip as plain text, for a till printing through the system's own printer. */
 export function formatVoidSlip(slip: VoidSlipPaper): string {
   const number = slip.dailyNumber ?? slip.orderNumber;
-  const place = slip.serviceType ? orderPlaceWords(slip.serviceType, slip.label) : slip.label ? `Table ${slip.label}` : "";
+  const place = slip.serviceType ? orderPlaceWords(slip.serviceType, slip.label) : placeWords(undefined, slip.label);
   const voided = clockTime(slip.voidedAt);
   const header = [
     voidSlipTitle(slip.station),

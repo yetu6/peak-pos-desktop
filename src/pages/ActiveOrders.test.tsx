@@ -80,6 +80,15 @@ const spies = vi.hoisted(() => ({
   }),
   // S8a: Yetu's copies of a round's kitchen tickets.
   reprintKitchenTickets: vi.fn(async (..._args: unknown[]): Promise<Result> => ({ data: { roundNumber: 2, printJobs: [] }, error: null })),
+  // What Yetu would print: one paper of the kind asked for, as a preview answers (owner, 2026-10-21).
+  previewPapers: vi.fn(async (orderId: string, kind: string): Promise<Result> => ({
+    data: {
+      papers: [kind === "BILL"
+        ? { jobType: "BILL", document: { kind: "BILL", orderId, orderNumber: "0042", items: [], totalMinor: 0, currency: "TZS" } }
+        : { jobType: "KITCHEN_TICKET", document: { orderId, orderNumber: "0042", station: "HOT", items: [{ name: "Chips", quantity: 1, modifiers: [] }] } }],
+    },
+    error: null,
+  })),
   processPendingPrintJobs: vi.fn(async (..._args: unknown[]): Promise<{ ok: boolean; error?: string }[]> => [{ ok: false, error: "No printer is configured" }]),
   // fbc-peak #288: the bill before payment, and the one job this till prints for it.
   printBill: vi.fn(async (orderId: string, ..._rest: unknown[]): Promise<Result> => ({
@@ -212,6 +221,11 @@ function announce(sequenceId: number, type: string, orderId: string): string {
 
 async function flush(): Promise<void> {
   for (let i = 0; i < 30; i++) await Promise.resolve();
+}
+
+/** Print in the preview that every paper shows first (owner, 2026-10-21). */
+async function printInPreview() {
+  await userEvent.click(await screen.findByTestId("paper-print"));
 }
 
 function renderOrders(onNewOrder = vi.fn(), onAddItems?: (order: POSOrder) => void) {
@@ -454,7 +468,7 @@ describe("Orders", () => {
     // Not sent yet: Pay sends it to the kitchen first.
     expect(within(sheet).getByTestId("detail-pay")).toHaveTextContent("Send and pay TSh 1,180");
     expect(within(sheet).getByTestId("detail-pay")).toHaveFocus();
-    expect(within(sheet).getByRole("button", { name: "Void order" })).toBeEnabled();
+    expect(within(sheet).getByRole("button", { name: "Cancel order" })).toBeEnabled();
   });
 
   it("shows Pay as closed, with who can, to a person without pos.payment.record; Send and Void stay", async () => {
@@ -465,7 +479,7 @@ describe("Orders", () => {
     expect(within(sheet).queryByTestId("detail-pay")).toBeNull();
     expect(within(sheet).getByRole("note")).toHaveTextContent("Only a cashier or manager can take payment.");
     expect(within(sheet).getByTestId("detail-send")).toBeEnabled();
-    expect(within(sheet).getByRole("button", { name: "Void order" })).toBeEnabled();
+    expect(within(sheet).getByRole("button", { name: "Cancel order" })).toBeEnabled();
   });
 
   it("sends it to the kitchen with its version, prints the tickets, says so and moves focus to Pay", async () => {
@@ -477,6 +491,7 @@ describe("Orders", () => {
     renderOrders();
     const sheet = await openDetail("order-1");
     await userEvent.click(within(sheet).getByTestId("detail-send"));
+    await printInPreview();
     await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledWith("order-1", 1, expect.any(String)));
     expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("Sent to the kitchen.");
     await waitFor(() => expect(spies.processPendingPrintJobs).toHaveBeenCalledWith("property-1", "order-1", undefined, expect.objectContaining({ settings: expect.any(Object) })));
@@ -492,8 +507,10 @@ describe("Orders", () => {
     renderOrders();
     const sheet = await openDetail("order-1");
     await userEvent.click(within(sheet).getByTestId("detail-send"));
+    await printInPreview();
     expect(await within(sheet).findByRole("alert")).toHaveTextContent("Can't reach Yetu.");
     await userEvent.click(within(sheet).getByTestId("detail-send"));
+    await printInPreview();
     await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledTimes(2));
     expect(spies.sendOrder.mock.calls[1][2]).toBe(spies.sendOrder.mock.calls[0][2]);
     expect(idleLockHeld()).toBe(true);
@@ -508,11 +525,13 @@ describe("Orders", () => {
     const sheet = await openDetail("order-1");
     const listedBefore = spies.listOrderPage.mock.calls.filter(([query]) => query.view === "open").length;
     await userEvent.click(within(sheet).getByTestId("detail-send"));
+    await printInPreview();
     expect(await within(sheet).findByRole("alert")).toHaveTextContent(
       "This order changed on another till, or was already sent. It's been reloaded: check it before sending it again.",
     );
     await waitFor(() => expect(spies.listOrderPage.mock.calls.filter(([query]) => query.view === "open").length).toBeGreaterThan(listedBefore));
     await userEvent.click(within(sheet).getByTestId("detail-send"));
+    await printInPreview();
     await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledTimes(2));
     expect(spies.sendOrder.mock.calls[1][2]).not.toBe(spies.sendOrder.mock.calls[0][2]);
   });
@@ -572,6 +591,7 @@ describe("Orders", () => {
     renderOrders();
     const sheet = await openDetail("order-1");
     await userEvent.click(within(sheet).getByRole("button", { name: "Print bill" }));
+    await printInPreview();
     await waitFor(() => expect(spies.printBill).toHaveBeenCalledWith("order-1", expect.any(String)));
     await waitFor(() => expect(spies.processPrintJob).toHaveBeenCalledWith(
       expect.objectContaining({ id: "bill-order-1", jobType: "BILL" }), undefined, expect.objectContaining({ settings: expect.any(Object) })));
@@ -625,6 +645,7 @@ describe("Orders", () => {
     renderOrders();
     const sheet = await openDetail("order-1");
     await userEvent.click(within(sheet).getByRole("button", { name: "Print bill" }));
+    await printInPreview();
     expect(await within(sheet).findByRole("alert")).toHaveTextContent(
       "The bill didn't print: no printer is set up on this till. Print it again once the printer is ready; a manager sets up printers in Status (F12), under Printers.",
     );
@@ -645,9 +666,9 @@ describe("Orders", () => {
     ordersStore.set("order-1", OPEN_ORDER);
     renderOrders();
     const sheet = await openDetail("order-1");
-    await userEvent.click(within(sheet).getByRole("button", { name: "Void order" }));
+    await userEvent.click(within(sheet).getByRole("button", { name: "Cancel order" }));
     const voiding = await screen.findByTestId("void-order-dialog");
-    await userEvent.click(within(voiding).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(within(voiding).getByRole("button", { name: "Back" }));
     expect(await screen.findByRole("dialog", { name: "Order 42" })).toBeInTheDocument();
   });
 
@@ -660,7 +681,7 @@ describe("Orders", () => {
     });
     renderOrders();
     const sheet = await openDetail("order-1");
-    await userEvent.click(within(sheet).getByRole("button", { name: "Void order" }));
+    await userEvent.click(within(sheet).getByRole("button", { name: "Cancel order" }));
     const voiding = await screen.findByTestId("void-order-dialog");
     await giveReason("void-reason", "Wrong table", voiding);
     await userEvent.click(within(voiding).getByRole("radio", { name: /Grace Mushi/ }));
@@ -774,10 +795,12 @@ describe("Orders: a kitchen ticket printed again (S8a)", () => {
     const sheet = await openDetail("order-1");
     const again = await within(sheet).findByTestId("detail-kitchen-reprint");
     await userEvent.click(again);
+    await printInPreview();
     expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("Round 2's kitchen ticket went to the printer again, marked COPY.");
     expect(spies.reprintKitchenTickets).toHaveBeenCalledWith("order-1", expect.any(String), undefined);
     expect(spies.processPendingPrintJobs).toHaveBeenCalledWith("property-1", "order-1", undefined, expect.objectContaining({ settings: expect.objectContaining({ kitchenTickets: true }) }));
     await userEvent.click(again);
+    await printInPreview();
     await waitFor(() => expect(spies.reprintKitchenTickets).toHaveBeenCalledTimes(2));
     const keys = spies.reprintKitchenTickets.mock.calls.map((call) => call[1]);
     expect(keys[1]).not.toBe(keys[0]);
@@ -788,6 +811,7 @@ describe("Orders: a kitchen ticket printed again (S8a)", () => {
     renderOrders();
     const sheet = await openDetail("order-1");
     await userEvent.click(await within(sheet).findByTestId("detail-kitchen-reprint"));
+    await printInPreview();
     expect(await within(sheet).findByRole("alert")).toHaveTextContent(
       "Round 2's kitchen ticket was made again, but the printer didn't print it: No printer is configured",
     );
@@ -799,6 +823,7 @@ describe("Orders: a kitchen ticket printed again (S8a)", () => {
     renderOrders();
     const sheet = await openDetail("order-1");
     await userEvent.click(await within(sheet).findByTestId("detail-kitchen-reprint"));
+    await printInPreview();
     expect(await within(sheet).findByRole("alert")).toHaveTextContent("Nothing of this order has gone to the kitchen yet: send it first.");
     expect(spies.processPendingPrintJobs).not.toHaveBeenCalled();
   });
@@ -819,6 +844,7 @@ describe("Orders: a kitchen ticket printed again (S8a)", () => {
       renderOrders();
       const sheet = await openDetail("order-1");
       await userEvent.click(await within(sheet).findByTestId("detail-kitchen-reprint"));
+      await printInPreview();
       expect(await within(sheet).findByRole("alert")).toHaveTextContent(
         "This till doesn't print kitchen tickets. A manager can turn them on in Status (F12), under Printers.",
       );
@@ -912,6 +938,7 @@ describe("Orders: Pay sends what isn't sent first (Toast, Square)", () => {
     const pay = within(sheet).getByTestId("detail-pay");
     expect(pay).toHaveTextContent("Send and pay TSh");
     await userEvent.click(pay);
+    await printInPreview();
     await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledWith("order-1", ROUND2.version, expect.any(String)));
     expect(await screen.findByTestId("settle-dialog")).toBeInTheDocument();
   });
@@ -922,6 +949,7 @@ describe("Orders: Pay sends what isn't sent first (Toast, Square)", () => {
     renderOrders();
     const sheet = await openDetail("order-1");
     await userEvent.click(within(sheet).getByTestId("detail-pay"));
+    await printInPreview();
     expect(await within(sheet).findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByTestId("settle-dialog")).toBeNull();
   });
@@ -967,7 +995,7 @@ describe("Orders: carrying on with an open order (F-236)", () => {
   it("a void says the kitchen was told only of an order it had (F-243)", async () => {
     async function voidIt() {
       const sheet = await openDetail("order-1");
-      await userEvent.click(within(sheet).getByRole("button", { name: "Void order" }));
+      await userEvent.click(within(sheet).getByRole("button", { name: "Cancel order" }));
       const voiding = await screen.findByTestId("void-order-dialog");
       await giveReason("void-reason", "Wrong table", voiding);
       await userEvent.click(within(voiding).getByRole("radio", { name: /Grace Mushi/ }));
@@ -982,7 +1010,7 @@ describe("Orders: carrying on with an open order (F-236)", () => {
     ordersStore.set("order-1", OPEN_ORDER);
     renderOrders();
     await voidIt();
-    expect(await screen.findByText("Order 42 was voided.")).toBeInTheDocument();
+    expect(await screen.findByText("Order 42 was cancelled.")).toBeInTheDocument();
 
     cleanup();
     // Sent: the kitchen is told. Here no printer is set up, so the slip's problem follows
@@ -990,7 +1018,7 @@ describe("Orders: carrying on with an open order (F-236)", () => {
     ordersStore.set("order-1", TABLE_4);
     renderOrders();
     await voidIt();
-    expect(await screen.findByText(/^Order 42 was voided\. The kitchen has been told\. The void slip didn't print/)).toBeInTheDocument();
+    expect(await screen.findByText(/^Order 42 was cancelled\. The kitchen has been told\. The cancel slip didn't print/)).toBeInTheDocument();
   });
 });
 

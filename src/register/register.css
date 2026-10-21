@@ -648,3 +648,94 @@
   background: var(--action);
   color: var(--on-action);
 }
+
+/* ---------------------------------------------------------------- Open orders (owner, 2026-10-21) */
+.y-open-orders {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-2) var(--space-3);
+}
+
+.y-open-orders__list {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.y-open-orders__chip {
+  display: grid;
+  min-width: 9rem;
+  max-width: 14rem;
+  min-height: 56px;
+  align-content: center;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  padding: var(--space-1) var(--space-3);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.y-open-orders__chip:hover:not(:disabled) { background: var(--surface-hover); }
+.y-open-orders__chip:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: 2px; }
+.y-open-orders__chip[aria-pressed="true"] {
+  border: 2px solid var(--action);
+  background: var(--surface-selected);
+  cursor: default;
+}
+.y-open-orders__chip:disabled { color: var(--text-muted); cursor: not-allowed; }
+
+.y-open-orders__name {
+  overflow: hidden;
+  font-size: var(--type-body);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.y-open-orders__meta {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- Paper preview (owner, 2026-10-21) */
+.y-paper {
+  box-sizing: content-box;
+  width: calc(var(--paper-chars, 48) * 1ch);
+  max-width: 100%;
+  max-height: 60vh;
+  margin: var(--space-3) auto 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  padding: var(--space-4);
+  color: var(--text);
+  font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace;
+  font-size: var(--type-small);
+  line-height: 1.35;
+  white-space: pre;
+}
+
+.y-paper-preview__status { margin: var(--space-4) 0 0; color: var(--text-muted); }
+
+.y-paper-preview__footer {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+  gap: var(--target-gap);
+}

@@ -328,6 +328,12 @@ export interface POSBusinessDayCloseResult {
   closedAt: string;
 }
 
+/** One paper as it would print (previewPOSPapers): its kind and document, as a print job's. */
+export interface POSPaper {
+  jobType: "KITCHEN_TICKET" | "BILL";
+  document: Record<string, unknown>;
+}
+
 export interface POSPrintJob {
   id: string;
   sourceType: string;

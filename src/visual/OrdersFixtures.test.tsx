@@ -40,7 +40,7 @@ describe("OrdersFixtures", () => {
     expect(screen.getByTestId("order-detail-timeline")).toHaveTextContent("Grill: preparing");
     kitchen.unmount();
     const part = render(<OrderPartPaidFixture />);
-    expect(screen.getByRole("button", { name: "Void order" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel order" })).toBeDisabled();
     part.unmount();
     const paid = render(<OrderPaidFixture />);
     expect(within(screen.getByTestId("order-detail-payments")).getByText(/^Cash · TSh/)).toBeInTheDocument();

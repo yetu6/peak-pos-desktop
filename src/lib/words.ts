@@ -27,7 +27,7 @@ const ORDER_STATUS: Record<OrderStatus, { words: string; tone: Tone }> = {
   READY: { words: "Ready", tone: "success" },
   SERVED: { words: "Served", tone: "neutral" },
   CLOSED: { words: "Paid", tone: "success" },
-  VOIDED: { words: "Voided", tone: "danger" },
+  VOIDED: { words: "Cancelled", tone: "danger" },
 };
 
 const TICKET_STEP: Record<TicketStep, { words: string; next: string | null }> = {
@@ -97,11 +97,24 @@ export function serviceTypeWords(type: ServiceType): string {
   return lookup(SERVICE_TYPE, type) ?? "Other service";
 }
 
-/** Where the order goes, from the free-text label: Table 12, Room 204; nothing for takeaway. */
+/**
+ * Where an order goes, as staff and the kitchen read it. A table is a short
+ * code with a number in it and no spaces ("9", "T4", "12A", "B-3") and reads
+ * "Table T4"; anything else is the name the waiter typed ("Window", "Mama
+ * Neema", "Bar stool 3") and reads as typed -- many places name no tables
+ * and the waiter keeps track (owner, 2026-10-21).
+ */
 export function orderPlaceWords(type: ServiceType, label: string | null | undefined): string {
   const place = label?.trim();
   if (!place || type === "TAKEAWAY") return "";
-  return type === "ROOM_SERVICE" ? `Room ${place}` : `Table ${place}`;
+  if (type === "ROOM_SERVICE") return `Room ${place}`;
+  return /^(?=.*\d)[A-Za-z0-9-]{1,5}$/.test(place) ? `Table ${place}` : place;
+}
+
+/** Where an order goes, on a paper that may not say the order's type: a dine-in order's, unless it says otherwise. */
+export function placeWords(serviceType: string | null | undefined, label: string | null | undefined): string {
+  const type = serviceType && Object.prototype.hasOwnProperty.call(SERVICE_TYPE, serviceType) ? (serviceType as ServiceType) : "DINE_IN";
+  return orderPlaceWords(type, label);
 }
 
 export function shiftStatusWords(status: ShiftStatus): string {

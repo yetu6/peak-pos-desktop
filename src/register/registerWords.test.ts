@@ -10,7 +10,7 @@ describe("discount and void refusals in words", () => {
     );
     // Yetu's refusal of a supervisor's PIN or role since fbc-peak #252: 403 FORBIDDEN, its own sentence.
     expect(voidProblem(problem("FORBIDDEN", "That approval was not accepted. A different person who may approve this, and is active at this property, must enter their own PIN. Several wrong PINs lock it for a while."))?.words).toBe(
-      "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
+      "A different supervisor must approve this. Their PIN wasn't accepted, or they can't approve cancellations.",
     );
   });
 
@@ -30,7 +30,7 @@ describe("discount and void refusals in words", () => {
       "A discount can't be added once part of the bill is paid.",
     );
     expect(voidProblem(problem("INVALID_STATE", "This order has already taken payment, so it can no longer be voided or have items removed."))?.words).toBe(
-      "This order has already taken payment, so it can't be voided.",
+      "This order has already taken payment, so it can't be cancelled.",
     );
   });
 
@@ -41,7 +41,7 @@ describe("discount and void refusals in words", () => {
 
   it("never shows the backend's own sentence", () => {
     expect(discountProblem(problem("CONFLICT", "pq: something new"))?.words).toBe("The discount wasn't applied. Try again.");
-    expect(voidProblem(problem("CONFLICT", "pq: something new"))?.words).toBe("The order wasn't voided. Try again.");
+    expect(voidProblem(problem("CONFLICT", "pq: something new"))?.words).toBe("The order wasn't cancelled. Try again.");
   });
 });
 
@@ -132,12 +132,12 @@ describe("voiding one item (fbc-peak 00125)", () => {
   const refusal = (code: string) => new Error(JSON.stringify({ code, detail: "Yetu's own sentence, never shown" }));
 
   it("says each refusal in the till's words", () => {
-    expect(voidItemProblem(refusal("FORBIDDEN"))).toEqual({ kind: "supervisor", words: "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids." });
+    expect(voidItemProblem(refusal("FORBIDDEN"))).toEqual({ kind: "supervisor", words: "A different supervisor must approve this. Their PIN wasn't accepted, or they can't approve cancellations." });
     expect(voidItemProblem(refusal("NO_APPROVER_SET"))?.kind).toBe("no-approver");
     expect(voidItemProblem(refusal("STALE_VERSION"))?.kind).toBe("stale");
     expect(voidItemProblem(problem("INVALID_STATE", "This order has already taken payment, so it can no longer be voided or have items removed.")))
-      .toEqual({ kind: "paid", words: "Part of this bill is paid, so items can't be voided. Refund it after it's paid." });
-    expect(voidItemProblem(refusal("TAB_WAITING_FOR_SHIFT"))?.words).toBe("Take this tab over first, then void the item.");
+      .toEqual({ kind: "paid", words: "Part of this bill is paid, so items can't be cancelled. Refund it after it's paid." });
+    expect(voidItemProblem(refusal("TAB_WAITING_FOR_SHIFT"))?.words).toBe("Take this tab over first, then cancel the item.");
     expect(voidItemProblem(null)).toBeNull();
   });
 
@@ -150,7 +150,7 @@ describe("voiding one item (fbc-peak 00125)", () => {
   });
 
   it("names the person's own role, not the supervisor, when their role can't void", () => {
-    expect(voidItemProblem(problem("FORBIDDEN", "POS permission denied"))).toEqual({ kind: "permission", words: "Your role can't void items. Ask a manager to do it." });
+    expect(voidItemProblem(problem("FORBIDDEN", "POS permission denied"))).toEqual({ kind: "permission", words: "Your role can't cancel items. Ask a manager to do it." });
   });
 
   it("never says the bill is part-paid when the day isn't ready", () => {
@@ -158,10 +158,10 @@ describe("voiding one item (fbc-peak 00125)", () => {
   });
 
   it("says who is told, by the station making it", () => {
-    expect(itemVoidedWords(1, "Soda", "BAR")).toBe("1 × Soda voided. The bar has been told.");
-    expect(itemVoidedWords(2, "Chips", "HOT")).toBe("2 × Chips voided. The hot kitchen has been told.");
-    expect(itemVoidedWords(1, "Cake", "PASTRY")).toBe("1 × Cake voided. The pastry station has been told.");
-    expect(itemVoidedWords(1, "Rice", undefined)).toBe("1 × Rice voided. The kitchen has been told.");
+    expect(itemVoidedWords(1, "Soda", "BAR")).toBe("1 × Soda cancelled. The bar has been told.");
+    expect(itemVoidedWords(2, "Chips", "HOT")).toBe("2 × Chips cancelled. The hot kitchen has been told.");
+    expect(itemVoidedWords(1, "Cake", "PASTRY")).toBe("1 × Cake cancelled. The pastry station has been told.");
+    expect(itemVoidedWords(1, "Rice", undefined)).toBe("1 × Rice cancelled. The kitchen has been told.");
     expect(voidItemSheetWords("GENERAL")).toBe("Takes it off the order and tells the kitchen. This is not a refund: no money moves.");
   });
 });

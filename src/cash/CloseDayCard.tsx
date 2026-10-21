@@ -82,7 +82,7 @@ export function CloseDayCardView({
         <li>
           <CircleDot aria-hidden="true" />
           <span>
-            Today's tabs are paid, charged to a room or voided
+            Today's tabs are paid, charged to a room or cancelled
             <span className="y-checklist__why">Tabs move between shifts during the day; the day closes once they are settled.</span>
           </span>
         </li>

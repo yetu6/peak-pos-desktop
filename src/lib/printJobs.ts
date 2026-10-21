@@ -13,7 +13,7 @@ import type { POSPrintJob, PrintJobStatus } from "./posContracts";
 import { kitchenTicketBytes } from "../print/kitchenTicket";
 import { formatVoidSlip, voidSlipBytes, voidSlipFromPrintDocument } from "../print/voidTicket";
 import { paperFromPrintDocument, type KitchenPrintRoutes } from "../print/kitchenRouting";
-import { printerFor, stationPrintsNoPaper } from "../print/printerSettings";
+import { printerFor, stationPrintsNoPaper, type PrinterChoice, type PrinterTarget } from "../print/printerSettings";
 import { hotelHere, receiptPaperFor } from "../print/receiptRouting";
 import { yetuFetch } from "./yetuFetch";
 
@@ -198,18 +198,67 @@ export async function ackFailed(jobId: string, error: string): Promise<POSPrintJ
   });
 }
 
+/** One paper as this till makes it: bytes for a thermal printer, text for the system's own, or none here. */
+export type TillPaper =
+  | { kind: "none"; why: "kitchen-off" | "station-off" }
+  | { kind: "thermal"; target: PrinterTarget; width: number; bytes: Uint8Array }
+  | { kind: "system"; title: string; text: string };
+
+/** Where this till sends a job, decided from its settings alone: no paper is built. */
+type PaperRoute =
+  | { kind: "none"; why: "kitchen-off" | "station-off" }
+  | { kind: "kitchen"; printer: PrinterChoice }
+  | { kind: "receipt"; printer: PrinterChoice }
+  | { kind: "system" };
+
+function paperRoute(job: POSPrintJob, routes?: KitchenPrintRoutes): PaperRoute {
+  // A void slip goes where the station's kitchen tickets go, by the same settings.
+  const kitchen = (job.jobType === KITCHEN_TICKET || job.jobType === KITCHEN_VOID) && routes !== undefined;
+  // Paper kitchen tickets off on this till (its kitchen has a screen): the job
+  // is left for a till that prints them, never claimed and dropped.
+  if (kitchen && !routes.settings.kitchenTickets) return { kind: "none", why: "kitchen-off" };
+  // No paper for this station on this till (a bar whose bartender pours what they ring up): left, like the above.
+  if (kitchen && stationPrintsNoPaper(routes.settings, job.document.station)) return { kind: "none", why: "station-off" };
+  const station = typeof job.document.station === "string" ? job.document.station : undefined;
+  const printer = kitchen ? printerFor(routes.settings, station) : null;
+  if (kitchen && printer) return { kind: "kitchen", printer };
+  const receiptPrinter = (job.jobType === RECEIPT || job.jobType === REFUND_RECEIPT || job.jobType === BILL) ? routes?.settings.receipt : null;
+  if (routes && receiptPrinter) return { kind: "receipt", printer: receiptPrinter };
+  return { kind: "system" };
+}
+
+/**
+ * The paper this till makes of a job, and where it goes: the one place that
+ * decides, for printing and for the preview of it (owner, 2026-10-21), so
+ * the preview is the paper. Building it may throw on a document it can't
+ * read; callers catch that.
+ */
+export function paperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): TillPaper {
+  const route = paperRoute(job, routes);
+  if (route.kind === "none") return route;
+  if (route.kind === "kitchen") {
+    // A thermal printer of the kitchen's: the ticket in large type, with a cut (S8a).
+    const { target, width } = route.printer;
+    const bytes = job.jobType === KITCHEN_VOID
+      ? voidSlipBytes(voidSlipFromPrintDocument(job.document), width)
+      : kitchenTicketBytes(paperFromPrintDocument(job.document, routes?.tagsOf), width);
+    return { kind: "thermal", target, width, bytes };
+  }
+  const formatted = formatPrintDocument(job);
+  if (route.kind === "receipt") {
+    // The thermal receipt printer: columns, a cut, and the cash drawer for cash on an original (S8b).
+    const { target, width } = route.printer;
+    return { kind: "thermal", target, width, bytes: receiptPaperFor(job, width, routes?.settings.cashDrawer ?? false, formatted.text) };
+  }
+  return { kind: "system", title: formatted.title, text: formatted.text };
+}
+
 export async function processPrintJob(
   job: POSPrintJob,
   printFn: (title: string, text: string) => Promise<void> = defaultPrint,
   routes?: KitchenPrintRoutes,
 ): Promise<PrintResult> {
-  // A void slip goes where the station's kitchen tickets go, by the same settings.
-  const kitchen = (job.jobType === KITCHEN_TICKET || job.jobType === KITCHEN_VOID) && routes !== undefined;
-  // Paper kitchen tickets off on this till (its kitchen has a screen): the job
-  // is left for a till that prints them, never claimed and dropped.
-  if (kitchen && !routes.settings.kitchenTickets) return { ok: true };
-  // No paper for this station on this till (a bar whose bartender pours what they ring up): left, like the above.
-  if (kitchen && stationPrintsNoPaper(routes.settings, job.document.station)) return { ok: true };
+  if (paperRoute(job, routes).kind === "none") return { ok: true };
   let claimed: POSPrintJob;
   try {
     claimed = job.status === "PENDING" ? await claimPrintJob(job.id) : job;
@@ -220,25 +269,10 @@ export async function processPrintJob(
     }
     return printFailure(error);
   }
-  const formatted = formatPrintDocument(claimed);
   try {
-    const station = typeof claimed.document.station === "string" ? claimed.document.station : undefined;
-    const printer = kitchen ? printerFor(routes.settings, station) : null;
-    const receiptPrinter = (claimed.jobType === RECEIPT || claimed.jobType === REFUND_RECEIPT || claimed.jobType === BILL) ? routes?.settings.receipt : null;
-    if (kitchen && printer) {
-      // A thermal printer of the kitchen's: the ticket in large type, with a cut (S8a).
-      await routes.printRaw(
-        printer.target,
-        claimed.jobType === KITCHEN_VOID
-          ? voidSlipBytes(voidSlipFromPrintDocument(claimed.document), printer.width)
-          : kitchenTicketBytes(paperFromPrintDocument(claimed.document, routes.tagsOf), printer.width),
-      );
-    } else if (routes && receiptPrinter) {
-      // The thermal receipt printer: columns, a cut, and the cash drawer for cash on an original (S8b).
-      await routes.printRaw(receiptPrinter.target, receiptPaperFor(claimed, receiptPrinter.width, routes.settings.cashDrawer, formatted.text));
-    } else {
-      await printFn(formatted.title, formatted.text);
-    }
+    const paper = paperFor(claimed, routes);
+    if (paper.kind === "thermal" && routes) await routes.printRaw(paper.target, paper.bytes);
+    else if (paper.kind === "system") await printFn(paper.title, paper.text);
     await ackPrinted(claimed.id);
     return { ok: true };
   } catch (error) {

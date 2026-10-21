@@ -72,7 +72,7 @@ describe("closing the day: what blocks it, in words", () => {
       dayCloseProblem(problem("INVALID_STATE", "a shift for this business date is still open: 2 open tab(s) for 2026-10-19")),
     ).toEqual({
       kind: "tabs-open",
-      words: "2 tabs are still open today. Take payment for them, charge them to a room or void them, then close the day.",
+      words: "2 tabs are still open today. Take payment for them, charge them to a room or cancel them, then close the day.",
     });
   });
 

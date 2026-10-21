@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { moneyFieldText } from "../cash/NoteCounterSheet";
+import { EXACT_WORDS, ignoreHeldEnter, startAmount, useFilledAmount } from "./moneyEntry";
 import { Banner, Button, Field, Keypad, Money, MoneyField, QuickCash, RefusalNotice, SearchField, Sheet, type KeypadKey, type Refusal } from "../components/system";
 import {
   useChargeToRoom,
@@ -361,8 +362,14 @@ export function PaySheetView({
   const [method, setMethod] = useState<Method>(initialMethod);
   // While what Yetu recorded is unknown, nothing new is taken and the sheet stays.
   const pending = requestPending || unsure !== null;
-  const [received, setReceived] = useState(initialReceived);
-  const [amountText, setAmountText] = useState("");
+  // Where the amount is known it is filled in (owner, 2026-10-21;
+  // register.fillAmountDue): the cash received and a card or mobile amount
+  // start at what is owed, so exact money is one tap, and the first key the
+  // cashier types replaces it.
+  const cash = useFilledAmount(startAmount(order.remainingMinor, initialReceived));
+  const other = useFilledAmount(startAmount(order.remainingMinor));
+  const received = cash.text;
+  const amountText = other.text;
   const [reference, setReference] = useState("");
   const [stayId, setStayId] = useState<string | null>(initialStayId ?? null);
   const methodRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -371,15 +378,25 @@ export function PaySheetView({
   // is pressed (click or Enter), never when the arrow keys move between methods.
   const focusPane = useRef(true);
 
-  // Each payment Yetu records gives the order a new version: what was typed
-  // for it is cleared, so a second tap can't record the same money again.
+  // Each payment Yetu records gives the order a new version and more paid:
+  // what was typed for it is cleared, and the cash stays empty, so a second
+  // tap can't record the rest unasked. Any other change (the kitchen, another
+  // till) keeps what the cashier typed; an amount still filled in follows
+  // what is owed.
   const [seenVersion, setSeenVersion] = useState(order.version);
+  const [seenPaid, setSeenPaid] = useState(order.paidMinor);
   if (order.version !== seenVersion) {
     setSeenVersion(order.version);
-    setReceived("");
-    setAmountText("");
-    setReference("");
-    setStayId(null);
+    if (order.paidMinor !== seenPaid) {
+      setSeenPaid(order.paidMinor);
+      cash.clear();
+      other.fill(order.remainingMinor);
+      setReference("");
+      setStayId(null);
+    } else {
+      if (cash.filled) cash.fill(order.remainingMinor);
+      if (other.filled) other.fill(order.remainingMinor);
+    }
   }
 
   const due = order.remainingMinor;
@@ -395,14 +412,15 @@ export function PaySheetView({
   // remainder are worked out from the cash the person types, in whole minor units.
   const receivedMinor = toMinor(received);
   const cashTaken = !nothingDue && receivedMinor != null && receivedMinor > 0 ? Math.min(receivedMinor, due) : null;
-  const amount = amountText.trim() ? toMinor(amountText) : due;
+  // An empty amount is no amount: nothing is confirmed from an empty field.
+  const amount = amountText.trim() ? toMinor(amountText) : null;
   const over = amount != null && amount > due;
   const chosenStay = candidates.find((candidate) => candidate.stayId === stayId) ?? null;
 
   function chooseMethod(next: Method, pressed: boolean) {
     focusPane.current = pressed;
     setMethod(next);
-    setAmountText("");
+    other.fill(due);
     setReference("");
     // Room service already says which room: the search starts there (F-239).
     if (next === "ROOM_CHARGE" && !roomQuery.trim() && order.serviceType === "ROOM_SERVICE" && order.tableLabel?.trim()) {
@@ -429,10 +447,7 @@ export function PaySheetView({
   }
 
   function onCashKey(key: KeypadKey) {
-    if (key === "delete") setReceived((text) => text.slice(0, -1));
-    else if (key === "clear") setReceived("");
-    // No leading zeros: "0" or "00" on an empty amount adds nothing.
-    else setReceived((text) => (text === "" && /^0+$/.test(key) ? text : text + key));
+    cash.keyed(key);
   }
 
   function takeCash() {
@@ -501,7 +516,7 @@ export function PaySheetView({
               data-testid="confirm-settle"
               disabled={nothingDue || amount == null || amount <= 0 || over || pending}
             >
-              {pending ? "Recording…" : `Confirm ${formatMoney(amount, currency)} received`}
+              {pending ? "Recording…" : amount != null ? `Confirm ${formatMoney(amount, currency)} received` : "Type the amount"}
             </Button>
           )}
         </div>
@@ -557,7 +572,9 @@ export function PaySheetView({
                   ? "Nothing left to pay."
                   : receivedMinor == null || receivedMinor <= 0
                   ? "Type or pick the cash the guest gives you."
-                  : receivedMinor >= due
+                  : receivedMinor === due
+                  ? EXACT_WORDS
+                  : receivedMinor > due
                     ? (
                         <span className="y-pay__change-due">
                           <span>Change to give</span>{" "}
@@ -575,19 +592,21 @@ export function PaySheetView({
             <form
               id={CASH_FORM}
               className="y-pay__pane"
+              onKeyDown={ignoreHeldEnter}
               onSubmit={(event) => {
                 event.preventDefault();
                 takeCash();
               }}
             >
               {nothingDue ? null : (
-                <QuickCash dueMinor={due} currency={currency} onPick={(minor) => setReceived(moneyFieldText(minor))} />
+                <QuickCash dueMinor={due} currency={currency} onPick={(minor) => cash.picked(moneyFieldText(minor))} />
               )}
               <MoneyField
                 label="Cash received"
                 currency={currency}
                 value={received}
-                onValueChange={(text) => setReceived(text)}
+                selectOnFocus
+                onValueChange={(text, _minor, edit) => cash.typed(text, edit)}
                 inputTestId="amount-received"
               />
               <Keypad label="Cash received" variant="money" onKey={onCashKey} testIdPrefix="cash-key" />
@@ -641,6 +660,7 @@ export function PaySheetView({
             <form
               id={RECORDED_FORM}
               className="y-pay__pane"
+              onKeyDown={ignoreHeldEnter}
               onSubmit={(event) => {
                 event.preventDefault();
                 confirmRecorded();
@@ -649,10 +669,11 @@ export function PaySheetView({
               <p className="y-pay__step">{RECORDED_STEP[method]}</p>
               <MoneyField
                 label="Amount"
-                hint={`Leave it empty to take the full ${formatMoney(due, currency)}. Type less to split the payment.`}
+                hint="Type less to split the payment."
                 currency={currency}
                 value={amountText}
-                onValueChange={(text) => setAmountText(text)}
+                selectOnFocus
+                onValueChange={(text, _minor, edit) => other.typed(text, edit)}
                 inputTestId="tender-amount"
                 error={over ? `That's more than the ${formatMoney(due, currency)} still to pay.` : undefined}
               />

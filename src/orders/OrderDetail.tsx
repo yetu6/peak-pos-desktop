@@ -4,6 +4,7 @@ import { linesByRound, sendWords, takesMore } from "../register/rounds";
 import { orderStatusIcon } from "./orderStatusIcon";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, PermissionNotice, RefusalNotice, Sheet, StatusChip, Stepper, TicketLine, type Refusal } from "../components/system";
+import { PaperPreviewSheet } from "../register/PaperPreviewSheet";
 import {
   useOrderRefunds,
   usePosShift,
@@ -236,7 +237,7 @@ export function OrderDetailView({
                   aria-describedby={partPaid ? voidReasonId : undefined}
                   onClick={onVoid}
                 >
-                  Void order
+                  Cancel order
                 </Button>
                 {takesLines ? (
                   canSend ? (
@@ -292,8 +293,8 @@ export function OrderDetailView({
               {partPaid ? (
                 <p className="y-detail__why" id={voidReasonId}>
                   {onDiscount
-                    ? "An order can't be voided or discounted once part of it is paid."
-                    : "An order can't be voided once part of it is paid."}
+                    ? "An order can't be cancelled or discounted once part of it is paid."
+                    : "An order can't be cancelled once part of it is paid."}
                 </p>
               ) : null}
               {onPrintBill ? (
@@ -608,6 +609,7 @@ export function OrderDetail({
   const reprint = useReprintReceipt();
   const printBill = usePrintBill();
   const kitchenReprint = useReprintKitchenTickets();
+  const [preview, setPreview] = useState<{ kind: "ROUND" | "AGAIN" | "BILL"; print: () => void } | null>(null);
   const takeOver = useTakeOverTab();
   const takeOverKey = useRequestKey();
   const sendKey = useRequestKey();
@@ -846,38 +848,66 @@ export function OrderDetail({
     );
   }
 
+  // Every paper is shown before it prints (owner, 2026-10-21): which, and what Print then does.
+  const unsent = order.items.some((line) => line.status === "ADDED");
+  function previewFirst(kind: "ROUND" | "AGAIN" | "BILL", print: () => void) {
+    return () => {
+      if (pending === null) setPreview({ kind, print });
+    };
+  }
+
   return (
-    <OrderDetailView
-      order={order}
-      currency={currency}
-      timeline={orderTimeline({
-        order,
-        tickets: (tickets.data ?? []).filter((ticket) => ticket.orderId === order.id && ticket.status !== "SERVED"),
-        currency,
-      })}
-      receipt={receipt.data}
-      canSend={canSend}
-      canPay={canPay}
-      pending={pending}
-      problem={problem}
-      result={result}
-      selectedLineId={selectedLineId}
-      onSelectLine={setSelectedLineId}
-      onSend={send}
-      onPay={payAfterSending}
-      onVoid={onVoid}
-      onRemoveLine={remove}
-      onQuantity={changeQuantity}
-      onReprint={printCopy}
-      onPrintBill={canSend ? printTheBill : undefined}
-      onKitchenReprint={canSend && sentToKitchen(order) ? printKitchenAgain : undefined}
-      onTakeOver={canSend ? takeTabOver : undefined}
-      onAddItems={onAddItems}
-      onDiscount={onDiscount}
-      onClose={onClose}
-      refunds={refunds.data}
-      refundOffer={refundOffer}
-      onRefund={onRefund}
-    />
+    <>
+      <OrderDetailView
+        order={order}
+        currency={currency}
+        timeline={orderTimeline({
+          order,
+          tickets: (tickets.data ?? []).filter((ticket) => ticket.orderId === order.id && ticket.status !== "SERVED"),
+          currency,
+        })}
+        receipt={receipt.data}
+        canSend={canSend}
+        canPay={canPay}
+        pending={pending}
+        problem={problem}
+        result={result}
+        selectedLineId={selectedLineId}
+        onSelectLine={setSelectedLineId}
+        onSend={previewFirst("ROUND", send)}
+        onPay={canSend && takesMore(order) && unsent ? previewFirst("ROUND", payAfterSending) : payAfterSending}
+        onVoid={onVoid}
+        onRemoveLine={remove}
+        onQuantity={changeQuantity}
+        onReprint={printCopy}
+        onPrintBill={canSend ? previewFirst("BILL", printTheBill) : undefined}
+        onKitchenReprint={canSend && sentToKitchen(order) ? previewFirst("AGAIN", printKitchenAgain) : undefined}
+        onTakeOver={canSend ? takeTabOver : undefined}
+        onAddItems={onAddItems}
+        onDiscount={onDiscount}
+        onClose={onClose}
+        refunds={refunds.data}
+        refundOffer={refundOffer}
+        onRefund={onRefund}
+      />
+      {preview ? (
+        <PaperPreviewSheet
+          orderId={order.id}
+          kind={preview.kind}
+          busy={pending !== null}
+          nothingNew={!unsent}
+          refusalOf={(error) => {
+            const refusal = preview.kind === "BILL" ? billProblem(error) : preview.kind === "AGAIN" ? kitchenReprintProblem(error) : sendProblem(error);
+            return refusal && refusal.kind !== "network" ? refusal.words : null;
+          }}
+          onBack={() => setPreview(null)}
+          onPrint={() => {
+            const print = preview.print;
+            setPreview(null);
+            print();
+          }}
+        />
+      ) : null}
+    </>
   );
 }

@@ -51,17 +51,17 @@ describe("refusals worded by their code (S5b)", () => {
     });
     expect(wordedByCode(discountProblem, REFUSED.discountOrderClosed)).toEqual({
       kind: "paid",
-      words: "This order is paid or voided, so it can't take a discount.",
+      words: "This order is paid or cancelled, so it can't take a discount.",
     });
     expect(wordedByCode(discountProblem, { ...REFUSED.noApproverVoids, detail: "No one is set to approve discounts here yet." })).toEqual(
       noApprover("discounts"),
     );
   });
 
-  it("voids", () => {
-    expect(wordedByCode(voidProblem, REFUSED.voidPartPaid)).toEqual({ kind: "paid", words: "This order has already taken payment, so it can't be voided." });
-    expect(wordedByCode(voidProblem, REFUSED.voidOrderClosed)).toEqual({ kind: "paid", words: "This order is already paid or voided, so it can't be voided." });
-    expect(wordedByCode(voidProblem, REFUSED.noApproverVoids)).toEqual(noApprover("voids"));
+  it("cancellations", () => {
+    expect(wordedByCode(voidProblem, REFUSED.voidPartPaid)).toEqual({ kind: "paid", words: "This order has already taken payment, so it can't be cancelled." });
+    expect(wordedByCode(voidProblem, REFUSED.voidOrderClosed)).toEqual({ kind: "paid", words: "This order is already paid or cancelled." });
+    expect(wordedByCode(voidProblem, REFUSED.noApproverVoids)).toEqual(noApprover("cancellations"));
   });
 
   it("selling", () => {
