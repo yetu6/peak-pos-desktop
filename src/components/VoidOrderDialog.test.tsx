@@ -24,8 +24,10 @@ function render(ui: ReactElement) {
   return renderInDom(ui, { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
 }
 
-const { voidOrderMutate, sessionRef, voidState, voidReset } = vi.hoisted(() => ({
+const { voidOrderMutate, sessionRef, voidState, voidReset, printAfter } = vi.hoisted(() => ({
   voidReset: vi.fn(),
+  // fbc-peak 00125: what Yetu made for the order prints after the void (the kitchen's slips).
+  printAfter: vi.fn(async (_orderId: string) => [{ ok: true }] as Array<{ ok: boolean; error?: string }>),
   voidOrderMutate: vi.fn(
     (_vars: unknown, opts?: { onSuccess?: () => void; onError?: (error: Error) => void }) => opts?.onSuccess?.(),
   ),
@@ -36,6 +38,8 @@ const { voidOrderMutate, sessionRef, voidState, voidReset } = vi.hoisted(() => (
 vi.mock("../hooks/usePosData", () => ({
   useVoidOrder: () => ({ mutate: voidOrderMutate, reset: voidReset, ...voidState }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
+  usePropertyId: () => "prop-1",
+  usePrintAfter: () => printAfter,
 }));
 
 vi.mock("../auth/DeviceSessionProvider", () => ({
@@ -197,6 +201,18 @@ describe("VoidOrderDialog", () => {
     await typePin("123456");
     await userEvent.click(screen.getByTestId("confirm-void-order"));
     expect(onStale).toHaveBeenCalledTimes(1);
+  });
+
+  it("prints the kitchen's void slips once Yetu has voided it, and says when they don't print", async () => {
+    const onPrintProblem = vi.fn();
+    printAfter.mockResolvedValueOnce([{ ok: false, error: "The bar printer didn't answer." }]);
+    render(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} onPrintProblem={onPrintProblem} />);
+    await giveReason("void-reason", "Wrong table");
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+    await typePin("123456");
+    await userEvent.click(screen.getByTestId("confirm-void-order"));
+    expect(printAfter).toHaveBeenCalledWith("order-1");
+    await waitFor(() => expect(onPrintProblem).toHaveBeenCalledWith(expect.stringContaining("The void slip didn't print: the bar printer didn't answer")));
   });
 
   it("with no staff list, the void can't be approved here and it says why", () => {

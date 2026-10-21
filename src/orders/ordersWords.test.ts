@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { POSOrder, POSOrderPayment, POSStationTicket } from "../lib/posContracts";
 import { clockTime } from "../lib/words";
-import { billProblem, orderMatches, orderStateWords, orderTimeline, quantityProblem, removeProblem, reprintProblem, sendProblem, voidedWords } from "./ordersWords";
+import { billProblem, itemVoidWords, orderMatches, orderStateWords, orderTimeline, quantityProblem, removeProblem, reprintProblem, sendProblem, voidedWords } from "./ordersWords";
 
 function order(extra: Partial<POSOrder> = {}): POSOrder {
   return {
@@ -260,6 +260,41 @@ describe("orderTimeline: lines taken off before they were sent (F-239)", () => {
     expect(timeline).toContainEqual({ time: clockTime(removedAt), words: "1 × Vegetable curry taken off before it was sent by Zawadi Said" });
     // A line voided without a removal (a Yetu before F-239) says nothing new.
     expect(timeline.map((entry) => entry.words).join(" ")).not.toContain("Soda");
+  });
+});
+
+describe("orderTimeline: items voided after they were sent (fbc-peak 00125)", () => {
+  const voidedAt = new Date(Date.now() - 4 * 60_000).toISOString();
+  const tusker = { id: "l1", productId: "p1", name: "Tusker", quantity: 2, unitPriceMinor: 500_000, taxMinor: 152_542, totalMinor: 1_000_000, status: "SENT" as const, roundNumber: 1 };
+  const spilled = { id: "v1", itemId: "l1", name: "Tusker", quantity: 1, taxMinor: 76_271, totalMinor: 500_000, reason: "Spilled", wholeOrder: false, askedByName: "Baraka Mushi", approvedByName: "Neema Kweka", createdAt: voidedAt };
+
+  it("says what was voided, why, who asked and who approved", () => {
+    const timeline = orderTimeline({ order: order({ status: "SENT", items: [tusker], voids: [spilled] }), tickets: [], currency: "TZS" });
+    expect(timeline).toContainEqual({ time: clockTime(voidedAt), words: "1 × Tusker voided: Spilled · asked by Baraka Mushi, approved by Neema Kweka" });
+  });
+
+  it("an order whose items were all voided says Yetu closed it", () => {
+    const timeline = orderTimeline({
+      order: order({ status: "VOIDED", closedAt: voidedAt, items: [{ ...tusker, status: "VOIDED" }], voids: [{ ...spilled, quantity: 2 }] }),
+      tickets: [],
+      currency: "TZS",
+    });
+    expect(timeline.map((entry) => entry.words)).toContain("Closed by Yetu: every item was voided");
+  });
+
+  it("a whole-order void says why and who asked, once, not line by line", () => {
+    const whole = { ...spilled, quantity: 2, reason: "Wrong table", wholeOrder: true };
+    const words = orderTimeline({
+      order: order({ status: "VOIDED", closedAt: voidedAt, voidApprovedByName: "Neema Kweka", items: [{ ...tusker, status: "VOIDED" }], voids: [whole] }),
+      tickets: [],
+      currency: "TZS",
+    }).map((entry) => entry.words);
+    expect(words).toContain("Voided: Wrong table · asked by Baraka Mushi, approved by Neema Kweka");
+    expect(words.join(" ")).not.toContain("2 × Tusker voided");
+  });
+
+  it("names nobody it wasn't told", () => {
+    expect(itemVoidWords({ quantity: 1, name: "Soda", reason: "Spilled", askedByName: "", approvedByName: "Neema Kweka" })).toBe("1 × Soda voided: Spilled · approved by Neema Kweka");
   });
 });
 

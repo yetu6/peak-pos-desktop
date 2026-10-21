@@ -345,6 +345,29 @@ function TicketCard({
           </li>
         ))}
       </ul>
+      {ticket.voided.length > 0 ? (
+        // Voided after it was sent (fbc-peak 00125): struck through, never dropped unseen.
+        <section className="y-kticket__voided" aria-labelledby={`${headingId}-voided`} data-testid={`kitchen-voided-${ticket.id}`}>
+          <p id={`${headingId}-voided`} className="y-kticket__voided-title">
+            {ticket.items.length === 0 ? "All voided: don't make" : "Voided: don't make"}
+          </p>
+          <ul className="y-kticket__voided-list">
+            {ticket.voided.map((item, index) => (
+              <li key={`${item.id}-${index}`} className="y-kticket__item y-kticket__item--voided">
+                <span className="y-kticket__qty">{item.quantity}</span>
+                <span className="y-kticket__what">
+                  <s className="y-kticket__name">{item.name}</s>
+                  {(item.modifiers ?? []).map((modifier) => (
+                    <s key={modifier.id} className="y-kticket__voided-option">
+                      {modifier.optionName}
+                    </s>
+                  ))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       {ticket.notes?.trim() ? (
         <p className="y-kticket__note" data-testid={`kitchen-note-${ticket.id}`}>
           <strong>Note:</strong> {ticket.notes.trim()}

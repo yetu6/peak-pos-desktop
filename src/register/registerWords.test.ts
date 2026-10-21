@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { discountProblem, voidProblem } from "./registerWords";
+import { discountProblem, itemVoidedWords, voidItemProblem, voidItemSheetWords, voidProblem } from "./registerWords";
 
 const problem = (code: string, detail: string) => new Error(JSON.stringify({ code, detail }));
 
@@ -125,5 +125,27 @@ describe("a lost payment answer, settled by Yetu's S5b refusals", () => {
     expect(afterLostAnswer(s5b(404, "NOT_FOUND", "Not found", "x"))).toBe("unsure");
     expect(afterLostAnswer(s5b(409, "IDEMPOTENT_REQUEST_IN_PROGRESS", "In progress", "x"))).toBe("unsure");
     expect(afterLostAnswer(s5b(409, "SOMETHING_NEW", "New", "x"))).toBe("unsure");
+  });
+});
+
+describe("voiding one item (fbc-peak 00125)", () => {
+  const refusal = (code: string) => new Error(JSON.stringify({ code, detail: "Yetu's own sentence, never shown" }));
+
+  it("says each refusal in the till's words", () => {
+    expect(voidItemProblem(refusal("FORBIDDEN"))).toEqual({ kind: "supervisor", words: "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids." });
+    expect(voidItemProblem(refusal("NO_APPROVER_SET"))?.kind).toBe("no-approver");
+    expect(voidItemProblem(refusal("ITEM_NOT_VOIDABLE"))?.kind).toBe("stale");
+    expect(voidItemProblem(refusal("STALE_VERSION"))?.kind).toBe("stale");
+    expect(voidItemProblem(refusal("INVALID_STATE"))).toEqual({ kind: "paid", words: "Part of this bill is paid, so items can't be voided. Refund it after it's paid." });
+    expect(voidItemProblem(refusal("TAB_WAITING_FOR_SHIFT"))?.words).toBe("Take this tab over first, then void the item.");
+    expect(voidItemProblem(null)).toBeNull();
+  });
+
+  it("says who is told, by the station making it", () => {
+    expect(itemVoidedWords(1, "Soda", "BAR")).toBe("1 × Soda voided. The bar has been told.");
+    expect(itemVoidedWords(2, "Chips", "HOT")).toBe("2 × Chips voided. The hot kitchen has been told.");
+    expect(itemVoidedWords(1, "Cake", "PASTRY")).toBe("1 × Cake voided. The pastry station has been told.");
+    expect(itemVoidedWords(1, "Rice", undefined)).toBe("1 × Rice voided. The kitchen has been told.");
+    expect(voidItemSheetWords("GENERAL")).toBe("Takes it off the order and tells the kitchen. This is not a refund: no money moves.");
   });
 });

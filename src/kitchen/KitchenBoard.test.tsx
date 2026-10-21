@@ -39,6 +39,7 @@ function ticket(id: string, status: BoardTicket["status"], sentAgoMs: number, ex
     staffName: "Amina Hassan",
     sentAt: ago(sentAgoMs),
     items: [line(`${id}-1`, "Cappuccino", 2)],
+    voided: [],
     ...extra,
   };
 }
@@ -114,6 +115,25 @@ describe("KitchenBoard", () => {
     expect(items[1]).toHaveTextContent("3Sparkling water");
     expect(within(items[0]).getAllByTestId("kitchen-option").map((option) => option.textContent)).toEqual(["Medium", "Cheese"]);
     expect(screen.getByTestId("kitchen-note-a1")).toHaveTextContent("Note: No onions, nut allergy");
+  });
+
+  // fbc-peak 00125: an item voided after it was sent is struck through, never dropped unseen.
+  it("strikes through what was voided, under what is still to make", () => {
+    renderBoard({
+      tickets: [
+        ticket("a1", "PREPARING", MINUTE, {
+          items: [line("l1", "Tusker", 2)],
+          voided: [{ ...line("l1", "Tusker", 1, ["Cold"]), status: "VOIDED" }],
+        }),
+        ticket("b1", "SENT", MINUTE, { items: [], voided: [{ ...line("l9", "Chips", 1), status: "VOIDED" }] }),
+      ],
+    });
+    const voided = screen.getByTestId("kitchen-voided-a1");
+    expect(voided).toHaveTextContent("Voided: don't make1TuskerCold");
+    expect(within(voided).getByText("Tusker").tagName).toBe("S");
+    expect(within(screen.getByTestId("kitchen-ticket-a1")).getAllByRole("listitem")[0]).toHaveTextContent("2Tusker");
+    // Nothing left to make on a ticket: it says so.
+    expect(screen.getByTestId("kitchen-voided-b1")).toHaveTextContent("All voided: don't make");
   });
 
   it("marks a ticket nobody has started as New for its first 30 seconds", () => {

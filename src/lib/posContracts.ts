@@ -65,6 +65,24 @@ export interface POSStationTicket {
   /** S5b: when the ticket last moved a step (when it was sent, until it moves). */
   lastStepAt: string;
   items: POSOrderItem[];
+  /** fbc-peak 00125: what this station was making and must not -- each void, as the line, of the quantity voided (status VOIDED). Absent from an older Yetu. */
+  voided?: POSOrderItem[];
+}
+
+/** One item voided on an order (fbc-peak 00125): what, how many, the money taken off, why, who asked and who approved. */
+export interface POSOrderVoid {
+  id: string;
+  itemId: string;
+  name: string;
+  quantity: number;
+  taxMinor: number;
+  totalMinor: number;
+  reason: string;
+  /** A line of a whole-order void, which the order's own status already tells. */
+  wholeOrder: boolean;
+  askedByName: string;
+  approvedByName: string;
+  createdAt: string;
 }
 
 /** S5b: one payment on an order, with what the till may see (never a reference, card or guest data). */
@@ -105,6 +123,8 @@ export interface POSOrder {
   voidApprovedByName?: string;
   /** fbc-peak #288: each bill printed before payment, oldest first, for the history. */
   billPrints?: { printedAt: string; printedByName?: string }[];
+  /** fbc-peak 00125: each item voided after it was sent, and each line of a whole-order void, oldest first. */
+  voids?: POSOrderVoid[];
   /** The percent discount is kept to the money off its supervisor approved; more lines would take more off (the owner, 2026-10-20). */
   discountCapped?: boolean;
   /** F-229: the order's prices hold their VAT (the property writes them so); absent from a Yetu before it: VAT on top. */

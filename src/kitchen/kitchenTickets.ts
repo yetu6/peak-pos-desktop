@@ -37,6 +37,8 @@ export interface BoardTicket {
   /** When it was sent, as Yetu wrote it; absent when Yetu gave no time. */
   sentAt?: string;
   items: POSOrderItem[];
+  /** What was voided after it was sent (fbc-peak 00125): shown struck through, never dropped unseen. */
+  voided: POSOrderItem[];
 }
 
 const ON_BOARD: readonly string[] = ["SENT", "PREPARING", "READY"];
@@ -47,6 +49,19 @@ function onBoard(status: OrderStatus | POSStationTicket["status"]): status is Bo
 
 function stillMade(items: readonly POSOrderItem[]): POSOrderItem[] {
   return items.filter((line) => line.status !== "VOIDED");
+}
+
+/**
+ * What a selling till's board strikes through on an order: each item voided on
+ * its own, as its line of the quantity voided. A whole-order void takes the
+ * order off the board, so its lines never show.
+ */
+export function voidedOnOrder(order: Pick<POSOrder, "items" | "voids">): POSOrderItem[] {
+  return (order.voids ?? []).flatMap((v) => {
+    if (v.wholeOrder) return [];
+    const line = order.items.find((item) => item.id === v.itemId);
+    return line ? [{ ...line, quantity: v.quantity, taxMinor: v.taxMinor, totalMinor: v.totalMinor, status: "VOIDED" as const }] : [];
+  });
 }
 
 /** Each order's sent time: its earliest station ticket's. */
@@ -81,6 +96,7 @@ export function ticketsFromOrders(orders: readonly POSOrder[], stationTickets: r
         notes: order.notes,
         sentAt: sent.get(order.id),
         items: stillMade(order.items),
+        voided: voidedOnOrder(order),
       },
     ];
   });
@@ -107,6 +123,7 @@ export function ticketsFromStations(tickets: readonly POSStationTicket[]): Board
         roundNumber: ticket.roundNumber,
         sentAt: ticket.createdAt,
         items: stillMade(ticket.items),
+        voided: ticket.voided ?? [],
       },
     ];
   });

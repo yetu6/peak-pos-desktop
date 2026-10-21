@@ -143,7 +143,7 @@ export function createPosApi() {
         body,
       });
     },
-    /** Removes an UNSENT item only. A sent item can only be corrected via voidOrder (supervisor). */
+    /** Removes an UNSENT item only. A sent one is voided with a supervisor (voidItem). */
     removeItem(
       orderId: string,
       itemId: string,
@@ -236,6 +236,21 @@ export function createPosApi() {
       return client.POST<{ folioItemId: string }>(
         `/api/v1/pos/orders/${encodeURIComponent(orderId)}/room-charge`,
         { headers: idempotent(idempotencyKey), body: { stayId } },
+      );
+    },
+    /**
+     * voidPOSOrderItemWithSupervisor (fbc-peak 00125): some or all of a SENT line comes off with a
+     * reason and a different supervisor's PIN, before the order has taken money. Yetu answers the order.
+     */
+    voidItem(
+      orderId: string,
+      itemId: string,
+      body: { quantity: number; reason: string; supervisorStaffId: string; supervisorPin: string; version: number },
+      idempotencyKey: string,
+    ): Promise<ApiResult<POSOrder>> {
+      return client.POST<POSOrder>(
+        `/api/v1/pos/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}/void`,
+        { headers: idempotent(idempotencyKey), body },
       );
     },
     voidOrder(

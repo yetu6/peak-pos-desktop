@@ -196,6 +196,7 @@ export function ActiveOrders({
             else setOverlay({ kind: "detail", orderId: current.id });
           }}
           onStale={reloadOrders}
+          onPrintProblem={setNotice}
         />
       ) : null}
       {overlay?.kind === "refund" && current && currency ? (

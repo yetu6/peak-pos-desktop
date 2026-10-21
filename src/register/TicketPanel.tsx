@@ -1,6 +1,6 @@
 import { linesByRound } from "./rounds";
 import { vatFigures } from "../lib/vatWords";
-import { ChefHat, Trash2 } from "lucide-react";
+import { Ban, ChefHat, Trash2 } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Banner, Button, EmptyState, Field, Money, PermissionNotice, SegmentedControl, StatusChip, Stepper, TicketLine, type Refusal } from "../components/system";
 import { formatMoney } from "../lib/money";
@@ -39,6 +39,8 @@ export interface TicketPanelProps {
   /** How many of an unsent line (the stepper); Yetu prices it as it was added. */
   onQuantity: (line: POSOrderItem, quantity: number) => void;
   onRemoveLine: (line: POSOrderItem) => void;
+  /** A sent line comes off with a supervisor (fbc-peak 00125); absent: the till can't void one. */
+  onVoidLine?: (line: POSOrderItem) => void;
   /** Taps still with Yetu, shown at once as being added until Yetu's line takes their place (F-247). */
   waiting?: readonly WaitingTap[];
   lineBusy: boolean;
@@ -63,8 +65,9 @@ export interface TicketPanelProps {
  * selected line's actions, and the totals, every figure from Yetu.
  *
  * An unsent line's quantity goes up or down by its stepper (never below one:
- * Remove takes it off), at the price it was added at; a sent line comes off
- * only by voiding the order with a supervisor.
+ * Remove takes it off), at the price it was added at; a sent line, or some of
+ * it, is voided with a supervisor before the bill is paid (the owner,
+ * 2026-10-21), and refunded after.
  */
 export function TicketPanel({
   order,
@@ -77,6 +80,7 @@ export function TicketPanel({
   onSelectLine,
   onQuantity,
   onRemoveLine,
+  onVoidLine,
   waiting = [],
   lineBusy,
   sentAt,
@@ -138,9 +142,15 @@ export function TicketPanel({
                   Remove
                 </Button>
               </>
+            ) : onVoidLine && order && order.paidMinor === 0 ? (
+              <Button variant="danger-outline" icon={<Ban />} disabled={lineBusy} onClick={() => onVoidLine(line)} data-testid="void-line">
+                Void item
+              </Button>
             ) : (
               <p className="y-ticket__line-note">
-                Sent to the kitchen. To take it off, void the order with a supervisor (More).
+                {order && order.paidMinor > 0
+                  ? "Sent to the kitchen, and part of the bill is paid: refund it after it's paid."
+                  : "Sent to the kitchen. A supervisor can void it."}
               </p>
             )}
           </div>

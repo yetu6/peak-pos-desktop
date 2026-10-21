@@ -14,7 +14,7 @@ const said = new Set<string>();
  */
 export const PRINTERS_PLACE = "Status (F12), under Printers";
 
-export function printProblemOnce(results: readonly PrintResult[], what: "kitchen ticket" | "bill"): string | null {
+export function printProblemOnce(results: readonly PrintResult[], what: "kitchen ticket" | "bill" | "void slip"): string | null {
   const failed = results.find((result) => !result.ok);
   if (!failed) return null;
   const reason = (failed.error ?? "").trim().replace(/\.$/, "");
