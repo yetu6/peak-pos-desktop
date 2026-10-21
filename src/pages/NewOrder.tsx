@@ -26,7 +26,8 @@ import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OptionsSheet } from "../register/OptionsSheet";
 import { takesMore, unsentLines } from "../register/rounds";
 import { useTillMenu } from "../fnb/useTillMenu";
-import { sizesOf, tagNote } from "../fnb/fnbWords";
+import { sizesOf, tagNote, unitPriceNow } from "../fnb/fnbWords";
+import { MAX_LINE_QUANTITY } from "../lib/posContracts";
 import { PaymentDone } from "../register/PaymentDone";
 import { PaySheet, type PaidInfo } from "../register/PaySheet";
 import { NoteSheet } from "../register/NoteSheet";
@@ -256,6 +257,25 @@ export function NewOrder({
     const current = await ensureOrder();
     if (!current || !takesMore(current)) return;
     setActionError(null);
+    // A plain repeat tap is one more of the line not yet sent, at the same
+    // price (owner, 2026-10-21: two taps on Soda made two lines of 1). A line
+    // already sent stays as the kitchen had it, and an item with options or a
+    // price that has changed since (happy hour ended) starts its own line.
+    const same = plainRepeatOf(current, product, quantity, modifierOptionIds, variantId);
+    if (same) {
+      try {
+        adopt(await setLineQuantity.mutateAsync({
+          orderId: current.id,
+          itemId: same.id,
+          quantity: same.quantity + 1,
+          version: current.version,
+          idempotencyKey: quantityKey.next(),
+        }));
+      } catch {
+        // The words come from setLineQuantity.error.
+      }
+      return;
+    }
     try {
       const next = await addItem.mutateAsync({
         orderId: current.id,
@@ -285,6 +305,18 @@ export function NewOrder({
     } catch {
       // The words come from addItem.error.
     }
+  }
+
+  /** The unsent line a plain tap of this item adds one to, if there is one. */
+  function plainRepeatOf(current: POSOrder, product: POSCatalogProduct, quantity: number, modifierOptionIds: string[], variantId?: string) {
+    if (quantity !== 1 || modifierOptionIds.length > 0 || variantId) return undefined;
+    const price = unitPriceNow(menu, product.id, product.priceMinor);
+    return current.items.find((line) =>
+      line.status === "ADDED" &&
+      line.productId === product.id &&
+      (line.modifiers?.length ?? 0) === 0 &&
+      line.unitPriceMinor === price &&
+      line.quantity < MAX_LINE_QUANTITY);
   }
 
   /** How many of an unsent line: Yetu keeps the line's price, options and size. */

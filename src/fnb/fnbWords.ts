@@ -62,6 +62,18 @@ export function tileOfferOf(
   return { price: `${formatMoney(rule.priceMinor, currency)}${more}`, offer: { label: rule.ruleName, was: formatMoney(was, currency) } };
 }
 
+/**
+ * What one of an item costs now, as its tile prices it: a price rule in force
+ * (happy hour), else its one size, else its own price.
+ */
+export function unitPriceNow(menu: FnbTillMenu | undefined, productId: string, basePriceMinor: number): number {
+  const rule = menu?.prices?.[productId];
+  if (rule) return rule.priceMinor;
+  const sizes = sizesOf(menu, productId);
+  const shown = sizes.find((size) => size.isDefault) ?? sizes[0];
+  return shown ? shown.priceMinor : basePriceMinor;
+}
+
 /** Under an item with sizes, offline: the other sizes wait for Yetu. */
 export const OFFLINE_SIZES_NOTE = "More sizes need a connection";
 

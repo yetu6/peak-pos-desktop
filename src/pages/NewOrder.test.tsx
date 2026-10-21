@@ -891,18 +891,27 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
     expect(onTicket).toHaveBeenLastCalledWith(null);
   });
 
-  it("two quick taps on one beer are two beers, in turn, on one order", async () => {
+  // Owner, 2026-10-21: two quick taps on Soda made two lines of 1. A plain
+  // repeat tap raises the unsent line instead -- in turn (F-230), on one order.
+  const TUSKER_ID = "00000000-0000-0000-0000-000000000006";
+
+  it("two quick taps on one beer are one line of 2, in turn, on one order", async () => {
     let version = 1;
-    const lines: POSOrder["items"] = [];
+    let line: POSOrder["items"][number] | null = null;
     // The first beer is still with Yetu when the second tap comes.
     let answerFirst = () => {};
     const firstHeld = new Promise<void>((resolve) => (answerFirst = resolve));
     addItemSpy.mockImplementation(async () => {
-      if (version === 1) await firstHeld;
+      await firstHeld;
       version += 1;
-      lines.push({ ...OPEN_ORDER.items[0], id: `item-${version}`, name: "Tusker Lager" });
-      return { data: { ...OPEN_ORDER, version, items: [...lines] }, error: null } as never;
+      line = { ...OPEN_ORDER.items[0], id: "item-tusker", productId: TUSKER_ID, name: "Tusker Lager", unitPriceMinor: 500000, totalMinor: 500000 };
+      return { data: { ...OPEN_ORDER, version, items: [line] }, error: null } as never;
     });
+    setItemQuantitySpy.mockImplementation((async (_orderId: string, itemId: string, quantity: number) => {
+      version += 1;
+      line = { ...line!, id: itemId, quantity };
+      return { data: { ...OPEN_ORDER, version, items: [line] }, error: null };
+    }) as never);
     renderNewOrder();
     const tile = await screen.findByTestId("menu-Tusker Lager");
     await waitFor(() => expect(tile).toBeEnabled());
@@ -910,11 +919,42 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
     await waitFor(() => expect(addItemSpy).toHaveBeenCalledTimes(1));
     fireEvent.click(tile);
     answerFirst();
-    await waitFor(() => expect(addItemSpy).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(setItemQuantitySpy).toHaveBeenCalledWith("order-1", "item-tusker", 2, 2, expect.any(String)));
+    expect(addItemSpy).toHaveBeenCalledTimes(1);
     expect(createOrderSpy).toHaveBeenCalledTimes(1);
-    // The second waited for the first, and was sent on the order as the first left it.
-    const versions = addItemSpy.mock.calls.map((call) => (call as unknown[]).find((arg) => typeof arg === "object" && arg !== null && "version" in arg));
-    expect(versions.map((body) => (body as { version: number }).version)).toEqual([1, 2]);
+    const ticket = within(screen.getByTestId("ticket-panel"));
+    expect(await ticket.findAllByRole("button", { name: /Tusker Lager/ })).toHaveLength(1);
+  });
+
+  it("a tap on an item already sent starts a new line: what went to the kitchen stays as it went", async () => {
+    // At today's price, so only "already sent" keeps it from being raised.
+    const sent = { ...OPEN_ORDER.items[0], id: "item-sent", productId: TUSKER_ID, name: "Tusker Lager", unitPriceMinor: 500000, totalMinor: 500000, status: "SENT" as const, roundNumber: 1 };
+    getOrderSpy.mockResolvedValue({ data: { ...OPEN_ORDER, version: 3, items: [sent] }, error: null } as never);
+    addItemSpy.mockResolvedValueOnce({
+      data: { ...OPEN_ORDER, version: 4, items: [sent, { ...OPEN_ORDER.items[0], id: "item-new", productId: TUSKER_ID, name: "Tusker Lager" }] },
+      error: null,
+    } as never);
+    renderNewOrder({ resume: { ...OPEN_ORDER, version: 3, items: [sent] } });
+    const tile = await screen.findByTestId("menu-Tusker Lager");
+    await waitFor(() => expect(tile).toBeEnabled());
+    fireEvent.click(tile);
+    await waitFor(() => expect(addItemSpy).toHaveBeenCalledTimes(1));
+    expect(setItemQuantitySpy).not.toHaveBeenCalled();
+  });
+
+  it("a tap after the price changed (happy hour ended) starts its own line at the new price", async () => {
+    const atHappyHour = { ...OPEN_ORDER.items[0], id: "item-hh", productId: TUSKER_ID, name: "Tusker Lager", unitPriceMinor: 400000, totalMinor: 400000 };
+    getOrderSpy.mockResolvedValue({ data: { ...OPEN_ORDER, version: 3, items: [atHappyHour] }, error: null } as never);
+    addItemSpy.mockResolvedValueOnce({
+      data: { ...OPEN_ORDER, version: 4, items: [atHappyHour, { ...atHappyHour, id: "item-full", unitPriceMinor: 500000, totalMinor: 500000 }] },
+      error: null,
+    } as never);
+    renderNewOrder({ resume: { ...OPEN_ORDER, version: 3, items: [atHappyHour] } });
+    const tile = await screen.findByTestId("menu-Tusker Lager");
+    await waitFor(() => expect(tile).toBeEnabled());
+    fireEvent.click(tile);
+    await waitFor(() => expect(addItemSpy).toHaveBeenCalledTimes(1));
+    expect(setItemQuantitySpy).not.toHaveBeenCalled();
   });
 
   // F-247: on Bahari's till a tap showed nothing on the ticket for one or two
