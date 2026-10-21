@@ -77,20 +77,34 @@ export function voidItemProblem(error: unknown): RegisterProblem | null {
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
   switch (problem.code) {
-    // A refused supervisor PIN or role, as for a whole-order void.
+    // The signed-in person's own role may not void items (checked before any
+    // PIN); otherwise the supervisor's PIN or role was refused.
     case "FORBIDDEN":
+      if (/permission denied/i.test(problem.detail ?? "")) {
+        return { kind: "permission", words: "Your role can't void items. Ask a manager to do it." };
+      }
       return {
         kind: "supervisor",
         words: "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
       };
     case "NO_APPROVER_SET":
       return { kind: "no-approver", words: noApproverWords("voids") };
-    // The order or the line changed first (another till, or voided already): the screen reloads it.
+    // The order changed first, on another till: the screen reloads it.
     case "STALE_VERSION":
-    case "ITEM_NOT_VOIDABLE":
       return { kind: "stale", words: "This order changed on another till. It's been reloaded: check it, then ask a supervisor again." };
+    // Already voided (elsewhere): reload. Any other refusal is Yetu saying what
+    // to do instead ("void all of it", "void 2 or fewer", "remove it instead"),
+    // and asking again would only meet it again.
+    case "ITEM_NOT_VOIDABLE":
+      if (/already voided/i.test(problem.detail ?? "")) {
+        return { kind: "stale", words: "This item was already voided on another till. The order has been reloaded." };
+      }
+      return { kind: "other", words: problem.detail?.trim() || "This item can't be voided." };
     case "INVALID_STATE":
-      return { kind: "paid", words: "Part of this bill is paid, so items can't be voided. Refund it after it's paid." };
+      if (/taken payment/i.test(problem.detail ?? "")) {
+        return { kind: "paid", words: "Part of this bill is paid, so items can't be voided. Refund it after it's paid." };
+      }
+      return { kind: "other", words: otherWords(problem, "The item wasn't voided. Try again.") };
     case "ORDER_STATE_CHANGED":
       return { kind: "paid", words: "This order is already paid or voided." };
     case "TAB_WAITING_FOR_SHIFT":

@@ -134,11 +134,27 @@ describe("voiding one item (fbc-peak 00125)", () => {
   it("says each refusal in the till's words", () => {
     expect(voidItemProblem(refusal("FORBIDDEN"))).toEqual({ kind: "supervisor", words: "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids." });
     expect(voidItemProblem(refusal("NO_APPROVER_SET"))?.kind).toBe("no-approver");
-    expect(voidItemProblem(refusal("ITEM_NOT_VOIDABLE"))?.kind).toBe("stale");
     expect(voidItemProblem(refusal("STALE_VERSION"))?.kind).toBe("stale");
-    expect(voidItemProblem(refusal("INVALID_STATE"))).toEqual({ kind: "paid", words: "Part of this bill is paid, so items can't be voided. Refund it after it's paid." });
+    expect(voidItemProblem(problem("INVALID_STATE", "This order has already taken payment, so it can no longer be voided or have items removed.")))
+      .toEqual({ kind: "paid", words: "Part of this bill is paid, so items can't be voided. Refund it after it's paid." });
     expect(voidItemProblem(refusal("TAB_WAITING_FOR_SHIFT"))?.words).toBe("Take this tab over first, then void the item.");
     expect(voidItemProblem(null)).toBeNull();
+  });
+
+  // Review 2026-10-21: one code, several meanings -- told apart by Yetu's words.
+  it("reloads only for an item voided elsewhere; any other refusal is said, so it isn't asked again", () => {
+    expect(voidItemProblem(problem("ITEM_NOT_VOIDABLE", "This item is already voided."))?.kind).toBe("stale");
+    const vat = voidItemProblem(problem("ITEM_NOT_VOIDABLE", "This item was added before Yetu kept each item's VAT rate: void all of it."));
+    expect(vat).toEqual({ kind: "other", words: "This item was added before Yetu kept each item's VAT rate: void all of it." });
+    expect(voidItemProblem(problem("ITEM_NOT_VOIDABLE", "The order has 1 of this item: void 1 or fewer."))?.kind).toBe("other");
+  });
+
+  it("names the person's own role, not the supervisor, when their role can't void", () => {
+    expect(voidItemProblem(problem("FORBIDDEN", "POS permission denied"))).toEqual({ kind: "permission", words: "Your role can't void items. Ask a manager to do it." });
+  });
+
+  it("never says the bill is part-paid when the day isn't ready", () => {
+    expect(voidItemProblem(problem("INVALID_STATE", "a shift for this business date is still open"))?.kind).not.toBe("paid");
   });
 
   it("says who is told, by the station making it", () => {

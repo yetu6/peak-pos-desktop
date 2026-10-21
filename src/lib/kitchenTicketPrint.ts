@@ -27,6 +27,8 @@ export interface KitchenTicketCopy {
 export interface PrintResult {
   ok: boolean;
   error?: string;
+  /** Which paper: a void reports its own slips, not an older ticket waiting on the same order. */
+  jobType?: string;
 }
 
 export function formatKitchenTicket(ticket: KitchenTicketCopy): string {

@@ -241,7 +241,7 @@ describe("printJobs", () => {
     expect(requestedUrls[0]).toContain("status=PENDING");
     // S8a: only this order's jobs, however many others wait at the outlet.
     expect(requestedUrls[0]).toContain("sourceId=order-1");
-    expect(results).toEqual([{ ok: true }]);
+    expect(results).toMatchObject([{ ok: true }]);
     expect(printed[0]).toContain("POS-1");
   });
 
@@ -260,7 +260,7 @@ describe("printJobs", () => {
     const results = await processPendingPrintJobs("prop", "order-1", async () => {
       throw new Error("No printer is set up on this till");
     });
-    expect(results).toEqual([{ ok: false, error: "No printer is set up on this till" }]);
+    expect(results).toMatchObject([{ ok: false, error: "No printer is set up on this till" }]);
   });
 
   // YQA-10: a job still PENDING on a later poll -- because the previous
@@ -306,7 +306,7 @@ describe("printJobs", () => {
     const results = await processPendingPrintJobs("prop", "order-1", async (title, text) => {
       printed.push(`${title}\n${text}`);
     });
-    expect(results).toEqual([{ ok: true }]);
+    expect(results).toMatchObject([{ ok: true }]);
     expect(printed).toEqual([]);
   });
 });
@@ -347,7 +347,7 @@ describe("printJobs: kitchen tickets on paper (S8a)", () => {
       printRaw: async (target, bytes) => void raw.push({ target, bytes }),
       tagsOf: (productId) => (productId === "p-satay" ? "Contains nuts" : undefined),
     });
-    expect(results).toEqual([{ ok: true }]);
+    expect(results).toMatchObject([{ ok: true }]);
     expect(printFn).not.toHaveBeenCalled();
     expect(raw).toHaveLength(1);
     expect(raw[0].target).toEqual(KITCHEN.target);
@@ -390,7 +390,7 @@ describe("printJobs: kitchen tickets on paper (S8a)", () => {
     const results = await processPendingPrintJobs("prop", "order-1", printFn, {
       settings: { kitchenTickets: false, kitchen: KITCHEN, stations: {}, receipt: null, cashDrawer: false }, printRaw,
     });
-    expect(results).toEqual([{ ok: true }]);
+    expect(results).toMatchObject([{ ok: true }]);
     expect(requests.some((url) => url.endsWith("/claim"))).toBe(false);
     expect(printRaw).not.toHaveBeenCalled();
     expect(printFn).not.toHaveBeenCalled();
@@ -414,7 +414,7 @@ describe("printJobs: kitchen tickets on paper (S8a)", () => {
       settings: { kitchenTickets: true, kitchen: KITCHEN, stations: {}, receipt: null, cashDrawer: false },
       printRaw: async () => { throw new Error("The kitchen printer didn't answer"); },
     });
-    expect(results).toEqual([{ ok: false, error: "The kitchen printer didn't answer" }]);
+    expect(results).toMatchObject([{ ok: false, error: "The kitchen printer didn't answer" }]);
     expect(requests.some((url) => url.endsWith("/failed"))).toBe(true);
   });
 });
