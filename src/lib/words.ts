@@ -97,7 +97,6 @@ export function serviceTypeWords(type: ServiceType): string {
   return lookup(SERVICE_TYPE, type) ?? "Other service";
 }
 
-/** Where the order goes, from the free-text label: Table 12, Room 204; nothing for takeaway. */
 /**
  * Where an order goes, as staff and the kitchen read it. A table is a short
  * code with a number in it and no spaces ("9", "T4", "12A", "B-3") and reads
@@ -110,6 +109,12 @@ export function orderPlaceWords(type: ServiceType, label: string | null | undefi
   if (!place || type === "TAKEAWAY") return "";
   if (type === "ROOM_SERVICE") return `Room ${place}`;
   return /^(?=.*\d)[A-Za-z0-9-]{1,5}$/.test(place) ? `Table ${place}` : place;
+}
+
+/** Where an order goes, on a paper that may not say the order's type: a dine-in order's, unless it says otherwise. */
+export function placeWords(serviceType: string | null | undefined, label: string | null | undefined): string {
+  const type = serviceType && Object.prototype.hasOwnProperty.call(SERVICE_TYPE, serviceType) ? (serviceType as ServiceType) : "DINE_IN";
+  return orderPlaceWords(type, label);
 }
 
 export function shiftStatusWords(status: ShiftStatus): string {

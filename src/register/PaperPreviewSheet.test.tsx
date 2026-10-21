@@ -17,12 +17,12 @@ const paper = (station: string, item: string) => ({
     items: [{ id: item, productId: item, name: item, quantity: 1, modifiers: [] }] },
 });
 
-function renderSheet() {
+function renderSheet(props: Partial<Parameters<typeof PaperPreviewSheet>[0]> = {}) {
   const onPrint = vi.fn();
   const onBack = vi.fn();
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <PaperPreviewSheet orderId="o1" kind="ROUND" busy={false} onPrint={onPrint} onBack={onBack} />
+      <PaperPreviewSheet orderId="o1" kind="ROUND" busy={false} onPrint={onPrint} onBack={onBack} {...props} />
     </QueryClientProvider>,
   );
   return { onPrint, onBack };
@@ -74,5 +74,31 @@ describe("PaperPreviewSheet (owner, 2026-10-21)", () => {
     } finally {
       printers.kitchenTickets = true;
     }
+  });
+
+  it("nothing new and no paper here: nothing to send, nothing to press", () => {
+    printers.kitchenTickets = false;
+    try {
+      preview.mockReturnValue({ data: [paper("BAR", "Soda")], isLoading: false, isError: false });
+      renderSheet({ nothingNew: true });
+      expect(screen.getByTestId("paper-print")).toHaveTextContent("Nothing new to send");
+      expect(screen.getByTestId("paper-print")).toBeDisabled();
+    } finally {
+      printers.kitchenTickets = true;
+    }
+  });
+
+  it("Yetu's refusal is said in its words, and Print waits", () => {
+    preview.mockReturnValue({ data: undefined, isLoading: false, isError: true, error: new Error("TAB_WAITING_FOR_SHIFT") });
+    renderSheet({ kind: "BILL", refusalOf: () => "Take this tab over first, then print its bill." });
+    expect(screen.getByTestId("paper-preview-problem")).toHaveTextContent("Take this tab over first, then print its bill.");
+    expect(screen.getByTestId("paper-print")).toBeDisabled();
+  });
+
+  it("nothing prints before it is shown: Print waits while the papers load", () => {
+    preview.mockReturnValue({ data: undefined, isLoading: true, isError: false });
+    renderSheet();
+    expect(screen.getByText("Getting the papers ready…")).toBeInTheDocument();
+    expect(screen.getByTestId("paper-print")).toBeDisabled();
   });
 });

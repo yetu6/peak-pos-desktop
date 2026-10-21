@@ -14,13 +14,19 @@ export function PaperPreviewSheet({
   orderId,
   kind,
   busy,
+  nothingNew = false,
+  refusalOf,
   tagsOf,
   onPrint,
   onBack,
 }: {
   orderId: string;
-  kind: "ROUND" | "BILL";
+  kind: "ROUND" | "AGAIN" | "BILL";
   busy: boolean;
+  /** Print order with nothing new: it can only print the last papers again. */
+  nothingNew?: boolean;
+  /** Yetu's refusal of these papers in the till's words, or null when it was the connection. */
+  refusalOf?: (error: unknown) => string | null;
   tagsOf?: (productId: string) => string | undefined;
   onPrint: () => void;
   onBack: () => void;
@@ -30,9 +36,14 @@ export function PaperPreviewSheet({
   const views = papers.data && settings.data ? paperViews(papers.data, settings.data, tagsOf) : null;
   const [tab, setTab] = useState("0");
   const shown = views?.[Number(tab)] ?? views?.[0] ?? null;
-  // Nothing prints on this till (a kitchen that reads its screen): the order still goes to it.
+  // Nothing prints on this till (a kitchen that reads its screen): the order still goes to it --
+  // unless nothing is new, when there is nothing to send and nothing to print.
   const screenOnly = views !== null && views.length > 0 && views.every((view) => view.text === null);
-  const title = kind === "BILL" ? "Print bill" : "Print order";
+  const nothingToDo = screenOnly && (kind === "AGAIN" || (kind === "ROUND" && nothingNew));
+  // Yetu refused these papers (a tab waiting for the next shift, a paid order): printing would be refused too.
+  const refused = papers.isError ? refusalOf?.(papers.error) ?? null : null;
+  const loading = papers.isLoading || settings.isLoading;
+  const title = kind === "BILL" ? "Print bill" : kind === "AGAIN" ? "Print the kitchen ticket again" : "Print order";
 
   return (
     <Sheet
@@ -41,23 +52,40 @@ export function PaperPreviewSheet({
         if (!open && !busy) onBack();
       }}
       title={title}
-      description={kind === "BILL" ? "The bill as it will print." : "The order as the kitchen and the bar will get it."}
+      description={
+        kind === "BILL"
+          ? "The bill as it will print."
+          : kind === "AGAIN"
+            ? "The last papers again, marked COPY."
+            : "The order as the kitchen and the bar will get it."
+      }
       testId="paper-preview"
       footer={
         <div className="y-paper-preview__footer">
           <Button variant="quiet" disabled={busy} onClick={onBack}>
             Back
           </Button>
-          <Button variant="primary" size={64} icon={<Printer />} disabled={busy || views?.length === 0} onClick={onPrint} data-testid="paper-print">
-            {busy ? "Printing…" : screenOnly ? "Send" : "Print"}
+          <Button
+            variant="primary"
+            size={64}
+            icon={<Printer />}
+            disabled={busy || loading || refused !== null || nothingToDo || views?.length === 0}
+            onClick={onPrint}
+            data-testid="paper-print"
+          >
+            {busy ? "Printing…" : nothingToDo ? "Nothing new to send" : screenOnly ? "Send" : "Print"}
           </Button>
         </div>
       }
     >
-      {papers.isLoading || settings.isLoading ? (
+      {loading ? (
         <p className="y-paper-preview__status" role="status">
           Getting the papers ready…
         </p>
+      ) : refused ? (
+        <Banner inline tone="danger" data-testid="paper-preview-problem">
+          {refused}
+        </Banner>
       ) : papers.isError || settings.isError ? (
         <Banner inline tone="warning" data-testid="paper-preview-problem">
           The papers can't be shown just now. You can still print.

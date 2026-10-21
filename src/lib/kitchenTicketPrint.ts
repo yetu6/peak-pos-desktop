@@ -1,5 +1,6 @@
 import { kitchenTicketTitle } from "../print/kitchenTicket";
 import { orderName } from "./orderNumber";
+import { placeWords } from "./words";
 export interface KitchenTicketLine {
   name: string;
   quantity: string;
@@ -38,7 +39,7 @@ export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
     ticket.ticketNumber ? ticket.ticketNumber : null,
     ticket.dailyNumber || ticket.orderNumber ? orderName(ticket) : null,
     [
-      ticket.tableNumber ? `Table ${ticket.tableNumber}` : null,
+      placeWords(ticket.serviceType, ticket.tableNumber) || null,
       ticket.serviceType ? ticket.serviceType.replaceAll("_", " ") : null,
     ]
       .filter(Boolean)

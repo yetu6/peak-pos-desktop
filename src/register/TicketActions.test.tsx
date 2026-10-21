@@ -214,3 +214,16 @@ describe("TicketActions: Print bill", () => {
     expect(bill).toHaveTextContent("Printing…");
   });
 });
+
+describe("TicketActions: F8 does what Print order does", () => {
+  it("with nothing new, F8 prints the last papers again", () => {
+    const onReprint = vi.fn();
+    const { onSend } = renderActions({
+      onReprint,
+      order: { ...ORDER, status: "SENT", roundsSent: 1, items: [{ ...ORDER.items[0], status: "SENT", roundNumber: 1 }] },
+    });
+    fireEvent.keyDown(document.body, { key: "F8" });
+    expect(onReprint).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+});

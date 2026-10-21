@@ -487,6 +487,7 @@ describe("NewOrder", () => {
     await startOrder();
     sendOrderSpy.mockResolvedValueOnce({ data: undefined, error: { code: "FORBIDDEN", detail: "x" } } as never);
     await userEvent.click(screen.getByTestId("pay-order"));
+    await userEvent.click(await screen.findByTestId("paper-print"));
     await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledTimes(1));
     expect(screen.queryByTestId("amount-received")).toBeNull();
   });
@@ -501,6 +502,7 @@ describe("NewOrder", () => {
       error: null,
     }));
     await userEvent.click(screen.getByTestId("pay-order"));
+    await userEvent.click(await screen.findByTestId("paper-print"));
     await userEvent.type(await screen.findByTestId("amount-received"), "15000");
     await userEvent.click(screen.getByTestId("confirm-settle"));
     const done = await screen.findByRole("dialog", { name: "Paid" });
@@ -517,6 +519,42 @@ describe("NewOrder", () => {
     await userEvent.click(within(sheet).getByRole("button", { name: "Back" }));
     expect(screen.queryByRole("dialog", { name: "Print order" })).toBeNull();
     expect(sendOrderSpy).not.toHaveBeenCalled();
+  });
+
+  // Every paper: Pay with new items shows their papers first; Back neither sends nor pays.
+  it("Pay with new items shows their papers first, and Back neither sends nor pays", async () => {
+    await startOrder();
+    await userEvent.click(screen.getByTestId("pay-order"));
+    const sheet = await screen.findByRole("dialog", { name: "Print order" });
+    await userEvent.click(within(sheet).getByRole("button", { name: "Back" }));
+    expect(sendOrderSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "Take payment" })).toBeNull();
+  });
+
+  // A switch waits for the printer's answer, so a paper that didn't print is never lost (review, 2026-10-21).
+  it("the open-orders bar holds while the order's papers are printing", async () => {
+    let printed: (value: unknown[]) => void = () => undefined;
+    printForSpy.mockImplementationOnce(() => new Promise((resolve) => (printed = resolve)));
+    const other = { ...OPEN_ORDER, id: "order-2", orderNumber: "0002", dailyNumber: 2, tableLabel: "Window" };
+    listOrderPageSpy.mockResolvedValue({ data: { items: [OPEN_ORDER, other], nextCursor: null }, error: null } as never);
+    const socket = { readyState: 0, onopen: null, onmessage: null, onerror: null, onclose: null, binaryType: "blob",
+      addEventListener: vi.fn(), removeEventListener: vi.fn(), send: vi.fn(), close: vi.fn() };
+    const client = new RealtimeClient({ createSocket: () => socket as unknown as WebSocket, cursorStorage: { get: () => null, set: () => {} } });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RealtimeProvider client={client} queryClient={queryClient}>
+          <NewOrder resume={OPEN_ORDER} onSwitch={vi.fn()} />
+        </RealtimeProvider>
+      </QueryClientProvider>,
+    );
+    const window = await screen.findByTestId("open-order-order-2");
+    await waitFor(() => expect(screen.getByTestId("send-order")).toBeEnabled());
+    await sendFromPreview();
+    await waitFor(() => expect(printForSpy).toHaveBeenCalled());
+    expect(window).toBeDisabled();
+    await act(async () => printed([]));
+    await waitFor(() => expect(window).toBeEnabled());
   });
 
   it("Print bill, beside Print order, prints the ticket's bill and says so", async () => {
@@ -588,6 +626,7 @@ describe("NewOrder", () => {
     }));
     // Not sent yet: Pay sends it to the kitchen, then takes payment.
     await userEvent.click(screen.getByTestId("pay-order"));
+    await userEvent.click(await screen.findByTestId("paper-print"));
     await userEvent.type(await screen.findByTestId("amount-received"), "15000");
     expect(sendOrderSpy).toHaveBeenCalledTimes(1);
     const printsBeforePayment = printForSpy.mock.calls.length;
@@ -615,6 +654,7 @@ describe("NewOrder", () => {
       error: null,
     }));
     await userEvent.click(screen.getByTestId("pay-order"));
+    await userEvent.click(await screen.findByTestId("paper-print"));
     await userEvent.type(await screen.findByTestId("amount-received"), "15000");
     createOrderSpy.mockClear();
     // Paid's countdown runs on these clocks from the moment it opens.
@@ -649,6 +689,8 @@ describe("NewOrder", () => {
     await waitFor(() => expect(pay).toBeEnabled());
     pay.focus();
     await userEvent.keyboard(" ");
+    // The send's answer here still has the items unsent (the stand-in Yetu keeps them): Pay shows their papers first.
+    await userEvent.click(await screen.findByTestId("paper-print"));
     expect(await screen.findByRole("dialog", { name: "Take payment" })).toBeInTheDocument();
     expect(screen.getByTestId("catalog-search")).toHaveValue("");
   });
@@ -1029,6 +1071,7 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
     await userEvent.click(tile);
     await within(screen.getByTestId("ticket-panel")).findByRole("button", { name: /Nyama Choma/ });
     await userEvent.click(screen.getByTestId("pay-order"));
+    await userEvent.click(await screen.findByTestId("paper-print"));
     await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledTimes(1));
     expect(await screen.findByTestId("amount-received")).toBeInTheDocument();
     expect(printForSpy).toHaveBeenCalled();

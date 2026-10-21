@@ -1,6 +1,6 @@
 import { stationWords } from "../kitchen/kitchenWords";
 import type { ServiceType } from "../lib/posContracts";
-import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
+import { clockTime, orderPlaceWords, placeWords, serviceTypeWords } from "../lib/words";
 import { EscPos, type PaperWidth } from "./escpos";
 
 /**
@@ -50,7 +50,7 @@ export function voidSlipBytes(slip: VoidSlipPaper, width: PaperWidth): Uint8Arra
   out.size(1, 2).line(slip.wholeOrder ? "WHOLE ORDER - DO NOT MAKE" : "DO NOT MAKE").size(1, 1);
   out.bold(false).align("left").rule();
 
-  const place = slip.serviceType ? orderPlaceWords(slip.serviceType, slip.label) : slip.label ? `Table ${slip.label}` : "";
+  const place = slip.serviceType ? orderPlaceWords(slip.serviceType, slip.label) : placeWords(undefined, slip.label);
   const service = slip.serviceType ? serviceTypeWords(slip.serviceType) : "";
   const where = [place, service].filter(Boolean).join(" - ");
   if (where) out.bold(true).size(1, 2).wrapped(where).size(1, 1).bold(false);
@@ -106,7 +106,7 @@ export function voidSlipFromPrintDocument(document: Record<string, unknown>): Vo
 /** The slip as plain text, for a till printing through the system's own printer. */
 export function formatVoidSlip(slip: VoidSlipPaper): string {
   const number = slip.dailyNumber ?? slip.orderNumber;
-  const place = slip.serviceType ? orderPlaceWords(slip.serviceType, slip.label) : slip.label ? `Table ${slip.label}` : "";
+  const place = slip.serviceType ? orderPlaceWords(slip.serviceType, slip.label) : placeWords(undefined, slip.label);
   const voided = clockTime(slip.voidedAt);
   const header = [
     voidSlipTitle(slip.station),

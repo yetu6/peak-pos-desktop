@@ -74,15 +74,17 @@ export function TicketActions({
   const reprintable = Boolean(onReprint && order && !settled && (order.roundsSent ?? 0) > 0 && unsentLines(order) === 0) && !busy;
   const billable = Boolean(order && lines.length > 0 && !settled) && !busy && !printingBill;
 
-  const keys = useRef({ sendable, payable, canSend, canPay, onSend, onPay });
-  keys.current = { sendable, payable, canSend, canPay, onSend, onPay };
+  const keys = useRef({ sendable, reprintable, payable, canSend, canPay, onSend, onReprint, onPay });
+  keys.current = { sendable, reprintable, payable, canSend, canPay, onSend, onReprint, onPay };
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || isComposing(event) || document.querySelector('[role="dialog"]')) return;
       const now = keys.current;
-      if (event.key === REGISTER_KEYS.send && now.canSend && now.sendable) {
+      if (event.key === REGISTER_KEYS.send && now.canSend && (now.sendable || now.reprintable)) {
+        // The key does what its button does: the new items, else the last papers again.
         event.preventDefault();
-        now.onSend();
+        if (now.sendable) now.onSend();
+        else now.onReprint?.();
       } else if (event.key === REGISTER_KEYS.pay && now.canPay && now.payable) {
         event.preventDefault();
         now.onPay();

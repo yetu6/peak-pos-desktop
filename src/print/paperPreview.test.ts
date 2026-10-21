@@ -36,4 +36,13 @@ describe("the preview is the paper", () => {
     const bar = paperViews([{ jobType: "KITCHEN_TICKET", document: BAR }], { ...DEFAULT_PRINTER_SETTINGS, stations: { BAR: NO_PAPER } })[0];
     expect(bar.notHere).toBe("Bar has no printer on this till: it reads the order on its screen.");
   });
+
+  it("a paper this till can't make is said, never a broken screen", () => {
+    const settings: PrinterSettings = { ...DEFAULT_PRINTER_SETTINGS, stations: { BAR: network } };
+    const [view] = paperViews([{ jobType: "KITCHEN_TICKET", document: BAR }], settings, () => {
+      throw new Error("a tag this till can't read");
+    });
+    expect(view.text).toBeNull();
+    expect(view.notHere).toBe("This paper can't be shown. Print it, and check what comes out.");
+  });
 });

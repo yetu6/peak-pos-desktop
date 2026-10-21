@@ -13,7 +13,7 @@ import type { POSPrintJob, PrintJobStatus } from "./posContracts";
 import { kitchenTicketBytes } from "../print/kitchenTicket";
 import { formatVoidSlip, voidSlipBytes, voidSlipFromPrintDocument } from "../print/voidTicket";
 import { paperFromPrintDocument, type KitchenPrintRoutes } from "../print/kitchenRouting";
-import { printerFor, stationPrintsNoPaper, type PrinterTarget } from "../print/printerSettings";
+import { printerFor, stationPrintsNoPaper, type PrinterChoice, type PrinterTarget } from "../print/printerSettings";
 import { hotelHere, receiptPaperFor } from "../print/receiptRouting";
 import { yetuFetch } from "./yetuFetch";
 
@@ -204,12 +204,14 @@ export type TillPaper =
   | { kind: "thermal"; target: PrinterTarget; width: number; bytes: Uint8Array }
   | { kind: "system"; title: string; text: string };
 
-/**
- * The paper this till makes of a job, and where it goes: the one place that
- * decides, for printing and for the preview of it (owner, 2026-10-21), so
- * the preview is the paper.
- */
-export function paperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): TillPaper {
+/** Where this till sends a job, decided from its settings alone: no paper is built. */
+type PaperRoute =
+  | { kind: "none"; why: "kitchen-off" | "station-off" }
+  | { kind: "kitchen"; printer: PrinterChoice }
+  | { kind: "receipt"; printer: PrinterChoice }
+  | { kind: "system" };
+
+function paperRoute(job: POSPrintJob, routes?: KitchenPrintRoutes): PaperRoute {
   // A void slip goes where the station's kitchen tickets go, by the same settings.
   const kitchen = (job.jobType === KITCHEN_TICKET || job.jobType === KITCHEN_VOID) && routes !== undefined;
   // Paper kitchen tickets off on this till (its kitchen has a screen): the job
@@ -217,30 +219,36 @@ export function paperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): TillPap
   if (kitchen && !routes.settings.kitchenTickets) return { kind: "none", why: "kitchen-off" };
   // No paper for this station on this till (a bar whose bartender pours what they ring up): left, like the above.
   if (kitchen && stationPrintsNoPaper(routes.settings, job.document.station)) return { kind: "none", why: "station-off" };
-  const formatted = formatPrintDocument(job);
   const station = typeof job.document.station === "string" ? job.document.station : undefined;
   const printer = kitchen ? printerFor(routes.settings, station) : null;
+  if (kitchen && printer) return { kind: "kitchen", printer };
   const receiptPrinter = (job.jobType === RECEIPT || job.jobType === REFUND_RECEIPT || job.jobType === BILL) ? routes?.settings.receipt : null;
-  if (kitchen && printer) {
+  if (routes && receiptPrinter) return { kind: "receipt", printer: receiptPrinter };
+  return { kind: "system" };
+}
+
+/**
+ * The paper this till makes of a job, and where it goes: the one place that
+ * decides, for printing and for the preview of it (owner, 2026-10-21), so
+ * the preview is the paper. Building it may throw on a document it can't
+ * read; callers catch that.
+ */
+export function paperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): TillPaper {
+  const route = paperRoute(job, routes);
+  if (route.kind === "none") return route;
+  if (route.kind === "kitchen") {
     // A thermal printer of the kitchen's: the ticket in large type, with a cut (S8a).
-    return {
-      kind: "thermal",
-      target: printer.target,
-      width: printer.width,
-      bytes:
-        job.jobType === KITCHEN_VOID
-          ? voidSlipBytes(voidSlipFromPrintDocument(job.document), printer.width)
-          : kitchenTicketBytes(paperFromPrintDocument(job.document, routes.tagsOf), printer.width),
-    };
+    const { target, width } = route.printer;
+    const bytes = job.jobType === KITCHEN_VOID
+      ? voidSlipBytes(voidSlipFromPrintDocument(job.document), width)
+      : kitchenTicketBytes(paperFromPrintDocument(job.document, routes?.tagsOf), width);
+    return { kind: "thermal", target, width, bytes };
   }
-  if (routes && receiptPrinter) {
+  const formatted = formatPrintDocument(job);
+  if (route.kind === "receipt") {
     // The thermal receipt printer: columns, a cut, and the cash drawer for cash on an original (S8b).
-    return {
-      kind: "thermal",
-      target: receiptPrinter.target,
-      width: receiptPrinter.width,
-      bytes: receiptPaperFor(job, receiptPrinter.width, routes.settings.cashDrawer, formatted.text),
-    };
+    const { target, width } = route.printer;
+    return { kind: "thermal", target, width, bytes: receiptPaperFor(job, width, routes?.settings.cashDrawer ?? false, formatted.text) };
   }
   return { kind: "system", title: formatted.title, text: formatted.text };
 }
@@ -250,7 +258,7 @@ export async function processPrintJob(
   printFn: (title: string, text: string) => Promise<void> = defaultPrint,
   routes?: KitchenPrintRoutes,
 ): Promise<PrintResult> {
-  if (paperFor(job, routes).kind === "none") return { ok: true };
+  if (paperRoute(job, routes).kind === "none") return { ok: true };
   let claimed: POSPrintJob;
   try {
     claimed = job.status === "PENDING" ? await claimPrintJob(job.id) : job;

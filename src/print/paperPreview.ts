@@ -34,7 +34,13 @@ export function paperViews(
     };
     const station = typeof paper.document.station === "string" ? paper.document.station : undefined;
     const name = paper.jobType === "BILL" ? "Bill" : station ? stationWords(station) : "Kitchen";
-    const made = paperFor(job, { settings, printRaw: async () => undefined, tagsOf });
+    let made: ReturnType<typeof paperFor>;
+    try {
+      made = paperFor(job, { settings, printRaw: async () => undefined, tagsOf });
+    } catch {
+      // A document this till can't make into paper: said, never a broken screen.
+      return { key: `${index}`, name, width: SYSTEM_WIDTH, text: null, notHere: "This paper can't be shown. Print it, and check what comes out." };
+    }
     if (made.kind === "none") {
       return {
         key: `${index}`, name, width: SYSTEM_WIDTH, text: null,

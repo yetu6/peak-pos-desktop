@@ -122,6 +122,11 @@ export function NewOrder({
   const reprintKitchen = useReprintKitchenTickets();
   // Every paper is shown before it prints (owner, 2026-10-21): which preview is open.
   const [preview, setPreview] = useState<"ROUND" | "BILL" | null>(null);
+  // Pay with new items shows their papers first, then takes payment.
+  const [payAfterPrint, setPayAfterPrint] = useState(false);
+  // The kitchen papers of a send, still on their way to the printer: the
+  // ticket stays on this order until the printer has answered (F-233).
+  const [printing, setPrinting] = useState(false);
   const reprintKey = useIdempotencyKey();
   const quantityKey = useIdempotencyKey();
 
@@ -356,10 +361,13 @@ export function NewOrder({
       setSentAt(new Date());
       // The kitchen ticket prints on its own time: the send is done, and Send
       // and pay opens the payment now (F-241), whatever the printer does.
-      void printAfter(next.id).then((results) => {
-        const words = printProblemOnce(results, "kitchen ticket");
-        if (words) setNotice(words);
-      });
+      setPrinting(true);
+      void printAfter(next.id)
+        .then((results) => {
+          const words = printProblemOnce(results, "kitchen ticket");
+          if (words) setNotice(words);
+        })
+        .finally(() => setPrinting(false));
       return true;
     } catch (error) {
       // The words come from sendOrder.error. Yetu refused it: the next press is a new request.
@@ -371,7 +379,10 @@ export function NewOrder({
   /** Pay: what isn't sent goes to the kitchen first (Send and pay), then the payment opens. */
   async function pay() {
     if (order && canSend && takesMore(order) && unsentLines(order) > 0) {
-      if (!(await sendToKitchen())) return;
+      // Every paper is shown before it prints (owner, 2026-10-21): the new items' first.
+      setPayAfterPrint(true);
+      setPreview("ROUND");
+      return;
     }
     setSettleOpen(true);
   }
@@ -475,7 +486,8 @@ export function NewOrder({
                   current={order}
                   staffId={staffId}
                   currency={currency}
-                  disabled={busy}
+                  // Nothing in flight is left behind: a switch waits for the printer's answer.
+                  disabled={busy || printing || printBill.isPending || reprintKitchen.isPending}
                   onPick={onSwitch}
                   onNew={() => onSwitch(null)}
                 />
@@ -528,14 +540,27 @@ export function NewOrder({
           orderId={order.id}
           kind={preview}
           busy={sendOrder.isPending || printBill.isPending || reprintKitchen.isPending}
+          nothingNew={unsentLines(order) === 0}
+          refusalOf={(error) => {
+            const refusal = preview === "BILL" ? billProblem(error) : sellProblem(error, "send");
+            return refusal && refusal.kind !== "network" ? refusal.words : null;
+          }}
           tagsOf={(productId) => (menu ? tagNote(menu, productId) : undefined)}
-          onBack={() => setPreview(null)}
+          onBack={() => {
+            setPreview(null);
+            setPayAfterPrint(false);
+          }}
           onPrint={() => {
             const kind = preview;
+            const thenPay = payAfterPrint;
             setPreview(null);
+            setPayAfterPrint(false);
             if (kind === "BILL") printTheBill();
-            else if (unsentLines(order) > 0) void sendToKitchen();
-            else printOrderAgain();
+            else if (unsentLines(order) > 0) {
+              void sendToKitchen().then((sent) => {
+                if (sent && thenPay) setSettleOpen(true);
+              });
+            } else printOrderAgain();
           }}
         />
       ) : null}

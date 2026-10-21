@@ -1,6 +1,6 @@
 import { stationWords } from "../kitchen/kitchenWords";
 import type { ServiceType } from "../lib/posContracts";
-import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
+import { clockTime, orderPlaceWords, placeWords, serviceTypeWords } from "../lib/words";
 import { EscPos, type PaperWidth } from "./escpos";
 
 /**
@@ -52,7 +52,7 @@ export function kitchenTicketBytes(ticket: KitchenTicketPaper, width: PaperWidth
   }
   out.bold(false).align("left").rule();
 
-  const place = ticket.serviceType ? orderPlaceWords(ticket.serviceType, ticket.label) : ticket.label ? `Table ${ticket.label}` : "";
+  const place = ticket.serviceType ? orderPlaceWords(ticket.serviceType, ticket.label) : placeWords(undefined, ticket.label);
   const service = ticket.serviceType ? serviceTypeWords(ticket.serviceType) : "";
   const where = [place, service].filter(Boolean).join(" - ");
   if (where) out.bold(true).size(1, 2).wrapped(where).size(1, 1).bold(false);

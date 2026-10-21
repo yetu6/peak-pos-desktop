@@ -285,13 +285,13 @@ export function createPosApi() {
     getReceipt(orderId: string): Promise<ApiResult<POSReceipt>> {
       return client.GET<POSReceipt>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/receipt`);
     },
-    /** fbc-peak #288: the bill for an open order, before the guest pays: a BILL print job this till prints. */
-    /** Exactly what Print order (ROUND) or Print bill (BILL) would print now, printing nothing (owner, 2026-10-21). */
-    previewPapers(orderId: string, kind: "ROUND" | "BILL"): Promise<ApiResult<{ papers: POSPaper[] }>> {
+    /** Exactly what Print order (ROUND), the kitchen ticket again (AGAIN) or Print bill (BILL) would print now, printing nothing (owner, 2026-10-21). */
+    previewPapers(orderId: string, kind: "ROUND" | "AGAIN" | "BILL"): Promise<ApiResult<{ papers: POSPaper[] }>> {
       return client.GET<{ papers: POSPaper[] }>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/papers/preview`, {
         params: { query: { kind } },
       });
     },
+    /** fbc-peak #288: the bill for an open order, before the guest pays: a BILL print job this till prints. */
     printBill(orderId: string, idempotencyKey: string): Promise<ApiResult<POSPrintJob>> {
       return client.POST<POSPrintJob>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/bill`, {
         headers: idempotent(idempotencyKey),
