@@ -23,3 +23,11 @@ export const REGISTER_QUIET_AFTER_RETURN_MS = 800;
  * often) until Yetu answers for it.
  */
 export const PAY_CHECK_EVERY_SECONDS = 5;
+
+/**
+ * register.fillAmountDue: the payment sheets fill in what is still to pay --
+ * the cash received, and a card or mobile money amount -- so exact money is
+ * one tap (owner, 2026-10-21); the first key the cashier types replaces it.
+ * Off, the cashier enters what the guest hands over.
+ */
+export const REGISTER_FILL_AMOUNT_DUE = true;

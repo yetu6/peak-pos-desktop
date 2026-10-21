@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { POSOrder, POSOrderPayment, POSRoomChargeCandidate } from "../lib/posContracts";
 import { IDLE_LOCK_MAX_DEFERRAL_SECONDS, idleLockHeld, watchIdleActivity } from "../lib/idleLock";
@@ -146,6 +146,49 @@ describe("PaySheet", () => {
     field.blur();
     fireEvent.focus(field);
     expect([field.selectionStart, field.selectionEnd]).toEqual([0, field.value.length]);
+  });
+
+  it("cash: the order changing otherwise (the kitchen, another till) keeps the amount filled in up to date", () => {
+    const { rerender } = render(<PaySheet order={ORDER} currency="TZS" onClose={vi.fn()} onPaid={vi.fn()} />);
+    expect(screen.getByTestId("amount-received")).toHaveValue("42,500");
+    // An item marked ready: a new version, nothing paid. Then one more item: more owed.
+    rerender(<PaySheet order={{ ...ORDER, version: 3 }} currency="TZS" onClose={vi.fn()} onPaid={vi.fn()} />);
+    expect(screen.getByTestId("amount-received")).toHaveValue("42,500");
+    expect(pay()).toBeEnabled();
+    rerender(<PaySheet order={{ ...ORDER, version: 4, remainingMinor: 5_000_000, totalMinor: 5_000_000 }} currency="TZS" onClose={vi.fn()} onPaid={vi.fn()} />);
+    expect(screen.getByTestId("amount-received")).toHaveValue("50,000");
+  });
+
+  it("cash: what the cashier typed stays when the order changes without a payment", async () => {
+    const { rerender } = render(<PaySheet order={ORDER} currency="TZS" onClose={vi.fn()} onPaid={vi.fn()} />);
+    await userEvent.type(screen.getByTestId("amount-received"), "50000");
+    rerender(<PaySheet order={{ ...ORDER, version: 3 }} currency="TZS" onClose={vi.fn()} onPaid={vi.fn()} />);
+    expect(screen.getByTestId("amount-received")).toHaveValue("50,000");
+  });
+
+  it("cash: a held Enter (the key that opened the sheet, still down) takes no money", () => {
+    renderPay();
+    const field = screen.getByTestId("amount-received");
+    const held = createEvent.keyDown(field, { key: "Enter", repeat: true });
+    fireEvent(field, held);
+    expect(held.defaultPrevented).toBe(true);
+    const fresh = createEvent.keyDown(field, { key: "Enter", repeat: false });
+    fireEvent(field, fresh);
+    expect(fresh.defaultPrevented).toBe(false);
+  });
+
+  it("cash: the keypad's Delete clears the amount filled in", async () => {
+    renderPay();
+    await userEvent.click(screen.getByTestId("cash-key-delete"));
+    expect(screen.getByTestId("amount-received")).toHaveValue("");
+  });
+
+  it("card: an emptied amount confirms nothing", async () => {
+    renderPay();
+    await userEvent.click(screen.getByRole("radio", { name: "Mobile money" }));
+    await userEvent.clear(screen.getByTestId("tender-amount"));
+    expect(pay()).toBeDisabled();
+    expect(pay()).toHaveTextContent("Type the amount");
   });
 
   it("cash: works out the change from the cash received, and records only what is owed", async () => {

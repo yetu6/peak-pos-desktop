@@ -128,7 +128,8 @@ export function MoneyField({
   /** The currency the backend returned; until it is known the field shows no unit. */
   currency: string | null | undefined;
   value: string;
-  onValueChange: (value: string, minor: number | null) => void;
+  /** edit: what the browser says was typed or deleted (InputEvent), when it says. */
+  onValueChange: (value: string, minor: number | null, edit?: { inputType: string; data: string | null }) => void;
   hint?: string;
   error?: string;
   className?: string;
@@ -171,7 +172,8 @@ export function MoneyField({
           value={groupedDigits(value)}
           onChange={(event) => {
             const text = event.target.value.replace(/[^\d.]/g, "");
-            onValueChange(text, toMinor(text));
+            const native = event.nativeEvent as Partial<InputEvent>;
+            onValueChange(text, toMinor(text), native.inputType ? { inputType: native.inputType, data: native.data ?? null } : undefined);
           }}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy(currency ? unitId : undefined, hintId, errorId)}
