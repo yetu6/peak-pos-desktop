@@ -146,7 +146,7 @@ export function TicketActions({
       ) : null}
       {canPay ? (
         <Button
-          variant="primary"
+          variant="pay"
           size={64}
           block
           icon={<Wallet />}

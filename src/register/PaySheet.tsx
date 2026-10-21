@@ -486,7 +486,7 @@ export function PaySheetView({
             <Button
               type="submit"
               form={CASH_FORM}
-              variant="primary"
+              variant="pay"
               size={64}
               data-testid="confirm-settle"
               disabled={cashTaken == null || pending}
@@ -495,7 +495,7 @@ export function PaySheetView({
             </Button>
           ) : method === "ROOM_CHARGE" ? (
             <Button
-              variant="primary"
+              variant="pay"
               size={64}
               data-testid="confirm-room-charge"
               disabled={nothingDue || !chosenStay || chosenStay.postingEligible === false || roomBlocked !== null || pending}
@@ -511,7 +511,7 @@ export function PaySheetView({
             <Button
               type="submit"
               form={RECORDED_FORM}
-              variant="primary"
+              variant="pay"
               size={64}
               data-testid="confirm-settle"
               disabled={nothingDue || amount == null || amount <= 0 || over || pending}

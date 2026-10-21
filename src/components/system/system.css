@@ -85,6 +85,18 @@
   background: var(--action-hover);
 }
 
+/* Pay: the buttons that take money, and only those (tokens.css). */
+.y-button--pay {
+  border-color: var(--pay);
+  background: var(--pay);
+  color: var(--on-pay);
+}
+
+.y-button--pay:hover:not(:disabled) {
+  border-color: var(--pay-hover);
+  background: var(--pay-hover);
+}
+
 .y-button--secondary {
   border-color: var(--line-control);
   background: var(--surface-raised);

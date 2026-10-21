@@ -68,7 +68,7 @@ describe("TicketActions", () => {
     expect(screen.getByTestId("pay-prints-first")).toHaveTextContent("New items print for the kitchen first.");
     expect(send.compareDocumentPosition(pay) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(send).toHaveClass("y-button--secondary", "y-button--56");
-    expect(pay).toHaveClass("y-button--primary", "y-button--64");
+    expect(pay).toHaveClass("y-button--pay", "y-button--64");
     expect(send.querySelector(".y-button__icon svg")).not.toBeNull();
     expect(pay.querySelector(".y-button__icon svg")).not.toBeNull();
     expect(send).toHaveTextContent("F8");

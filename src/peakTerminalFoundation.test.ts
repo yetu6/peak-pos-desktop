@@ -138,6 +138,9 @@ describe("Yetu till tokens", () => {
       "--action",
       "--action-hover",
       "--on-action",
+      "--pay",
+      "--pay-hover",
+      "--on-pay",
       "--accent",
       "--on-accent",
       "--accent-subtle",
@@ -161,6 +164,17 @@ describe("Yetu till tokens", () => {
   it("paints the page before the stylesheet in each theme's own canvas colour", () => {
     expect(THEME_CANVAS.light).toBe(colour("light", "--canvas"));
     expect(THEME_CANVAS.dark).toBe(colour("dark", "--canvas"));
+  });
+
+  // The owner, 2026-10-22: Pay in orange. The base orange under white words is 3.2:1, so Light
+  // fills with the brand's deeper step under white; Dark keeps the brand orange under dark words.
+  it("makes Pay the orange: the deeper step on Light, the brand orange on Dark", () => {
+    expect(colour("light", "--pay")).toBe(brand["--fbc-accent-700"]);
+    expect(colour("light", "--on-pay")).toBe("#ffffff");
+    expect(colour("dark", "--pay")).toBe(brand["--fbc-accent"]);
+    for (const theme of ["light", "dark"] as const) {
+      expect(colour(theme, "--pay")).not.toBe(colour(theme, "--action"));
+    }
   });
 
   it("makes Yetu Blue the action colour and keeps orange off ordinary actions", () => {
@@ -217,6 +231,9 @@ describe("Yetu till tokens", () => {
         expect(ratio(theme, "--on-action", "--action-hover")).toBeGreaterThanOrEqual(4.5);
         expect(ratio(theme, "--on-danger", "--danger")).toBeGreaterThanOrEqual(4.5);
         expect(ratio(theme, "--on-accent", "--accent")).toBeGreaterThanOrEqual(4.5);
+        // Pay is the orange (owner, 2026-10-22): the brand's deeper step on Light, the brand orange on Dark.
+        expect(ratio(theme, "--on-pay", "--pay")).toBeGreaterThanOrEqual(4.5);
+        expect(ratio(theme, "--on-pay", "--pay-hover")).toBeGreaterThanOrEqual(4.5);
       });
 
       // The owner's look at Bahari (2026-10-19): the rail and the sign-in pane in Yetu Blue, tiles tinted by category.
@@ -243,7 +260,7 @@ describe("Yetu till tokens", () => {
 
       it("keeps the focus ring, control edges and action fills at 3:1 against every surface", () => {
         const failures: string[] = [];
-        for (const edge of ["--focus", "--line-control", "--action"]) {
+        for (const edge of ["--focus", "--line-control", "--action", "--pay"]) {
           for (const surface of SURFACES) {
             const value = ratio(theme, edge, surface);
             if (value < 3) failures.push(`${edge} on ${surface}: ${value.toFixed(2)}`);

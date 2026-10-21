@@ -1,8 +1,11 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
 
-/** danger: a confirmation that undoes or gives back (Void, Approve refund). danger-outline: an everyday removal (a line not sent). */
-export type ButtonVariant = "primary" | "secondary" | "quiet" | "danger" | "danger-outline";
+/**
+ * pay: a button that takes money (Pay, Take cash, Charge to room), the till's one orange.
+ * danger: a confirmation that undoes or gives back (Cancel order, Approve refund). danger-outline: an everyday removal (a line not sent).
+ */
+export type ButtonVariant = "primary" | "pay" | "secondary" | "quiet" | "danger" | "danger-outline";
 /** Touch sizes: 48 minimum, 56 for frequent actions, 64 for money actions (Pay, Take cash, Approve). */
 export type ButtonSize = 48 | 56 | 64;
 
@@ -46,7 +49,7 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   /** Required: what the button does, read aloud and shown on hover. */
   label: string;
   icon: ReactNode;
-  variant?: Exclude<ButtonVariant, "danger">;
+  variant?: Exclude<ButtonVariant, "danger" | "pay">;
   size?: ButtonSize;
 }
 

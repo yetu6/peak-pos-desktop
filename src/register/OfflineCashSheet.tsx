@@ -61,7 +61,7 @@ export function OfflineCashSheet({
           <Button variant="quiet" disabled={saving} onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" form={FORM} variant="primary" size={64} data-testid="confirm-offline-cash" disabled={!enough || saving}>
+          <Button type="submit" form={FORM} variant="pay" size={64} data-testid="confirm-offline-cash" disabled={!enough || saving}>
             {saving ? "Saving on this till…" : `Take ${formatMoney(dueMinor, currency)} cash`}
           </Button>
         </div>

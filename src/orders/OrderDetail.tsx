@@ -312,7 +312,7 @@ export function OrderDetailView({
               {canPay ? (
                 <Button
                   ref={primaryRef}
-                  variant="primary"
+                  variant="pay"
                   size={64}
                   block
                   icon={<Wallet />}
