@@ -232,6 +232,17 @@ describe("the offline register", () => {
     expect(screen.queryByTestId("offline-sale-saved")).not.toBeInTheDocument();
   });
 
+  it("offline, the cash received starts at the amount due", async () => {
+    renderRegister();
+    await addChips();
+    await userEvent.click(screen.getByTestId("offline-pay"));
+    const sheet = await screen.findByRole("dialog", { name: "Take cash" });
+    expect(within(sheet).getByTestId("offline-cash-received")).toHaveValue("11,800");
+    expect(within(sheet).getByTestId("change-due")).toHaveTextContent("Exact: no change to give.");
+    for (const key of ["2", "0", "0", "00"]) await userEvent.click(within(sheet).getByTestId(`offline-cash-key-${key}`));
+    expect(within(sheet).getByTestId("offline-cash-received")).toHaveValue("20,000");
+  });
+
   it("offline, a sale is paid in full in cash", async () => {
     renderRegister();
     await addChips();

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { POSOrder, POSOrderPayment, POSRoomChargeCandidate } from "../lib/posContracts";
 import { IDLE_LOCK_MAX_DEFERRAL_SECONDS, idleLockHeld, watchIdleActivity } from "../lib/idleLock";
@@ -116,6 +116,81 @@ describe("PaySheet", () => {
     expect(quick.map((button) => button.textContent)).toEqual(["ExactTSh 42,500", "TSh 44,000", "TSh 45,000", "TSh 50,000"]);
   });
 
+  // The owner, 2026-10-21: where the amount is known, it is filled in.
+  it("cash: the cash received starts at the amount due, so exact cash is one tap", async () => {
+    const { onPaid } = renderPay();
+    expect(screen.getByTestId("amount-received")).toHaveValue("42,500");
+    expect(screen.getByTestId("change-due")).toHaveTextContent("Exact: no change to give.");
+    expect(pay()).toHaveTextContent("Take TSh 42,500 cash");
+    await userEvent.click(pay());
+    expect(recordTenderMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentMethod: "CASH", amountMinor: 4_250_000 }),
+      expect.anything(),
+    );
+    expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ method: "CASH", changeMinor: 0 }));
+  });
+
+  it("cash: what is typed replaces the amount filled in, wherever the cursor is", async () => {
+    renderPay();
+    await userEvent.type(screen.getByTestId("amount-received"), "50000");
+    expect(screen.getByTestId("amount-received")).toHaveValue("50,000");
+    expect(screen.getByTestId("change-due")).toHaveTextContent("Change to give TSh 7,500");
+    // Once the cashier has typed, keys add to what they typed.
+    await userEvent.type(screen.getByTestId("amount-received"), "0");
+    expect(screen.getByTestId("amount-received")).toHaveValue("500,000");
+  });
+
+  it("cash: entering the field selects the amount filled in, so a keyboard replaces it", () => {
+    renderPay();
+    const field = screen.getByTestId("amount-received") as HTMLInputElement;
+    field.blur();
+    fireEvent.focus(field);
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, field.value.length]);
+  });
+
+  it("cash: the order changing otherwise (the kitchen, another till) keeps the amount filled in up to date", () => {
+    const { rerender } = render(<PaySheet order={ORDER} currency="TZS" onClose={vi.fn()} onPaid={vi.fn()} />);
+    expect(screen.getByTestId("amount-received")).toHaveValue("42,500");
+    // An item marked ready: a new version, nothing paid. Then one more item: more owed.
+    rerender(<PaySheet order={{ ...ORDER, version: 3 }} currency="TZS" onClose={vi.fn()} onPaid={vi.fn()} />);
+    expect(screen.getByTestId("amount-received")).toHaveValue("42,500");
+    expect(pay()).toBeEnabled();
+    rerender(<PaySheet order={{ ...ORDER, version: 4, remainingMinor: 5_000_000, totalMinor: 5_000_000 }} currency="TZS" onClose={vi.fn()} onPaid={vi.fn()} />);
+    expect(screen.getByTestId("amount-received")).toHaveValue("50,000");
+  });
+
+  it("cash: what the cashier typed stays when the order changes without a payment", async () => {
+    const { rerender } = render(<PaySheet order={ORDER} currency="TZS" onClose={vi.fn()} onPaid={vi.fn()} />);
+    await userEvent.type(screen.getByTestId("amount-received"), "50000");
+    rerender(<PaySheet order={{ ...ORDER, version: 3 }} currency="TZS" onClose={vi.fn()} onPaid={vi.fn()} />);
+    expect(screen.getByTestId("amount-received")).toHaveValue("50,000");
+  });
+
+  it("cash: a held Enter (the key that opened the sheet, still down) takes no money", () => {
+    renderPay();
+    const field = screen.getByTestId("amount-received");
+    const held = createEvent.keyDown(field, { key: "Enter", repeat: true });
+    fireEvent(field, held);
+    expect(held.defaultPrevented).toBe(true);
+    const fresh = createEvent.keyDown(field, { key: "Enter", repeat: false });
+    fireEvent(field, fresh);
+    expect(fresh.defaultPrevented).toBe(false);
+  });
+
+  it("cash: the keypad's Delete clears the amount filled in", async () => {
+    renderPay();
+    await userEvent.click(screen.getByTestId("cash-key-delete"));
+    expect(screen.getByTestId("amount-received")).toHaveValue("");
+  });
+
+  it("card: an emptied amount confirms nothing", async () => {
+    renderPay();
+    await userEvent.click(screen.getByRole("radio", { name: "Mobile money" }));
+    await userEvent.clear(screen.getByTestId("tender-amount"));
+    expect(pay()).toBeDisabled();
+    expect(pay()).toHaveTextContent("Type the amount");
+  });
+
   it("cash: works out the change from the cash received, and records only what is owed", async () => {
     const { onPaid } = renderPay();
     await userEvent.click(screen.getByRole("button", { name: "TSh 50,000" }));
@@ -179,9 +254,20 @@ describe("PaySheet", () => {
     await userEvent.type(screen.getByTestId("tender-amount"), "10000");
     await userEvent.type(screen.getByTestId("tender-reference"), "C-991");
     await userEvent.click(pay());
-    expect(screen.getByTestId("tender-amount")).toHaveValue("");
+    // The amount shows what is still to pay; the reference is cleared.
+    expect(screen.getByTestId("tender-amount")).toHaveValue("32,500");
     expect(screen.getByTestId("tender-reference")).toHaveValue("");
     expect(pay()).toHaveTextContent("Confirm TSh 32,500 received");
+  });
+
+  it("card: the amount starts at what is still to pay, and typing less splits it", async () => {
+    renderPay();
+    await userEvent.click(screen.getByRole("radio", { name: "Mobile money" }));
+    expect(screen.getByTestId("tender-amount")).toHaveValue("42,500");
+    expect(screen.getByText("Type less to split the payment.")).toBeInTheDocument();
+    await userEvent.type(screen.getByTestId("tender-amount"), "10000");
+    expect(screen.getByTestId("tender-amount")).toHaveValue("10,000");
+    expect(pay()).toHaveTextContent("Confirm TSh 10,000 received");
   });
 
   it("with nothing left to pay, shows no change and offers no tender", () => {
