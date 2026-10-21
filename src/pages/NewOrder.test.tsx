@@ -799,6 +799,56 @@ describe("NewOrder", () => {
       }
     });
 
+    // Review, 2026-10-22: Print for bar and Print order at the same version are two requests, never one replayed.
+    it("Print for bar and then everything are two requests with their own keys", async () => {
+      const paper = (station: string, name: string) => ({
+        jobType: "KITCHEN_TICKET",
+        document: { orderId: OPEN_ORDER.id, dailyNumber: 7, station, roundNumber: 1, serviceType: "DINE_IN",
+          items: [{ id: name, productId: name, name, quantity: 1, modifiers: [] }] },
+      });
+      previewPapersSpy.mockResolvedValue({ data: { papers: [paper("BAR", "Soda"), paper("GENERAL", "Nyama Choma")] }, error: null });
+      sendOrderSpy.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      try {
+        await ticketWithOneLine();
+        await userEvent.click(screen.getByTestId("send-order"));
+        await userEvent.click(await screen.findByTestId("paper-print-one"));
+        await screen.findByRole("alert");
+        await userEvent.click(screen.getByTestId("send-order"));
+        await userEvent.click(await screen.findByTestId("paper-print"));
+        await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledTimes(2));
+        const [bar, all] = sendOrderSpy.mock.calls as unknown as Array<[string, number, string, string[] | undefined]>;
+        expect([bar[3], all[3]]).toEqual([["BAR"], undefined]);
+        expect(all[1]).toBe(bar[1]);
+        expect(all[2]).not.toBe(bar[2]);
+      } finally {
+        previewPapersSpy.mockReset();
+        previewPapersSpy.mockImplementation(async () => {
+          throw new TypeError("Failed to fetch");
+        });
+      }
+    });
+
+    // Review, 2026-10-22: before payment every paper prints together.
+    it("Pay with two stations' new items prints them together, never one", async () => {
+      const paper = (station: string, name: string) => ({
+        jobType: "KITCHEN_TICKET",
+        document: { orderId: OPEN_ORDER.id, dailyNumber: 7, station, roundNumber: 1, serviceType: "DINE_IN",
+          items: [{ id: name, productId: name, name, quantity: 1, modifiers: [] }] },
+      });
+      previewPapersSpy.mockResolvedValue({ data: { papers: [paper("BAR", "Soda"), paper("GENERAL", "Nyama Choma")] }, error: null });
+      try {
+        await ticketWithOneLine();
+        await userEvent.click(screen.getByTestId("pay-order"));
+        await waitFor(() => expect(screen.getByTestId("paper-print")).toHaveTextContent("Print both"));
+        expect(screen.queryByTestId("paper-print-one")).toBeNull();
+      } finally {
+        previewPapersSpy.mockReset();
+        previewPapersSpy.mockImplementation(async () => {
+          throw new TypeError("Failed to fetch");
+        });
+      }
+    });
+
     it("a send Yetu refused is a new request the next time", async () => {
       sendOrderSpy.mockResolvedValueOnce({ data: undefined, error: { ...FORBIDDEN, status: 409, code: "CONFLICT", detail: "x" } } as never);
       await ticketWithOneLine();

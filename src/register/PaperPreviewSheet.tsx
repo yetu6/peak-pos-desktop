@@ -45,7 +45,7 @@ export function PaperPreviewSheet({
   const shown = views?.[Number(tab)] ?? views?.[0] ?? null;
   // Nothing prints on this till (a kitchen that reads its screen): the order still goes to it --
   // unless nothing is new, when there is nothing to send and nothing to print.
-  const screenOnly = views !== null && views.length > 0 && views.every((view) => view.text === null);
+  const screenOnly = views !== null && views.length > 0 && views.every((view) => !view.printsHere);
   const nothingToDo = screenOnly && (kind === "AGAIN" || (kind === "ROUND" && nothingNew));
   // Yetu refused these papers (a tab waiting for the next shift, a paid order): printing would be refused too.
   const refused = papers.isError ? refusalOf?.(papers.error) ?? null : null;
@@ -78,7 +78,7 @@ export function PaperPreviewSheet({
           </Button>
           {oneStation && shown ? (
             <Button size={64} disabled={blocked} onClick={() => onPrint([oneStation])} data-testid="paper-print-one">
-              {shown.text === null ? stationSendWords(oneStation) : stationPrintWords(oneStation)}
+              {shown.printsHere ? stationPrintWords(oneStation) : stationSendWords(oneStation)}
             </Button>
           ) : null}
           <Button

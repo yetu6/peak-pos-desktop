@@ -480,7 +480,7 @@ describe("Orders", () => {
   });
 
   // The owner, 2026-10-22: Print for bar -- here too; before payment, every paper together.
-  it("sends one station's new items from the preview; Pay sends them all", async () => {
+  it("prints one station's new items from the preview; Pay prints them all", async () => {
     const kitchenPaper = (station: string, name: string) => ({
       jobType: "KITCHEN_TICKET", document: { orderId: "order-1", orderNumber: "0042", station, items: [{ name, quantity: 1, modifiers: [] }] },
     });
@@ -490,13 +490,12 @@ describe("Orders", () => {
       renderOrders();
       const sheet = await openDetail("order-1");
       await userEvent.click(within(sheet).getByTestId("detail-pay"));
-      // This till has no kitchen printer: the papers go to the stations' screens.
-      await waitFor(() => expect(screen.getByRole("tab", { name: "Hot kitchen" })).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId("paper-print")).toHaveTextContent("Print both"));
       expect(screen.queryByTestId("paper-print-one")).toBeNull();
       await userEvent.click(screen.getByRole("button", { name: "Back" }));
       await userEvent.click(within(sheet).getByTestId("detail-send"));
       const one = await screen.findByTestId("paper-print-one");
-      expect(one).toHaveTextContent("Send to bar");
+      expect(one).toHaveTextContent("Print for bar");
       await userEvent.click(one);
       await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledWith("order-1", 1, expect.any(String), ["BAR"]));
     } finally {

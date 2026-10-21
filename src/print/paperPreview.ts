@@ -10,6 +10,8 @@ export interface PaperView {
   name: string;
   /** The station a kitchen paper is for (BAR, GENERAL ...); null for the bill. */
   station: string | null;
+  /** False when nothing prints this paper on this till (its station reads a screen); a paper that can't be shown still prints. */
+  printsHere: boolean;
   /** Characters to a line on the paper (48 on 80 mm, 32 on 58 mm). */
   width: number;
   text: string | null;
@@ -41,17 +43,17 @@ export function paperViews(
       made = paperFor(job, { settings, printRaw: async () => undefined, tagsOf });
     } catch {
       // A document this till can't make into paper: said, never a broken screen.
-      return { key: `${index}`, name, station: station ?? null, width: SYSTEM_WIDTH, text: null, notHere: "This paper can't be shown. Print it, and check what comes out." };
+      return { key: `${index}`, name, station: station ?? null, printsHere: true, width: SYSTEM_WIDTH, text: null, notHere: "This paper can't be shown. Print it, and check what comes out." };
     }
     if (made.kind === "none") {
       return {
-        key: `${index}`, name, station: station ?? null, width: SYSTEM_WIDTH, text: null,
+        key: `${index}`, name, station: station ?? null, printsHere: false, width: SYSTEM_WIDTH, text: null,
         notHere: made.why === "kitchen-off"
           ? "This till prints no kitchen papers: the kitchen reads the order on its screen."
           : `${name} has no printer on this till: it reads the order on its screen.`,
       };
     }
-    if (made.kind === "thermal") return { key: `${index}`, name, station: station ?? null, width: made.width, text: readable(made.bytes), notHere: null };
-    return { key: `${index}`, name, station: station ?? null, width: SYSTEM_WIDTH, text: made.text, notHere: null };
+    if (made.kind === "thermal") return { key: `${index}`, name, station: station ?? null, printsHere: true, width: made.width, text: readable(made.bytes), notHere: null };
+    return { key: `${index}`, name, station: station ?? null, printsHere: true, width: SYSTEM_WIDTH, text: made.text, notHere: null };
   });
 }
