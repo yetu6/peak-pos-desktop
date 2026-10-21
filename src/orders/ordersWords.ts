@@ -144,10 +144,15 @@ export function orderTimeline({
     const whole = (order.voids ?? []).find((v) => v.wholeOrder);
     const asked = whole?.askedByName.trim();
     const who = asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
+    // Closed by Yetu (no supervisor of its own): "every item was voided" only
+    // when every line went by a void; lines also taken off before they were
+    // sent make it "nothing was left on it" (review 2026-10-21).
+    const voidedLines = new Set(itemVoids.map((v) => v.itemId));
+    const allByVoid = (order.items ?? []).length > 0 && (order.items ?? []).every((line) => voidedLines.has(line.id));
     const words = emptiedOrder(order)
       ? "Closed by Yetu: nothing was left on it"
       : !approved && itemVoids.length > 0
-        ? "Closed by Yetu: every item was voided"
+        ? allByVoid ? "Closed by Yetu: every item was voided" : "Closed by Yetu: nothing was left on it"
         : `${orderStatusWords("VOIDED")}${whole?.reason.trim() ? `: ${whole.reason.trim()}` : ""}${who}`;
     if (timeOf(order.closedAt) !== null) add(order.closedAt, words);
     else untimed.push({ time: null, words });

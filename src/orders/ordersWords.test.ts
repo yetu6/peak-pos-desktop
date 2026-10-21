@@ -282,6 +282,19 @@ describe("orderTimeline: items voided after they were sent (fbc-peak 00125)", ()
     expect(timeline.map((entry) => entry.words)).toContain("Closed by Yetu: every item was voided");
   });
 
+  // Review 2026-10-21: one item voided, the other taken off before it was sent.
+  it("an order emptied by a void and a removal says nothing was left, not that every item was voided", () => {
+    const chips = { id: "l2", productId: "p2", name: "Chips", quantity: 1, unitPriceMinor: 300_000, taxMinor: 0, totalMinor: 300_000, status: "VOIDED" as const, removedAt: voidedAt, removedByName: "Baraka Mushi" };
+    const timeline = orderTimeline({
+      order: order({ status: "VOIDED", closedAt: voidedAt, items: [{ ...tusker, status: "VOIDED" }, chips], voids: [{ ...spilled, quantity: 2 }] }),
+      tickets: [],
+      currency: "TZS",
+    });
+    const words = timeline.map((entry) => entry.words);
+    expect(words).toContain("Closed by Yetu: nothing was left on it");
+    expect(words).not.toContain("Closed by Yetu: every item was voided");
+  });
+
   it("a whole-order void says why and who asked, once, not line by line", () => {
     const whole = { ...spilled, quantity: 2, reason: "Wrong table", wholeOrder: true };
     const words = orderTimeline({

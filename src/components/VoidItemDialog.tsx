@@ -61,6 +61,8 @@ export function VoidItemDialog({
     setSupervisorId(null);
     setPin("");
   }
+  // The line came down on another till: never offer more than it holds now.
+  if (quantity > line.quantity) setQuantity(line.quantity);
   const problem = voidItemProblem(voidItem.error);
   useHoldIdleLock(voidItem.isPending);
   const waiting = useRateLimitWait(voidItem.error, voidItem.reset);

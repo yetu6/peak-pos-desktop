@@ -76,8 +76,17 @@ export function NewOrder({
   const [voidingLine, setVoidingLine] = useState<POSOrderItem | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  // A late word (a slip that didn't print) follows what the till already said, never replaces it.
-  const addNotice = useCallback((words: string) => setNotice((now) => (now ? `${now} ${words}` : words)), []);
+  // A late word (a slip that didn't print) follows the void it belongs to,
+  // never replaces it -- and never attaches to something said since.
+  const voidNotice = useRef<string | null>(null);
+  const sayVoided = useCallback((words: string) => {
+    voidNotice.current = words;
+    setNotice(words);
+  }, []);
+  const addNotice = useCallback(
+    (words: string) => setNotice((now) => (now !== null && now === voidNotice.current ? `${now} ${words}` : words)),
+    [],
+  );
   const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
   const [paid, setPaid] = useState<PaidInfo | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -352,6 +361,13 @@ export function NewOrder({
     setSettleOpen(true);
   }
 
+  // The line being voided as the order has it now: after a reload its
+  // quantity may have dropped, or it may be gone (voided on another till),
+  // and the sheet must count from what is really there.
+  const liveVoidingLine = voidingLine && order
+    ? order.items.find((item) => item.id === voidingLine.id && item.status === "SENT") ?? null
+    : null;
+
   function clearTicket() {
     adopt(null);
     setTableLabel("");
@@ -359,6 +375,9 @@ export function NewOrder({
     setSelectedLineId(null);
     setSentAt(null);
     setSettleOpen(false);
+    // A void sheet belongs to the order it was opened on: never the next sale's.
+    setVoidOpen(false);
+    setVoidingLine(null);
     createKey.next();
   }
 
@@ -499,14 +518,14 @@ export function NewOrder({
           onVoided={() => {
             const words = voidedWords(order);
             clearTicket();
-            setNotice(words);
+            sayVoided(words);
           }}
         />
       )}
-      {voidingLine && order && (
+      {voidingLine && order && liveVoidingLine && (
         <VoidItemDialog
           order={order}
-          line={voidingLine}
+          line={liveVoidingLine}
           currency={currency}
           onClose={() => setVoidingLine(null)}
           onStale={() => void reloadOrder()}
@@ -516,10 +535,10 @@ export function NewOrder({
             // Nothing left to serve: Yetu closed the order. The next item starts a new one.
             if (fresh.status === "VOIDED") {
               clearTicket();
-              setNotice(`${words} Nothing is left on ${orderName(fresh)}, so it's closed.`);
+              sayVoided(`${words} Nothing is left on ${orderName(fresh)}, so it's closed.`);
             } else {
               adopt(fresh);
-              setNotice(words);
+              sayVoided(words);
             }
           }}
         />

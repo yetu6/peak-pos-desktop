@@ -637,8 +637,6 @@ export function useChargeToRoom() {
   });
 }
 
-/** Whole-order correction with a different supervisor's PIN. There is no
- *  per-line void-after-send in the certified contract — do not invent one. */
 /** Voids some or all of a sent line with a supervisor (fbc-peak 00125); Yetu answers the order. */
 export function useVoidItem() {
   const queryClient = useQueryClient();
@@ -671,6 +669,7 @@ export function useVoidItem() {
   });
 }
 
+/** Voids the whole order with a different supervisor's PIN; one sent item comes off with useVoidItem. */
 export function useVoidOrder() {
   const queryClient = useQueryClient();
   return useMutation({

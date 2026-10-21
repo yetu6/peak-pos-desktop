@@ -21,7 +21,7 @@ const { voidItemMutate, voidState, printAfter, answered } = vi.hoisted(() => ({
   answered: { order: null as unknown },
   voidItemMutate: vi.fn(),
   voidState: { error: null as unknown, isPending: false },
-  printAfter: vi.fn(async (_orderId: string) => [{ ok: true }] as Array<{ ok: boolean; error?: string }>),
+  printAfter: vi.fn(async (_orderId: string) => [{ ok: true }] as Array<{ ok: boolean; error?: string; jobType?: string }>),
 }));
 
 vi.mock("../hooks/usePosData", () => ({
@@ -157,6 +157,38 @@ describe("VoidItemDialog (the owner, 2026-10-21)", () => {
     await approve();
     await userEvent.click(screen.getByTestId("confirm-void-item"));
     await waitFor(() => expect(onPrintProblem).toHaveBeenCalledWith(expect.stringContaining("The void slip didn't print")));
+  });
+
+  // Review 2026-10-21: a refusal Yetu will always give is said, not reloaded forever.
+  it("says what to do instead when Yetu can't void this many, and keeps the sheet", async () => {
+    const onStale = vi.fn();
+    voidState.error = new Error(JSON.stringify({ code: "ITEM_NOT_VOIDABLE", detail: "This item was added before Yetu kept each item's VAT rate: void all of it." }));
+    render(<VoidItemDialog order={ORDER} line={TUSKER} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} onStale={onStale} />);
+    expect(within(screen.getByTestId("void-item-dialog")).getByRole("alert")).toHaveTextContent("void all of it");
+    expect(onStale).not.toHaveBeenCalled();
+  });
+
+  it("asks the supervisor again when the order changes under the sheet, and never offers more than the line holds now", async () => {
+    const view = render(<VoidItemDialog order={ORDER} line={TUSKER} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} />);
+    await giveReason("void-item-reason", "Spilled");
+    await approve();
+    expect(screen.getByTestId("confirm-void-item")).toBeEnabled();
+    // Another till voided some of it: a new version, and the line holds one.
+    view.rerender(<VoidItemDialog order={{ ...ORDER, version: ORDER.version + 1 }} line={{ ...TUSKER, quantity: 1 }} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} />);
+    expect(screen.getByTestId("confirm-void-item")).toBeDisabled();
+    expect(screen.getByTestId("confirm-void-item")).toHaveTextContent(`Void 1 × ${TUSKER.name}`);
+  });
+
+  it("reports a failed void slip, never an older paper waiting on the same order", async () => {
+    const onPrintProblem = vi.fn();
+    printAfter.mockResolvedValueOnce([{ ok: false, error: "The kitchen printer didn't answer.", jobType: "KITCHEN_TICKET" }, { ok: true, jobType: "KITCHEN_VOID" }]);
+    render(<VoidItemDialog order={ORDER} line={TUSKER} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} onPrintProblem={onPrintProblem} />);
+    await giveReason("void-item-reason", "Spilled");
+    await approve();
+    await userEvent.click(screen.getByTestId("confirm-void-item"));
+    await waitFor(() => expect(printAfter).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(onPrintProblem).not.toHaveBeenCalled();
   });
 
   it("says a part-paid order's item is refunded instead", () => {

@@ -56,8 +56,17 @@ export function ActiveOrders({
   const [query, setQuery] = useState("");
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // A late word (a slip that didn't print) follows what the till already said, never replaces it.
-  const addNotice = useCallback((words: string) => setNotice((now) => (now ? `${now} ${words}` : words)), []);
+  // A late word (a slip that didn't print) follows the void it belongs to,
+  // never replaces it -- and never attaches to something said since.
+  const voidNotice = useRef<string | null>(null);
+  const sayVoided = useCallback((words: string) => {
+    voidNotice.current = words;
+    setNotice(words);
+  }, []);
+  const addNotice = useCallback(
+    (words: string) => setNotice((now) => (now !== null && now === voidNotice.current ? `${now} ${words}` : words)),
+    [],
+  );
   const paid = usePaidOrders(shift ?? undefined, tab === "paid", query.trim().length > 0);
   const voided = useRef(false);
   const refunded = useRef(false);
@@ -191,7 +200,7 @@ export function ActiveOrders({
           currency={currency}
           onVoided={() => {
             voided.current = true;
-            setNotice(voidedWords(current));
+            sayVoided(voidedWords(current));
           }}
           onClose={() => {
             if (voided.current) close();

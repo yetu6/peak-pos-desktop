@@ -273,7 +273,7 @@ export async function processPendingPrintJobs(
   const mine = sourceId ? jobs.filter((job) => String(job.sourceId) === sourceId) : jobs;
   const results: PrintResult[] = [];
   for (const job of mine) {
-    results.push(await processPrintJob(job, printFn, routes));
+    results.push({ ...(await processPrintJob(job, printFn, routes)), jobType: job.jobType });
   }
   return results;
 }
