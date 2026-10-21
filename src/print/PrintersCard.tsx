@@ -1,8 +1,7 @@
 import { Printer } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Button, Field, SegmentedControl } from "../components/system";
-import { stationWords } from "../kitchen/kitchenWords";
-import type { PrepStation } from "../lib/posContracts";
+import { PREP_STATIONS, stationWords } from "../kitchen/kitchenWords";
 import { PAPER_58MM, PAPER_80MM, type PaperWidth } from "./escpos";
 import { kitchenTicketBytes } from "./kitchenTicket";
 import { receiptBytes } from "./receipt";
@@ -11,7 +10,6 @@ import {
 } from "./printerSettings";
 import { listSystemPrinters, loadPrinterSettings, printRawToPrinter, savePrinterSettings } from "./printerStore";
 
-const STATIONS: readonly PrepStation[] = ["GENERAL", "HOT", "COLD", "BAR", "GRILL", "PASTRY"];
 const OWN = "own";
 const SAME = "same";
 const NETWORK = "network";
@@ -132,7 +130,7 @@ export function PrintersCard() {
           />
           <details className="y-printers__stations">
             <summary>A printer for one station (optional)</summary>
-            {STATIONS.map((station) => (
+            {PREP_STATIONS.map((station) => (
               <PrinterPicker
                 key={station}
                 label={stationWords(station)}

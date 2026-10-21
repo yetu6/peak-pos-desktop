@@ -481,8 +481,8 @@ export function useSetLineQuantity() {
 export function useSendOrder() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (args: { orderId: string; version: number; idempotencyKey: string }) => {
-      await unwrap(createPosApi().sendOrder(args.orderId, args.version, args.idempotencyKey));
+    mutationFn: async (args: { orderId: string; version: number; idempotencyKey: string; stations?: readonly string[] }) => {
+      await unwrap(createPosApi().sendOrder(args.orderId, args.version, args.idempotencyKey, args.stations));
       return unwrap(createPosApi().getOrder(args.orderId));
     },
     onSuccess: (order: POSOrder) => {

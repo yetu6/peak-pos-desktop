@@ -80,15 +80,11 @@ const spies = vi.hoisted(() => ({
   }),
   // S8a: Yetu's copies of a round's kitchen tickets.
   reprintKitchenTickets: vi.fn(async (..._args: unknown[]): Promise<Result> => ({ data: { roundNumber: 2, printJobs: [] }, error: null })),
-  // What Yetu would print: one paper of the kind asked for, as a preview answers (owner, 2026-10-21).
-  previewPapers: vi.fn(async (orderId: string, kind: string): Promise<Result> => ({
-    data: {
-      papers: [kind === "BILL"
-        ? { jobType: "BILL", document: { kind: "BILL", orderId, orderNumber: "0042", items: [], totalMinor: 0, currency: "TZS" } }
-        : { jobType: "KITCHEN_TICKET", document: { orderId, orderNumber: "0042", station: "HOT", items: [{ name: "Chips", quantity: 1, modifiers: [] }] } }],
-    },
-    error: null,
-  })),
+  // What Yetu would print. Unanswered unless a test gives papers: the preview then says it can't show
+  // them and Print still prints, as every test here was written against.
+  previewPapers: vi.fn(async (..._args: unknown[]): Promise<Result> => {
+    throw new TypeError("Failed to fetch");
+  }),
   processPendingPrintJobs: vi.fn(async (..._args: unknown[]): Promise<{ ok: boolean; error?: string }[]> => [{ ok: false, error: "No printer is configured" }]),
   // fbc-peak #288: the bill before payment, and the one job this till prints for it.
   printBill: vi.fn(async (orderId: string, ..._rest: unknown[]): Promise<Result> => ({
@@ -124,6 +120,7 @@ vi.mock("../lib/posApi", () => ({
     listOrderPage: spies.listOrderPage,
     getOrder: spies.getOrder,
     sendOrder: spies.sendOrder,
+    previewPapers: spies.previewPapers,
     removeItem: spies.removeItem,
     getCatalog: spies.getCatalog,
     listStationTickets: spies.listStationTickets,
@@ -482,6 +479,34 @@ describe("Orders", () => {
     expect(within(sheet).getByRole("button", { name: "Cancel order" })).toBeEnabled();
   });
 
+  // The owner, 2026-10-22: Print for bar -- here too; before payment, every paper together.
+  it("sends one station's new items from the preview; Pay sends them all", async () => {
+    const kitchenPaper = (station: string, name: string) => ({
+      jobType: "KITCHEN_TICKET", document: { orderId: "order-1", orderNumber: "0042", station, items: [{ name, quantity: 1, modifiers: [] }] },
+    });
+    spies.previewPapers.mockImplementation(async () => ({ data: { papers: [kitchenPaper("BAR", "Soda"), kitchenPaper("HOT", "Chips")] }, error: null }));
+    try {
+      ordersStore.set("order-1", OPEN_ORDER);
+      renderOrders();
+      const sheet = await openDetail("order-1");
+      await userEvent.click(within(sheet).getByTestId("detail-pay"));
+      // This till has no kitchen printer: the papers go to the stations' screens.
+      await waitFor(() => expect(screen.getByRole("tab", { name: "Hot kitchen" })).toBeInTheDocument());
+      expect(screen.queryByTestId("paper-print-one")).toBeNull();
+      await userEvent.click(screen.getByRole("button", { name: "Back" }));
+      await userEvent.click(within(sheet).getByTestId("detail-send"));
+      const one = await screen.findByTestId("paper-print-one");
+      expect(one).toHaveTextContent("Send to bar");
+      await userEvent.click(one);
+      await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledWith("order-1", 1, expect.any(String), ["BAR"]));
+    } finally {
+      spies.previewPapers.mockReset();
+      spies.previewPapers.mockImplementation(async () => {
+        throw new TypeError("Failed to fetch");
+      });
+    }
+  });
+
   it("sends it to the kitchen with its version, prints the tickets, says so and moves focus to Pay", async () => {
     ordersStore.set("order-1", OPEN_ORDER);
     spies.sendOrder.mockImplementationOnce(async () => {
@@ -492,7 +517,7 @@ describe("Orders", () => {
     const sheet = await openDetail("order-1");
     await userEvent.click(within(sheet).getByTestId("detail-send"));
     await printInPreview();
-    await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledWith("order-1", 1, expect.any(String)));
+    await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledWith("order-1", 1, expect.any(String), undefined));
     expect(await within(sheet).findByTestId("order-detail-result")).toHaveTextContent("Sent to the kitchen.");
     await waitFor(() => expect(spies.processPendingPrintJobs).toHaveBeenCalledWith("property-1", "order-1", undefined, expect.objectContaining({ settings: expect.any(Object) })));
     await waitFor(() => expect(within(sheet).queryByTestId("detail-send")).toBeNull());
@@ -939,7 +964,7 @@ describe("Orders: Pay sends what isn't sent first (Toast, Square)", () => {
     expect(pay).toHaveTextContent("Send and pay TSh");
     await userEvent.click(pay);
     await printInPreview();
-    await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledWith("order-1", ROUND2.version, expect.any(String)));
+    await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledWith("order-1", ROUND2.version, expect.any(String), undefined));
     expect(await screen.findByTestId("settle-dialog")).toBeInTheDocument();
   });
 

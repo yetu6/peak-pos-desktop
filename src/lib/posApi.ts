@@ -168,10 +168,11 @@ export function createPosApi() {
         { headers: idempotent(idempotencyKey), body: { quantity, version } },
       );
     },
-    sendOrder(orderId: string, version: number, idempotencyKey: string): Promise<ApiResult<void>> {
+    /** The new lines go to the kitchen as the next round: all of them, or only those stations' (Print for bar). */
+    sendOrder(orderId: string, version: number, idempotencyKey: string, stations?: readonly string[]): Promise<ApiResult<void>> {
       return client.POST<void>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/send`, {
         headers: idempotent(idempotencyKey),
-        body: { version },
+        body: stations?.length ? { version, stations } : { version },
       });
     },
     transitionStatus(

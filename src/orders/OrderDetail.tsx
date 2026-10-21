@@ -609,7 +609,7 @@ export function OrderDetail({
   const reprint = useReprintReceipt();
   const printBill = usePrintBill();
   const kitchenReprint = useReprintKitchenTickets();
-  const [preview, setPreview] = useState<{ kind: "ROUND" | "AGAIN" | "BILL"; print: () => void } | null>(null);
+  const [preview, setPreview] = useState<{ kind: "ROUND" | "AGAIN" | "BILL"; print: (stations?: string[]) => void; allOnly: boolean } | null>(null);
   const takeOver = useTakeOverTab();
   const takeOverKey = useRequestKey();
   const sendKey = useRequestKey();
@@ -683,11 +683,17 @@ export function OrderDetail({
     );
   }
 
-  function send() {
+  /** The new items to the kitchen and the bar: all of them, or only those stations' (Print for bar). */
+  function send(stations?: string[]) {
     if (pending !== null) return;
     begin();
     sendOrder.mutate(
-      { orderId: order.id, version: order.version, idempotencyKey: sendKey.keyFor([order.id, order.version].join("|")) },
+      {
+        orderId: order.id,
+        version: order.version,
+        stations,
+        idempotencyKey: sendKey.keyFor([order.id, order.version, ...(stations ?? [])].join("|")),
+      },
       {
         onSuccess: (updated) => {
           focusAfter.current = true;
@@ -850,9 +856,10 @@ export function OrderDetail({
 
   // Every paper is shown before it prints (owner, 2026-10-21): which, and what Print then does.
   const unsent = order.items.some((line) => line.status === "ADDED");
-  function previewFirst(kind: "ROUND" | "AGAIN" | "BILL", print: () => void) {
+  // allOnly: before payment every new item prints, so the guest pays for what the kitchen has heard of.
+  function previewFirst(kind: "ROUND" | "AGAIN" | "BILL", print: (stations?: string[]) => void, allOnly = false) {
     return () => {
-      if (pending === null) setPreview({ kind, print });
+      if (pending === null) setPreview({ kind, print, allOnly });
     };
   }
 
@@ -875,7 +882,7 @@ export function OrderDetail({
         selectedLineId={selectedLineId}
         onSelectLine={setSelectedLineId}
         onSend={previewFirst("ROUND", send)}
-        onPay={canSend && takesMore(order) && unsent ? previewFirst("ROUND", payAfterSending) : payAfterSending}
+        onPay={canSend && takesMore(order) && unsent ? previewFirst("ROUND", payAfterSending, true) : payAfterSending}
         onVoid={onVoid}
         onRemoveLine={remove}
         onQuantity={changeQuantity}
@@ -900,11 +907,12 @@ export function OrderDetail({
             const refusal = preview.kind === "BILL" ? billProblem(error) : preview.kind === "AGAIN" ? kitchenReprintProblem(error) : sendProblem(error);
             return refusal && refusal.kind !== "network" ? refusal.words : null;
           }}
+          allOnly={preview.allOnly}
           onBack={() => setPreview(null)}
-          onPrint={() => {
+          onPrint={(stations) => {
             const print = preview.print;
             setPreview(null);
-            print();
+            print(stations);
           }}
         />
       ) : null}

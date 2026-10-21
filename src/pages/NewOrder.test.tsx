@@ -186,6 +186,7 @@ const {
   createOrderSpy,
   addItemSpy,
   sendOrderSpy,
+  previewPapersSpy,
   removeItemSpy,
   setItemQuantitySpy,
   getOrderSpy,
@@ -262,6 +263,10 @@ const {
   })),
   addItemSpy: vi.fn(async () => ({ data: OPEN_ORDER, error: null })),
   sendOrderSpy: vi.fn(async () => ({ data: { ...OPEN_ORDER, status: "SENT", version: 3 }, error: null })),
+  // No papers unless a test gives some: the preview says it can't show them, and Print still prints.
+  previewPapersSpy: vi.fn(async (): Promise<unknown> => {
+    throw new TypeError("Failed to fetch");
+  }),
   removeItemSpy: vi.fn(async () => ({ data: { ...OPEN_ORDER, items: [], version: 3 }, error: null })),
   setItemQuantitySpy: vi.fn(async () => ({ data: OPEN_ORDER, error: null })),
   getOrderSpy: vi.fn(async () => ({ data: OPEN_ORDER, error: null })),
@@ -278,6 +283,7 @@ vi.mock("../lib/posApi", () => ({
     createOrder: createOrderSpy,
     addItem: addItemSpy,
     sendOrder: sendOrderSpy,
+    previewPapers: previewPapersSpy,
     getOrder: getOrderSpy,
     recordTender: recordTenderSpy,
     listPrintJobs: vi.fn(async () => ({ data: [], error: null })),
@@ -761,6 +767,36 @@ describe("NewOrder", () => {
       const [first, second] = sendOrderSpy.mock.calls as unknown as Array<[string, number, string]>;
       expect(second[2]).toBe(first[2]);
       expect(second[1]).toBe(first[1]);
+    });
+
+    // The owner, 2026-10-22: Print for bar -- only the bar's items go, and a lost answer is asked again for the bar only.
+    it("Print for bar sends the bar's items only, and tries a lost answer again for the bar", async () => {
+      const paper = (station: string, name: string) => ({
+        jobType: "KITCHEN_TICKET",
+        document: { orderId: OPEN_ORDER.id, dailyNumber: 7, station, roundNumber: 1, serviceType: "DINE_IN",
+          items: [{ id: name, productId: name, name, quantity: 1, modifiers: [] }] },
+      });
+      previewPapersSpy.mockResolvedValue({ data: { papers: [paper("BAR", "Soda"), paper("GENERAL", "Nyama Choma")] }, error: null });
+      sendOrderSpy.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      try {
+        await ticketWithOneLine();
+        await userEvent.click(screen.getByTestId("send-order"));
+        const one = await screen.findByTestId("paper-print-one");
+        expect(one).toHaveTextContent("Print for bar");
+        await userEvent.click(one);
+        const alert = await screen.findByRole("alert");
+        await userEvent.click(within(alert.closest("[data-testid=create-error]") ?? alert).getByRole("button", { name: "Try again" }));
+        await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledTimes(2));
+        const [first, second] = sendOrderSpy.mock.calls as unknown as Array<[string, number, string, string[] | undefined]>;
+        expect(first[3]).toEqual(["BAR"]);
+        expect(second[3]).toEqual(["BAR"]);
+        expect(second[2]).toBe(first[2]);
+      } finally {
+        previewPapersSpy.mockReset();
+        previewPapersSpy.mockImplementation(async () => {
+          throw new TypeError("Failed to fetch");
+        });
+      }
     });
 
     it("a send Yetu refused is a new request the next time", async () => {

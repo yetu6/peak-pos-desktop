@@ -49,6 +49,19 @@ describe("the transport", () => {
     expect(JSON.parse(String(init?.body))).toEqual({ quantity: 3, version: 7 });
   });
 
+  // The owner, 2026-10-22: Print for bar -- the stations named go in the body; none, every new line.
+  it("sends an order with the stations to print for, or none for every station", async () => {
+    const fetchSpy = vi.fn(async (_url: string, _init?: RequestInit) => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    const { createPosApi } = await import("./posApi");
+    await createPosApi().sendOrder("o1", 4, "key-2", ["BAR"]);
+    await createPosApi().sendOrder("o1", 4, "key-3");
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://127.0.0.1:18080/api/v1/pos/orders/o1/send");
+    expect(JSON.parse(String(init?.body))).toEqual({ version: 4, stations: ["BAR"] });
+    expect(JSON.parse(String(fetchSpy.mock.calls[1][1]?.body))).toEqual({ version: 4 });
+  });
+
 
   it("carries Yetu's Retry-After with a 429's problem", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => tooMany("42")));
