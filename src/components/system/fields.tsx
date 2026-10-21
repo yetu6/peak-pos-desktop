@@ -122,6 +122,7 @@ export function MoneyField({
   id,
   inputTestId,
   autoFocus,
+  selectOnFocus,
 }: {
   label: string;
   /** The currency the backend returned; until it is known the field shows no unit. */
@@ -134,6 +135,8 @@ export function MoneyField({
   id?: string;
   inputTestId?: string;
   autoFocus?: boolean;
+  /** A filled-in amount is selected when the field is entered, so typing replaces it. */
+  selectOnFocus?: boolean;
 }) {
   const autoId = useId();
   const inputId = id ?? `money-${autoId}`;
@@ -163,6 +166,7 @@ export function MoneyField({
           inputMode="decimal"
           autoComplete="off"
           autoFocus={autoFocus}
+          onFocus={selectOnFocus ? (event) => event.currentTarget.select() : undefined}
           // Shown as money is read (50,000); kept as the digits typed.
           value={groupedDigits(value)}
           onChange={(event) => {
