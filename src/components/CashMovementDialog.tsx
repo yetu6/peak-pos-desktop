@@ -11,7 +11,7 @@ import { formatMoney } from "../lib/money";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRateLimitWait } from "../lib/useRateLimitWait";
 import type { RosterEntry } from "../lib/deviceAuth";
-import type { CashMovementType } from "../lib/posContracts";
+import type { CashMoneyType } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
 import { Button, MoneyField, ReasonPicker, RefusalNotice, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
 
@@ -25,13 +25,16 @@ import { Button, MoneyField, ReasonPicker, RefusalNotice, SegmentedControl, Shee
 export function CashMovementDialog({
   shiftId,
   onClose,
+  onRecorded,
   currency,
   initialType = "CASH_IN",
 }: {
   shiftId: string;
   onClose: () => void;
+  /** Yetu recorded the cash: the page opens the drawer for it (2026-10-21). */
+  onRecorded?: () => void;
   currency?: string;
-  initialType?: CashMovementType;
+  initialType?: CashMoneyType;
 }) {
   const device = useDeviceSessionOptional();
   const record = useRecordCashMovement(shiftId);
@@ -54,7 +57,14 @@ export function CashMovementDialog({
       errorMovementType={record.variables?.movementType}
       inReasons={useTillReasons("cashIn")}
       outReasons={useTillReasons("cashOut")}
-      onRecord={(args) => record.mutate({ ...args, idempotencyKey: idempotencyKey.next() }, { onSuccess: onClose })}
+      onRecord={(args) =>
+        record.mutate({ ...args, idempotencyKey: idempotencyKey.next() }, {
+          onSuccess: () => {
+            onClose();
+            onRecorded?.();
+          },
+        })
+      }
     />
   );
 }
@@ -62,7 +72,7 @@ export function CashMovementDialog({
 export interface CashMovementSheetViewProps {
   onClose: () => void;
   currency?: string;
-  initialType?: CashMovementType;
+  initialType?: CashMoneyType;
   roster: readonly RosterEntry[];
   /** F-249: Yetu's approvers here; null until it answers, and then everyone is offered. */
   approvers?: readonly POSApprover[] | null;
@@ -72,9 +82,9 @@ export interface CashMovementSheetViewProps {
   waiting?: boolean;
   error: unknown;
   /** Which way the refused request went: its refusal is worded for it, whatever the sheet shows now. */
-  errorMovementType?: CashMovementType;
+  errorMovementType?: CashMoneyType;
   onRecord: (args: {
-    movementType: CashMovementType;
+    movementType: CashMoneyType;
     amountMinor: number;
     reason: string;
     supervisorStaffId?: string;
@@ -105,7 +115,7 @@ export function CashMovementSheetView({
   initialAmount = "",
   initialReason = "",
 }: CashMovementSheetViewProps) {
-  const [movementType, setMovementType] = useState<CashMovementType>(initialType);
+  const [movementType, setMovementType] = useState<CashMoneyType>(initialType);
   const [amount, setAmount] = useState(initialAmount);
   const [reason, setReason] = useState(initialReason);
   const [supervisorId, setSupervisorId] = useState<string | null>(null);

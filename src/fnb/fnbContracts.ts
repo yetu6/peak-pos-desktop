@@ -72,4 +72,6 @@ export interface FnbTillReasons {
   refund: string[];
   cashIn: string[];
   cashOut: string[];
+  /** fbc-peak #289: why the drawer is opened without a sale; absent from a Yetu before it. */
+  drawer?: string[];
 }

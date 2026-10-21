@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { POSOrder, POSRoomChargeCandidate } from "../lib/posContracts";
+import type { POSOrder, POSOrderPayment, POSRoomChargeCandidate } from "../lib/posContracts";
 import { IDLE_LOCK_MAX_DEFERRAL_SECONDS, idleLockHeld, watchIdleActivity } from "../lib/idleLock";
 import { PaySheet } from "./PaySheet";
 import { PAY_CHECK_EVERY_SECONDS } from "./registerSettings";
@@ -44,6 +44,12 @@ const { recordTenderMutate, chargeToRoomMutate, refs } = vi.hoisted(() => ({
   },
 }));
 
+// The drawer (2026-10-21): every cash payment opens it; its own tests are in print/bill.test.ts.
+const { openDrawerForCash } = vi.hoisted(() => ({
+  openDrawerForCash: vi.fn(async (..._args: unknown[]) => ({ ok: true }) as { ok: boolean; error?: string }),
+}));
+vi.mock("../print/cashDrawer", () => ({ openDrawerForCash }));
+
 vi.mock("../hooks/usePosData", async (importOriginal) => ({
   // The real key generator: a retry must reuse its key, a new request must not.
   useIdempotencyKey: (await importOriginal<typeof import("../hooks/usePosData")>()).useIdempotencyKey,
@@ -60,9 +66,15 @@ function renderPay(order: POSOrder = ORDER) {
   const onPaid = vi.fn<Paid>();
   const onOrderChange = vi.fn();
   const onClose = vi.fn();
-  render(<PaySheet order={order} currency="TZS" onClose={onClose} onOrderChange={onOrderChange} onPaid={onPaid} />);
-  return { onPaid, onOrderChange, onClose };
+  const onDrawerProblem = vi.fn();
+  render(
+    <PaySheet order={order} currency="TZS" onClose={onClose} onOrderChange={onOrderChange} onPaid={onPaid} onDrawerProblem={onDrawerProblem} />,
+  );
+  return { onPaid, onOrderChange, onClose, onDrawerProblem };
 }
+
+const paidWith = (...methods: POSOrderPayment["paymentMethod"][]): POSOrderPayment[] =>
+  methods.map((paymentMethod, index) => ({ id: `p${index}`, paymentMethod, amountMinor: 1, createdAt: "", recordedByName: "" }));
 
 const pay = () => screen.getByTestId("confirm-settle");
 
@@ -185,19 +197,49 @@ describe("PaySheet", () => {
     }
   });
 
-  it("a split ends with the last tender, told to payment done as a split", async () => {
+  // F-269: two cash payments for one bill are cash; "Split payment" is for more than one way.
+  it("paid in two parts, both cash: told to payment done as cash, and the drawer opens for each", async () => {
     recordTenderMutate.mockImplementation((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
-      opts?.onSuccess?.({ ...ORDER, paidMinor: 2_000_000, remainingMinor: 2_250_000, version: 3 }),
+      opts?.onSuccess?.({ ...ORDER, paidMinor: 2_000_000, remainingMinor: 2_250_000, version: 3, payments: paidWith("CASH") }),
     );
     const { onPaid } = renderPay();
     await userEvent.type(screen.getByTestId("amount-received"), "20000");
     await userEvent.click(pay());
+    // The part payment opens the drawer: the guest's change comes from it (2026-10-21).
+    expect(openDrawerForCash).toHaveBeenCalledTimes(1);
+    expect(openDrawerForCash).toHaveBeenLastCalledWith("CASH");
     recordTenderMutate.mockImplementation((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
-      opts?.onSuccess?.(CLOSED),
+      opts?.onSuccess?.({ ...CLOSED, payments: paidWith("CASH", "CASH") }),
     );
     await userEvent.type(screen.getByTestId("amount-received"), "22500");
     await userEvent.click(pay());
-    expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ method: "CASH", split: true, changeMinor: 0 }));
+    expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ method: "CASH", split: false, changeMinor: 0 }));
+    expect(openDrawerForCash).toHaveBeenCalledTimes(2);
+  });
+
+  it("cash, then mobile money: told to payment done as a split", async () => {
+    recordTenderMutate.mockImplementation((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
+      opts?.onSuccess?.({ ...CLOSED, payments: paidWith("CASH", "MOBILE_MONEY") }),
+    );
+    const { onPaid } = renderPay({ ...ORDER, paidMinor: 2_000_000, remainingMinor: 2_250_000, payments: paidWith("CASH") });
+    await userEvent.click(screen.getByRole("radio", { name: "Mobile money" }));
+    await userEvent.click(pay());
+    expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ method: "MOBILE_MONEY", split: true }));
+    // The drawer is asked about the mobile money too, and stays shut for it (cashDrawer.ts).
+    expect(openDrawerForCash).toHaveBeenLastCalledWith("MOBILE_MONEY");
+  });
+
+  it("a drawer that didn't open for the cash is said in the sheet and to the page", async () => {
+    openDrawerForCash.mockResolvedValueOnce({ ok: false, error: "Printer offline" });
+    recordTenderMutate.mockImplementation((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
+      opts?.onSuccess?.({ ...ORDER, paidMinor: 2_000_000, remainingMinor: 2_250_000, version: 3, payments: paidWith("CASH") }),
+    );
+    const { onDrawerProblem } = renderPay();
+    await userEvent.type(screen.getByTestId("amount-received"), "20000");
+    await userEvent.click(pay());
+    const said = await screen.findByTestId("pay-drawer-problem");
+    expect(said).toHaveTextContent(/drawer didn't open/i);
+    expect(onDrawerProblem).toHaveBeenCalledWith(said.textContent);
   });
 
   it("card: take it on your own machine, then confirm here; the reference is optional", async () => {

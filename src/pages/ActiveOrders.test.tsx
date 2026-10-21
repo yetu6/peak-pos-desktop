@@ -94,7 +94,7 @@ const spies = vi.hoisted(() => ({
     ordersStore.set(orderId, paid);
     return { data: { paymentId: "pay-1", orderClosed: true, paidMinor: paid.paidMinor, remainingMinor: 0, version: paid.version }, error: null };
   }),
-  openDrawerAfterCash: vi.fn(async (..._args: unknown[]) => ({ ok: true })),
+  openDrawerForCash: vi.fn(async (..._args: unknown[]) => ({ ok: true })),
   listPOSOrderRefunds: vi.fn(async (): Promise<Result> => ({
     data: { status: "CLOSED", refundedMinor: 0, remainingMinor: 118_000, lastRefundDate: "2099-12-31", refunds: [], lines: [] },
     error: null,
@@ -155,7 +155,7 @@ vi.mock("../auth/DeviceSessionProvider", () => ({
   }),
 }));
 
-vi.mock("../print/cashDrawer", () => ({ openDrawerAfterCash: spies.openDrawerAfterCash }));
+vi.mock("../print/cashDrawer", () => ({ openDrawerForCash: spies.openDrawerForCash }));
 
 vi.mock("../lib/printJobs", () => ({
   processPendingPrintJobs: spies.processPendingPrintJobs,
@@ -589,6 +589,20 @@ describe("Orders", () => {
     expect(within(sheet).queryByTestId("detail-print-bill")).toBeNull();
   });
 
+  it("a cash drawer that didn't open is said on Orders once Paid is done", async () => {
+    spies.openDrawerForCash.mockResolvedValueOnce({ ok: false, error: "Printer offline" } as { ok: boolean });
+    ordersStore.set("order-1", { ...OPEN_ORDER, status: "SENT", version: 2 });
+    renderOrders();
+    const sheet = await openDetail("order-1");
+    await userEvent.click(within(sheet).getByTestId("detail-pay"));
+    const pay = await screen.findByTestId("settle-dialog");
+    await userEvent.type(within(pay).getByTestId("amount-received"), "2000");
+    await userEvent.click(within(pay).getByTestId("confirm-settle"));
+    const done = await screen.findByRole("dialog", { name: "Paid" });
+    await userEvent.click(within(done).getByRole("button", { name: /Back to orders/ }));
+    expect(await screen.findByText(/The cash drawer didn't open: printer offline/)).toBeInTheDocument();
+  });
+
   // 2026-10-20: nothing prints after payment; cash still opens the drawer.
   it("a cash payment from Orders prints nothing and opens the cash drawer", async () => {
     ordersStore.set("order-1", { ...OPEN_ORDER, status: "SENT", version: 2 });
@@ -599,7 +613,8 @@ describe("Orders", () => {
     await userEvent.type(within(pay).getByTestId("amount-received"), "2000");
     await userEvent.click(within(pay).getByTestId("confirm-settle"));
     expect(await screen.findByRole("dialog", { name: "Paid" })).toBeInTheDocument();
-    await waitFor(() => expect(spies.openDrawerAfterCash).toHaveBeenCalledWith(expect.objectContaining({ id: "order-1" }), "CASH"));
+    await waitFor(() => expect(spies.openDrawerForCash).toHaveBeenCalledWith("CASH"));
+    expect(spies.openDrawerForCash).toHaveBeenCalledTimes(1);
     expect(spies.processPendingPrintJobs).not.toHaveBeenCalled();
     expect(spies.processPrintJob).not.toHaveBeenCalled();
   });

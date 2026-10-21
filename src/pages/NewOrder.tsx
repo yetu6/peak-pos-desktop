@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { billNotPrintedWords, drawerNotOpenedWords, printProblemOnce } from "../print/printProblems";
-import { openDrawerAfterCash } from "../print/cashDrawer";
+import { billNotPrintedWords, printProblemOnce } from "../print/printProblems";
 import { DiscountDialog } from "../components/DiscountDialog";
 import { VoidOrderDialog } from "../components/VoidOrderDialog";
 import {
@@ -342,10 +341,7 @@ export function NewOrder({
     setSettleOpen(false);
     setPaid(info);
     // Nothing prints after payment (2026-10-20): the EFD gives the tax receipt, the bill came before.
-    // Cash opens the drawer, as the receipt used to; one that didn't open is said on Sell.
-    void openDrawerAfterCash(info.order, info.method).then((result) => {
-      if (!result.ok) setNotice(drawerNotOpenedWords(result.error ?? ""));
-    });
+    // The drawer opened as the cash was taken (Pay); one that didn't is said on Sell.
   }
 
   // The bill before payment (fbc-peak #288): printed for the ticket's order; said on Sell.
@@ -456,6 +452,7 @@ export function NewOrder({
           onClose={() => setSettleOpen(false)}
           onOrderChange={adopt}
           onPaid={afterPaid}
+          onDrawerProblem={setNotice}
         />
       )}
       {discountOpen && order && currency && (

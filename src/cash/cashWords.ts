@@ -5,7 +5,7 @@
  * own count, which is input.
  */
 import { formatMoney, MINOR_PER_MAJOR } from "../lib/money";
-import type { CashMovementType } from "../lib/posContracts";
+import type { CashMoneyType } from "../lib/posContracts";
 import { otherWords, problemOf, UNREACHABLE } from "../lib/problemWords";
 import { noApproverWords } from "../register/registerWords";
 
@@ -123,7 +123,7 @@ export function dayCloseProblem(
  */
 export function cashMovementProblem(
   error: unknown,
-  movementType: CashMovementType,
+  movementType: CashMoneyType,
 ): CashProblem<"supervisor" | "no-approver" | "no-shift"> | null {
   const problem = problemOf(error);
   if (!problem) return null;
@@ -142,6 +142,23 @@ export function cashMovementProblem(
         : { kind: "permission", words: "Only a cashier or manager can put cash in or take it out. Ask one to help." };
   }
   return { kind: "other", words: otherWords(problem, "That wasn't recorded. Try again.") };
+}
+
+/**
+ * Opening the drawer without a sale (fbc-peak #289), by code. Yetu records it
+ * first; the till opens the drawer only once it has.
+ */
+export function drawerOpenProblem(error: unknown): CashProblem<"no-shift"> | null {
+  const problem = problemOf(error);
+  if (!problem) return null;
+  if (problem === "network") return { kind: "network", words: `${UNREACHABLE} The drawer stays shut until Yetu records why it opens.` };
+  switch (problem.code) {
+    case "SHIFT_NOT_OPEN":
+      return { kind: "no-shift", words: "No shift is open on this till." };
+    case "FORBIDDEN":
+      return { kind: "permission", words: "Only a cashier or manager can open the drawer. Ask one to help." };
+  }
+  return { kind: "other", words: otherWords(problem, "The drawer opening wasn't recorded. Try again.") };
 }
 
 /** The count against Yetu's expected figure: a comparison, not a sum. */

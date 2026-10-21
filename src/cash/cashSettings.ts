@@ -31,6 +31,17 @@ export const CASH_IN_REASONS: readonly string[] = [
   "Cash from another till",
 ];
 
+/**
+ * cash.drawerReasons: why the drawer is opened without a sale (2026-10-21).
+ * Yetu's standard list (internal/fnb/menu StandardReasons) until the outlet's
+ * managers keep their own.
+ */
+export const DRAWER_REASONS: readonly string[] = [
+  "Change for a guest's note",
+  "Check the float",
+  "Put back a note taken by mistake",
+];
+
 export const CASH_OUT_REASONS: readonly string[] = [
   "Paid a supplier",
   "Bought supplies",

@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { CASH_IN_REASONS, CASH_OUT_REASONS } from "../cash/cashSettings";
+import { CASH_IN_REASONS, CASH_OUT_REASONS, DRAWER_REASONS } from "../cash/cashSettings";
 import { useOutletId } from "../hooks/usePosData";
 import { DISCOUNT_REASONS, REFUND_REASONS, VOID_REASONS } from "../orders/ordersSettings";
 import { createFnbApi } from "./fnbApi";
 import type { FnbTillReasons } from "./fnbContracts";
 
-export type ReasonKind = keyof FnbTillReasons;
+export type ReasonKind = Exclude<keyof FnbTillReasons, "drawer"> | "drawer";
 
 /**
  * reasons.refreshSeconds: how long the reasons the till last read stay good.
@@ -21,6 +21,7 @@ const TILL_REASONS: Record<ReasonKind, readonly string[]> = {
   refund: REFUND_REASONS,
   cashIn: CASH_IN_REASONS,
   cashOut: CASH_OUT_REASONS,
+  drawer: DRAWER_REASONS,
 };
 
 /**

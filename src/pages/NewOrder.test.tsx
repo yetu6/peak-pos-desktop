@@ -19,7 +19,7 @@ const { printForSpy, printJobNowSpy, printBillSpy } = vi.hoisted(() => ({
 }));
 vi.mock("../print/printFor", () => ({ printFor: printForSpy, printJobNow: printJobNowSpy }));
 const { openDrawerSpy } = vi.hoisted(() => ({ openDrawerSpy: vi.fn(async (..._args: unknown[]) => ({ ok: true })) }));
-vi.mock("../print/cashDrawer", () => ({ openDrawerAfterCash: openDrawerSpy }));
+vi.mock("../print/cashDrawer", () => ({ openDrawerForCash: openDrawerSpy }));
 
 // Supervisors at this till, for Void and Discount.
 vi.mock("../auth/DeviceSessionProvider", async (importOriginal) => ({
@@ -473,6 +473,23 @@ describe("NewOrder", () => {
     expect(screen.queryByTestId("amount-received")).toBeNull();
   });
 
+  it("a cash drawer that didn't open is said on Sell once Paid is done", async () => {
+    openDrawerSpy.mockResolvedValueOnce({ ok: false, error: "Printer offline" } as { ok: boolean });
+    await startOrder();
+    getOrderSpy.mockImplementation(async () => ({
+      data: recordTenderSpy.mock.calls.length
+        ? { ...OPEN_ORDER, status: "CLOSED" as const, paidMinor: 1200000, remainingMinor: 0, version: 3 }
+        : OPEN_ORDER,
+      error: null,
+    }));
+    await userEvent.click(screen.getByTestId("pay-order"));
+    await userEvent.type(await screen.findByTestId("amount-received"), "15000");
+    await userEvent.click(screen.getByTestId("confirm-settle"));
+    const done = await screen.findByRole("dialog", { name: "Paid" });
+    await userEvent.click(within(done).getByRole("button", { name: /New sale/ }));
+    expect(await screen.findByText(/The cash drawer didn't open: printer offline/)).toBeInTheDocument();
+  });
+
   // The owner, 2026-10-20: the guest gets the bill before paying (fbc-peak #288).
   it("More, Print bill prints the ticket's bill and says so", async () => {
     await startOrder();
@@ -515,7 +532,8 @@ describe("NewOrder", () => {
     expect(within(done).getByTestId("done-efd")).toHaveTextContent("Give the guest their EFD receipt.");
     expect(printForSpy.mock.calls.length).toBe(printsBeforePayment);
     // The cash drawer still opens for cash.
-    expect(openDrawerSpy).toHaveBeenCalledWith(expect.objectContaining({ id: "order-1" }), "CASH");
+    expect(openDrawerSpy).toHaveBeenCalledTimes(1);
+    expect(openDrawerSpy).toHaveBeenCalledWith("CASH");
     await userEvent.click(within(done).getByRole("button", { name: /New sale/ }));
     expect(screen.queryByRole("dialog", { name: "Paid" })).not.toBeInTheDocument();
     expect(ticket().getByText("Tap an item to start an order.")).toBeInTheDocument();

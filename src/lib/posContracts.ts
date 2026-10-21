@@ -12,7 +12,10 @@ export type OrderStatus = "OPEN" | "SENT" | "PREPARING" | "READY" | "SERVED" | "
 export type OrderItemStatus = "ADDED" | "SENT" | "VOIDED";
 export type PaymentMethod = "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER" | "EXTERNAL_CARD" | "OTHER";
 export type ShiftStatus = "OPEN" | "PENDING_VARIANCE_APPROVAL" | "CLOSED";
-export type CashMovementType = "CASH_IN" | "CASH_OUT";
+/** DRAWER_OPENED (fbc-peak #289): the drawer opened without a sale, with a reason; no money. */
+export type CashMovementType = "CASH_IN" | "CASH_OUT" | "DRAWER_OPENED";
+/** Cash put into the drawer or taken out of it: money moves. */
+export type CashMoneyType = Exclude<CashMovementType, "DRAWER_OPENED">;
 /** ON_FILE (fbc-peak #288): a paid order's document, kept and never printed by itself. */
 export type PrintJobStatus = "PENDING" | "CLAIMED" | "PRINTED" | "FAILED" | "ON_FILE";
 
