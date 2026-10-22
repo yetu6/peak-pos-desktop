@@ -70,9 +70,8 @@
 .y-button > svg {
   width: 20px;
   height: 20px;
+  stroke-width: 2px;
 }
-
-.y-button--64 .y-button__icon svg { width: 24px; height: 24px; }
 
 .y-button--primary {
   border-color: var(--action);

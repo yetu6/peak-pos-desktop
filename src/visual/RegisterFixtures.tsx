@@ -1,3 +1,5 @@
+import { OpenOrdersBar } from "../register/OpenOrdersBar";
+import { OPEN_ORDERS } from "./ordersData";
 import { useState, type ReactNode } from "react";
 import { ReceiptSheet } from "../components/ReceiptView";
 import type { FnbTillMenu } from "../fnb/fnbContracts";
@@ -80,6 +82,7 @@ function Sell({
         }
         ticket={
           <TicketPanel
+            bar={<OpenOrdersBar orders={OPEN_ORDERS} current={order} staffId={ORDER.initiatedById} currency={CURRENCY} onPick={nothing} onNew={nothing} />}
             order={order}
             currency={CURRENCY}
             serviceType="DINE_IN"
@@ -106,6 +109,7 @@ function Sell({
                 onDiscount={nothing}
                 onVoid={nothing}
                 onNote={nothing}
+                onPrintBill={canSend ? nothing : undefined}
                 onNewSale={nothing}
                 initialMoreOpen={moreOpen}
               />

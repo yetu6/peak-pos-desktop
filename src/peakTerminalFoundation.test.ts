@@ -122,6 +122,16 @@ const TEXT = [
 ];
 const STATUS = ["success", "warning", "danger", "info"] as const;
 
+describe("thermal paper colours", () => {
+  for (const theme of ["light", "dark"] as const) {
+    it(`keeps ${theme} paper white with readable ink`, () => {
+      expect(colour(theme, "--receipt-paper")).toBe("#ffffff");
+      expect(ratio(theme, "--receipt-ink", "--receipt-paper")).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(theme, "--receipt-muted", "--receipt-paper")).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+});
+
 describe("Yetu till tokens", () => {
   it("adopts the Yetu brand ramp", () => {
     expect(brand["--fbc-ink"]).toBe("#10417c");
@@ -445,8 +455,8 @@ describe("type, spacing and sizes", () => {
       "--space-1": "4px",
       "--space-2": "8px",
       "--space-4": "16px",
-      "--radius-control": "6px",
-      "--radius-card": "10px",
+      "--radius-control": "4px",
+      "--radius-card": "8px",
     });
   });
 
