@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { liveUpdatesWords, offlineReadyWords, savedSalesWords } from "../lib/supportWords";
 import { CircleAlert, CloudOff, RefreshCw, Wifi } from "lucide-react";
@@ -180,7 +181,7 @@ export function SyncSheet({ sync }: { sync: SyncCenterState }) {
         state ? (
           <div className="y-sync__footer">
             <Button variant="quiet" disabled={sending} onClick={() => sync.setOpen(false)}>
-              Close
+              {BACK_WORDS}
             </Button>
             <Button variant="primary" size={56} icon={<RefreshCw />} disabled={sending || !getOperationalSession()} onClick={() => sync.retry.mutate()}>
               {sending ? "Sending…" : "Try again"}

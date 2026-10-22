@@ -191,7 +191,7 @@ export function reprintProblem(error: unknown): OrderProblem | null {
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
   if (problem.code === "FORBIDDEN") return { kind: "permission", words: "Only a cashier or manager can print the bill again. Ask one to help." };
-  if (problem.code === "NOT_FOUND") return { kind: "missing", words: "Yetu has no bill for this order." };
+  if (problem.code === "NOT_FOUND") return { kind: "missing", words: "There is no bill for this order." };
   return { kind: "other", words: otherWords(problem, "The copy wasn't printed. Try again.") };
 }
 
@@ -204,7 +204,7 @@ export function billProblem(error: unknown): OrderProblem | null {
   if (problem.code === "BILL_NOTHING_ON_IT") return { kind: "other", words: "Nothing is on this order yet, so there is no bill to print." };
   if (problem.code === "BILL_ORDER_NOT_OPEN") return { kind: "moved", words: "This order is paid or cancelled now. It's been reloaded." };
   if (problem.code === "TAB_WAITING_FOR_SHIFT") return { kind: "other", words: "Take this tab over first, then print its bill." };
-  if (problem.code === "NOT_FOUND") return { kind: "missing", words: "Yetu doesn't have this order." };
+  if (problem.code === "NOT_FOUND") return { kind: "missing", words: "This order isn't here." };
   return { kind: "other", words: otherWords(problem, "The bill wasn't printed. Try again.") };
 }
 

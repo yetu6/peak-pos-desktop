@@ -166,7 +166,7 @@ describe("ReceiptView", () => {
       render(<ReceiptView orderId="order-1" onClose={onClose} />);
       expect(idleLockHeld()).toBe(true);
       await userEvent.keyboard("{Escape}");
-      for (const close of screen.getAllByRole("button", { name: "Close" })) await userEvent.click(close);
+      for (const close of screen.getAllByRole("button", { name: "Back to previous screen" })) await userEvent.click(close);
       expect(onClose).not.toHaveBeenCalled();
     } finally {
       reprintState.isPending = false;

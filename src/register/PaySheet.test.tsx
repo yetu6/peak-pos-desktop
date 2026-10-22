@@ -490,7 +490,7 @@ describe("PaySheet", () => {
     refs.tender = { isPending: true, error: null };
     const { onClose } = renderPay();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await userEvent.click(screen.getByRole("button", { name: "Back to previous screen" }));
     expect(onClose).not.toHaveBeenCalled();
   });
 

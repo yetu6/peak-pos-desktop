@@ -858,7 +858,7 @@ describe("Orders: a kitchen ticket printed again (S8a)", () => {
     let sheet = await openDetail("order-1");
     await within(sheet).findByTestId("detail-send");
     expect(within(sheet).queryByTestId("detail-kitchen-reprint")).toBeNull();
-    await userEvent.click(within(sheet).getByRole("button", { name: "Close" }));
+    await userEvent.click(within(sheet).getByRole("button", { name: "Back to previous screen" }));
   });
 
   it("on a till that prints no kitchen tickets, says so and asks Yetu for no copy", async () => {
@@ -1012,7 +1012,7 @@ describe("Orders: carrying on with an open order (F-236)", () => {
     const sheet = await openDetail("order-1");
     await userEvent.click(within(sheet).getByTestId("detail-discount"));
     const discount = await screen.findByTestId("discount-dialog");
-    await userEvent.click(within(discount).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(within(discount).getByRole("button", { name: "Back" }));
     expect(await screen.findByRole("dialog", { name: "Order 42" })).toBeInTheDocument();
   });
 

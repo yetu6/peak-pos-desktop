@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { CircleCheck, CircleDot, LoaderCircle } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
@@ -173,7 +174,7 @@ export function PairingView({
 
           <div className="y-access__actions">
             <Button variant="quiet" disabled={busy} onClick={() => void run(onCancel)}>
-              Cancel
+              {BACK_WORDS}
             </Button>
             <Button variant="secondary" size={56} disabled={busy} onClick={() => void run(onNewCode)}>
               {busy ? "Getting a code…" : "New code"}

@@ -16,6 +16,6 @@ describe("NoteSheet", () => {
     render(<NoteSheet note="No chilli" locked onSave={vi.fn()} onClose={vi.fn()} />);
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(screen.getByText("No chilli")).toBeInTheDocument();
-    expect(screen.getByText("Yetu keeps the note the order started with. It can't be changed now.")).toBeInTheDocument();
+    expect(screen.getByText("The note is saved with the order. It can't be changed now.")).toBeInTheDocument();
   });
 });

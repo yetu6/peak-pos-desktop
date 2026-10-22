@@ -1,4 +1,5 @@
 "use client"
+import { BACK_WORDS } from "../../lib/words";
 
 import * as React from "react"
 import { Dialog as SheetPrimitive } from "radix-ui"
@@ -77,7 +78,7 @@ function SheetContent({
             >
               <XIcon
               />
-              <span className="sr-only">Close</span>
+              <span className="sr-only">{BACK_WORDS}</span>
             </Button>
           </SheetPrimitive.Close>
         )}

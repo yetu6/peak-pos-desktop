@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { EXACT_WORDS, ignoreHeldEnter, startAmount, useFilledAmount } from "./moneyEntry";
 import { moneyFieldText } from "../cash/NoteCounterSheet";
 import { Banner, Button, Keypad, Money, MoneyField, QuickCash, Sheet, type KeypadKey } from "../components/system";
@@ -59,7 +60,7 @@ export function OfflineCashSheet({
       footer={
         <div className="y-pay__footer">
           <Button variant="quiet" disabled={saving} onClick={onCancel}>
-            Cancel
+            {BACK_WORDS}
           </Button>
           <Button type="submit" form={FORM} variant="pay" size={64} data-testid="confirm-offline-cash" disabled={!enough || saving}>
             {saving ? "Saving on this till…" : `Take ${formatMoney(dueMinor, currency)} cash`}

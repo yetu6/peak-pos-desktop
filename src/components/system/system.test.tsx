@@ -279,7 +279,7 @@ describe("containers", () => {
       </Dialog>,
     );
     expect(screen.getByRole("dialog", { name: "Void this order?" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await userEvent.click(screen.getByRole("button", { name: "Back to previous screen" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -425,13 +425,13 @@ describe("SupervisorApproval", () => {
 
   it("lets the person asking back out", async () => {
     const { onCancel } = renderApproval();
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(onCancel).toHaveBeenCalled();
   });
 
   it("leaves Cancel and Approve to a sheet's footer when asked, and the footer approves only when allowed", async () => {
     renderApproval({ actions: "none", onApprove: vi.fn() });
-    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
     const onApprove = vi.fn();
     const { unmount } = render(<SupervisorApprovalActions onCancel={vi.fn()} onApprove={onApprove} canApprove={false} />);
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();

@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { useState } from "react";
 import { useSupervisors } from "../approvals/supervisors";
 import { PIN_LENGTH } from "../access/accessSettings";
@@ -116,7 +117,7 @@ export function DiscountDialog({
       footer={
         <div className="y-options__footer">
           <Button variant="quiet" disabled={applyDiscount.isPending} onClick={onClose}>
-            Cancel
+            {BACK_WORDS}
           </Button>
           <Button variant="primary" size={56} data-testid="confirm-discount" disabled={!ready} onClick={submit}>
             {applyDiscount.isPending ? "Applying…" : "Apply discount"}

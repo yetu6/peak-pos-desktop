@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../../lib/words";
 import { CircleCheck, CircleX, LoaderCircle, ShieldCheck } from "lucide-react";
 import { PIN_LENGTH } from "../../access/accessSettings";
 import { cn } from "../../lib/utils";
@@ -58,7 +59,7 @@ export function SupervisorApprovalActions({
   return (
     <div className="y-approval__actions">
       <Button variant="quiet" onClick={onCancel}>
-        Cancel
+        {BACK_WORDS}
       </Button>
       {onApprove ? (
         <Button variant="primary" size={64} disabled={!canApprove} onClick={onApprove} icon={<ShieldCheck />}>

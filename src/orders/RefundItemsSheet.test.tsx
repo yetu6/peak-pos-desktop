@@ -439,7 +439,7 @@ describe("Refund items: a supervisor approves", () => {
     await chooseChipsAndReason();
     await approveAsGrace();
     await userEvent.click(screen.getByTestId("refund-give"));
-    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
+    expect(screen.queryByTestId("refund-edit-items")).toBeNull();
     expect(screen.queryByTestId("refund-give")).toBeNull();
     await userEvent.click(screen.getByRole("radio", { name: /Baraka Mushi/ }));
     await userEvent.click(screen.getByTestId("refund-pin-key-delete"));

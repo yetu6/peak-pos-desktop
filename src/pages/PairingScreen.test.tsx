@@ -132,7 +132,7 @@ describe("PairingScreen with a code", () => {
   it("cancels back to the start", async () => {
     useSession({ phase: "waiting", identity: { pairing: pairingIn(600) } });
     render(<PairingScreen />);
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(resetPairing).toHaveBeenCalledTimes(1);
     expect(startPairing).not.toHaveBeenCalled();
   });

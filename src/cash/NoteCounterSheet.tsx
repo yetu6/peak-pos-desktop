@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { useState } from "react";
 import { Button, Sheet, Stepper } from "../components/system";
 import { CASH_DENOMINATIONS, MINOR_PER_MAJOR, formatMoney } from "../lib/money";
@@ -41,7 +42,7 @@ export function NoteCounterSheet({
       footer={
         <div className="y-cash__footer">
           <Button variant="quiet" onClick={() => onOpenChange(false)}>
-            Cancel
+            {BACK_WORDS}
           </Button>
           <Button
             variant="primary"

@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { useState } from "react";
 import { Button, ReasonPicker, RefusalNotice, Sheet } from "../components/system";
 import { useTillReasons } from "../fnb/useTillReasons";
@@ -62,7 +63,7 @@ export function OpenDrawerSheetView({ reasons = DRAWER_REASONS, pending, error, 
       footer={
         <div className="y-cash__footer">
           <Button variant="quiet" disabled={pending} onClick={onClose}>
-            Cancel
+            {BACK_WORDS}
           </Button>
           <Button variant="primary" size={56} data-testid="confirm-open-drawer" disabled={!canOpen} onClick={() => canOpen && onOpen(reason.trim())}>
             {pending ? "Recording…" : "Open the drawer"}

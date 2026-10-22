@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { useState } from "react";
 import { supervisorChoice, useApprovers } from "../approvals/supervisors";
 import type { POSApprover } from "../lib/posContracts";
@@ -171,7 +172,7 @@ export function CashMovementSheetView({
       footer={
         <div className="y-cash__footer">
           <Button variant="quiet" disabled={pending} onClick={onClose}>
-            Cancel
+            {BACK_WORDS}
           </Button>
           <Button variant="primary" size={56} data-testid="confirm-movement" disabled={!canSubmit} onClick={submit}>
             {pending ? "Recording…" : cashOut ? "Take cash out" : "Record cash in"}
