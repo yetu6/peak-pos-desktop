@@ -1,6 +1,6 @@
 import { orderName } from "../lib/orderNumber";
 import type { POSOrder } from "../lib/posContracts";
-import { orderPlaceWords } from "../lib/words";
+import { clockTime, orderPlaceWords } from "../lib/words";
 
 /** The open orders the bar shows: still taking items or owing, never paid or cancelled. */
 export function openOrdersOf(orders: readonly POSOrder[]): POSOrder[] {
@@ -24,9 +24,9 @@ export function barOrder(orders: readonly POSOrder[], staffId: string | null | u
 /**
  * How a waiter knows an order at a glance, with or without tables (owner,
  * 2026-10-21: many places name no tables; the waiter keeps track): its table
- * or the name they typed, else its number; then what is on it.
+ * or the name they typed, else its number; then what is on it, and when it was started.
  */
-export function openOrderWords(order: POSOrder): { name: string; items: string } {
+export function openOrderWords(order: POSOrder): { name: string; items: string; time: string } {
   const place = orderPlaceWords(order.serviceType, order.tableLabel, order.askForTable);
   const lines = (order.items ?? []).filter((line) => line.status !== "VOIDED");
   const shown = lines.slice(0, 2).map((line) => (line.quantity > 1 ? `${line.quantity} ${line.name}` : line.name));
@@ -34,5 +34,6 @@ export function openOrderWords(order: POSOrder): { name: string; items: string }
   return {
     name: place || orderName(order),
     items: lines.length ? `${shown.join(", ")}${more}` : "Nothing on it yet",
+    time: clockTime(order.createdAt),
   };
 }
