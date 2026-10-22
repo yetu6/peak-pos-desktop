@@ -600,38 +600,44 @@ mod durable_tests {
             .state,
             "accepted"
         );
-        // Real partial transport: receiver closes after taking a prefix. The
-        // payload exceeds TCP's send buffer so write_all observes the closure.
-        let listener = std::net::TcpListener::bind("127.0.0.1:9100").unwrap();
-        let receive = std::thread::spawn(move || {
-            let (mut socket, _) = listener.accept().unwrap();
-            let mut prefix = [0u8; 1];
-            socket.read_exact(&mut prefix).unwrap();
-            socket.shutdown(std::net::Shutdown::Both).unwrap();
-            prefix
-        });
-        let partial = JournalPaper::Thermal {
-            target: PrintTarget::Network {
-                host: "127.0.0.1".into(),
-                port: 9100,
-            },
-            bytes: vec![42; MAX_PRINT_PAYLOAD_BYTES],
-        };
-        assert_eq!(
-            print_once(&mut store, "partial", &scope, 1, true, partial)
-                .unwrap()
-                .state,
-            "unknown"
-        );
-        assert_eq!(receive.join().unwrap(), [42]);
-        assert_eq!(
-            store
-                .inspect_print("partial", &scope)
-                .unwrap()
-                .unwrap()
-                .state,
-            "UNKNOWN"
-        );
+        // Real partial transport: Windows buffers the whole write on loopback
+        // and reports success, so a partial send can only be produced where
+        // the OS reports the peer's closure. The code path (a write error is
+        // Unknown) is the same on every platform.
+        if cfg!(not(windows)) {
+            // The receiver closes after taking a prefix. The
+            // payload exceeds TCP's send buffer so write_all observes the closure.
+            let listener = std::net::TcpListener::bind("127.0.0.1:9100").unwrap();
+            let receive = std::thread::spawn(move || {
+                let (mut socket, _) = listener.accept().unwrap();
+                let mut prefix = [0u8; 1];
+                socket.read_exact(&mut prefix).unwrap();
+                socket.shutdown(std::net::Shutdown::Both).unwrap();
+                prefix
+            });
+            let partial = JournalPaper::Thermal {
+                target: PrintTarget::Network {
+                    host: "127.0.0.1".into(),
+                    port: 9100,
+                },
+                bytes: vec![42; MAX_PRINT_PAYLOAD_BYTES],
+            };
+            assert_eq!(
+                print_once(&mut store, "partial", &scope, 1, true, partial)
+                    .unwrap()
+                    .state,
+                "unknown"
+            );
+            assert_eq!(receive.join().unwrap(), [42]);
+            assert_eq!(
+                store
+                    .inspect_print("partial", &scope)
+                    .unwrap()
+                    .unwrap()
+                    .state,
+                "UNKNOWN"
+            );
+        }
         // The journal transport preserves the original raw target guards.
         let other = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         other.set_nonblocking(true).unwrap();
