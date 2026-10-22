@@ -65,9 +65,20 @@ describe("majorDigits", () => {
 });
 
 describe("quickCashAmounts", () => {
-  it("offers the next amount each of the largest notes makes above the bill, smallest first", () => {
-    expect(quickCashAmounts(4_250_000, "TZS")).toEqual([5_000_000, 10_000_000, 20_000_000]);
-    expect(quickCashAmounts(350_000, "TZS")).toEqual([1_000_000, 2_000_000, 5_000_000]);
+  it("offers the next amount each note makes above the bill, smallest first", () => {
+    expect(quickCashAmounts(4_250_000, "TZS")).toEqual([4_500_000, 5_000_000, 6_000_000]);
+    expect(quickCashAmounts(350_000, "TZS")).toEqual([400_000, 500_000, 1_000_000]);
+    expect(quickCashAmounts(150_000, "TZS")).toEqual([200_000, 500_000, 1_000_000]);
+  });
+
+  it("uses every configured note, not only the largest", () => {
+    expect(quickCashAmounts(350_000, "TZS", [5000, 10000])).toEqual([500_000, 1_000_000, 2_000_000]);
+    expect(quickCashAmounts(350_000, "TZS", [1000, 10000])).toEqual([400_000, 1_000_000, 2_000_000]);
+  });
+
+  it("never offers more of one note than a guest counts out", () => {
+    // 38 × 1,000 is not how anyone pays TSh 37,500.
+    expect(quickCashAmounts(3_750_000, "TZS")).not.toContain(3_800_000);
   });
 
   it("skips amounts equal to the bill (that is Exact) and duplicates", () => {

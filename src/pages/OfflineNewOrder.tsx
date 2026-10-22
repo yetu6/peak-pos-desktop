@@ -1,4 +1,5 @@
 import { cachedOutletOrderSettings } from "../lib/outletOrderSettings";
+import { cachedOutletMoney } from "../lib/outletMoneySettings";
 import { getOperationalSession } from "../lib/operationalSession";
 import { useEffect, useMemo, useState } from "react";
 import { useLocalCatalog, useLocalDraft } from "../hooks/useLocalOrder";
@@ -45,6 +46,7 @@ export function OfflineNewOrder() {
   const order = draft.data;
   const session = getOperationalSession();
   const prompts = cachedOutletOrderSettings(session?.propertyId ?? null, session?.outletId ?? null);
+  const money = cachedOutletMoney(session?.propertyId ?? null, session?.outletId ?? null);
   const askForTable = order?.askForTable ?? prompts.askForTable;
   const currency = catalog.data?.currency ?? order?.currency ?? "";
   const menu = useMemo(() => menuOf(catalog.data), [catalog.data]);
@@ -199,6 +201,7 @@ export function OfflineNewOrder() {
         <OfflineCashSheet
           dueMinor={order.totalMinor}
           currency={currency}
+          quickCashNotes={money.quickCashNotes}
           saving={saving}
           problem={saleProblem}
           onCancel={() => setPayOpen(false)}

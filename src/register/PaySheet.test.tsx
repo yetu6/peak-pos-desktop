@@ -37,6 +37,7 @@ const { recordTenderMutate, chargeToRoomMutate, refs } = vi.hoisted(() => ({
   recordTenderMutate: vi.fn(),
   chargeToRoomMutate: vi.fn(),
   refs: {
+    quickCashNotes: [1000, 2000, 5000, 10000] as number[],
     roomAvailable: false,
     candidates: [] as POSRoomChargeCandidate[],
     tender: { isPending: false, error: null as unknown },
@@ -51,7 +52,7 @@ const { openDrawerForCash } = vi.hoisted(() => ({
 vi.mock("../print/cashDrawer", () => ({ openDrawerForCash }));
 
 vi.mock("../hooks/usePosData", async (importOriginal) => ({
-  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
+  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: refs.quickCashNotes }),
   // The real key generator: a retry must reuse its key, a new request must not.
   useIdempotencyKey: (await importOriginal<typeof import("../hooks/usePosData")>()).useIdempotencyKey,
   useRecordTender: () => ({ mutate: recordTenderMutate, reset: () => undefined, ...refs.tender }),
@@ -90,6 +91,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  refs.quickCashNotes = [1000, 2000, 5000, 10000];
   refs.roomAvailable = false;
   refs.candidates = [];
   refs.tender = { isPending: false, error: null };
@@ -114,7 +116,14 @@ describe("PaySheet", () => {
   it("cash: Exact, then the next amounts the notes make above the bill", () => {
     renderPay();
     const quick = within(screen.getByRole("group", { name: "Quick cash" })).getAllByRole("button");
-    expect(quick.map((button) => button.textContent)).toEqual(["ExactTSh 42,500", "TSh 50,000", "TSh 100,000", "TSh 200,000"]);
+    expect(quick.map((button) => button.textContent)).toEqual(["ExactTSh 42,500", "TSh 45,000", "TSh 50,000", "TSh 60,000"]);
+  });
+
+  it("cash: the quick amounts come from the outlet's own notes", () => {
+    refs.quickCashNotes = [5000, 20000];
+    renderPay();
+    const quick = within(screen.getByRole("group", { name: "Quick cash" })).getAllByRole("button");
+    expect(quick.map((button) => button.textContent)).toEqual(["ExactTSh 42,500", "TSh 45,000", "TSh 60,000", "TSh 80,000"]);
   });
 
   // The owner, 2026-10-21: where the amount is known, it is filled in.
@@ -197,6 +206,9 @@ describe("PaySheet", () => {
   it("cash: works out the change from the cash received, and records only what is owed", async () => {
     const { onPaid } = renderPay();
     await userEvent.click(screen.getByRole("button", { name: "TSh 50,000" }));
+    // Choosing an amount only fills it in; taking the money is its own tap.
+    expect(recordTenderMutate).not.toHaveBeenCalled();
+    expect(onPaid).not.toHaveBeenCalled();
     // Read as money (50,000), kept as the amount.
     expect(screen.getByTestId("amount-received")).toHaveValue("50,000");
     expect(screen.getByTestId("change-due")).toHaveTextContent("Change to give TSh 7,500");
@@ -267,7 +279,7 @@ describe("PaySheet", () => {
     renderPay();
     await userEvent.click(screen.getByRole("radio", { name: "Mobile money" }));
     expect(screen.getByTestId("tender-amount")).toHaveValue("42,500");
-    expect(screen.getByText("Type less to split the payment.")).toBeInTheDocument();
+    expect(screen.getByText("Less than the bill? The rest stays to pay.")).toBeInTheDocument();
     await userEvent.type(screen.getByTestId("tender-amount"), "10000");
     expect(screen.getByTestId("tender-amount")).toHaveValue("10,000");
     expect(pay()).toHaveTextContent("Confirm TSh 10,000 received");

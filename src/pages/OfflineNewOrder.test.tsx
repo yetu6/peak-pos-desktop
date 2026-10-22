@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { idleLockHeld } from "../lib/idleLock";
 import type { LocalCatalogView, LocalOrderView, OfflineCashCommitResult } from "../lib/localPosCore";
 import { clearOperationalSession, setOperationalSession } from "../lib/operationalSession";
+import { cacheOutletMoney } from "../lib/outletMoneySettings";
 import { OfflineNewOrder } from "./OfflineNewOrder";
 
 /**
@@ -186,6 +187,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllMocks();
   clearOperationalSession();
+  localStorage.clear();
 });
 
 describe("the offline register", () => {
@@ -243,6 +245,16 @@ describe("the offline register", () => {
     expect(within(sheet).getByTestId("change-due")).toHaveTextContent("Exact: no change to give.");
     for (const key of ["2", "0", "0", "00"]) await userEvent.click(within(sheet).getByTestId(`offline-cash-key-${key}`));
     expect(within(sheet).getByTestId("offline-cash-received")).toHaveValue("20,000");
+  });
+
+  it("offline, the quick amounts come from the outlet's notes kept on this till", async () => {
+    cacheOutletMoney("property-1", "outlet-1", { standardFloat: 0, quickCashNotes: [5000, 20000] });
+    renderRegister();
+    await addChips();
+    await userEvent.click(screen.getByTestId("offline-pay"));
+    const sheet = await screen.findByRole("dialog", { name: "Take cash" });
+    const quick = within(within(sheet).getByRole("group", { name: "Quick cash" })).getAllByRole("button");
+    expect(quick.map((button) => button.textContent)).toEqual(["ExactTSh 11,800", "TSh 15,000", "TSh 20,000", "TSh 40,000"]);
   });
 
   it("offline, a sale is paid in full in cash", async () => {
