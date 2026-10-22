@@ -3,7 +3,7 @@ import { preparePreview, preparedPaper, previewTokenFor, clearPreparedPreviews }
 import { setOperationalSession, clearOperationalSession } from "../lib/operationalSession";
 import { DEFAULT_PRINTER_SETTINGS } from "./printerSettings";
 import type { POSPaper, POSPrintJob } from "../lib/posContracts";
-const paper:POSPaper={jobType:"KITCHEN_TICKET",document:{orderId:"order",dailyNumber:7,station:"BAR",items:[{name:"Soda",quantity:2,fulfilment:"PICKED"}]}};
+const paper:POSPaper={jobType:"KITCHEN_TICKET",document:{orderId:"order",dailyNumber:7,station:"BAR",items:[{productId:"soda",name:"Soda",quantity:2,fulfilment:"PICKED"}]}};
 const job={...paper,id:"job",status:"PENDING",sourceType:"POS_ORDER",sourceId:"order",attempts:0,createdAt:""} as POSPrintJob;
 const session={token:"test",expiresAt:"",tenantId:"tenant",propertyId:"property",outletId:"outlet",terminalId:"terminal",staffId:"staff",assurance:"RESTRICTED" as const};
 afterEach(()=>{clearPreparedPreviews();clearOperationalSession();});

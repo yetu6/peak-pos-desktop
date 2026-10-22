@@ -18,7 +18,7 @@ The encrypted native journal is schema 6, upgrading existing schema 4 through W4
 
 ## Validation
 
-Tests were written before the associated fixes; the independent review also supplied regression cases before its four fixes. [Guard results](guard-results.json) record six actual main-flow guard removals causing assertion failures, restored afterwards. Layout and native workers each proved another sixteen guards: see [layout evidence](../till-w5-layouts/README.md) and the native record. Additional review guard proofs and final combined gates are appended below when complete.
+Tests were written before the associated fixes; the independent review also supplied regression cases before its four fixes. [Guard results](guard-results.json) record six actual main-flow guard removals causing assertion failures, restored afterwards. Layout and native workers each proved another sixteen guards: see [layout evidence](../till-w5-layouts/README.md) and the native record. Five additional [review guard removals](review-guard-results.json) now fail their intended assertions, including session scope after module loading, expired-token retention, render fallback and proven no-send layout failure. Proofs run in an isolated source copy so they cannot reload the browser harness. All mutations are restored. Final combined gates follow below.
 
 The initial combined frontend run passed 1,379 tests/six existing skips. Native final restored-source run passed 102 tests (86 library, eight encrypted-store, two SQLCipher provenance, six authority). Later review changes are covered by focused tests; final combined frontend/visual/CI results follow below. Fixture/browser observations are not live acceptance.
 
@@ -40,3 +40,10 @@ A submitted order/round and its physical print result remain separate, as in the
 The signed offline catalogue schema is unchanged: offline cash sales retain their existing reconciliation behaviour and do not acquire a new automatic production-print path. Advisory online settings do not become offline financial authority.
 
 No merge, tag, release, deployment, production writes or live credentials were used. Physical 58/80 mm printers, Windows spooler hardware, touch operation, network interruptions on the real Till and owner acceptance remain Claude/owner checks in W6.
+
+
+## Independent review corrections
+
+A focused read-only peer review found four defects; regression tests were observed failing before the fixes. Omitted acknowledgement attempts now apply only to the first backend claim, so a delayed legacy answer cannot complete a newer attempt. Dispatch and acknowledgement hold the captured session across every asynchronous boundary. Expired preview tokens remain attached for server refusal. Preview rendering fallback no longer throws before the normal job/error path. The follow-up inspection found all four fixes present and no remaining critical issue in its scope; it did not claim runtime or hardware verification.
+
+A mutation check exposed a weak rendering-fallback test fixture whose missing product reference never exercised the tag callback. The fixture now carries that reference, and deleting the catch produces the intended assertion failure. A local layout error before native dispatch is a safely failed/recoverable job, rather than uncertain physical delivery.

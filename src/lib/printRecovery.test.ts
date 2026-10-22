@@ -104,3 +104,13 @@ it("switching session while a claim is pending stops dispatch and acknowledgemen
  vi.stubGlobal("fetch",vi.fn(async(input:string)=>{const url=String(input);urls.push(url);if(url.endsWith("/claim")){setOperationalSession({...session,token:"new",propertyId:"new-property",terminalId:"new-terminal"});return reply({...job,status:"CLAIMED",attempts:1,claimedByTerminalId:"old-terminal"});}return reply({});}));
  try{const result=await processPrintJob(job,print);expect(result.ok).toBe(false);expect(print).not.toHaveBeenCalled();expect(urls).toHaveLength(1);}finally{clearOperationalSession();}
 });
+
+it("a local layout error before native dispatch remains a recoverable failed job",async()=>{
+ native.enabled=true;native.inspect.mockResolvedValue(null);
+ const urls:string[]=[];vi.stubGlobal("fetch",vi.fn(async(input:string)=>{urls.push(String(input));return reply({...paper,status:"CLAIMED",attempts:1});}));
+ const paper={...job,document:{items:[{productId:"p",name:"Soda",quantity:1}]}};
+ const {DEFAULT_PRINTER_SETTINGS}=await import("../print/printerSettings");
+ const result=await processPrintJob(paper,undefined,{settings:{...DEFAULT_PRINTER_SETTINGS,kitchen:{target:{kind:"network",host:"127.0.0.1",port:9100},width:48}},printRaw:async()=>undefined,tagsOf:()=>{throw new Error("The menu notes could not be read.");}});
+ expect(result).toEqual({ok:false,error:"The menu notes could not be read."});
+ expect(urls.filter(url=>url.endsWith("/failed"))).toHaveLength(1);expect(native.send).not.toHaveBeenCalled();
+});

@@ -321,8 +321,12 @@ export async function processPrintJob(
       if (!sameSession()) return { ok: false, error: PRINT_RECOVERY_WORDS.sessionChanged };
       if (evidence?.state === "unknown") return { ok: false, error: PRINT_RECOVERY_WORDS.unknown };
       if (evidence?.state !== "accepted") {
+        // Layout preparation has no physical side effect. A layout failure
+        // here is safely retryable; uncertainty starts at native dispatch.
+        knownNotSent = true;
         const paper = paperFor(claimed, routes);
         if (paper.kind === "none") return { ok: true };
+        knownNotSent = false;
         const result = await nativePrintOnce(claimed.id, claimed.attempts, paper, printSession);
         if (result.state === "unknown" || result.state === "reserved") return { ok: false, error: PRINT_RECOVERY_WORDS.unknown };
         if (result.state === "not_sent") {
