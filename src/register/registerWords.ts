@@ -309,3 +309,6 @@ export function lostAnswerRefusalWords(error: unknown, room: boolean): string {
 export const DISCOUNT_HELD_WORDS = "Kept to what the supervisor approved. Use Discount again to cover the whole bill.";
 
 export const ORDER_CONTEXT_WORDS = { name: "Name (optional)", table: "Table (optional)", room: "Room", guests: "Guests (optional)", guestCount: (count: number) => `${count} ${count === 1 ? "guest" : "guests"}` };
+
+/** A submitted round handed over at the counter, with no production paper. */
+export const DIRECT_HAND_OVER_WORDS = "Hand these over at the till. No kitchen or bar paper.";

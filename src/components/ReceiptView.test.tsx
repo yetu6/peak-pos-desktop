@@ -67,7 +67,7 @@ describe("ReceiptView", () => {
     expect(doc).toHaveTextContent("VAT");
     expect(screen.getByTestId("receipt-taken-by")).toHaveTextContent("Taken by Amina Hassan");
     expect(screen.getByTestId("receipt-footer")).toHaveTextContent(
-      "Powered by Yetu",
+      "Powered by Yetu-FBC",
     );
     expect(sheet).not.toHaveTextContent(/invoice/i);
     expect(screen.queryByTestId("receipt-error")).not.toBeInTheDocument();

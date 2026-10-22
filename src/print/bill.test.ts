@@ -68,7 +68,8 @@ describe("the bill before payment", () => {
     expect(text).toContain("TO PAY  TSh 3,750");
     expect(text).not.toMatch(/Paid Tue|Cash/);
     expect(text).not.toMatch(/TRA|tax receipt|INVOICE/);
-    expect(text.trimEnd().endsWith("Powered by Yetu")).toBe(true);
+    expect(text).toContain("Powered by Yetu-FBC");
+    expect(text.trimEnd().endsWith("Powered by Yetu-FBC")).toBe(true);
   });
 
   it("at a hotel, ends with the room and the guest's signature, the room filled in for room service", () => {

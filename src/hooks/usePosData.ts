@@ -1,3 +1,5 @@
+import { prepareBillBranding } from "../print/billBranding";
+import { rememberPreviewToken, previewTokenFor } from "../print/preparedPreview";
 import { cacheOutletOrderSettings } from "../lib/outletOrderSettings";
 import { cacheOutletMoney, cachedOutletMoney, moneySettingsFrom } from "../lib/outletMoneySettings";
 import type { FnbTillMenu } from "../fnb/fnbContracts";
@@ -491,7 +493,8 @@ export function useSendOrder() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (args: { orderId: string; version: number; idempotencyKey: string; stations?: readonly string[] }) => {
-      await unwrap(createPosApi().sendOrder(args.orderId, args.version, args.idempotencyKey, args.stations));
+      const token = previewTokenFor(args.orderId, "ROUND");
+      await unwrap(createPosApi().sendOrder(args.orderId, args.version, args.idempotencyKey, args.stations, ...(token ? [token] : [])));
       return unwrap(createPosApi().getOrder(args.orderId));
     },
     onSuccess: (order: POSOrder) => {
@@ -768,7 +771,8 @@ export function usePrintBill() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (args: { orderId: string; idempotencyKey: string }) => {
-      const job = await unwrap(createPosApi().printBill(args.orderId, args.idempotencyKey));
+      const token = previewTokenFor(args.orderId, "BILL");
+      const job = await unwrap(createPosApi().printBill(args.orderId, args.idempotencyKey, ...(token ? [token] : [])));
       const result = await printJobNow(job);
       return { job, failed: result.ok ? undefined : result.error };
     },
@@ -854,7 +858,11 @@ function menuTags(queryClient: ReturnType<typeof useQueryClient>, outletId: stri
 export function usePaperPreview(orderId: string, kind: "ROUND" | "AGAIN" | "BILL") {
   return useQuery({
     queryKey: ["pos", "papers", orderId, kind],
-    queryFn: async () => (await unwrap(createPosApi().previewPapers(orderId, kind))).papers,
+    queryFn: async () => {
+      const preview = await unwrap(createPosApi().previewPapers(orderId, kind));
+      rememberPreviewToken(orderId, kind, preview.previewToken);
+      return preview.papers;
+    },
     retry: false,
     gcTime: 0,
   });
@@ -865,7 +873,7 @@ export function usePaperPreview(orderId: string, kind: "ROUND" | "AGAIN" | "BILL
  * so a printer changed in Status a moment ago is the one the preview shows.
  */
 export function usePrinterSettings() {
-  return useQuery({ queryKey: ["printers", "settings"], queryFn: loadPrinterSettings, retry: false, refetchOnMount: "always" });
+  return useQuery({ queryKey: ["printers", "settings"], queryFn: async () => prepareBillBranding(await loadPrinterSettings()), retry: false, refetchOnMount: "always" });
 }
 
 /** This till prints no kitchen tickets (Status, Printers): a copy would print nowhere. */
@@ -889,7 +897,8 @@ export function useReprintKitchenTickets() {
     mutationFn: async (args: { orderId: string; idempotencyKey: string; roundNumber?: number }) => {
       const settings = await loadPrinterSettings();
       if (!settings.kitchenTickets) throw new KitchenPaperOff();
-      const reprint = await unwrap(createPosApi().reprintKitchenTickets(args.orderId, args.idempotencyKey, args.roundNumber));
+      const token = previewTokenFor(args.orderId, "AGAIN") ?? previewTokenFor(args.orderId, "ROUND");
+      const reprint = await unwrap(createPosApi().reprintKitchenTickets(args.orderId, args.idempotencyKey, args.roundNumber, ...(token ? [token] : [])));
       const results = await printFor(propertyId, args.orderId, menuTags(queryClient, outletId), settings);
       return { reprint, failed: results.find((result) => !result.ok)?.error };
     },

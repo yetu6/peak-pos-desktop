@@ -36,7 +36,7 @@ describe("printers on the till (S8a)", () => {
     expect(settingsFrom({ kitchenTickets: false })).toEqual({ ...DEFAULT_PRINTER_SETTINGS, kitchenTickets: false });
     expect(settingsFrom({ kitchen: { target: { kind: "network", host: "999.1.1.1", port: 9100 }, width: 48 } }).kitchen).toBeNull();
     expect(settingsFrom({ kitchen: KITCHEN, stations: { BAR, HOT: { target: { kind: "system", name: " " } } } })).toEqual({
-      kitchenTickets: true, kitchen: KITCHEN, stations: { BAR }, receipt: null, cashDrawer: false,
+      ...DEFAULT_PRINTER_SETTINGS, kitchenTickets: true, kitchen: KITCHEN, stations: { BAR }, receipt: null, cashDrawer: false,
     });
   });
 

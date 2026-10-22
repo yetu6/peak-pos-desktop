@@ -22,6 +22,7 @@ import { useLastUpdateNote, type UpdateNote } from "../lib/updateNotes";
 import { clockTime } from "../lib/words";
 import { useRealtime } from "../realtime/RealtimeProvider";
 import { useHasPermission } from "../hooks/usePosData";
+import { PrintQueueCard } from "../print/PrintQueueCard";
 import { PrintersCard } from "../print/PrintersCard";
 
 /** The updater's last outcome, in words. */
@@ -203,6 +204,7 @@ function TechRow({ label, testId, children }: { label: string; testId: string; c
 export function Diagnostics() {
   const { state } = useRealtime();
   const isManager = useHasPermission("pos.report.manager");
+  const canReadOrders = useHasPermission("pos.order.read");
   const { identity, session } = useDeviceSession();
   const updateNote = useLastUpdateNote();
   const online = useNetworkOnline();
@@ -258,7 +260,7 @@ export function Diagnostics() {
       snapshot={buildTechnicianSnapshot({ identity, session, host, printer, keyStorage, peakOrigin: getApiBaseUrl() })}
       peak={peak}
       realtime={state}
-      printers={isManager ? <PrintersCard /> : null}
+      printers={<>{isManager ? <PrintersCard /> : null}{native && canReadOrders ? <PrintQueueCard /> : null}</>}
     />
   );
 }

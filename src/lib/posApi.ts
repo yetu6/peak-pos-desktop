@@ -169,10 +169,10 @@ export function createPosApi() {
       );
     },
     /** The new lines go to the kitchen as the next round: all of them, or only those stations' (Print for bar). */
-    sendOrder(orderId: string, version: number, idempotencyKey: string, stations?: readonly string[]): Promise<ApiResult<void>> {
+    sendOrder(orderId: string, version: number, idempotencyKey: string, stations?: readonly string[], previewToken?: string): Promise<ApiResult<void>> {
       return client.POST<void>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/send`, {
         headers: idempotent(idempotencyKey),
-        body: stations?.length ? { version, stations } : { version },
+        body: { version, ...(stations?.length ? { stations } : {}), ...(previewToken ? { previewToken } : {}) },
       });
     },
     transitionStatus(
@@ -282,20 +282,25 @@ export function createPosApi() {
       });
     },
 
+    businessLogo(): Promise<ApiResult<{logo: {id:string;sha256:string} | null;url?:string;warnings:string[]}>> {
+      return client.GET("/api/v1/pos/branding/logo");
+    },
+
     // ---- Receipts -------------------------------------------------------
     getReceipt(orderId: string): Promise<ApiResult<POSReceipt>> {
       return client.GET<POSReceipt>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/receipt`);
     },
     /** Exactly what Print order (ROUND), the kitchen ticket again (AGAIN) or Print bill (BILL) would print now, printing nothing (owner, 2026-10-21). */
-    previewPapers(orderId: string, kind: "ROUND" | "AGAIN" | "BILL"): Promise<ApiResult<{ papers: POSPaper[] }>> {
-      return client.GET<{ papers: POSPaper[] }>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/papers/preview`, {
+    previewPapers(orderId: string, kind: "ROUND" | "AGAIN" | "BILL"): Promise<ApiResult<{ papers: POSPaper[]; previewToken?: string }>> {
+      return client.GET<{ papers: POSPaper[]; previewToken?: string }>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/papers/preview`, {
         params: { query: { kind } },
       });
     },
     /** fbc-peak #288: the bill for an open order, before the guest pays: a BILL print job this till prints. */
-    printBill(orderId: string, idempotencyKey: string): Promise<ApiResult<POSPrintJob>> {
+    printBill(orderId: string, idempotencyKey: string, previewToken?: string): Promise<ApiResult<POSPrintJob>> {
       return client.POST<POSPrintJob>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/bill`, {
         headers: idempotent(idempotencyKey),
+        ...(previewToken ? { body: { previewToken } } : {}),
       });
     },
     reprintReceipt(orderId: string, idempotencyKey: string): Promise<ApiResult<POSReceipt>> {
@@ -313,10 +318,10 @@ export function createPosApi() {
     },
 
     /** S8a: the latest round's kitchen tickets again (or the round named), marked COPY. */
-    reprintKitchenTickets(orderId: string, idempotencyKey: string, roundNumber?: number): Promise<ApiResult<POSKitchenReprint>> {
+    reprintKitchenTickets(orderId: string, idempotencyKey: string, roundNumber?: number, previewToken?: string): Promise<ApiResult<POSKitchenReprint>> {
       return client.POST<POSKitchenReprint>(
         `/api/v1/pos/orders/${encodeURIComponent(orderId)}/kitchen-tickets/reprint`,
-        { headers: idempotent(idempotencyKey), body: roundNumber === undefined ? {} : { roundNumber } },
+        { headers: idempotent(idempotencyKey), body: { ...(roundNumber === undefined ? {} : { roundNumber }), ...(previewToken ? { previewToken } : {}) } },
       );
     },
 

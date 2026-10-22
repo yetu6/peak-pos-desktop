@@ -40,6 +40,7 @@ export function paperFromPrintDocument(
     notes: text("notes"),
     copy: document.copy === true,
     printedAgainByName: text("printedAgainByName"),
+    printedAgainAt: text("printedAgainAt"),
     lines: items.flatMap((item) => {
       if (!item || typeof item !== "object") return [];
       const row = item as Record<string, unknown>;
@@ -49,7 +50,8 @@ export function paperFromPrintDocument(
         : [];
       const quantity = typeof row.quantity === "number" ? row.quantity : Number(row.quantity) || 1;
       const productId = typeof row.productId === "string" ? row.productId : undefined;
-      return [{ quantity, name: row.name, options, tags: productId ? tagsOf?.(productId) : undefined }];
+      const fulfilment = row.fulfilment === "PICKED" || row.fulfilment === "DIRECT" ? row.fulfilment : "PREPARED";
+      return [{ fulfilment, quantity, name: row.name, options, tags: productId ? tagsOf?.(productId) : undefined }];
     }),
   };
 }

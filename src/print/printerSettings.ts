@@ -14,9 +14,15 @@ export type PrinterTarget = { kind: "system"; name: string } | { kind: "network"
 export interface PrinterChoice {
   target: PrinterTarget;
   width: PaperWidth;
+  /** Optional raster logo on bills, off unless explicitly enabled. */
+  billLogo?: boolean;
 }
 
 export interface PrinterSettings {
+  quantityBold?: boolean;
+  quantityLarge?: boolean;
+  stationCopies?: Partial<Record<PrepStation, number>>;
+  billLogoUrl?: string;
   /** Print kitchen tickets on paper when an order or a round is sent. */
   kitchenTickets: boolean;
   /** Where kitchen tickets go when their station has no printer of its own. */
@@ -34,7 +40,7 @@ export interface PrinterSettings {
 export const NO_PAPER = "none";
 
 /** Paper kitchen tickets on, sent to this till's own printer until a kitchen printer is chosen. */
-export const DEFAULT_PRINTER_SETTINGS: PrinterSettings = { kitchenTickets: true, kitchen: null, stations: {}, receipt: null, cashDrawer: false };
+export const DEFAULT_PRINTER_SETTINGS: PrinterSettings = { quantityBold: true, quantityLarge: true, stationCopies: {}, kitchenTickets: true, kitchen: null, stations: {}, receipt: null, cashDrawer: false };
 
 /** The usual port a network receipt printer takes raw jobs on. */
 export const RAW_PRINT_PORT = 9100;
@@ -92,13 +98,14 @@ export function settingsFrom(raw: unknown): PrinterSettings {
   const value = raw as Record<string, unknown>;
   const choice = (input: unknown): PrinterChoice | null => {
     if (!input || typeof input !== "object") return null;
-    const c = input as { target?: Record<string, unknown>; width?: unknown };
+    const c = input as { target?: Record<string, unknown>; width?: unknown; billLogo?: unknown };
     const width: PaperWidth = c.width === PAPER_80MM ? PAPER_80MM : PAPER_58MM;
+    const logo = c.billLogo === true ? { billLogo: true } : {};
     const t = c.target;
-    if (t?.kind === "system" && typeof t.name === "string" && t.name.trim()) return { target: { kind: "system", name: t.name }, width };
+    if (t?.kind === "system" && typeof t.name === "string" && t.name.trim()) return { target: { kind: "system", name: t.name }, width, ...logo };
     if (t?.kind === "network" && typeof t.host === "string" && typeof t.port === "number") {
       const parsed = parseNetworkAddress(`${t.host}:${t.port}`);
-      return parsed ? { target: { kind: "network", ...parsed }, width } : null;
+      return parsed ? { target: { kind: "network", ...parsed }, width, ...logo } : null;
     }
     return null;
   };
@@ -113,7 +120,17 @@ export function settingsFrom(raw: unknown): PrinterSettings {
       if (parsed) stations[station as PrepStation] = parsed;
     }
   }
+  const stationCopies: NonNullable<PrinterSettings["stationCopies"]> = {};
+  if (value.stationCopies && typeof value.stationCopies === "object") {
+    for (const [station, count] of Object.entries(value.stationCopies)) {
+      if (typeof count === "number" && Number.isSafeInteger(count) && count >= 1 && count <= MAX_STATION_COPIES) stationCopies[station as PrepStation] = count;
+    }
+  }
   return {
+    quantityBold: typeof value.quantityBold === "boolean" ? value.quantityBold : true,
+    quantityLarge: typeof value.quantityLarge === "boolean" ? value.quantityLarge : true,
+    stationCopies,
+    ...(typeof value.billLogoUrl === "string" && value.billLogoUrl.trim() ? { billLogoUrl: value.billLogoUrl.trim() } : {}),
     kitchenTickets: typeof value.kitchenTickets === "boolean" ? value.kitchenTickets : DEFAULT_PRINTER_SETTINGS.kitchenTickets,
     kitchen: choice(value.kitchen),
     stations,
@@ -122,3 +139,13 @@ export function settingsFrom(raw: unknown): PrinterSettings {
     cashDrawer: value.cashDrawer === true && choice(value.receipt) !== null,
   };
 }
+
+/** Keep accidental repeats bounded; the normal station prints a single copy. */
+export const MAX_STATION_COPIES = 3;
+export function stationCopiesFor(settings: PrinterSettings, station?: string): number {
+  const count = station ? settings.stationCopies?.[station as PrepStation] : undefined;
+  return typeof count === "number" && Number.isSafeInteger(count) && count >= 1 && count <= MAX_STATION_COPIES ? count : 1;
+}
+
+/** Copies per station within a single durable print attempt. */
+export const stationCopies = stationCopiesFor;

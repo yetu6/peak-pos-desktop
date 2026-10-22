@@ -1,3 +1,4 @@
+import { printBrandFooter } from "../print/printBrand";
 import { guestCountWords } from "./words";
 import { formatMoney } from "./money";
 import { vatFigures } from "./vatWords";
@@ -22,6 +23,9 @@ export interface ReceiptLine {
 }
 
 export interface ReceiptCopy {
+  copy?: boolean;
+  printedAgainByName?: string;
+  printedAgainAt?: string;
   propertyName?: string;
   outletName?: string;
   /** The order's reference: printed small as "Ref …" when the order has a number for the day. */
@@ -119,6 +123,9 @@ export function receiptCopyFromPrintDocument(document: Record<string, unknown>, 
         : undefined;
 
   return {
+    copy: document.copy === true,
+    printedAgainByName: typeof document.printedAgainByName === "string" ? document.printedAgainByName : undefined,
+    printedAgainAt: typeof document.printedAgainAt === "string" ? dateTimeWords(document.printedAgainAt) || undefined : undefined,
     propertyName: typeof document.propertyName === "string" ? document.propertyName : undefined,
     outletName: typeof document.outletName === "string" ? document.outletName : undefined,
     orderNumber: typeof document.orderNumber === "string" ? document.orderNumber : undefined,
@@ -211,6 +218,9 @@ export function formatReceipt(receipt: ReceiptCopy): string {
   const header = [
     (receipt.propertyName ?? "PROPERTY").toUpperCase(),
     receipt.outletName ? receipt.outletName : null,
+    receipt.copy ? "*** COPY ***" : null,
+    receipt.copy && receipt.printedAgainAt ? `Printed again ${receipt.printedAgainAt}` : null,
+    receipt.copy && receipt.printedAgainByName ? `by ${receipt.printedAgainByName}` : null,
     receipt.beforePayment ? BILL_HEADING : `${BILL_HEADING} · PAID`,
     receipt.dailyNumber || receipt.orderNumber ? orderName(receipt) : "order",
     orderReference(receipt) ? `Ref ${orderReference(receipt)}` : null,
@@ -254,7 +264,7 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     ? ["----------------", CHARGE_TO_ROOM, `Room ${receipt.roomCharge.room ?? "________"}`, GUEST_SIGNATURE, "", "________________________"].join("\n") + "\n\n"
     : "";
 
-  const footer = ["----------------", "Powered by Yetu"].join("\n");
+  const footer = ["----------------", "Please pay at the till. Thank you.", printBrandFooter()].join("\n");
 
   return `${header}\n\n${lines || "(no items)"}\n\n${totals}\n\n${signing}${footer}\n`;
 }

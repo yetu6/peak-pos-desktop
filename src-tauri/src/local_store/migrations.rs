@@ -2,7 +2,7 @@ use rusqlite::{Connection, TransactionBehavior};
 
 use super::{classify_sql_error, LocalStoreError};
 
-const CURRENT_SCHEMA_VERSION: u32 = 5;
+const CURRENT_SCHEMA_VERSION: u32 = 6;
 const INITIAL_SCHEMA: &str = include_str!("migrations/0001_initial.sql");
 const TERMINAL_AUTHORITY_SCHEMA: &str = include_str!("migrations/0002_terminal_authority.sql");
 const CATALOG_ORDERING_SCHEMA: &str = include_str!("migrations/0003_catalog_ordering.sql");
@@ -45,6 +45,11 @@ pub(super) fn migrate(connection: &mut Connection) -> Result<u32, LocalStoreErro
                 .execute_batch(ORDER_CONTEXT_SCHEMA)
                 .map_err(classify_sql_error)?;
         }
+        if version < 6 {
+            transaction
+                .execute_batch(include_str!("migrations/0006_print_attempts.sql"))
+                .map_err(classify_sql_error)?;
+        }
         transaction
             .pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION)
             .map_err(classify_sql_error)?;
@@ -65,8 +70,8 @@ mod tests {
         connection
             .pragma_update(None, "foreign_keys", true)
             .unwrap();
-        assert_eq!(migrate(&mut connection).unwrap(), 5);
-        assert_eq!(migrate(&mut connection).unwrap(), 5);
+        assert_eq!(migrate(&mut connection).unwrap(), 6);
+        assert_eq!(migrate(&mut connection).unwrap(), 6);
         let count: i64 = connection
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN \
@@ -152,7 +157,7 @@ mod tests {
         connection
             .pragma_update(None, "foreign_keys", true)
             .unwrap();
-        assert_eq!(migrate(&mut connection).unwrap(), 5);
+        assert_eq!(migrate(&mut connection).unwrap(), 6);
         let tables: i64 = connection
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN \
@@ -171,7 +176,7 @@ mod tests {
         connection
             .pragma_update(None, "foreign_keys", true)
             .unwrap();
-        assert_eq!(migrate(&mut connection).unwrap(), 5);
+        assert_eq!(migrate(&mut connection).unwrap(), 6);
         let projection_tables: i64 = connection
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN
@@ -212,6 +217,30 @@ mod tests {
     }
 
     #[test]
+    fn version_four_applies_order_context_and_print_journal_together() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        for sql in [
+            INITIAL_SCHEMA,
+            TERMINAL_AUTHORITY_SCHEMA,
+            CATALOG_ORDERING_SCHEMA,
+            RECONCILIATION_SCHEMA,
+        ] {
+            connection.execute_batch(sql).unwrap();
+        }
+        connection.pragma_update(None, "user_version", 4).unwrap();
+        assert_eq!(migrate(&mut connection).unwrap(), 6);
+        let columns: i64 = connection.query_row("SELECT count(*) FROM pragma_table_info('orders') WHERE name IN ('ask_for_table','guest_count')", [], |r|r.get(0)).unwrap();
+        assert_eq!(columns, 2);
+        let journal: i64 = connection
+            .query_row("SELECT count(*) FROM native_print_attempts", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(journal, 0);
+        assert_eq!(migrate(&mut connection).unwrap(), 6);
+    }
+
+    #[test]
     fn existing_version_two_store_upgrades_without_replaying_prior_migrations() {
         let mut connection = Connection::open_in_memory().unwrap();
         connection
@@ -221,7 +250,7 @@ mod tests {
         connection.execute_batch(TERMINAL_AUTHORITY_SCHEMA).unwrap();
         connection.pragma_update(None, "user_version", 2).unwrap();
 
-        assert_eq!(migrate(&mut connection).unwrap(), 5);
+        assert_eq!(migrate(&mut connection).unwrap(), 6);
         let projection_tables: i64 = connection
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name LIKE 'catalog_%'",
@@ -230,6 +259,6 @@ mod tests {
             )
             .unwrap();
         assert!(projection_tables >= 6);
-        assert_eq!(migrate(&mut connection).unwrap(), 5);
+        assert_eq!(migrate(&mut connection).unwrap(), 6);
     }
 }

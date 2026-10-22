@@ -32,7 +32,7 @@ describe("Status → Printers (S8a)", () => {
     await userEvent.selectOptions(await picker.findByRole("combobox"), "system:EPSON TM-T20");
     await userEvent.click(screen.getByTestId("save-printers"));
     await waitFor(() => expect(till.saved).toHaveLength(1));
-    expect(till.saved[0]).toEqual({ kitchenTickets: true, kitchen: { target: { kind: "system", name: "EPSON TM-T20" }, width: 48 }, stations: {}, receipt: null, cashDrawer: false });
+    expect(till.saved[0]).toEqual({ ...DEFAULT_PRINTER_SETTINGS, kitchenTickets: true, kitchen: { target: { kind: "system", name: "EPSON TM-T20" }, width: 48 }, stations: {}, receipt: null, cashDrawer: false });
     expect(screen.getByTestId("printers-words")).toHaveTextContent("Saved. Kitchen tickets print at EPSON TM-T20 (80 mm).");
   });
 
@@ -48,7 +48,7 @@ describe("Status → Printers (S8a)", () => {
     await userEvent.click(within(screen.getByTestId("kitchen-printer")).getByRole("radio", { name: "58 mm paper" }));
     await userEvent.click(screen.getByTestId("save-printers"));
     await waitFor(() => expect(till.saved).toHaveLength(1));
-    expect(till.saved[0]).toEqual({ kitchenTickets: true, kitchen: { target: { kind: "network", host: "192.168.1.50", port: 9100 }, width: 32 }, stations: {}, receipt: null, cashDrawer: false });
+    expect(till.saved[0]).toEqual({ ...DEFAULT_PRINTER_SETTINGS, kitchenTickets: true, kitchen: { target: { kind: "network", host: "192.168.1.50", port: 9100 }, width: 32 }, stations: {}, receipt: null, cashDrawer: false });
   });
 
   it("prints a test ticket to the chosen printer", async () => {
@@ -106,4 +106,27 @@ describe("Status → Printers (S8a)", () => {
     await waitFor(() => expect(till.saved).toHaveLength(1));
     expect(till.saved[0]).toMatchObject({ stations: { BAR: "none" } });
   });
+});
+
+it("saves quantity emphasis and bounded station copies", async () => {
+  render(<PrintersCard />);
+  await userEvent.click(await screen.findByRole("switch", { name: "Bold quantities" }));
+  await userEvent.click(screen.getByRole("switch", { name: "Large quantities" }));
+  await userEvent.click(screen.getByText("A printer for one station (optional)"));
+  await userEvent.selectOptions(screen.getByLabelText("Bar: copies"), "3");
+  await userEvent.click(screen.getByTestId("save-printers"));
+  expect(till.saved[0]).toMatchObject({ quantityBold: false, quantityLarge: false, stationCopies: { BAR: 3 } });
+});
+it("enables branding only on the chosen bill printer and keeps it when changing width", async () => {
+  render(<PrintersCard />);
+  const picker = within(screen.getByTestId("receipt-printer"));
+  await userEvent.selectOptions(await picker.findByRole("combobox"), "system:EPSON TM-T20");
+  const logo = screen.getByRole("switch", { name: "Print the business logo on bills" });
+  expect(logo).not.toBeChecked();
+  await userEvent.click(logo);
+  expect(screen.queryByLabelText("Business logo URL")).toBeNull();
+  expect(screen.getByText(/logo comes from the property branding/)).toBeInTheDocument();
+  await userEvent.click(picker.getByRole("radio", { name: "58 mm paper" }));
+  await userEvent.click(screen.getByTestId("save-printers"));
+  expect(till.saved[0]).toMatchObject({ receipt: { billLogo: true, width: 32 } });
 });

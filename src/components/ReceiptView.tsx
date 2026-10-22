@@ -182,7 +182,7 @@ export function ReceiptSheet({
               </p>
             ) : null}
             <p className="y-receipt__footer" data-testid="receipt-footer">
-              Powered by Yetu
+              Powered by Yetu-FBC
             </p>
           </div>
         ) : null}

@@ -1,7 +1,7 @@
 import { BACK_WORDS } from "../lib/words";
 import { BadgePercent, ChefHat, Plus, Printer, ReceiptText, Trash2, Undo2, Wallet } from "lucide-react";
 import { vatFigures } from "../lib/vatWords";
-import { linesByRound, sendWords, takesMore } from "../register/rounds";
+import { directOnlyUnsent, linesByRound, sendWords, takesMore } from "../register/rounds";
 import { orderStatusIcon } from "./orderStatusIcon";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, PermissionNotice, RefusalNotice, Sheet, StatusChip, Stepper, TicketLine, type Refusal } from "../components/system";
@@ -901,6 +901,7 @@ export function OrderDetail({
       {preview ? (
         <PaperPreviewSheet
           orderId={order.id}
+          directOnly={directOnlyUnsent(order)}
           kind={preview.kind}
           busy={pending !== null}
           nothingNew={!unsent}

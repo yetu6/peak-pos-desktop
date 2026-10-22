@@ -63,7 +63,7 @@ pub fn printer_status() -> PrinterStatus {
 pub fn print_test_page() -> Result<(), String> {
     let name = configured_printer_name().unwrap_or_else(|| "default".to_string());
     let body = format!(
-        "YETU POS — printer test\nPrinter: {name}\nIf you can read this, the till can print.\n"
+        "YETU POS — printer test\nPrinter: {name}\nIf you can read this, the till can print.\n\n               Powered by Yetu-FBC\n"
     );
     send_to_os_printer("yetu-printer-test", &body)
 }
@@ -312,7 +312,7 @@ mod tests {
 // ------------------------------------------------------------------ raw printing (S8a)
 
 /// A printer as the till's settings name it (src/print/printerSettings.ts).
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum PrintTarget {
     System { name: String },
@@ -413,4 +413,431 @@ pub fn save_printer_settings(
     let mut file = std::fs::File::create(&path).map_err(|err| err.to_string())?;
     file.write_all(settings.to_string().as_bytes())
         .map_err(|err| format!("The printer settings couldn't be saved: {err}"))
+}
+
+#[cfg(test)]
+mod durable_tests {
+    use super::*;
+    #[test]
+    fn network_journal_sends_once_and_probes_after_restart_without_offline_authority() {
+        use crate::local_store::{DbKeyStore, DbKeyStoreError, LocalStore};
+        use std::io::Read;
+        struct Keys(std::sync::Mutex<Option<String>>);
+        impl DbKeyStore for Keys {
+            fn load(&self) -> Result<Option<String>, DbKeyStoreError> {
+                Ok(self.0.lock().unwrap().clone())
+            }
+            fn save(&self, s: &str) -> Result<(), DbKeyStoreError> {
+                *self.0.lock().unwrap() = Some(s.into());
+                Ok(())
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let keys = Keys(Default::default());
+        let mut store = LocalStore::open(&dir.path().join("print.sqlite3"), &keys).unwrap();
+        let scope = PrintScope {
+            property_id: "property".into(),
+            outlet_id: "outlet".into(),
+            terminal_id: "terminal".into(),
+        };
+        let listener = std::net::TcpListener::bind("127.0.0.1:9100").unwrap();
+        let receive = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut bytes = vec![];
+            socket.read_to_end(&mut bytes).unwrap();
+            listener.set_nonblocking(true).unwrap();
+            (listener, bytes)
+        });
+        let paper = || JournalPaper::Thermal {
+            target: PrintTarget::Network {
+                host: "127.0.0.1".into(),
+                port: 9100,
+            },
+            bytes: b"KITCHEN ORDER\n2 x Rice\n".to_vec(),
+        };
+        assert!(print_once(&mut store, "job", &scope, 1, false, paper()).is_err());
+        assert!(store.inspect_print("job", &scope).unwrap().is_none());
+        assert_eq!(
+            print_once(&mut store, "job", &scope, 1, true, paper())
+                .unwrap()
+                .state,
+            "accepted"
+        );
+        let (listener, bytes) = receive.join().unwrap();
+        assert_eq!(bytes, b"KITCHEN ORDER\n2 x Rice\n");
+        drop(store);
+        let mut store = LocalStore::open(&dir.path().join("print.sqlite3"), &keys).unwrap();
+        assert_eq!(
+            store.inspect_print("job", &scope).unwrap().unwrap().state,
+            "ACCEPTED"
+        );
+        assert_eq!(
+            print_once(&mut store, "job", &scope, 2, true, paper())
+                .unwrap()
+                .state,
+            "accepted"
+        );
+        assert!(listener.accept().is_err(), "accepted job reconnected");
+        // Simulate process death at the boundary after transport but before acceptance.
+        store
+            .reserve_print_attempt("ambiguous", &scope, "r", "p", 1)
+            .unwrap();
+        store
+            .mark_print("ambiguous", &scope, 1, "RESERVED", "UNKNOWN", None)
+            .unwrap();
+        drop(store);
+        let mut store = LocalStore::open(&dir.path().join("print.sqlite3"), &keys).unwrap();
+        assert_eq!(
+            print_once(&mut store, "ambiguous", &scope, 2, true, paper())
+                .unwrap()
+                .state,
+            "unknown"
+        );
+        assert!(listener.accept().is_err(), "unknown job reconnected");
+        drop(listener);
+        assert_eq!(
+            print_once(&mut store, "refused", &scope, 1, true, paper())
+                .unwrap()
+                .state,
+            "not_sent"
+        );
+        assert_eq!(
+            store
+                .inspect_print("refused", &scope)
+                .unwrap()
+                .unwrap()
+                .state,
+            "NOT_SENT"
+        );
+        // Same failed attempt cannot transport; a newly claimed attempt can.
+        let listener = std::net::TcpListener::bind("127.0.0.1:9100").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        assert_eq!(
+            print_once(&mut store, "refused", &scope, 1, true, paper())
+                .unwrap()
+                .state,
+            "not_sent"
+        );
+        assert!(listener.accept().is_err());
+        listener.set_nonblocking(false).unwrap();
+        let receive = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut got = vec![];
+            socket.read_to_end(&mut got).unwrap();
+            got
+        });
+        assert_eq!(
+            print_once(&mut store, "refused", &scope, 2, true, paper())
+                .unwrap()
+                .state,
+            "accepted"
+        );
+        assert_eq!(receive.join().unwrap(), b"KITCHEN ORDER\n2 x Rice\n");
+        // A durable reservation (no dispatch) may resume exactly once.
+        let original = paper();
+        let (route, payload) = match &original {
+            JournalPaper::Thermal { target, bytes } => {
+                (hash(&serde_json::to_vec(target).unwrap()), hash(bytes))
+            }
+            _ => unreachable!(),
+        };
+        store
+            .reserve_print_attempt("reserved", &scope, &route, &payload, 1)
+            .unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:9100").unwrap();
+        let receive = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut got = vec![];
+            socket.read_to_end(&mut got).unwrap();
+            got
+        });
+        assert_eq!(
+            print_once(&mut store, "reserved", &scope, 1, true, original)
+                .unwrap()
+                .state,
+            "accepted"
+        );
+        assert_eq!(receive.join().unwrap(), b"KITCHEN ORDER\n2 x Rice\n");
+        // Accepted evidence wins even when current settings/payload are invalid.
+        assert_eq!(
+            print_once(
+                &mut store,
+                "reserved",
+                &scope,
+                2,
+                true,
+                JournalPaper::System {
+                    title: String::new(),
+                    text: String::new()
+                }
+            )
+            .unwrap()
+            .state,
+            "accepted"
+        );
+        // Real partial transport: receiver closes after taking a prefix. The
+        // payload exceeds TCP's send buffer so write_all observes the closure.
+        let listener = std::net::TcpListener::bind("127.0.0.1:9100").unwrap();
+        let receive = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut prefix = [0u8; 1];
+            socket.read_exact(&mut prefix).unwrap();
+            socket.shutdown(std::net::Shutdown::Both).unwrap();
+            prefix
+        });
+        let partial = JournalPaper::Thermal {
+            target: PrintTarget::Network {
+                host: "127.0.0.1".into(),
+                port: 9100,
+            },
+            bytes: vec![42; MAX_PRINT_PAYLOAD_BYTES],
+        };
+        assert_eq!(
+            print_once(&mut store, "partial", &scope, 1, true, partial)
+                .unwrap()
+                .state,
+            "unknown"
+        );
+        assert_eq!(receive.join().unwrap(), [42]);
+        assert_eq!(
+            store
+                .inspect_print("partial", &scope)
+                .unwrap()
+                .unwrap()
+                .state,
+            "UNKNOWN"
+        );
+    }
+}
+
+use crate::local_store::{
+    print_journal::{PrintAttempt, PrintScope},
+    runtime::LocalStoreRuntime,
+    LocalStore, LocalStoreError,
+};
+use sha2::{Digest, Sha256};
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
+pub enum JournalPaper {
+    Thermal { target: PrintTarget, bytes: Vec<u8> },
+    System { title: String, text: String },
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativePrintResult {
+    job_id: String,
+    attempt: i64,
+    state: &'static str,
+    message: Option<String>,
+    route_hash: String,
+    payload_hash: String,
+}
+impl From<PrintAttempt> for NativePrintResult {
+    fn from(v: PrintAttempt) -> Self {
+        let (state, message) = match v.state.as_str() {
+            "ACCEPTED" => ("accepted", None),
+            "UNKNOWN" => (
+                "unknown",
+                Some(
+                    "Check the printer before printing a copy. The paper may already have printed."
+                        .into(),
+                ),
+            ),
+            _ => ("not_sent", v.error),
+        };
+        Self {
+            job_id: v.job_key,
+            attempt: v.attempt,
+            state,
+            message,
+            route_hash: v.route_hash,
+            payload_hash: v.payload_hash,
+        }
+    }
+}
+
+/// Probe before rebuilding paper or consulting current printer settings.
+#[tauri::command]
+pub fn get_print_attempt(
+    runtime: tauri::State<'_, LocalStoreRuntime>,
+    scope: PrintScope,
+    job_id: String,
+) -> Result<Option<NativePrintResult>, String> {
+    runtime
+        .with_store(|store| {
+            store
+                .inspect_print(&job_id, &scope)
+                .map(|v| v.map(Into::into))
+        })
+        .map_err(|e| format!("Print journal unavailable: {e:?}"))
+}
+
+/// The server still authenticates/authorizes/claims the job. This assertion is
+/// evidence from that flow, never an offline PIN or a grant of server authority.
+#[tauri::command]
+pub fn print_job_once(
+    runtime: tauri::State<'_, LocalStoreRuntime>,
+    scope: PrintScope,
+    job_id: String,
+    attempt: i64,
+    confirmed_backend_claim: bool,
+    paper: JournalPaper,
+) -> Result<NativePrintResult, String> {
+    runtime
+        .with_store(|store| {
+            print_once(
+                store,
+                &job_id,
+                &scope,
+                attempt,
+                confirmed_backend_claim,
+                paper,
+            )
+        })
+        .map_err(|e| format!("Print journal refused the request: {e:?}"))
+}
+
+const MAX_PRINT_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
+fn hash(data: &[u8]) -> String {
+    Sha256::digest(data)
+        .iter()
+        .map(|v| format!("{v:02x}"))
+        .collect()
+}
+
+fn print_once(
+    store: &mut LocalStore,
+    key: &str,
+    scope: &PrintScope,
+    attempt: i64,
+    confirmed_claim: bool,
+    paper: JournalPaper,
+) -> Result<NativePrintResult, LocalStoreError> {
+    if !confirmed_claim || attempt < 1 {
+        return Err(LocalStoreError::OperationNotAllowed);
+    }
+    if let Some(old) = store.inspect_print(key, scope)? {
+        // These outcomes are independent of today's route/payload/settings.
+        if matches!(old.state.as_str(), "ACCEPTED" | "UNKNOWN") {
+            return Ok(old.into());
+        }
+    }
+    let (route, payload) = match &paper {
+        JournalPaper::Thermal { target, bytes } => {
+            if bytes.is_empty() || bytes.len() > MAX_PRINT_PAYLOAD_BYTES {
+                return Err(LocalStoreError::OperationNotAllowed);
+            }
+            crate::raw_print::check_saved_target(&target.clone().into())
+                .map_err(|_| LocalStoreError::OperationNotAllowed)?;
+            (
+                serde_json::to_vec(target).map_err(|_| LocalStoreError::OperationNotAllowed)?,
+                bytes.clone(),
+            )
+        }
+        JournalPaper::System { title, text } => {
+            if text.trim().is_empty() || text.len() > MAX_PRINT_PAYLOAD_BYTES || title.len() > 256 {
+                return Err(LocalStoreError::OperationNotAllowed);
+            }
+            (
+                serde_json::to_vec(&("system", configured_printer_name()))
+                    .map_err(|_| LocalStoreError::OperationNotAllowed)?,
+                serde_json::to_vec(&(title, text))
+                    .map_err(|_| LocalStoreError::OperationNotAllowed)?,
+            )
+        }
+    };
+    let reserved =
+        store.reserve_print_attempt(key, scope, &hash(&route), &hash(&payload), attempt)?;
+    if reserved.state != "RESERVED" {
+        return Ok(reserved.into());
+    }
+    // FULL-synchronous WAL commit BEFORE any transport. Death after this point
+    // is ambiguous; even death after success but before acceptance never resends.
+    store.mark_print(key, scope, reserved.attempt, "RESERVED", "UNKNOWN", None)?;
+    match send_journal_paper(paper) {
+        Ok(()) => store
+            .mark_print(key, scope, reserved.attempt, "UNKNOWN", "ACCEPTED", None)
+            .map(Into::into),
+        Err(TransportFailure::NotSent(message)) => store
+            .mark_print(
+                key,
+                scope,
+                reserved.attempt,
+                "UNKNOWN",
+                "NOT_SENT",
+                Some(&message),
+            )
+            .map(Into::into),
+        Err(TransportFailure::Unknown) => Ok(store
+            .inspect_print(key, scope)?
+            .ok_or(LocalStoreError::IntegrityFailure)?
+            .into()),
+    }
+}
+
+enum TransportFailure {
+    NotSent(String),
+    Unknown,
+}
+fn send_journal_paper(paper: JournalPaper) -> Result<(), TransportFailure> {
+    match paper {
+        JournalPaper::Thermal {
+            target: PrintTarget::Network { host, port },
+            bytes,
+        } => send_journal_network(&host, port, &bytes),
+        JournalPaper::Thermal { target, bytes } => {
+            // The existing OS raw path may have handed bytes to its spooler on
+            // failure. Conservatively ambiguous; never infer no-send from text.
+            crate::raw_print::print_raw(&target.into(), &bytes)
+                .map_err(|_| TransportFailure::Unknown)
+        }
+        JournalPaper::System { title, text } => {
+            if !printer_is_available() {
+                return Err(TransportFailure::NotSent(
+                    "No printer is set up on this till".into(),
+                ));
+            }
+            send_to_os_printer(&title, text.trim()).map_err(|_| TransportFailure::Unknown)
+        }
+    }
+}
+
+fn send_journal_network(host: &str, port: u16, bytes: &[u8]) -> Result<(), TransportFailure> {
+    use crate::raw_print::{check_target, is_local_address, RawTarget, NETWORK_TIMEOUT};
+    use std::net::{TcpStream, ToSocketAddrs};
+    let not_sent = |message: String| TransportFailure::NotSent(message);
+    check_target(&RawTarget::Network {
+        host: host.into(),
+        port,
+    })
+    .map_err(not_sent)?;
+    let addrs: Vec<_> = (host, port)
+        .to_socket_addrs()
+        .map_err(|_| not_sent("The printer address could not be found.".into()))?
+        .collect();
+    // Check ALL resolved addresses before connecting, preserving DNS guards.
+    if addrs.is_empty() || !addrs.iter().all(|a| is_local_address(a.ip())) {
+        return Err(not_sent(
+            "That printer is not on this building's network.".into(),
+        ));
+    }
+    for address in addrs {
+        if let Ok(mut stream) = TcpStream::connect_timeout(&address, NETWORK_TIMEOUT) {
+            stream
+                .set_write_timeout(Some(NETWORK_TIMEOUT))
+                .map_err(|_| not_sent("The printer connection could not be prepared.".into()))?;
+            // Once write is attempted an error may represent a partial send.
+            stream
+                .write_all(bytes)
+                .map_err(|_| TransportFailure::Unknown)?;
+            stream.flush().map_err(|_| TransportFailure::Unknown)?;
+            let _ = stream.shutdown(std::net::Shutdown::Write);
+            return Ok(());
+        }
+    }
+    Err(not_sent(
+        "The printer did not answer. Check its power and network.".into(),
+    ))
 }

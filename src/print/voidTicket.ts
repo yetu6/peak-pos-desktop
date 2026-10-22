@@ -1,3 +1,4 @@
+import { printBrandFooter } from "./printBrand";
 import { stationWords } from "../kitchen/kitchenWords";
 import type { ServiceType } from "../lib/posContracts";
 import { clockTime, guestCountWords, orderPlaceWords, placeWords, serviceTypeWords } from "../lib/words";
@@ -124,5 +125,5 @@ export function formatVoidSlip(slip: VoidSlipPaper): string {
   ].filter(Boolean);
   const lines = slip.lines.map((line) => [`${String(line.quantity).padStart(3, " ")}  ${line.name}`, ...line.options.map((o) => `      ${o}`)].join("\n"));
   const footer = [slip.reason?.trim() ? `Why: ${slip.reason.trim()}` : "", voidSlipWho(slip)].filter(Boolean);
-  return `${header.join("\n")}\n\n${lines.join("\n") || "(nothing on this slip)"}\n\n${footer.join("\n")}\n`;
+  return `${header.join("\n")}\n\n${lines.join("\n") || "(nothing on this slip)"}\n\n${footer.join("\n")}\n\n${printBrandFooter()}\n`;
 }

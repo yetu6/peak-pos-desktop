@@ -26,6 +26,8 @@ export interface POSOrderItemModifier {
   priceDeltaMinor: number;
 }
 
+export type POSFulfilment = "PREPARED" | "PICKED" | "DIRECT";
+
 export type PrepStation = "GENERAL" | "HOT" | "COLD" | "BAR" | "GRILL" | "PASTRY";
 
 export interface POSOrderItem {
@@ -38,6 +40,7 @@ export interface POSOrderItem {
   totalMinor: number;
   status: OrderItemStatus;
   prepStation?: PrepStation;
+  fulfilment?: POSFulfilment;
   modifiers?: POSOrderItemModifier[];
   /** S17a: the round the line was sent in; absent while it is not yet sent. */
   roundNumber?: number;
@@ -202,6 +205,7 @@ export interface POSModifierGroup {
 }
 
 export interface POSCatalogProduct {
+  fulfilment?: POSFulfilment;
   id: string;
   categoryId?: string;
   code: string;
@@ -215,6 +219,7 @@ export interface POSCatalogProduct {
 }
 
 export interface POSCategory {
+  fulfilment?: POSFulfilment;
   id: string;
   outletId: string;
   code: string;
@@ -345,6 +350,7 @@ export interface POSPaper {
 }
 
 export interface POSPrintJob {
+  claimedByTerminalId?: string;
   id: string;
   sourceType: string;
   sourceId: string;
