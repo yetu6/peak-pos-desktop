@@ -8,6 +8,7 @@
 # Optional:
 #   PEAK_POS_DOWNLOADS_ROOT  the pos/ tree Caddy serves (default /var/www/yetu-downloads/pos);
 #                            the people's download page is written one level up.
+#   YETU_RELEASE_TIMEZONE    the zone the page states the release date in (default Africa/Dar_es_Salaam).
 
 set -eu
 
@@ -100,7 +101,7 @@ chmod -R a+rX "$VERSION_DIR" "$LATEST_DIR" "$STABLE_DIR"
 # changes it. Updater files (.sig, .tar.gz, latest.json) are for tills, not people.
 SITE=$(dirname "$ROOT")
 python3 - "$VERSION_DIR" "$VERSION" "$STAGING/latest.json" >"$SITE/.index.html.$$" <<'PY'
-import datetime, html, json, os, sys
+import datetime, html, json, os, sys, zoneinfo
 from urllib.parse import quote
 folder, version, manifest = sys.argv[1], sys.argv[2], sys.argv[3]
 names = sorted(os.listdir(folder))
@@ -113,9 +114,10 @@ def size(name):
     return f"{mb:.0f} MB" if mb >= 1 else "under 1 MB"
 released = ""
 try:
-    when = datetime.datetime.fromisoformat(json.load(open(manifest))["pub_date"].replace("Z", "+00:00"))
+    zone = zoneinfo.ZoneInfo(os.environ.get("YETU_RELEASE_TIMEZONE") or "Africa/Dar_es_Salaam")
+    when = datetime.datetime.fromisoformat(json.load(open(manifest))["pub_date"].replace("Z", "+00:00")).astimezone(zone)
     released = f", released {when:%a} {when.day} {when:%b %Y}"
-except (KeyError, ValueError, OSError):
+except (KeyError, ValueError, OSError, zoneinfo.ZoneInfoNotFoundError):
     pass
 # Windows tills update with the .msi (latest.json), so the page offers the same installer:
 # a till installed another way would get the update as a second copy.
