@@ -208,3 +208,15 @@ describe("the till's offline start-up (F-228)", () => {
     expect(result.offlineAuthorization).toEqual({ state: "UNAVAILABLE" });
   });
 });
+
+it("caches advisory cash preferences at the authenticated first bootstrap", async () => {
+ const {cachedOutletMoney}=await import("./outletMoneySettings");
+ localStorage.clear();
+ vi.stubGlobal("fetch",vi.fn(async(input:RequestInfo|URL)=>String(input).endsWith("/catalog")
+  ? json({outletId:session.outletId,outletName:"Main Bar",products:[],standardFloat:5_000_000,quickCashNotes:[1000,2000,5000,10000]}) : json([])));
+ try {
+  await bootstrapOperationalSession("https://peak.example",session);
+  expect(cachedOutletMoney(session.propertyId,session.outletId)).toEqual({standardFloat:5_000_000,quickCashNotes:[1000,2000,5000,10000]});
+  expect(cachedOutletMoney("another-property",session.outletId).standardFloat).toBe(0);
+ } finally {vi.unstubAllGlobals();localStorage.clear();}
+});
