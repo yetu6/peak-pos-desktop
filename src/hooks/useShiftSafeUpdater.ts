@@ -3,6 +3,9 @@ import { check } from "@tauri-apps/plugin-updater";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
 import { canApplyUpdater, updaterBlockedReason } from "../lib/updaterGate";
 
+/** How often a locked till looks at the clock for the update window. */
+const UPDATE_WINDOW_TICK_MS = 60_000;
+
 type UpdaterStatus =
   | { kind: "idle" }
   | { kind: "available"; version: string }
@@ -12,16 +15,29 @@ type UpdaterStatus =
 
 /**
  * Checks the stable updater endpoint periodically. Downloads in the background
- * when an update exists; installs only when the shell is locked or unpaired.
+ * when an update exists; installs only when nobody is signed in, inside the
+ * update window or on a till just started (lib/updaterGate.ts).
  */
 export function useShiftSafeUpdater(): {
   status: UpdaterStatus;
   installNow: () => Promise<void>;
   blockedReason: string | null;
+  /** Whether a ready update may install now (nobody signed in; the window or a fresh start). */
+  canInstall: boolean;
 } {
   const { phase } = useDeviceSession();
   const [status, setStatus] = useState<UpdaterStatus>({ kind: "idle" });
   const updateRef = useRef<Awaited<ReturnType<typeof check>>>(null);
+  // A till just started may install before its first sign-in; after that, only in the window.
+  const [freshStart, setFreshStart] = useState(true);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    if (phase === "ready") setFreshStart(false);
+  }, [phase]);
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), UPDATE_WINDOW_TICK_MS);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,7 +76,7 @@ export function useShiftSafeUpdater(): {
 
   useEffect(() => {
     if (status.kind !== "ready") return;
-    if (!canApplyUpdater(phase)) return;
+    if (!canApplyUpdater(phase, now, freshStart)) return;
     const update = updateRef.current;
     if (!update) return;
     void update
@@ -72,10 +88,10 @@ export function useShiftSafeUpdater(): {
         const message = err instanceof Error ? err.message : String(err);
         setStatus({ kind: "error", message });
       });
-  }, [phase, status.kind]);
+  }, [phase, status.kind, now, freshStart]);
 
   const installNow = async () => {
-    if (!canApplyUpdater(phase)) return;
+    if (!canApplyUpdater(phase, new Date(), freshStart)) return;
     const update = updateRef.current;
     if (!update || status.kind !== "ready") return;
     await update.install();
@@ -84,6 +100,7 @@ export function useShiftSafeUpdater(): {
   return {
     status,
     installNow,
-    blockedReason: status.kind === "ready" ? updaterBlockedReason(phase) : null,
+    blockedReason: status.kind === "ready" ? updaterBlockedReason(phase, now, freshStart) : null,
+    canInstall: canApplyUpdater(phase, now, freshStart),
   };
 }
