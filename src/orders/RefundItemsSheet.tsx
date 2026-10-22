@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { CircleCheck, ShieldCheck, Undo2 } from "lucide-react";
 import { useSupervisors } from "../approvals/supervisors";
 import { useRef, useState } from "react";
@@ -242,7 +243,7 @@ export function RefundItemsSheet({
     stage === "build" ? (
       <div className="y-options__footer">
         <Button variant="quiet" onClick={onClose}>
-          Cancel
+          {BACK_WORDS}
         </Button>
         <Button variant="primary" size={64} icon={<ShieldCheck />} data-testid="refund-ask" disabled={!readyToAsk} onClick={ask}>
           Ask a supervisor
@@ -251,7 +252,7 @@ export function RefundItemsSheet({
     ) : stage === "approve" && unsure ? (
       <div className="y-options__footer">
         <Button variant="quiet" data-testid="refund-close" disabled={record.isPending} onClick={onClose}>
-          Close
+          {BACK_WORDS}
         </Button>
         <Button variant="danger" size={64} icon={<Undo2 />} data-testid="refund-retry" disabled={!readyToRetry} onClick={send}>
           {record.isPending ? "Trying again…" : "Try again"}
@@ -259,7 +260,7 @@ export function RefundItemsSheet({
       </div>
     ) : stage === "approve" ? (
       <div className="y-options__footer">
-        <Button variant="quiet" disabled={record.isPending} onClick={backToItems}>
+        <Button variant="quiet" data-testid="refund-edit-items" disabled={record.isPending} onClick={backToItems}>
           Back
         </Button>
         <Button variant="danger" size={64} icon={<Undo2 />} data-testid="refund-give" disabled={!readyToGive} onClick={give}>

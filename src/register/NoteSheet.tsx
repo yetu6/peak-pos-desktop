@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { useState } from "react";
 import { Button, Field, Sheet } from "../components/system";
 
@@ -30,13 +31,13 @@ export function NoteSheet({
           <div className="y-options__footer">
             <span />
             <Button variant="primary" size={56} onClick={onClose}>
-              Done
+              {BACK_WORDS}
             </Button>
           </div>
         ) : (
           <div className="y-options__footer">
             <Button variant="quiet" onClick={onClose}>
-              Cancel
+              {BACK_WORDS}
             </Button>
             <Button
               variant="primary"
@@ -55,7 +56,7 @@ export function NoteSheet({
       {locked ? (
         <div className="y-form">
           <p className="y-note__text">{note || "No note"}</p>
-          <p className="y-cash__muted">Yetu keeps the note the order started with. It can't be changed now.</p>
+          <p className="y-cash__muted">The note is saved with the order. It can't be changed now.</p>
         </div>
       ) : (
         <Field

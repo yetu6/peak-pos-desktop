@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { BadgePercent, ChefHat, Plus, Printer, ReceiptText, Trash2, Undo2, Wallet } from "lucide-react";
 import { vatFigures } from "../lib/vatWords";
 import { linesByRound, sendWords, takesMore } from "../register/rounds";
@@ -330,7 +331,7 @@ export function OrderDetailView({
           ) : (
             <div className="y-detail__row">
               <Button variant="quiet" size={56} disabled={busy} onClick={onClose}>
-                Close
+                {BACK_WORDS}
               </Button>
               {paid && onRefund ? (
                 <Button

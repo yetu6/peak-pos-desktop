@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { useQueryClient } from "@tanstack/react-query";
 import { supervisorChoice, useApprovers } from "../approvals/supervisors";
 import type { POSApprover } from "../lib/posContracts";
@@ -231,7 +232,7 @@ export function CloseShiftSheetView({
           step === "count" ? (
             <div key="count-actions" className="y-cash__footer">
               <Button variant="quiet" onClick={() => onOpenChange(false)}>
-                Cancel
+                {BACK_WORDS}
               </Button>
               <Button variant="primary" size={56} disabled={countedMinor === null} onClick={showCheck}>
                 Check the count

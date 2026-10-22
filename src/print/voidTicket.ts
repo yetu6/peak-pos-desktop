@@ -114,7 +114,7 @@ export function formatVoidSlip(slip: VoidSlipPaper): string {
     slip.wholeOrder ? "WHOLE ORDER - DO NOT MAKE" : "DO NOT MAKE",
     [place, slip.serviceType ? serviceTypeWords(slip.serviceType) : ""].filter(Boolean).join(" - "),
     slip.waiterName ? `Taken by ${slip.waiterName}` : "",
-    voided ? `Voided ${voided}` : "",
+    voided ? `Cancelled ${voided}` : "",
   ].filter(Boolean);
   const lines = slip.lines.map((line) => [`${String(line.quantity).padStart(3, " ")}  ${line.name}`, ...line.options.map((o) => `      ${o}`)].join("\n"));
   const footer = [slip.reason?.trim() ? `Why: ${slip.reason.trim()}` : "", voidSlipWho(slip)].filter(Boolean);

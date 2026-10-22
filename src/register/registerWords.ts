@@ -215,7 +215,7 @@ const SELL_REFUSALS: Record<keyof typeof SELL_STEPS, Readonly<Record<string, str
   },
   send: {
     ORDER_EMPTY: "Add something to the order before sending it.",
-    ORDER_STATE_CHANGED: "This order was already sent, paid or voided.",
+    ORDER_STATE_CHANGED: "This order was already sent, paid or cancelled.",
   },
   availability: {},
 };

@@ -72,7 +72,7 @@ describe("refusals worded by their code (S5b)", () => {
       words: "This order has gone to the kitchen. Start a new sale to add more.",
     });
     expect(wordedByCode(sell("send"), REFUSED.sendEmpty)).toEqual({ kind: "other", words: "Add something to the order before sending it." });
-    expect(wordedByCode(sell("send"), REFUSED.sendOrderMoved)).toEqual({ kind: "other", words: "This order was already sent, paid or voided." });
+    expect(wordedByCode(sell("send"), REFUSED.sendOrderMoved)).toEqual({ kind: "other", words: "This order was already sent, paid or cancelled." });
     expect(wordedByCode(sell("remove"), REFUSED.removeSent)).toEqual({
       kind: "other",
       words: "This item has gone to the kitchen, so it can't be removed.",

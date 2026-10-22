@@ -211,3 +211,7 @@ export function shiftWords(shift: Pick<POSShift, "status" | "openedAt"> | null |
   const since = clockTime(shift.openedAt);
   return since ? `Shift open since ${since}` : "Shift open";
 }
+
+/** Escape from a sheet; Cancel is reserved for taking an order or item off. */
+export const BACK_WORDS = "Back";
+export const BACK_ACCESSIBLE_WORDS = "Back to previous screen";

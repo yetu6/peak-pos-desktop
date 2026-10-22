@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { SearchX, UtensilsCrossed } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Button, Dialog, EmptyState, SearchField, Skeleton, Tabs, Tile } from "../components/system";
@@ -261,7 +262,7 @@ export function MenuPanel({
           footer={
             <div className="y-catalog__ask-actions">
               <Button variant="quiet" onClick={() => setAsking(null)}>
-                Cancel
+                {BACK_WORDS}
               </Button>
               <Button
                 variant="primary"

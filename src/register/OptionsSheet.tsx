@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { Check } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Banner, Button, Sheet, Stepper } from "../components/system";
@@ -106,7 +107,7 @@ export function OptionsSheet({
       footer={
         <div className="y-options__footer">
           <Button variant="quiet" onClick={onCancel}>
-            Cancel
+            {BACK_WORDS}
           </Button>
           <Button
             variant="primary"

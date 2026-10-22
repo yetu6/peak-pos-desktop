@@ -202,7 +202,7 @@ describe("refusals", () => {
 
   it("print a copy: a person who can't, no receipt, anything else", () => {
     expect(reprintProblem(refused({ code: "FORBIDDEN" }))?.words).toBe("Only a cashier or manager can print the bill again. Ask one to help.");
-    expect(reprintProblem(refused({ code: "NOT_FOUND" }))?.words).toBe("Yetu has no bill for this order.");
+    expect(reprintProblem(refused({ code: "NOT_FOUND" }))?.words).toBe("There is no bill for this order.");
     expect(reprintProblem(refused({ code: "CONFLICT" }))?.words).toBe("The copy wasn't printed. Try again.");
   });
 

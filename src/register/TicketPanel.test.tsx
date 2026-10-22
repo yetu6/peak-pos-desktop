@@ -206,12 +206,12 @@ describe("TicketPanel", () => {
     renderTicket({ selectedLineId: "l2", onVoidLine: vi.fn(), order: { ...ORDER, paidMinor: 100_000, remainingMinor: ORDER.totalMinor - 100_000 } });
     const actions = screen.getByRole("group", { name: "House burger" });
     expect(within(actions).queryByRole("button", { name: "Cancel item" })).not.toBeInTheDocument();
-    expect(actions).toHaveTextContent("Sent to the kitchen, and part of the bill is paid: refund it after it's paid.");
+    expect(actions).toHaveTextContent("Part of the bill is paid. Refund it after it is paid.");
   });
 
   it("a till that can't void says who can", () => {
     renderTicket({ selectedLineId: "l2" });
-    expect(screen.getByRole("group", { name: "House burger" })).toHaveTextContent("Sent to the kitchen. A supervisor can cancel it.");
+    expect(screen.getByRole("group", { name: "House burger" })).toHaveTextContent("Sent. A supervisor can cancel it.");
   });
 
   it("Esc lets go of the selected line", () => {

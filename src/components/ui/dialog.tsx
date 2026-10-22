@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../../lib/words";
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
@@ -74,7 +75,7 @@ function DialogContent({
             >
               <XIcon
               />
-              <span className="sr-only">Close</span>
+              <span className="sr-only">{BACK_WORDS}</span>
             </Button>
           </DialogPrimitive.Close>
         )}
@@ -113,7 +114,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close asChild>
-          <Button variant="outline">Close</Button>
+          <Button variant="outline">{BACK_WORDS}</Button>
         </DialogPrimitive.Close>
       )}
     </div>

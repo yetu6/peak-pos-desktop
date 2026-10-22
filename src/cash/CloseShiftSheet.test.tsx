@@ -310,7 +310,7 @@ describe("CloseShiftSheet: check", () => {
     await count("74000");
     await userEvent.click(screen.getByTestId("close-shift"));
     await userEvent.keyboard("{Escape}");
-    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await userEvent.click(screen.getByRole("button", { name: "Back to previous screen" }));
     expect(onOpenChange).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Change the count" })).toBeDisabled();
   });

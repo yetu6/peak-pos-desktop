@@ -226,9 +226,9 @@ describe("CashMovementDialog", () => {
     const onClose = vi.fn();
     render(<CashMovementDialog shiftId="shift-1" currency="TZS" onClose={onClose} />);
     await userEvent.keyboard("{Escape}");
-    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await userEvent.click(screen.getByRole("button", { name: "Back to previous screen" }));
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
   });
 
   it("keeps the till from locking while the cash in or out is with Yetu", () => {

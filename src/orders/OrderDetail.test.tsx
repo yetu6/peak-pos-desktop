@@ -305,7 +305,7 @@ describe("OrderDetailView", () => {
 
   it("a voided order has nothing left to do but close", () => {
     renderDetail({ order: order({ status: "VOIDED" }) });
-    expect(within(footer()).getAllByRole("button").map((button) => button.textContent)).toEqual(["Close"]);
+    expect(within(footer()).getAllByRole("button").map((button) => button.textContent)).toEqual(["Back"]);
   });
 
   it("holds every action while a request is with Yetu, and the sheet can't be dismissed", async () => {
@@ -314,7 +314,7 @@ describe("OrderDetailView", () => {
     expect(within(footer()).getByRole("button", { name: /pay/i })).toBeDisabled();
     expect(within(footer()).getByRole("button", { name: "Cancel order" })).toBeDisabled();
     await userEvent.keyboard("{Escape}");
-    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await userEvent.click(screen.getByRole("button", { name: "Back to previous screen" }));
     expect(handlers.onClose).not.toHaveBeenCalled();
     await userEvent.keyboard("{F8}");
     await userEvent.keyboard("{F9}");

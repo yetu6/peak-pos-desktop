@@ -152,8 +152,8 @@ export function TicketPanel({
             ) : (
               <p className="y-ticket__line-note">
                 {order && order.paidMinor > 0
-                  ? "Sent to the kitchen, and part of the bill is paid: refund it after it's paid."
-                  : "Sent to the kitchen. A supervisor can cancel it."}
+                  ? "Part of the bill is paid. Refund it after it is paid."
+                  : "Sent. A supervisor can cancel it."}
               </p>
             )}
           </div>

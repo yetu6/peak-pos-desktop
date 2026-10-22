@@ -715,7 +715,7 @@ describe("NewOrder", () => {
     await userEvent.click(within(sheet).getByTestId("modifier-confirm-add"));
     expect(await within(sheet).findByRole("alert")).toHaveTextContent("That item is sold out or not on the menu now.");
     expect(screen.getByRole("dialog", { name: "House burger" })).toBeInTheDocument();
-    await userEvent.click(within(sheet).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(within(sheet).getByRole("button", { name: "Back" }));
     await userEvent.click(screen.getByTestId("menu-House burger"));
     const again = await screen.findByRole("dialog", { name: "House burger" });
     expect(within(again).queryByRole("alert")).not.toBeInTheDocument();

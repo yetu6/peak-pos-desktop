@@ -1,3 +1,4 @@
+import { BACK_WORDS } from "../lib/words";
 import { Printer } from "lucide-react";
 import { copyNotPrintedWords } from "../print/printProblems";
 import { vatFigures } from "../lib/vatWords";
@@ -81,7 +82,7 @@ export function ReceiptSheet({
       footer={
         <div className="y-options__footer">
           <Button variant="quiet" disabled={reprinting} onClick={onClose}>
-            Close
+            {BACK_WORDS}
           </Button>
           <Button
             icon={<Printer />}

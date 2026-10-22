@@ -1,3 +1,4 @@
+import { BACK_WORDS, BACK_ACCESSIBLE_WORDS } from "../../lib/words";
 import { CircleCheck, CircleX, Info, TriangleAlert, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import type { ReactNode, RefObject } from "react";
@@ -71,7 +72,7 @@ function Overlay({
                 </DialogPrimitive.Description>
               ) : null}
             </div>
-            <DialogPrimitive.Close className="y-button y-button--quiet y-button--48 y-icon-button" aria-label="Close" title="Close">
+            <DialogPrimitive.Close className="y-button y-button--quiet y-button--48 y-icon-button" aria-label={BACK_ACCESSIBLE_WORDS} title={BACK_WORDS}>
               <X aria-hidden="true" />
             </DialogPrimitive.Close>
           </header>
