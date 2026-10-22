@@ -21,6 +21,12 @@ export function barOrder(orders: readonly POSOrder[], staffId: string | null | u
   });
 }
 
+/** Everything on an order, as the list says it: "2 Soda, Samosa, Chips". */
+export function openOrderItemsWords(order: POSOrder): string {
+  const lines = (order.items ?? []).filter((line) => line.status !== "VOIDED");
+  return lines.length ? lines.map((line) => (line.quantity > 1 ? `${line.quantity} ${line.name}` : line.name)).join(", ") : "Nothing on it yet";
+}
+
 /**
  * How a waiter knows an order at a glance, with or without tables (owner,
  * 2026-10-21: many places name no tables; the waiter keeps track): its table

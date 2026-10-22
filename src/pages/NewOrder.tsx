@@ -474,6 +474,20 @@ export function NewOrder({
   return (
     <>
       <RegisterLayout
+        bar={
+          // The open orders across the top of Sell (owner, 2026-10-21).
+          onSwitch ? (
+            <LiveOpenOrdersBar
+              current={order}
+              staffId={staffId}
+              currency={currency}
+              // Nothing in flight is left behind: a switch waits for the printer's answer.
+              disabled={busy || printing || printBill.isPending || reprintKitchen.isPending}
+              onPick={onSwitch}
+              onNew={() => onSwitch(null)}
+            />
+          ) : undefined
+        }
         menu={
           <MenuPanel
             categories={catalog.data?.categories ?? []}
@@ -493,20 +507,6 @@ export function NewOrder({
         }
         ticket={
           <TicketPanel
-            bar={
-              // The open orders above the ticket (owner, 2026-10-21).
-              onSwitch ? (
-                <LiveOpenOrdersBar
-                  current={order}
-                  staffId={staffId}
-                  currency={currency}
-                  // Nothing in flight is left behind: a switch waits for the printer's answer.
-                  disabled={busy || printing || printBill.isPending || reprintKitchen.isPending}
-                  onPick={onSwitch}
-                  onNew={() => onSwitch(null)}
-                />
-              ) : undefined
-            }
             order={order}
             currency={currency}
             tagsOf={(productId) => (menu ? tagNote(menu, productId) : undefined)}

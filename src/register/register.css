@@ -5,9 +5,20 @@
   height: 100%;
   min-height: 0;
   grid-template-columns: minmax(0, 1fr) var(--ticket-width);
+  grid-template-rows: auto minmax(0, 1fr);
   background: var(--canvas);
   color: var(--text);
 }
+
+.y-register__bar {
+  grid-column: 1 / -1;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+.y-register__bar:empty { display: none; }
+/* Always the second row, so Sell without open orders fills the screen. */
+.y-register__menu,
+.y-register__ticket { grid-row: 2; }
 
 .y-register__menu {
   display: flex;
@@ -670,12 +681,12 @@
 /* ---------------------------------------------------------------- Open orders (owner, 2026-10-21) */
 .y-open-orders {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: var(--space-2);
-  border-bottom: 1px solid var(--border);
   padding: var(--space-2) var(--space-4);
 }
 
+/* Only whole chips: OpenOrdersBar draws as many as fit; All lists the rest. */
 .y-open-orders__list {
   display: flex;
   flex: 1;
@@ -684,42 +695,63 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  overflow-x: auto;
-  scrollbar-width: thin;
+  overflow: hidden;
 }
 
-.y-open-orders__chip {
+.y-open-orders__chip,
+.y-open-orders__row {
   display: grid;
-  min-width: 9rem;
-  max-width: 14rem;
   min-height: 56px;
   align-content: center;
-  gap: var(--space-1);
+  gap: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: var(--surface);
-  padding: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-3);
   color: var(--text);
   text-align: left;
+  font: inherit;
   cursor: pointer;
 }
 
-.y-open-orders__chip:hover:not(:disabled) { background: var(--surface-hover); }
-.y-open-orders__chip:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: 2px; }
-.y-open-orders__chip[aria-pressed="true"] {
+/* OPEN_ORDER_CHIP_REM in OpenOrdersBar.tsx: the two change together. Same 56px as All and New. */
+.y-open-orders__chip { width: 12rem; flex: none; height: 56px; padding: var(--space-1) var(--space-2); }
+.y-open-orders__chip:hover:not(:disabled),
+.y-open-orders__row:hover:not(:disabled) { background: var(--surface-hover); }
+/* Inside the chip, so the list's edge never cuts the ring. */
+.y-open-orders__chip:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: -3px; }
+.y-open-orders__row:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: 2px; }
+.y-open-orders__chip[aria-pressed="true"],
+.y-open-orders__row[aria-current="true"] {
   border-color: var(--action);
   background: var(--surface-selected);
-  font-weight: 700;
-  cursor: default;
 }
-.y-open-orders__chip:disabled { color: var(--text-muted); cursor: not-allowed; }
+.y-open-orders__chip[aria-pressed="true"] { cursor: default; }
+.y-open-orders__chip:disabled,
+.y-open-orders__row:disabled { color: var(--text-muted); cursor: not-allowed; }
+
+.y-open-orders__top {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
 
 .y-open-orders__name {
+  min-width: 0;
   overflow: hidden;
   font-size: var(--type-body);
-  font-weight: 600;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.y-open-orders__amount {
+  flex: none;
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .y-open-orders__meta {
@@ -730,6 +762,23 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* All: every open order in full, the one on the ticket marked. */
+.y-open-orders__all {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.y-open-orders__row { width: 100%; min-height: 72px; padding: var(--space-3) var(--space-4); }
+.y-open-orders__here {
+  margin-left: var(--space-2);
+  color: var(--action);
+  font-size: var(--type-small);
+  font-weight: 600;
+}
+.y-open-orders__items { color: var(--text); font-size: var(--type-small); }
 
 /* ---------------------------------------------------------------- Paper preview (owner, 2026-10-21) */
 .y-paper {
