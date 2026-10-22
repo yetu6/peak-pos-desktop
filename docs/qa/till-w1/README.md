@@ -19,8 +19,8 @@ Baseline: origin/main 651cd97. Files in `before/` and `after/` cover Sell, Pay, 
 - Typecheck, lint and frontend build passed.
 - Vitest: 1,320 passed, six skipped before the fixture correction; its five tests passed again after that correction.
 - Focused browser layout/paper checks: eight passed, including the open-orders bar and Print bill.
-- First full visual harness: 795 passed; two blocked-day-close checks found 6px overflow at 1024×768 in both themes. The untouched baseline reproduces it. Compact access-panel padding now uses 20px instead of 24px; all eight blocked-day-close viewport/theme checks now pass. Development fixtures are not live/native acceptance.
-- The paper-colour tests were red against the original dark-paper tokens before implementation.
+- First full visual harness: 795 passed; two blocked-day-close checks found 6px overflow at 1024×768 in both themes. The untouched baseline reproduces it. Compact access-panel padding now uses 20px instead of 24px; all eight blocked-day-close viewport/theme checks now pass. Final complete harness: 798 passed. Development fixtures are not live/native acceptance.
+- The paper-colour tests were red against the original dark-paper tokens before implementation. Removing the dedicated receipt-ink token fails the guard; restored foundation suite: 33 passed.
 
 ## Screenshots
 
