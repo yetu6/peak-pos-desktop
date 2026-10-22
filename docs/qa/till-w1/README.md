@@ -19,7 +19,7 @@ Baseline: origin/main 651cd97. Files in `before/` and `after/` cover Sell, Pay, 
 - Typecheck, lint and frontend build passed.
 - Vitest: 1,320 passed, six skipped before the fixture correction; its five tests passed again after that correction.
 - Focused browser layout/paper checks: eight passed, including the open-orders bar and Print bill.
-- Full visual harness: result recorded in the PR after completion; development fixtures are not live/native acceptance.
+- First full visual harness: 795 passed; two blocked-day-close checks found 6px overflow at 1024×768 in both themes. The untouched baseline reproduces it. Compact access-panel padding now uses 20px instead of 24px; all eight blocked-day-close viewport/theme checks now pass. Development fixtures are not live/native acceptance.
 - The paper-colour tests were red against the original dark-paper tokens before implementation.
 
 ## Screenshots
@@ -108,3 +108,5 @@ Baseline: origin/main 651cd97. Files in `before/` and `after/` cover Sell, Pay, 
 - 1366x768 dark: [before](before/receipt-1366x768-dark.png) · [after](after/receipt-1366x768-dark.png)
 - 1920x1080 light: [before](before/receipt-1920x1080-light.png) · [after](after/receipt-1920x1080-light.png)
 - 1920x1080 dark: [before](before/receipt-1920x1080-dark.png) · [after](after/receipt-1920x1080-dark.png)
+
+12UI candidate B was used for hierarchy research only. Its raster chef icon and generated effects conflict with the owner’s SVG-icon and restrained-brand requirements, so they are not shipped. Kit purchases: `crt-ad53a5567bb44f02402210132510cf6765eda533` (draft ceiling USD 0.12), `4d4334e9-d0aa-409a-bf9b-8813d6ac02e8` and `c93164dc-bf5d-4dc8-b7bb-4d62c5a12f1b` (shared conversion ceiling USD 0.55). These are design-tool costs, not customer-facing currency.
