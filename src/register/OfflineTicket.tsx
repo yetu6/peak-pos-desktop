@@ -1,3 +1,4 @@
+import { ORDER_CONTEXT_WORDS } from "./registerWords";
 import { Banknote, Trash2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button, EmptyState, Field, Money, SegmentedControl, Stepper, TicketLine } from "../components/system";
@@ -17,6 +18,9 @@ export interface OfflineTicketProps {
   serviceTypes: LocalCatalogView["serviceTypes"];
   /** F-229: the saved menu's prices hold their VAT (taxMode INCLUSIVE). */
   vatIncluded?: boolean;
+  askForTable?: boolean;
+  captureGuestCount?: boolean;
+  onGuestCount?: (count: number | undefined) => void;
   serviceType: string;
   onServiceType: (type: string) => void;
   /** The table (or room), saved with the sale when the field is left. */
@@ -45,6 +49,9 @@ export function OfflineTicket({
   currency,
   serviceTypes,
   vatIncluded = false,
+  askForTable = true,
+  captureGuestCount = false,
+  onGuestCount,
   serviceType,
   onServiceType,
   label,
@@ -62,7 +69,7 @@ export function OfflineTicket({
   // Once the sale is saved for paying, its lines can't change (the till's store keeps it as it was).
   const open = order?.state === "DRAFT";
   const payable = Boolean(order) && lines.length > 0 && order!.state !== "SETTLED" && !busy;
-  const type = serviceTypes.find((entry) => entry.id === serviceType);
+  const labelName = serviceType === "ROOM_SERVICE" ? ORDER_CONTEXT_WORDS.room : !askForTable ? ORDER_CONTEXT_WORDS.name : serviceType === "DINE_IN" ? ORDER_CONTEXT_WORDS.table : "";
 
   const keys = useRef({ payable, onPay });
   keys.current = { payable, onPay };
@@ -98,9 +105,9 @@ export function OfflineTicket({
             testIdPrefix="service-type"
           />
         ) : null}
-        {type?.requiresContext ? (
+        {labelName ? (
           <Field
-            label="Table"
+            label={labelName}
             value={label}
             onChange={onLabel}
             onBlur={onLabelDone}
@@ -112,6 +119,10 @@ export function OfflineTicket({
             data-testid="table-label"
           />
         ) : null}
+        {serviceType === "DINE_IN" && captureGuestCount && onGuestCount ? <div>
+          <p className="y-ticket__who">{ORDER_CONTEXT_WORDS.guests}</p>
+          <Stepper label={ORDER_CONTEXT_WORDS.guests} value={order?.guestCount ?? 0} min={0} max={2_147_483_647} disabled={!open || busy} onChange={(count) => onGuestCount(count > 0 ? count : undefined)} />
+        </div> : null}
       </header>
 
       <div className="y-ticket__lines" aria-label="Lines">

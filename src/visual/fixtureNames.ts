@@ -43,6 +43,8 @@ export const VISUAL_FIXTURE_NAMES = [
   // S4 register.
   "register",
   "register-empty",
+  "register-no-table",
+  "register-guests",
   "register-sent",
   "register-limited",
   "register-more",

@@ -1,6 +1,6 @@
 import { stationWords } from "../kitchen/kitchenWords";
 import type { ServiceType } from "../lib/posContracts";
-import { clockTime, orderPlaceWords, placeWords, serviceTypeWords } from "../lib/words";
+import { clockTime, guestCountWords, orderPlaceWords, placeWords, serviceTypeWords } from "../lib/words";
 import { EscPos, type PaperWidth } from "./escpos";
 
 /**
@@ -16,6 +16,8 @@ export interface VoidSlipPaper {
   orderNumber?: string;
   station?: string;
   serviceType?: ServiceType;
+  askForTable?: boolean;
+  guestCount?: number;
   /** The table, room or tab the order goes to. */
   label?: string;
   /** Who took the order: the dish would have gone back to them. */
@@ -50,10 +52,11 @@ export function voidSlipBytes(slip: VoidSlipPaper, width: PaperWidth): Uint8Arra
   out.size(1, 2).line(slip.wholeOrder ? "WHOLE ORDER - DO NOT MAKE" : "DO NOT MAKE").size(1, 1);
   out.bold(false).align("left").rule();
 
-  const place = slip.serviceType ? orderPlaceWords(slip.serviceType, slip.label) : placeWords(undefined, slip.label);
+  const place = slip.serviceType ? orderPlaceWords(slip.serviceType, slip.label, slip.askForTable) : placeWords(undefined, slip.label, slip.askForTable);
   const service = slip.serviceType ? serviceTypeWords(slip.serviceType) : "";
   const where = [place, service].filter(Boolean).join(" - ");
   if (where) out.bold(true).size(1, 2).wrapped(where).size(1, 1).bold(false);
+  if (slip.guestCount) out.wrapped(guestCountWords(slip.guestCount));
   if (slip.waiterName) out.wrapped(`Taken by ${slip.waiterName}`);
   const voided = clockTime(slip.voidedAt);
   if (voided) out.line(`Cancelled ${voided}`);
@@ -84,6 +87,8 @@ export function voidSlipFromPrintDocument(document: Record<string, unknown>): Vo
     station: text("station"),
     serviceType: service && (SERVICE_TYPES as readonly string[]).includes(service) ? (service as ServiceType) : undefined,
     label: text("tableLabel"),
+    askForTable: typeof document.askForTable === "boolean" ? document.askForTable : undefined,
+    guestCount: typeof document.guestCount === "number" ? document.guestCount : undefined,
     waiterName: text("waiterName"),
     askedByName: text("askedByName"),
     approvedByName: text("approvedByName"),
@@ -106,13 +111,14 @@ export function voidSlipFromPrintDocument(document: Record<string, unknown>): Vo
 /** The slip as plain text, for a till printing through the system's own printer. */
 export function formatVoidSlip(slip: VoidSlipPaper): string {
   const number = slip.dailyNumber ?? slip.orderNumber;
-  const place = slip.serviceType ? orderPlaceWords(slip.serviceType, slip.label) : placeWords(undefined, slip.label);
+  const place = slip.serviceType ? orderPlaceWords(slip.serviceType, slip.label, slip.askForTable) : placeWords(undefined, slip.label, slip.askForTable);
   const voided = clockTime(slip.voidedAt);
   const header = [
     voidSlipTitle(slip.station),
     number !== undefined ? `ORDER ${number}` : "ORDER",
     slip.wholeOrder ? "WHOLE ORDER - DO NOT MAKE" : "DO NOT MAKE",
     [place, slip.serviceType ? serviceTypeWords(slip.serviceType) : ""].filter(Boolean).join(" - "),
+    slip.guestCount ? guestCountWords(slip.guestCount) : "",
     slip.waiterName ? `Taken by ${slip.waiterName}` : "",
     voided ? `Cancelled ${voided}` : "",
   ].filter(Boolean);

@@ -1,3 +1,4 @@
+import { guestCountWords } from "./words";
 import { kitchenTicketTitle } from "../print/kitchenTicket";
 import { orderName } from "./orderNumber";
 import { placeWords } from "./words";
@@ -16,6 +17,8 @@ export interface KitchenTicketCopy {
   dailyNumber?: number;
   tableNumber?: string;
   serviceType?: string;
+  askForTable?: boolean;
+  guestCount?: number;
   /** The station it goes to (Kitchen, Bar), for the title. */
   station?: string;
   notes?: string;
@@ -39,11 +42,12 @@ export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
     ticket.ticketNumber ? ticket.ticketNumber : null,
     ticket.dailyNumber || ticket.orderNumber ? orderName(ticket) : null,
     [
-      placeWords(ticket.serviceType, ticket.tableNumber) || null,
+      placeWords(ticket.serviceType, ticket.tableNumber, ticket.askForTable) || null,
       ticket.serviceType ? ticket.serviceType.replaceAll("_", " ") : null,
     ]
       .filter(Boolean)
       .join("  "),
+    ticket.guestCount ? guestCountWords(ticket.guestCount) : null,
     ticket.waiterName ? `Waiter ${ticket.waiterName}` : null,
     ticket.sentAt ? `Sent ${ticket.sentAt}` : null,
     ticket.notes?.trim() ? `Notes ${ticket.notes.trim()}` : null,
@@ -67,6 +71,8 @@ export function ticketCopyFromOrder(order: {
   orderNumber?: string | null;
   dailyNumber?: number | null;
   tableNumber?: string | null;
+  guestCount?: number | null;
+  askForTable?: boolean;
   tableLabel?: string | null;
   serviceType?: string | null;
   notes?: string | null;
@@ -79,6 +85,8 @@ export function ticketCopyFromOrder(order: {
   }> | null;
 }): KitchenTicketCopy {
   return {
+    guestCount: order.guestCount ?? undefined,
+    askForTable: order.askForTable,
     orderNumber: order.orderNumber ?? undefined,
     dailyNumber: order.dailyNumber ?? undefined,
     tableNumber: order.tableNumber ?? order.tableLabel ?? undefined,

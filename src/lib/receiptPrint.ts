@@ -1,3 +1,4 @@
+import { guestCountWords } from "./words";
 import { formatMoney } from "./money";
 import { vatFigures } from "./vatWords";
 import { orderName, orderReference } from "./orderNumber";
@@ -30,6 +31,8 @@ export interface ReceiptCopy {
   tableNumber?: string;
   /** The order's type, so its place reads as a table, a room or a name. */
   serviceType?: string;
+  askForTable?: boolean;
+  guestCount?: number;
   takenBy?: string;
   settledBy?: string;
   settledAt?: string;
@@ -127,6 +130,8 @@ export function receiptCopyFromPrintDocument(document: Record<string, unknown>, 
           ? document.tableNumber
           : undefined,
     serviceType: typeof document.serviceType === "string" ? document.serviceType : undefined,
+    askForTable: typeof document.askForTable === "boolean" ? document.askForTable : undefined,
+    guestCount: typeof document.guestCount === "number" && Number.isSafeInteger(document.guestCount) && document.guestCount > 0 ? document.guestCount : undefined,
     takenBy,
     settledBy,
     settledAt: typeof document.settledAt === "string" ? dateTimeWords(document.settledAt) || undefined : undefined,
@@ -210,11 +215,12 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     receipt.dailyNumber || receipt.orderNumber ? orderName(receipt) : "order",
     orderReference(receipt) ? `Ref ${orderReference(receipt)}` : null,
     [
-      placeWords(receipt.serviceType, receipt.tableNumber) || null,
+      placeWords(receipt.serviceType, receipt.tableNumber, receipt.askForTable) || null,
       receipt.settlementMethod ? receipt.settlementMethod : null,
     ]
       .filter(Boolean)
       .join("  "),
+    receipt.guestCount ? guestCountWords(receipt.guestCount) : null,
     receipt.takenBy ? `Taken by ${receipt.takenBy}` : null,
     receipt.settledBy && receipt.settledBy !== receipt.takenBy
       ? `Settled by ${receipt.settledBy}`

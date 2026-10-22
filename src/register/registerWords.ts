@@ -307,3 +307,5 @@ export function lostAnswerRefusalWords(error: unknown, room: boolean): string {
  * owner, 2026-10-20): the percent would take more off the bill as it is now.
  */
 export const DISCOUNT_HELD_WORDS = "Kept to what the supervisor approved. Use Discount again to cover the whole bill.";
+
+export const ORDER_CONTEXT_WORDS = { name: "Name (optional)", table: "Table (optional)", room: "Room", guests: "Guests (optional)", guestCount: (count: number) => `${count} ${count === 1 ? "guest" : "guests"}` };

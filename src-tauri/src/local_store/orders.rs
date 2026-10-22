@@ -18,6 +18,10 @@ const CLOCK_ROLLBACK_TOLERANCE_MS: i64 = 300_000;
 pub struct CreateOrderDraftIntent {
     pub service_type: String,
     pub table_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guest_count: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ask_for_table: Option<bool>,
     pub notes: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,6 +31,10 @@ pub struct UpdateOrderContextIntent {
     pub expected_version: i64,
     pub service_type: String,
     pub table_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guest_count: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ask_for_table: Option<bool>,
     pub notes: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +79,10 @@ pub struct LocalOrderView {
     pub staff_id: String,
     pub service_type: String,
     pub table_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guest_count: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ask_for_table: Option<bool>,
     pub notes: Option<String>,
     pub currency: String,
     pub subtotal_minor: i64,
@@ -126,9 +138,10 @@ impl LocalStore {
         let auth = authority_context(&tx, &staff_id, "ORDER_DRAFT", now_ms)?;
         require_session_lease(&auth, &lease_id)?;
         service_type_exists(&tx, &auth.snapshot_id, &intent.service_type)?;
+        validate_guest_count(&intent.service_type, intent.guest_count)?;
         if let Some(id)=tx.query_row("SELECT local_order_id FROM orders WHERE local_shift_id=?1 AND staff_id=?2 AND state='DRAFT' ORDER BY created_at_ms DESC LIMIT 1",params![auth.shift_id,staff_id],|r|r.get::<_,String>(0)).optional().map_err(classify_sql_error)? { tx.commit().map_err(classify_sql_error)?; return self.get_order_draft(&id); }
         let id = random_id("ord")?;
-        tx.execute("INSERT INTO orders(local_order_id,local_shift_id,catalog_snapshot_id,currency,service_type,state,subtotal_minor,tax_minor,total_minor,immutable_committed,created_at_ms,updated_at_ms,staff_id,table_label,notes,version,sync_state) VALUES (?1,?2,?3,?4,?5,'DRAFT',0,0,0,0,?6,?6,?7,?8,?9,1,'LOCAL_DRAFT')",params![id,auth.shift_id,auth.snapshot_id,auth.currency,intent.service_type,now_ms,staff_id,clean_optional(intent.table_label),clean_optional(intent.notes)]).map_err(classify_sql_error)?;
+        tx.execute("INSERT INTO orders(local_order_id,local_shift_id,catalog_snapshot_id,currency,service_type,state,subtotal_minor,tax_minor,total_minor,immutable_committed,created_at_ms,updated_at_ms,staff_id,table_label,notes,version,sync_state,guest_count,ask_for_table) VALUES (?1,?2,?3,?4,?5,'DRAFT',0,0,0,0,?6,?6,?7,?8,?9,1,'LOCAL_DRAFT',?10,?11)",params![id,auth.shift_id,auth.snapshot_id,auth.currency,intent.service_type,now_ms,staff_id,clean_optional(intent.table_label),clean_optional(intent.notes),intent.guest_count,intent.ask_for_table]).map_err(classify_sql_error)?;
         tx.commit().map_err(classify_sql_error)?;
         self.get_order_draft(&id)
     }
@@ -151,13 +164,14 @@ impl LocalStore {
         }
         let auth = authority_context(&tx, &active_staff, "ORDER_DRAFT", now_ms)?;
         require_session_lease(&auth, &active_lease)?;
+        validate_guest_count(&intent.service_type, intent.guest_count)?;
         validate_service_type(
             &tx,
             &snapshot,
             &intent.service_type,
             intent.table_label.as_deref(),
         )?;
-        let changed=tx.execute("UPDATE orders SET service_type=?1,table_label=?2,notes=?3,version=version+1,updated_at_ms=?4 WHERE local_order_id=?5 AND state='DRAFT' AND version=?6",params![intent.service_type,clean_optional(intent.table_label),clean_optional(intent.notes),now_ms,intent.order_id,intent.expected_version]).map_err(classify_sql_error)?;
+        let changed=tx.execute("UPDATE orders SET service_type=?1,table_label=?2,notes=?3,guest_count=?7,ask_for_table=?8,version=version+1,updated_at_ms=?4 WHERE local_order_id=?5 AND state='DRAFT' AND version=?6",params![intent.service_type,clean_optional(intent.table_label),clean_optional(intent.notes),now_ms,intent.order_id,intent.expected_version,intent.guest_count,intent.ask_for_table]).map_err(classify_sql_error)?;
         if changed != 1 {
             return Err(LocalStoreError::StaleDraft);
         }
@@ -587,6 +601,10 @@ impl LocalStore {
             id: &'a str,
             service_type: &'a str,
             table_label: &'a Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            guest_count: Option<i64>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            ask_for_table: Option<bool>,
             notes: &'a Option<String>,
             currency: &'a str,
             subtotal_minor: i64,
@@ -670,6 +688,8 @@ impl LocalStore {
                 id: &view.id,
                 service_type: &view.service_type,
                 table_label: &view.table_label,
+                guest_count: view.guest_count,
+                ask_for_table: view.ask_for_table,
                 notes: &view.notes,
                 currency: &view.currency,
                 subtotal_minor: view.subtotal_minor,
@@ -798,7 +818,13 @@ fn validate_service_type(
     context: Option<&str>,
 ) -> Result<(), LocalStoreError> {
     let required:bool=tx.query_row("SELECT requires_context FROM catalog_service_types WHERE snapshot_id=?1 AND service_type=?2",params![snapshot,service],|r|r.get::<_,i64>(0).map(|v|v!=0)).optional().map_err(classify_sql_error)?.ok_or(LocalStoreError::InvalidOrder)?;
-    if required && context.is_none_or(|v| v.trim().is_empty()) {
+    if required && service != "DINE_IN" && context.is_none_or(|v| v.trim().is_empty()) {
+        return Err(LocalStoreError::InvalidOrder);
+    }
+    Ok(())
+}
+fn validate_guest_count(service: &str, count: Option<i64>) -> Result<(), LocalStoreError> {
+    if count.is_some_and(|n| service != "DINE_IN" || n <= 0 || n > 2_147_483_647) {
         return Err(LocalStoreError::InvalidOrder);
     }
     Ok(())
@@ -843,7 +869,7 @@ fn read_order(
     connection: &rusqlite::Connection,
     id: &str,
 ) -> Result<LocalOrderView, LocalStoreError> {
-    let mut view=connection.query_row("SELECT local_order_id,state,sync_state,version,staff_id,service_type,table_label,notes,currency,subtotal_minor,tax_minor,total_minor,order_number FROM orders WHERE local_order_id=?1",[id],|r|Ok(LocalOrderView{id:r.get(0)?,state:r.get(1)?,sync_state:r.get(2)?,version:r.get(3)?,staff_id:r.get(4)?,service_type:r.get(5)?,table_label:r.get(6)?,notes:r.get(7)?,currency:r.get(8)?,subtotal_minor:r.get(9)?,tax_minor:r.get(10)?,total_minor:r.get(11)?,order_number:r.get(12)?,lines:Vec::new()})).optional().map_err(classify_sql_error)?.ok_or(LocalStoreError::InvalidOrder)?;
+    let mut view=connection.query_row("SELECT local_order_id,state,sync_state,version,staff_id,service_type,table_label,notes,currency,subtotal_minor,tax_minor,total_minor,order_number,guest_count,ask_for_table FROM orders WHERE local_order_id=?1",[id],|r|Ok(LocalOrderView{id:r.get(0)?,state:r.get(1)?,sync_state:r.get(2)?,version:r.get(3)?,staff_id:r.get(4)?,service_type:r.get(5)?,table_label:r.get(6)?,notes:r.get(7)?,currency:r.get(8)?,subtotal_minor:r.get(9)?,tax_minor:r.get(10)?,total_minor:r.get(11)?,order_number:r.get(12)?,guest_count:r.get(13)?,ask_for_table:r.get(14)?,lines:Vec::new()})).optional().map_err(classify_sql_error)?.ok_or(LocalStoreError::InvalidOrder)?;
     let mut stmt=connection.prepare("SELECT local_line_id,product_id,product_name_snapshot,quantity,unit_price_minor,modifier_total_minor,line_total_minor,pricing_evidence FROM order_lines WHERE local_order_id=?1 ORDER BY position").map_err(classify_sql_error)?;
     let rows = stmt
         .query_map([id], |r| {
@@ -956,6 +982,145 @@ mod tests {
     }
 
     #[test]
+    fn dine_in_table_is_optional_but_room_service_keeps_its_context_guard() {
+        let (_temp, mut store) = seeded();
+        let tx = store.connection.transaction().unwrap();
+        // Catalog projections are immutable: install a distinct fixture snapshot,
+        // never weaken that guard merely to exercise the context validator.
+        tx.execute("INSERT INTO catalog_snapshots(snapshot_id,version,digest,currency,published_at_ms,valid_until_ms,signed_manifest,payload,verification_state,property_id,outlet_id,not_before_ms,tax_mode)
+            SELECT 'snap-context','v-context','context-digest',currency,published_at_ms,valid_until_ms,signed_manifest,payload,verification_state,property_id,outlet_id,not_before_ms,tax_mode FROM catalog_snapshots WHERE snapshot_id='snap'", []).unwrap();
+        tx.execute("INSERT INTO catalog_service_types VALUES ('snap-context','DINE_IN','Dine in',1,0),('snap-context','ROOM_SERVICE','Room service',1,1)", []).unwrap();
+        assert!(validate_service_type(&tx, "snap-context", "DINE_IN", None).is_ok());
+        assert!(validate_service_type(&tx, "snap-context", "ROOM_SERVICE", None).is_err());
+        assert!(validate_service_type(&tx, "snap-context", "ROOM_SERVICE", Some("204")).is_ok());
+    }
+
+    #[test]
+    fn draft_context_refuses_takeaway_guests_without_a_write() {
+        let (_temp, mut store) = seeded();
+        store
+            .connection
+            .execute(
+                "INSERT INTO catalog_service_types VALUES ('snap','TAKEAWAY','Takeaway',0,1)",
+                [],
+            )
+            .unwrap();
+        let invalid = store
+            .get_or_create_order_draft(
+                CreateOrderDraftIntent {
+                    service_type: "TAKEAWAY".into(),
+                    table_label: None,
+                    guest_count: Some(3),
+                    ask_for_table: Some(false),
+                    notes: None,
+                },
+                100,
+            )
+            .unwrap_err();
+        assert_eq!(invalid.kind(), LocalStoreErrorKind::InvalidOrder);
+        let count: i64 = store
+            .connection
+            .query_row("SELECT count(*) FROM orders", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+        let draft = store
+            .get_or_create_order_draft(
+                CreateOrderDraftIntent {
+                    service_type: "DINE_IN".into(),
+                    table_label: None,
+                    guest_count: Some(3),
+                    ask_for_table: Some(false),
+                    notes: None,
+                },
+                101,
+            )
+            .unwrap();
+        let invalid = store
+            .update_order_context(
+                UpdateOrderContextIntent {
+                    order_id: draft.id.clone(),
+                    expected_version: draft.version,
+                    service_type: "TAKEAWAY".into(),
+                    table_label: None,
+                    guest_count: Some(3),
+                    ask_for_table: Some(false),
+                    notes: None,
+                },
+                102,
+            )
+            .unwrap_err();
+        assert_eq!(invalid.kind(), LocalStoreErrorKind::InvalidOrder);
+        let unchanged = store.get_order_draft(&draft.id).unwrap();
+        assert_eq!(unchanged.version, draft.version);
+        assert_eq!(unchanged.service_type, "DINE_IN");
+        assert_eq!(unchanged.guest_count, Some(3));
+    }
+
+    #[test]
+    fn optional_guests_and_name_interpretation_survive_native_cash_evidence() {
+        let (_temp, mut store) = seeded();
+        let draft = store
+            .get_or_create_order_draft(
+                CreateOrderDraftIntent {
+                    service_type: "DINE_IN".into(),
+                    table_label: Some("12".into()),
+                    guest_count: Some(3),
+                    ask_for_table: Some(false),
+                    notes: None,
+                },
+                100,
+            )
+            .unwrap();
+        assert_eq!(draft.guest_count, Some(3));
+        assert_eq!(draft.ask_for_table, Some(false));
+        let priced = store
+            .add_order_item(
+                AddOrderItemIntent {
+                    order_id: draft.id,
+                    expected_version: draft.version,
+                    product_id: "tea".into(),
+                    quantity: 1,
+                    modifier_option_ids: vec!["oat".into()],
+                },
+                200,
+            )
+            .unwrap();
+        let paid = store
+            .commit_offline_cash_sale(&priced.id, priced.version, priced.total_minor, 301, |_| {
+                Ok(vec![7; 64])
+            })
+            .unwrap();
+        let bytes: Vec<u8> = store
+            .connection
+            .query_row(
+                "SELECT payload FROM operations WHERE operation_type='OFFLINE_CASH_SALE_COMMIT'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(payload["order"]["guestCount"], 3);
+        assert_eq!(payload["order"]["askForTable"], false);
+        assert_eq!(payload["order"]["tableLabel"], "12");
+        assert_eq!(paid.order.total_minor, priced.total_minor);
+        assert_eq!(paid.change_minor, 0);
+        assert!(store
+            .connection
+            .execute(
+                "UPDATE orders SET guest_count=4 WHERE local_order_id=?1",
+                [&paid.order.id]
+            )
+            .is_err());
+        assert!(store
+            .connection
+            .execute(
+                "UPDATE orders SET ask_for_table=1 WHERE local_order_id=?1",
+                [&paid.order.id]
+            )
+            .is_err());
+    }
+
+    #[test]
     fn draft_is_priced_by_rust_and_commit_is_one_atomic_outbox_operation() {
         let (_temp, mut store) = seeded();
         let draft = store
@@ -963,6 +1128,8 @@ mod tests {
                 CreateOrderDraftIntent {
                     service_type: "DINE_IN".into(),
                     table_label: None,
+                    guest_count: None,
+                    ask_for_table: None,
                     notes: None,
                 },
                 100,
@@ -1018,6 +1185,8 @@ mod tests {
                 CreateOrderDraftIntent {
                     service_type: "DINE_IN".into(),
                     table_label: None,
+                    guest_count: None,
+                    ask_for_table: None,
                     notes: None,
                 },
                 100,
@@ -1065,6 +1234,8 @@ mod tests {
                 CreateOrderDraftIntent {
                     service_type: "DINE_IN".into(),
                     table_label: None,
+                    guest_count: None,
+                    ask_for_table: None,
                     notes: None,
                 },
                 100,
@@ -1120,6 +1291,8 @@ mod tests {
                 CreateOrderDraftIntent {
                     service_type: "DINE_IN".into(),
                     table_label: None,
+                    guest_count: None,
+                    ask_for_table: None,
                     notes: None,
                 },
                 100,
@@ -1367,6 +1540,8 @@ mod tests {
                 CreateOrderDraftIntent {
                     service_type: "DINE_IN".into(),
                     table_label: None,
+                    guest_count: None,
+                    ask_for_table: None,
                     notes: None,
                 },
                 100,
@@ -1383,6 +1558,8 @@ mod tests {
                 CreateOrderDraftIntent {
                     service_type: "DINE_IN".into(),
                     table_label: None,
+                    guest_count: None,
+                    ask_for_table: None,
                     notes: None,
                 },
                 501,
@@ -1403,6 +1580,8 @@ mod tests {
                 CreateOrderDraftIntent {
                     service_type: "DINE_IN".into(),
                     table_label: None,
+                    guest_count: None,
+                    ask_for_table: None,
                     notes: None,
                 },
                 100,
@@ -1415,5 +1594,23 @@ mod tests {
     fn modifier_totals_reject_integer_overflow() {
         let error = checked_modifier_total(&[i64::MAX, 1]).unwrap_err();
         assert_eq!(error.kind(), LocalStoreErrorKind::InvalidOrder);
+    }
+}
+
+#[cfg(test)]
+mod guest_count_tests {
+    use super::*;
+
+    #[test]
+    fn guest_count_is_optional_positive_and_only_for_dine_in() {
+        assert!(validate_guest_count("DINE_IN", None).is_ok());
+        assert!(validate_guest_count("DINE_IN", Some(3)).is_ok());
+        for count in [0, -1, 2_147_483_648] {
+            assert!(validate_guest_count("DINE_IN", Some(count)).is_err());
+        }
+        for service in ["TAKEAWAY", "ROOM_SERVICE"] {
+            assert!(validate_guest_count(service, None).is_ok());
+            assert!(validate_guest_count(service, Some(3)).is_err());
+        }
     }
 }

@@ -104,17 +104,19 @@ export function serviceTypeWords(type: ServiceType): string {
  * Neema", "Bar stool 3") and reads as typed -- many places name no tables
  * and the waiter keeps track (owner, 2026-10-21).
  */
-export function orderPlaceWords(type: ServiceType, label: string | null | undefined): string {
+export function orderPlaceWords(type: ServiceType, label: string | null | undefined, askForTable = true): string {
   const place = label?.trim();
-  if (!place || type === "TAKEAWAY") return "";
+  if (!place) return "";
+  if (!askForTable && type !== "ROOM_SERVICE") return place;
+  if (type === "TAKEAWAY") return "";
   if (type === "ROOM_SERVICE") return `Room ${place}`;
   return /^(?=.*\d)[A-Za-z0-9-]{1,5}$/.test(place) ? `Table ${place}` : place;
 }
 
 /** Where an order goes, on a paper that may not say the order's type: a dine-in order's, unless it says otherwise. */
-export function placeWords(serviceType: string | null | undefined, label: string | null | undefined): string {
+export function placeWords(serviceType: string | null | undefined, label: string | null | undefined, askForTable = true): string {
   const type = serviceType && Object.prototype.hasOwnProperty.call(SERVICE_TYPE, serviceType) ? (serviceType as ServiceType) : "DINE_IN";
-  return orderPlaceWords(type, label);
+  return orderPlaceWords(type, label, askForTable);
 }
 
 export function shiftStatusWords(status: ShiftStatus): string {
@@ -215,3 +217,6 @@ export function shiftWords(shift: Pick<POSShift, "status" | "openedAt"> | null |
 /** Escape from a sheet; Cancel is reserved for taking an order or item off. */
 export const BACK_WORDS = "Back";
 export const BACK_ACCESSIBLE_WORDS = "Back to previous screen";
+
+/** Optional covers recorded with the order, never inferred from table names. */
+export const guestCountWords = (count: number) => `Guests: ${count}`;

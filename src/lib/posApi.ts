@@ -128,7 +128,7 @@ export function createPosApi() {
       return client.GET<POSOrder>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}`);
     },
     createOrder(
-      body: { shiftId: string; serviceType?: ServiceType; tableLabel?: string; notes?: string },
+      body: { shiftId: string; serviceType?: ServiceType; tableLabel?: string; notes?: string; guestCount?: number },
       idempotencyKey: string,
     ): Promise<ApiResult<POSOrder>> {
       return client.POST<POSOrder>("/api/v1/pos/orders", { headers: idempotent(idempotencyKey), body });

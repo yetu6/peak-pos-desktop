@@ -594,3 +594,9 @@ describe("printJobs: no paper for a station on this till", () => {
     expect(await run(job("HOT"))).toEqual({ claimed: true, printed: 1 });
   });
 });
+
+it("keeps optional guest and short-name context on system-printer production papers", () => {
+ const paper = formatPrintDocument({...KITCHEN_JOB,document:{...KITCHEN_JOB.document,serviceType:"DINE_IN",tableLabel:"12",askForTable:false,guestCount:3}}).text;
+ expect(paper).not.toContain("Table 12");
+ expect(paper).toContain("Guests: 3");
+});

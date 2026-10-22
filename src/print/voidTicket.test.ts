@@ -70,3 +70,13 @@ describe("void slip on paper (fbc-peak 00125)", () => {
     expect(text).toContain("Why: Spilled\nAsked by Baraka Mushi, approved by Neema Kweka");
   });
 });
+
+it("uses the saved short-name interpretation on a cancellation slip", () => {
+ const slip = voidSlipFromPrintDocument({...DOCUMENT,tableLabel:"12",askForTable:false,guestCount:3});
+ const text = readable(voidSlipBytes(slip,PAPER_80MM));
+ expect(text).not.toContain("Table 12");
+ expect(text).toContain("12 - Dine in");
+ expect(text).toContain("Guests: 3");
+ expect(formatVoidSlip(slip)).toContain("Guests: 3");
+ expect(formatVoidSlip(slip)).not.toContain("Table 12");
+});

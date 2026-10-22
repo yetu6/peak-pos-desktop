@@ -117,6 +117,8 @@ export function ticketCopyFromPrintDocument(document: Record<string, unknown>): 
           ? document.tableNumber
           : undefined,
     serviceType: typeof document.serviceType === "string" ? document.serviceType : undefined,
+    askForTable: typeof document.askForTable === "boolean" ? document.askForTable : undefined,
+    guestCount: typeof document.guestCount === "number" ? document.guestCount : undefined,
     station: typeof document.station === "string" ? document.station : undefined,
     notes: typeof document.notes === "string" ? document.notes : undefined,
     waiterName: typeof document.waiterName === "string" ? document.waiterName : undefined,

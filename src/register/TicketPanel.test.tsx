@@ -337,3 +337,15 @@ describe("TicketPanel: prices that include VAT", () => {
     expect(screen.getByTestId("cart-preview-total")).toHaveTextContent("TSh 13,000");
   });
 });
+
+it("asks only for an optional name when table prompting is off", () => {
+ renderTicket({ order: null, askForTable: false });
+ expect(screen.queryByRole("textbox", { name: /Table/ })).toBeNull();
+ expect(screen.getByRole("textbox", { name: "Name (optional)" })).toBeInTheDocument();
+});
+it("offers optional guests only before a dine-in order starts", () => {
+ const view=render(ticketElement({ order:null, captureGuestCount:true, guestCount:undefined, onGuestCount:vi.fn() }));
+ expect(screen.getByRole("group", { name: "Guests (optional) quantity" })).toBeInTheDocument();
+ view.rerender(ticketElement({order:null,serviceType:"TAKEAWAY",captureGuestCount:true,onGuestCount:vi.fn()}));
+ expect(screen.queryByRole("group",{name:"Guests (optional) quantity"})).toBeNull();
+});

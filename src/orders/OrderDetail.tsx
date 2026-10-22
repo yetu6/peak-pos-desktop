@@ -189,7 +189,7 @@ export function OrderDetailView({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const description = [orderPlaceWords(order.serviceType, order.tableLabel), serviceTypeWords(order.serviceType), order.initiatedByName]
+  const description = [orderPlaceWords(order.serviceType, order.tableLabel, order.askForTable), serviceTypeWords(order.serviceType), order.initiatedByName]
     .filter(Boolean)
     .join(" · ");
 

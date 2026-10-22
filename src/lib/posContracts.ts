@@ -58,6 +58,8 @@ export interface POSStationTicket {
   status: "SENT" | "PREPARING" | "READY" | "SERVED";
   serviceType: ServiceType;
   tableLabel?: string;
+  guestCount?: number;
+  askForTable?: boolean;
   notes?: string;
   waiterName?: string;
   version: number;
@@ -97,6 +99,8 @@ export interface POSOrderPayment {
 }
 
 export interface POSOrder {
+  guestCount?: number;
+  askForTable?: boolean;
   id: string;
   shiftId: string;
   /** The order's reference: unique at the property, searchable, shown small. */
@@ -220,6 +224,8 @@ export interface POSCategory {
 }
 
 export interface POSCatalog {
+  askForTable?: boolean;
+  captureGuestCount?: boolean;
   standardFloat?: number;
   quickCashNotes?: number[];
   outletId: string;
@@ -283,6 +289,8 @@ export interface POSReceiptLine {
 }
 
 export interface POSReceiptDocument {
+  guestCount?: number;
+  askForTable?: boolean;
   orderId: string;
   orderNumber: string;
   /** S5b: the order's short number, on receipts made from S5b on (absent on earlier ones). */

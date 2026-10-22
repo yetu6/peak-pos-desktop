@@ -1,3 +1,4 @@
+import { guestCountWords } from "../lib/words";
 import { stationWords } from "../kitchen/kitchenWords";
 import type { ServiceType } from "../lib/posContracts";
 import { clockTime, orderPlaceWords, placeWords, serviceTypeWords } from "../lib/words";
@@ -17,6 +18,8 @@ export interface KitchenTicketPaper {
   roundNumber?: number;
   station?: string;
   serviceType?: ServiceType;
+  askForTable?: boolean;
+  guestCount?: number;
   /** The table, room or tab the order goes to. */
   label?: string;
   /** Who took the order: the dish goes back to them. */
@@ -52,10 +55,11 @@ export function kitchenTicketBytes(ticket: KitchenTicketPaper, width: PaperWidth
   }
   out.bold(false).align("left").rule();
 
-  const place = ticket.serviceType ? orderPlaceWords(ticket.serviceType, ticket.label) : placeWords(undefined, ticket.label);
+  const place = ticket.serviceType ? orderPlaceWords(ticket.serviceType, ticket.label, ticket.askForTable) : placeWords(undefined, ticket.label, ticket.askForTable);
   const service = ticket.serviceType ? serviceTypeWords(ticket.serviceType) : "";
   const where = [place, service].filter(Boolean).join(" - ");
   if (where) out.bold(true).size(1, 2).wrapped(where).size(1, 1).bold(false);
+  if (ticket.guestCount) out.wrapped(guestCountWords(ticket.guestCount));
   if (ticket.waiterName) out.bold(true).size(1, 2).wrapped(`Taken by ${ticket.waiterName}`).size(1, 1).bold(false);
   if (ticket.sentByName && ticket.sentByName !== ticket.waiterName) out.wrapped(`Sent by ${ticket.sentByName}`);
   const sent = clockTime(ticket.sentAt);
