@@ -88,13 +88,6 @@ export function formatMoney(amountMinor: number | null | undefined, currency: st
   return amountMinor < 0 ? `−${text}` : text;
 }
 
-/**
- * The amounts above the bill a guest is most likely to hand over, in minor
- * units, smallest first: for each of the largest notes, the next amount it
- * makes above the bill (TSh 42,500 with notes of 10,000, 5,000 and 2,000
- * gives 50,000, 45,000 and 44,000). Exact is offered separately; a currency
- * with no notes set gets none.
- */
 /** Named setting: quickCashNotes, in major units. Outlet values override this list. */
 export const QUICK_CASH_NOTES: Readonly<Record<string, readonly number[]>> = {
   TZS: [1000, 2000, 5000, 10000],
