@@ -22,7 +22,10 @@ export function queuedPaperName(job: POSPrintJob): string {
 }
 export const PRINT_RESOLUTION_WORDS = {
  confirm: "I checked: the paper printed",
- hint: "Only confirm after reading the paper at the printer. If it did not print, request a marked copy from the order.",
+ notPrinted: "It did not print",
+ hint: "Go to the printer and look. If the paper is there, confirm it. If it is not, say so, then print it again.",
+ /** Kept with the job as the reason it failed: who said so is on the request. */
+ notPrintedReason: "Staff checked the printer: the paper did not print.",
 };
 export const PRINT_RECOVERY_WORDS = {
  sessionChanged: "Printing stopped because the signed-in till changed. Check the paper on the original till.",

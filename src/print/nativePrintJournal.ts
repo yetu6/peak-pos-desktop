@@ -22,3 +22,8 @@ export async function nativePrintOnce(jobId:string,attempt:number,paper:Exclude<
  const document=paper.kind==="thermal"?{kind:"thermal",target:paper.target,bytes:Array.from(paper.bytes)}:{kind:"system",title:paper.title,text:paper.text};
  return invoke("print_job_once",{scope:scope(session),jobId,attempt,confirmedBackendClaim:true,paper:document});
 }
+/** Staff saw no paper: this attempt's unknown outcome becomes not sent, so the job can print again. */
+export async function resolveNativeNotPrinted(jobId:string,attempt:number,session = getOperationalSession()):Promise<NativePrintEvidence> {
+ const {invoke}=await import("@tauri-apps/api/core");
+ return invoke("resolve_print_not_printed",{scope:scope(session),jobId,attempt});
+}
