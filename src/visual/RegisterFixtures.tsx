@@ -72,6 +72,7 @@ function Sell({
   return (
     <FixtureShell initialPage="new" workspaceVariant="full">
       <RegisterLayout
+        bar={<OpenOrdersBar orders={OPEN_ORDERS} current={order} staffId={ORDER.initiatedById} currency={CURRENCY} onPick={nothing} onNew={nothing} />}
         menu={
           <MenuPanel
             categories={CATEGORIES}
@@ -89,7 +90,6 @@ function Sell({
         }
         ticket={
           <TicketPanel
-            bar={<OpenOrdersBar orders={OPEN_ORDERS} current={order} staffId={ORDER.initiatedById} currency={CURRENCY} onPick={nothing} onNew={nothing} />}
             order={order}
             currency={CURRENCY}
             serviceType={serviceType}

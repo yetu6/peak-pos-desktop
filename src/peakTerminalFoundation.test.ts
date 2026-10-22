@@ -12,7 +12,10 @@ const indexCss = read("src/index.css");
 const systemCss = read("src/components/system/system.css");
 const allCss = [brandCss, tokensCss, indexCss, systemCss].join("\n");
 const tauriConfig = JSON.parse(read("src-tauri/tauri.conf.json")) as {
+  productName: string;
+  identifier: string;
   app: { windows: Array<Record<string, unknown>> };
+  bundle: { windows: { wix: { upgradeCode: string } } };
 };
 
 // ---------------------------------------------------------------------------
@@ -504,9 +507,18 @@ describe("type, spacing and sizes", () => {
     });
   });
 
-  it("names the window the way staff name it", () => {
-    expect(tauriConfig.app.windows[0].title).toBe("Yetu till");
-    expect(read("index.html")).toContain("<title>Yetu till</title>");
+  it("names the app and its window Yetu (owner, 23 Oct)", () => {
+    expect(tauriConfig.productName).toBe("Yetu");
+    expect(tauriConfig.app.windows[0].title).toBe("Yetu");
+    expect(read("index.html")).toContain("<title>Yetu</title>");
+  });
+
+  // The MSI's upgrade code is derived from the product name unless pinned. 0.1.3 shipped as
+  // "Yetu Till" (uuid5 of "Yetu Till.exe.app.x64", read from the released MSI); without this
+  // pin, renaming the app makes Windows install the update beside the old one, not over it.
+  it("keeps the Windows installer's identity across renames, so an update replaces the app", () => {
+    expect(tauriConfig.bundle.windows.wix.upgradeCode).toBe("625ec6b8-8a11-54d7-b205-232f6ca01684");
+    expect(tauriConfig.identifier).toBe("com.peak.pos");
   });
 
   it("drops the old coloured bar down the side of the sign-in screens", () => {

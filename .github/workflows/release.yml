@@ -259,6 +259,8 @@ jobs:
           done
           PUBLIC_BASE="https://downloads.yetu.fbcsoftwares.com/pos/${VERSION}"
           scripts/build-updater-manifest.sh "$VERSION" "$PUBLIC_BASE" manifest-src > stage/latest.json
+          # The app icon for the downloads page, checked like every other file.
+          cp src-tauri/icons/128x128@2x.png stage/yetu-icon.png
           (
             cd stage
             find . -type f ! -name 'SHA256SUMS' ! -name 'SHA256SUMS.asc' \
@@ -323,3 +325,6 @@ jobs:
           print("smoke ok")
           PY
           curl -fsSIL "$BASE/latest/SHA256SUMS" | head -5
+          # The page people open at the bare address shows this version.
+          curl -fsSL "https://downloads.yetu.fbcsoftwares.com/" | grep -q "Version $VERSION" \
+            || { echo "the downloads page does not show version $VERSION" >&2; exit 1; }

@@ -13,10 +13,11 @@ type Status =
 const updater = vi.hoisted(() => ({
   status: { kind: "idle" } as Status,
   blockedReason: null as string | null,
+  canInstall: false,
 }));
 
 vi.mock("../hooks/useShiftSafeUpdater", () => ({
-  useShiftSafeUpdater: () => ({ status: updater.status, blockedReason: updater.blockedReason, installNow: vi.fn() }),
+  useShiftSafeUpdater: () => ({ status: updater.status, blockedReason: updater.blockedReason, canInstall: updater.canInstall, installNow: vi.fn() }),
 }));
 
 const device = vi.hoisted(() => ({ phase: "ready" as string }));
@@ -34,6 +35,7 @@ beforeEach(() => {
   resetUpdateNotes();
   show({ kind: "idle" });
   device.phase = "ready";
+  updater.canInstall = false;
 });
 
 describe("UpdaterBanner", () => {
@@ -81,7 +83,7 @@ describe("UpdaterBanner", () => {
     show({ kind: "ready", version: "0.2.0" }, "Finish the shift or switch staff before installing an update.");
     render(<UpdaterBanner />);
     expect(screen.getByTestId("updater-ready")).toHaveTextContent(
-      "An update is ready. It installs the next time the till is locked.",
+      "An update is ready. It installs between 00:00 and 05:00 while the till is locked, or when the till is next started.",
     );
     expect(screen.getByTestId("updater-ready")).not.toHaveTextContent("0.2.0");
     expect(lastUpdateNote()?.kind).toBe("ready");
@@ -95,6 +97,7 @@ describe("UpdaterBanner", () => {
 
   it("says in words when a ready update fails to install", () => {
     device.phase = "locked";
+    updater.canInstall = true;
     show({ kind: "ready", version: "0.2.0" }, null);
     const { rerender } = render(<UpdaterBanner />);
     show({ kind: "error", message: "os error 5: access denied" });

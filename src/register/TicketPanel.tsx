@@ -32,8 +32,6 @@ export interface TicketPanelProps {
   captureGuestCount?: boolean;
   guestCount?: number;
   onGuestCount?: (count: number | undefined) => void;
-  /** The open orders, above the ticket (Sell's own; Orders has none). */
-  bar?: ReactNode;
   order: POSOrder | null;
   currency: string | undefined;
   serviceType: ServiceType;
@@ -97,7 +95,6 @@ export function TicketPanel({
   notice = null,
   actions,
   tagsOf,
-  bar,
   askForTable = true,
   captureGuestCount = false,
   guestCount,
@@ -175,7 +172,6 @@ export function TicketPanel({
 
   return (
     <div className="y-ticket">
-      {bar}
       <header className="y-ticket__head">
         <div className="y-ticket__title-row">
           <h2 className="y-ticket__title">{order ? orderName(order) : "New order"}</h2>

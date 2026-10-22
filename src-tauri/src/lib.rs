@@ -6,6 +6,7 @@ pub mod local_store;
 mod printer;
 mod raw_print;
 mod socket;
+mod start_with_computer;
 mod yetu_http;
 
 use tauri::Manager;
@@ -17,7 +18,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .setup(|app| {
+            start_with_computer::apply(app.handle());
             let runtime = local_store::runtime::LocalStoreRuntime::initialize_for_app(app.handle());
             app.manage(runtime);
             app.manage(yetu_http::YetuHttp::new()?);
