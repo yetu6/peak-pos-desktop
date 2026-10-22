@@ -323,3 +323,6 @@ jobs:
           print("smoke ok")
           PY
           curl -fsSIL "$BASE/latest/SHA256SUMS" | head -5
+          # The page people open at the bare address shows this version.
+          curl -fsSL "https://downloads.yetu.fbcsoftwares.com/" | grep -q "Version $VERSION" \
+            || { echo "the downloads page does not show version $VERSION" >&2; exit 1; }
