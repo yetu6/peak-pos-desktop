@@ -682,7 +682,7 @@ describe("Orders", () => {
     await userEvent.click(within(sheet).getByTestId("detail-pay"));
     const pay = await screen.findByTestId("settle-dialog");
     expect(within(pay).getByTestId("amount-due")).toHaveTextContent("TSh 1,180");
-    await userEvent.click(within(pay).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(within(pay).getByRole("button", { name: "Back" }));
     expect(await screen.findByRole("dialog", { name: "Order 42" })).toBeInTheDocument();
   });
 
