@@ -1,6 +1,15 @@
 # W6 · 0.1.4 release handoff
 
-Handoff only, based on W4 `a7caa61`. W5 is uncommitted at preparation time: no W5 completion, test result or release readiness is claimed. Local branch `codex/till-w6-handoff`; no push or PR until the owner rebases it onto committed W5. Claude owns reconciliation, merges, tags, deployment and live checks; the owner enters live PINs. All unchecked items below are **pending Claude / owner**, including every live and physical check.
+Codex prepared this checklist on W4 (`a7caa61`) before stopping at its usage limit on 22 Oct. Claude Code rebased it onto the finished W5 (till #58, backend #306, hotel #152) and added the release-review fixes below. Every unchecked item is still pending: Claude runs the merges, the release and the live check; the owner types the PINs.
+
+## Review fixes in this PR (Claude Code, 22 Oct)
+
+- One guard that no staff word or paper says "void" (screens parsed with vite's `parseAst`; every paper kind at 32 and 48 columns, both printer paths).
+- Quick cash from every configured note (owner's 37,500 → 40,000 / 50,000 / 100,000 holds; 3,500 → 4,000 / 5,000 / 10,000), offline cash uses the outlet's notes, W3 words ("To pay", "Checking…", the split hint), and tests for the blind close, pick-is-not-pay and the notes reaching both sheets.
+- Open-order chips say when the order was started (W4).
+- A station's extra copies read "COPY 2 OF 3", never "printed again"; plain-text kitchen papers name their station and say the service in words.
+- "It did not print": staff can resolve an uncertain paper either way; the native journal turns that attempt's UNKNOWN into NOT_SENT so Print again prints the job itself.
+- Every guard above was broken on purpose and a test failed; the native one fails "unknown" vs "not_sent".
 
 ## Reconcile and merge in this order
 
