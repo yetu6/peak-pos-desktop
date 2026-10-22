@@ -122,6 +122,8 @@ describe("PaySheet", () => {
     expect(screen.getByTestId("amount-received")).toHaveValue("42,500");
     expect(screen.getByTestId("change-due")).toHaveTextContent("Exact: no change to give.");
     expect(pay()).toHaveTextContent("Take TSh 42,500 cash");
+    // Taking money is the orange (owner, 2026-10-22).
+    expect(pay()).toHaveClass("y-button--pay");
     await userEvent.click(pay());
     expect(recordTenderMutate).toHaveBeenCalledWith(
       expect.objectContaining({ paymentMethod: "CASH", amountMinor: 4_250_000 }),
@@ -268,6 +270,7 @@ describe("PaySheet", () => {
     await userEvent.type(screen.getByTestId("tender-amount"), "10000");
     expect(screen.getByTestId("tender-amount")).toHaveValue("10,000");
     expect(pay()).toHaveTextContent("Confirm TSh 10,000 received");
+    expect(pay()).toHaveClass("y-button--pay");
   });
 
   it("with nothing left to pay, shows no change and offers no tender", () => {
@@ -374,6 +377,7 @@ describe("PaySheet", () => {
     await userEvent.type(screen.getByTestId("room-query"), "12");
     await userEvent.click(await screen.findByTestId("room-candidate-stay-12"));
     expect(screen.getByTestId("confirm-room-charge")).toHaveTextContent("Charge TSh 42,500 to room 12");
+    expect(screen.getByTestId("confirm-room-charge")).toHaveClass("y-button--pay");
     await userEvent.click(screen.getByTestId("confirm-room-charge"));
     expect(chargeToRoomMutate).toHaveBeenCalledWith(expect.objectContaining({ orderId: "order-1", stayId: "stay-12" }), expect.anything());
     expect(JSON.stringify(chargeToRoomMutate.mock.calls)).not.toMatch(/folio/i);

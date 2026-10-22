@@ -184,7 +184,7 @@ export function OfflineTicket({
         ) : null}
         <div className="y-actions">
           <Button
-            variant="primary"
+            variant="pay"
             size={64}
             block
             icon={<Banknote />}

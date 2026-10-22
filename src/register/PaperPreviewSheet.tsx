@@ -3,12 +3,15 @@ import { useState } from "react";
 import { Banner, Button, Sheet, Tabs } from "../components/system";
 import { usePaperPreview, usePrinterSettings } from "../hooks/usePosData";
 import { paperViews } from "../print/paperPreview";
+import { stationPrintWords, stationSendWords } from "./rounds";
 
 /**
  * Every paper, shown before it prints (owner, 2026-10-21): what Print order
  * or Print bill would print now, exactly as this till prints it -- each
  * station's paper on its own tab, at the paper's width. Print prints it;
- * Back prints nothing and sends nothing.
+ * Back prints nothing and sends nothing. With several stations' new items,
+ * the paper shown also prints on its own -- "Print for bar" (owner,
+ * 2026-10-22) -- and the others wait, still new.
  */
 export function PaperPreviewSheet({
   orderId,
@@ -17,6 +20,7 @@ export function PaperPreviewSheet({
   nothingNew = false,
   refusalOf,
   tagsOf,
+  allOnly = false,
   onPrint,
   onBack,
 }: {
@@ -28,7 +32,10 @@ export function PaperPreviewSheet({
   /** Yetu's refusal of these papers in the till's words, or null when it was the connection. */
   refusalOf?: (error: unknown) => string | null;
   tagsOf?: (productId: string) => string | undefined;
-  onPrint: () => void;
+  /** Every paper prints together (before payment: the guest pays for what the kitchen has heard of). */
+  allOnly?: boolean;
+  /** Prints every paper, or only those stations' (Print for bar). */
+  onPrint: (stations?: string[]) => void;
   onBack: () => void;
 }) {
   const papers = usePaperPreview(orderId, kind);
@@ -38,12 +45,16 @@ export function PaperPreviewSheet({
   const shown = views?.[Number(tab)] ?? views?.[0] ?? null;
   // Nothing prints on this till (a kitchen that reads its screen): the order still goes to it --
   // unless nothing is new, when there is nothing to send and nothing to print.
-  const screenOnly = views !== null && views.length > 0 && views.every((view) => view.text === null);
+  const screenOnly = views !== null && views.length > 0 && views.every((view) => !view.printsHere);
   const nothingToDo = screenOnly && (kind === "AGAIN" || (kind === "ROUND" && nothingNew));
   // Yetu refused these papers (a tab waiting for the next shift, a paid order): printing would be refused too.
   const refused = papers.isError ? refusalOf?.(papers.error) ?? null : null;
   const loading = papers.isLoading || settings.isLoading;
   const title = kind === "BILL" ? "Print bill" : kind === "AGAIN" ? "Print the kitchen ticket again" : "Print order";
+  const blocked = busy || loading || refused !== null || nothingToDo || views?.length === 0;
+  // New items for more than one station: each paper prints on its own (not before payment), or all together.
+  const stationPapers = kind === "ROUND" && !nothingNew && views !== null && views.length > 1 ? views.length : 0;
+  const oneStation = stationPapers > 0 && !allOnly && shown?.station ? shown.station : null;
 
   return (
     <Sheet
@@ -65,15 +76,30 @@ export function PaperPreviewSheet({
           <Button variant="quiet" disabled={busy} onClick={onBack}>
             Back
           </Button>
+          {oneStation && shown ? (
+            <Button size={64} disabled={blocked} onClick={() => onPrint([oneStation])} data-testid="paper-print-one">
+              {shown.printsHere ? stationPrintWords(oneStation) : stationSendWords(oneStation)}
+            </Button>
+          ) : null}
           <Button
             variant="primary"
             size={64}
             icon={<Printer />}
-            disabled={busy || loading || refused !== null || nothingToDo || views?.length === 0}
-            onClick={onPrint}
+            disabled={blocked}
+            onClick={() => onPrint()}
             data-testid="paper-print"
           >
-            {busy ? "Printing…" : nothingToDo ? "Nothing new to send" : screenOnly ? "Send" : "Print"}
+            {busy
+              ? "Printing…"
+              : nothingToDo
+                ? "Nothing new to send"
+                : screenOnly
+                  ? "Send"
+                  : stationPapers === 2
+                    ? "Print both"
+                    : stationPapers > 2
+                      ? "Print all"
+                      : "Print"}
           </Button>
         </div>
       }

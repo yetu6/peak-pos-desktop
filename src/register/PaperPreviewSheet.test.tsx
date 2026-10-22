@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
@@ -39,7 +39,57 @@ describe("PaperPreviewSheet (owner, 2026-10-21)", () => {
     expect(within(sheet).getByTestId("paper-text")).toHaveTextContent("Chips");
     await userEvent.click(within(sheet).getByTestId("paper-print"));
     expect(onPrint).toHaveBeenCalledTimes(1);
+    expect(onPrint).toHaveBeenCalledWith();
     expect(onBack).not.toHaveBeenCalled();
+  });
+
+  // The owner, 2026-10-22: Print for bar, Print for kitchen -- the paper shown, and only it.
+  it("several papers: the one shown prints on its own, or both together", async () => {
+    preview.mockReturnValue({ data: [paper("BAR", "Soda"), paper("HOT", "Chips")], isLoading: false, isError: false });
+    const { onPrint } = renderSheet();
+    const sheet = screen.getByRole("dialog", { name: "Print order" });
+    expect(within(sheet).getByTestId("paper-print")).toHaveTextContent("Print both");
+    const one = within(sheet).getByTestId("paper-print-one");
+    expect(one).toHaveTextContent("Print for bar");
+    await userEvent.click(one);
+    expect(onPrint).toHaveBeenLastCalledWith(["BAR"]);
+    await userEvent.click(within(sheet).getByRole("tab", { name: "Hot kitchen" }));
+    expect(within(sheet).getByTestId("paper-print-one")).toHaveTextContent("Print for hot kitchen");
+    await userEvent.click(within(sheet).getByTestId("paper-print-one"));
+    expect(onPrint).toHaveBeenLastCalledWith(["HOT"]);
+  });
+
+  it("three stations: Print all", () => {
+    preview.mockReturnValue({ data: [paper("BAR", "Soda"), paper("HOT", "Chips"), paper("PASTRY", "Cake")], isLoading: false, isError: false });
+    renderSheet();
+    expect(screen.getByTestId("paper-print")).toHaveTextContent("Print all");
+  });
+
+  it("before payment, or for one paper, or again: everything prints together", () => {
+    preview.mockReturnValue({ data: [paper("BAR", "Soda"), paper("HOT", "Chips")], isLoading: false, isError: false });
+    renderSheet({ allOnly: true });
+    expect(screen.queryByTestId("paper-print-one")).toBeNull();
+    expect(screen.getByTestId("paper-print")).toHaveTextContent("Print both");
+    cleanup();
+    preview.mockReturnValue({ data: [paper("BAR", "Soda")], isLoading: false, isError: false });
+    renderSheet();
+    expect(screen.queryByTestId("paper-print-one")).toBeNull();
+    expect(screen.getByTestId("paper-print")).toHaveTextContent(/^Print$/);
+    cleanup();
+    preview.mockReturnValue({ data: [paper("BAR", "Soda"), paper("HOT", "Chips")], isLoading: false, isError: false });
+    renderSheet({ kind: "AGAIN" });
+    expect(screen.queryByTestId("paper-print-one")).toBeNull();
+  });
+
+  it("a station that reads its screen here: Send to it, not Print", () => {
+    printers.kitchenTickets = false;
+    try {
+      preview.mockReturnValue({ data: [paper("BAR", "Soda"), paper("HOT", "Chips")], isLoading: false, isError: false });
+      renderSheet();
+      expect(screen.getByTestId("paper-print-one")).toHaveTextContent("Send to bar");
+    } finally {
+      printers.kitchenTickets = true;
+    }
   });
 
   it("Back prints nothing", async () => {

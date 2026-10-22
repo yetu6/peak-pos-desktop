@@ -201,6 +201,7 @@ describe("the offline register", () => {
     fireEvent.contextMenu(screen.getByTestId("menu-Chips"));
     expect(screen.queryByRole("dialog", { name: /sold out/ })).not.toBeInTheDocument();
     expect(screen.getByTestId("offline-pay")).toHaveTextContent("Take TSh 11,800 cash");
+    expect(screen.getByTestId("offline-pay")).toHaveClass("y-button--pay");
   });
 
   it("changes the quantity and removes a line through the local store", async () => {
@@ -221,6 +222,7 @@ describe("the offline register", () => {
     expect(within(sheet).getByTestId("amount-due")).toHaveTextContent("TSh 11,800");
     await userEvent.type(within(sheet).getByTestId("offline-cash-received"), "20000");
     expect(within(sheet).getByTestId("change-due")).toHaveTextContent("Change to give TSh 8,200");
+    expect(within(sheet).getByTestId("confirm-offline-cash")).toHaveClass("y-button--pay");
     await userEvent.click(within(sheet).getByTestId("confirm-offline-cash"));
     await waitFor(() => expect(core.settleCash).toHaveBeenCalledWith("local-order-1", 3, 2_000_000));
     expect(core.commitOrder).toHaveBeenCalledTimes(1);

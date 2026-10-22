@@ -199,7 +199,7 @@ describe("OrderDetailView", () => {
     expect(within(actions).getByRole("button", { name: /Send to kitchen/ })).toHaveTextContent("F8");
     // Not sent yet: Pay sends it first.
     const pay = within(actions).getByRole("button", { name: /Send and pay TSh 15,340/ });
-    expect(pay).toHaveClass("y-button--primary", "y-button--64");
+    expect(pay).toHaveClass("y-button--pay", "y-button--64");
     expect(pay).toHaveTextContent("F9");
     await userEvent.click(within(actions).getByRole("button", { name: /Send to kitchen/ }));
     await userEvent.click(pay);

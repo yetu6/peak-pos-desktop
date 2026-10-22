@@ -1,4 +1,5 @@
-import type { POSOrder } from "../lib/posContracts";
+import { PREP_STATIONS, stationWords } from "../kitchen/kitchenWords";
+import type { POSOrder, PrepStation } from "../lib/posContracts";
 
 /**
  * Rounds (fbc-peak S17a): an order takes more after it was sent -- dessert
@@ -19,6 +20,44 @@ export function takesMore(order: OrderState | null): boolean {
 /** Lines added and not yet sent to the kitchen. */
 export function unsentLines(order: OrderState | null): number {
   return (order?.items ?? []).filter((line) => line.status === "ADDED").length;
+}
+
+/**
+ * The stations with something new to print, each once, in the till's order
+ * of stations (owner, 2026-10-22: Print for bar, Print for kitchen). Null
+ * when a new line doesn't say where it is made (a Yetu before stations on
+ * lines): the till can't choose for it, and prints the whole order.
+ */
+export function unsentStations(order: OrderState | null): PrepStation[] | null {
+  const unsent = (order?.items ?? []).filter((line) => line.status === "ADDED");
+  if (unsent.some((line) => !line.prepStation)) return null;
+  return PREP_STATIONS.filter((station) => unsent.some((line) => line.prepStation === station));
+}
+
+/** A station as said inside a sentence: "bar", "hot kitchen". */
+function stationInWords(station: string): string {
+  const name = stationWords(station);
+  return `${name.charAt(0).toLowerCase()}${name.slice(1)}`;
+}
+
+/** One station's print button: "Print for bar", "Print for kitchen". */
+export function stationPrintWords(station: string): string {
+  return `Print for ${stationInWords(station)}`;
+}
+
+/** One station's button when it prints nothing on this till and reads its screen: "Send to bar". */
+export function stationSendWords(station: string): string {
+  return `Send to ${stationInWords(station)}`;
+}
+
+/**
+ * What the ticket's print button says: the station it prints for when only
+ * one has something new, the order when several do, again when nothing is new.
+ */
+export function printWords(order: OrderState | null): string {
+  if (order && unsentLines(order) === 0 && (order.roundsSent ?? 0) > 0) return "Print again";
+  const stations = unsentStations(order);
+  return stations?.length === 1 ? stationPrintWords(stations[0]) : "Print order";
 }
 
 /** What the send button says: the first send, then each round by its number. */

@@ -35,6 +35,7 @@ describe("the preview is the paper", () => {
     expect(off.notHere).toBe("This till prints no kitchen papers: the kitchen reads the order on its screen.");
     const bar = paperViews([{ jobType: "KITCHEN_TICKET", document: BAR }], { ...DEFAULT_PRINTER_SETTINGS, stations: { BAR: NO_PAPER } })[0];
     expect(bar.notHere).toBe("Bar has no printer on this till: it reads the order on its screen.");
+    expect([off.printsHere, bar.printsHere]).toEqual([false, false]);
   });
 
   it("a paper this till can't make is said, never a broken screen", () => {
@@ -44,5 +45,7 @@ describe("the preview is the paper", () => {
     });
     expect(view.text).toBeNull();
     expect(view.notHere).toBe("This paper can't be shown. Print it, and check what comes out.");
+    // It still prints: Print for bar, not Send to bar (review, 2026-10-22).
+    expect(view.printsHere).toBe(true);
   });
 });

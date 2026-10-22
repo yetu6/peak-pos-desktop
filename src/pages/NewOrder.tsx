@@ -111,6 +111,8 @@ export function NewOrder({
   const removeItem = useRemoveOrderItem();
   const setLineQuantity = useSetLineQuantity();
   const sendOrder = useSendOrder();
+  // What the last send asked for, so a lost answer is asked again exactly (Print for bar stays the bar's).
+  const lastSendStations = useRef<string[] | undefined>(undefined);
   const setAvailability = useSetProductAvailability();
   const createKey = useIdempotencyKey();
   const addKey = useIdempotencyKey();
@@ -190,8 +192,8 @@ export function NewOrder({
   const createError = createProblem?.words ?? null;
   const addError = addProblem?.words ?? null;
   const mutationError = createProblem ?? addProblem ?? removeProblem ?? quantityProblem ?? sendProblem ?? availabilityProblem ?? actionError;
-  // Only a send whose answer was lost is offered again as it was; the order stays on the ticket.
-  const retrySend = sendProblem?.kind === "network" && order ? () => void sendToKitchen() : undefined;
+  // Only a send whose answer was lost is offered again as it was -- the same stations, under the same key; the order stays on the ticket.
+  const retrySend = sendProblem?.kind === "network" && order ? () => void sendToKitchen(lastSendStations.current) : undefined;
 
   const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || setLineQuantity.isPending || sendOrder.isPending;
   const canMutate = Boolean(shift) && !busy;
@@ -348,14 +350,17 @@ export function NewOrder({
     }
   }
 
-  async function sendToKitchen(): Promise<boolean> {
+  /** The new items to the kitchen and the bar: all of them, or only those stations' (Print for bar). */
+  async function sendToKitchen(stations?: string[]): Promise<boolean> {
     if (!order || order.items.length === 0) return false;
     setActionError(null);
+    lastSendStations.current = stations;
     try {
       const next = await sendOrder.mutateAsync({
         orderId: order.id,
         version: order.version,
-        idempotencyKey: sendRequest.keyFor(["send", order.id, order.version].join("|")),
+        stations,
+        idempotencyKey: sendRequest.keyFor(["send", order.id, order.version, ...(stations ?? [])].join("|")),
       });
       adopt(next);
       setSentAt(new Date());
@@ -546,18 +551,19 @@ export function NewOrder({
             return refusal && refusal.kind !== "network" ? refusal.words : null;
           }}
           tagsOf={(productId) => (menu ? tagNote(menu, productId) : undefined)}
+          allOnly={payAfterPrint}
           onBack={() => {
             setPreview(null);
             setPayAfterPrint(false);
           }}
-          onPrint={() => {
+          onPrint={(stations) => {
             const kind = preview;
             const thenPay = payAfterPrint;
             setPreview(null);
             setPayAfterPrint(false);
             if (kind === "BILL") printTheBill();
             else if (unsentLines(order) > 0) {
-              void sendToKitchen().then((sent) => {
+              void sendToKitchen(stations).then((sent) => {
                 if (sent && thenPay) setSettleOpen(true);
               });
             } else printOrderAgain();

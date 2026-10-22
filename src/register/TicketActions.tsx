@@ -1,4 +1,4 @@
-import { payWaitsWords, takesMore, unsentLines } from "./rounds";
+import { payWaitsWords, printWords, takesMore, unsentLines } from "./rounds";
 import { Ellipsis, Printer, ReceiptText, Wallet } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button, Dialog, PermissionNotice } from "../components/system";
@@ -35,11 +35,13 @@ export interface TicketActionsProps {
 
 /**
  * The ticket's actions (owner, 2026-10-21: printing in plain sight). One row
- * of Print order -- the new items' papers for the kitchen and the bar, which
- * also sends them to any kitchen screen; with nothing new, the last papers
- * again -- Print bill and More; Pay is the primary action, full width
- * below, larger, with the amount still to pay. More holds Discount, Cancel
- * order, the order note and a new sale.
+ * of the print button -- the new items' papers for the kitchen and the bar,
+ * which also sends them to any kitchen screen: "Print for bar" when only one
+ * station has something new (owner, 2026-10-22), "Print order" when several
+ * do, "Print again" for the last papers when nothing is new -- Print bill and
+ * More; Pay is the primary action, full width below, larger, with the
+ * amount still to pay. More holds Discount, Cancel order, the order note and
+ * a new sale.
  */
 export function TicketActions({
   order,
@@ -120,7 +122,7 @@ export function TicketActions({
             disabled={!sendable && !reprintable}
             onClick={sendable ? onSend : onReprint}
           >
-            {sending ? "Printing…" : "Print order"}
+            {sending ? "Printing…" : printWords(order)}
           </Button>
         ) : (
           <PermissionNotice who="staff who take orders" action="print them for the kitchen" next="Ask one to help." />
@@ -146,7 +148,7 @@ export function TicketActions({
       ) : null}
       {canPay ? (
         <Button
-          variant="primary"
+          variant="pay"
           size={64}
           block
           icon={<Wallet />}

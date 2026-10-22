@@ -68,20 +68,20 @@ describe("TicketActions", () => {
     expect(screen.getByTestId("pay-prints-first")).toHaveTextContent("New items print for the kitchen first.");
     expect(send.compareDocumentPosition(pay) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(send).toHaveClass("y-button--secondary", "y-button--56");
-    expect(pay).toHaveClass("y-button--primary", "y-button--64");
+    expect(pay).toHaveClass("y-button--pay", "y-button--64");
     expect(send.querySelector(".y-button__icon svg")).not.toBeNull();
     expect(pay.querySelector(".y-button__icon svg")).not.toBeNull();
     expect(send).toHaveTextContent("F8");
     expect(pay).toHaveTextContent("F9");
   });
 
-  it("with everything sent, Print order prints the last papers again; Pay only when something is owed", async () => {
+  it("with everything sent, Print again prints the last papers again; Pay only when something is owed", async () => {
     const onReprint = vi.fn();
     const { onSend } = renderActions({
       onReprint,
       order: { ...ORDER, status: "SENT", roundsSent: 1, items: [{ ...ORDER.items[0], status: "SENT", roundNumber: 1 }] },
     });
-    const print = screen.getByRole("button", { name: /Print order/ });
+    const print = screen.getByRole("button", { name: /Print again/ });
     expect(print).toBeEnabled();
     await userEvent.click(print);
     expect(onReprint).toHaveBeenCalledTimes(1);
@@ -212,6 +212,24 @@ describe("TicketActions: Print bill", () => {
     const bill = screen.getByTestId("print-bill");
     expect(bill).toBeDisabled();
     expect(bill).toHaveTextContent("Printing…");
+  });
+});
+
+// The owner, 2026-10-22: Print for bar, Print for kitchen -- the till picks the station's items itself.
+describe("TicketActions: the print button names what it prints", () => {
+  const at = (id: string, prepStation: "BAR" | "GENERAL") => ({ ...ORDER.items[0], id, prepStation });
+
+  it("one station with something new: Print for that station", async () => {
+    const { onSend } = renderActions({ order: { ...ORDER, items: [at("l1", "BAR"), at("l2", "BAR")] } });
+    const print = screen.getByTestId("send-order");
+    expect(print).toHaveTextContent("Print for bar");
+    await userEvent.click(print);
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("several stations: Print order, each one's paper chosen in the preview", () => {
+    renderActions({ order: { ...ORDER, items: [at("l1", "BAR"), at("l2", "GENERAL")] } });
+    expect(screen.getByTestId("send-order")).toHaveTextContent("Print order");
   });
 });
 

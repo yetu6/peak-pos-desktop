@@ -74,6 +74,9 @@ const STATION: Record<PrepStation, string> = {
   PASTRY: "Pastry",
 };
 
+/** Every station, in the order the till lists them: the kitchens, then the bar, the grill and pastry. */
+export const PREP_STATIONS = Object.keys(STATION) as readonly PrepStation[];
+
 export function stationWords(station: string): string {
   return Object.prototype.hasOwnProperty.call(STATION, station) ? STATION[station as PrepStation] : "Other station";
 }

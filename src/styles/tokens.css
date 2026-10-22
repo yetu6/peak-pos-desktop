@@ -10,10 +10,10 @@
  * surface pair to WCAG 2.2 AA in both.
  *
  * Action is Yetu Blue (ink on Light, the lighter ink-300 step on Dark so a
- * button still reads as a button on the night surfaces). Orange is an accent
- * only: the brand mark and the New marker on kitchen tickets, never an
- * ordinary button. Green, amber and red are status colours and always travel
- * with a word.
+ * button still reads as a button on the night surfaces). Orange is the brand
+ * mark, the New marker on kitchen tickets, and Pay: the buttons that take
+ * money, and no other button (owner, 2026-10-22). Green, amber and red are
+ * status colours and always travel with a word.
  *
  * Surfaces layer by tone, not shadow: canvas, then panels (top bar, rail,
  * ticket), then raised (tiles, cards, sheets), with 1px lines between.
@@ -112,7 +112,13 @@ body {
   --on-action: #ffffff;
   --action-text: var(--fbc-ink);
 
-  /* Accent: the orange, for the brand mark and the New marker only */
+  /* Pay: the orange, on the buttons that take money. White words on the base
+     orange are 3.2:1, so Light fills with the brand's deeper step (5.1:1). */
+  --pay: var(--fbc-accent-700);
+  --pay-hover: #a63a08;
+  --on-pay: #ffffff;
+
+  /* Accent: the orange, for the brand mark and the New marker */
   --accent: var(--fbc-accent);
   --on-accent: #1a0d08;
   --accent-text: var(--fbc-accent-700);
@@ -227,6 +233,11 @@ body.dark-theme {
   --action-hover: var(--fbc-ink-200);
   --on-action: var(--fbc-night-paper);
   --action-text: var(--fbc-ink-300);
+
+  /* Pay on Dark: the brand orange itself, under dark words (5.9:1). */
+  --pay: var(--fbc-accent);
+  --pay-hover: var(--fbc-accent-300);
+  --on-pay: #1a0d08;
 
   --accent: var(--fbc-accent);
   --on-accent: #1a0d08;

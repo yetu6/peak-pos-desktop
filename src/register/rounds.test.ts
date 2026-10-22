@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { POSOrderItem } from "../lib/posContracts";
-import { payWaitsWords, roundWords, sendWords, takesMore, unsentLines } from "./rounds";
+import { payWaitsWords, printWords, roundWords, sendWords, stationPrintWords, takesMore, unsentLines, unsentStations } from "./rounds";
 
 const line = (status: POSOrderItem["status"], roundNumber?: number) => ({ status, roundNumber }) as POSOrderItem;
 
@@ -32,5 +32,33 @@ describe("rounds on the till (S17a)", () => {
     expect(roundWords(1, 1)).toBeUndefined();
     expect(roundWords(2, 2)).toBe("Round 2");
     expect(roundWords(undefined, 2)).toBeUndefined();
+  });
+});
+
+// Print for bar (owner, 2026-10-22): the till picks each station's new items itself.
+describe("printing one station at a time", () => {
+  const at = (status: POSOrderItem["status"], prepStation?: POSOrderItem["prepStation"], roundNumber?: number) =>
+    ({ status, prepStation, roundNumber }) as POSOrderItem;
+
+  it("the stations with something new, each once, in the menu's order; none when a line doesn't say", () => {
+    expect(unsentStations({ status: "OPEN", items: [at("ADDED", "BAR"), at("ADDED", "GENERAL"), at("ADDED", "BAR")] })).toEqual(["GENERAL", "BAR"]);
+    expect(unsentStations({ status: "SERVED", items: [at("SENT", "GENERAL", 1), at("ADDED", "BAR")], roundsSent: 1 })).toEqual(["BAR"]);
+    expect(unsentStations({ status: "SERVED", items: [at("SENT", "BAR", 1)], roundsSent: 1 })).toEqual([]);
+    // A Yetu that doesn't say where a line is made: the till can't choose for it.
+    expect(unsentStations({ status: "OPEN", items: [at("ADDED", "BAR"), at("ADDED")] })).toBeNull();
+  });
+
+  it("names the station it prints for, as staff say it", () => {
+    expect(stationPrintWords("BAR")).toBe("Print for bar");
+    expect(stationPrintWords("GENERAL")).toBe("Print for kitchen");
+    expect(stationPrintWords("HOT")).toBe("Print for hot kitchen");
+  });
+
+  it("the print button: one station by name, several as the order, nothing new as again", () => {
+    expect(printWords({ status: "OPEN", items: [at("ADDED", "BAR"), at("ADDED", "BAR")] })).toBe("Print for bar");
+    expect(printWords({ status: "OPEN", items: [at("ADDED", "BAR"), at("ADDED", "GRILL")] })).toBe("Print order");
+    expect(printWords({ status: "OPEN", items: [at("ADDED")] })).toBe("Print order");
+    expect(printWords({ status: "SERVED", items: [at("SENT", "BAR", 1)], roundsSent: 1 })).toBe("Print again");
+    expect(printWords(null)).toBe("Print order");
   });
 });
