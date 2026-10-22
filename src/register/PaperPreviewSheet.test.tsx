@@ -6,6 +6,7 @@ import { DEFAULT_PRINTER_SETTINGS } from "../print/printerSettings";
 
 const { preview, printers } = vi.hoisted(() => ({ preview: vi.fn(), printers: { kitchenTickets: true } }));
 vi.mock("../hooks/usePosData", () => ({
+  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
   usePaperPreview: () => preview(),
   usePrinterSettings: () => ({ data: { ...DEFAULT_PRINTER_SETTINGS, ...printers }, isLoading: false, isError: false }),
 }));

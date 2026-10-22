@@ -34,6 +34,7 @@ vi.mock("../auth/DeviceSessionProvider", () => ({
 }));
 
 vi.mock("../hooks/usePosData", () => ({
+  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
   usePosShift: () => ({ shift: shiftRef.shift, close: { mutateAsync: vi.fn(), isPending: false } }),
   useCashMovements: () => movementsRef,
   useCatalogCurrency: () => currencyRef.currency,

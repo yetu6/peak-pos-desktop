@@ -220,6 +220,8 @@ export interface POSCategory {
 }
 
 export interface POSCatalog {
+  standardFloat?: number;
+  quickCashNotes?: number[];
   outletId: string;
   outletName: string;
   categories: POSCategory[];

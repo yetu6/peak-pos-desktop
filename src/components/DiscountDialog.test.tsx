@@ -33,6 +33,7 @@ const { applyMutate, applyState, applyReset } = vi.hoisted(() => ({
 }));
 
 vi.mock("../hooks/usePosData", () => ({
+  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
   useApplyDiscount: () => ({ mutate: applyMutate, isPending: applyState.isPending, error: applyState.error, reset: applyReset }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
 }));

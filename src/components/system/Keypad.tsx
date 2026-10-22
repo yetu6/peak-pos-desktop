@@ -88,11 +88,13 @@ export function Keypad({
 /** Exact, then the next amounts a guest is likely to hand over. */
 export function QuickCash({
   dueMinor,
+  notes,
   currency,
   onPick,
   className,
 }: {
   dueMinor: number;
+  notes?: readonly number[];
   currency: string;
   onPick: (amountMinor: number) => void;
   className?: string;
@@ -103,7 +105,7 @@ export function QuickCash({
         <span>Exact</span>
         <span className="y-quick-cash__amount">{formatMoney(dueMinor, currency)}</span>
       </button>
-      {quickCashAmounts(dueMinor, currency).map((amount) => (
+      {quickCashAmounts(dueMinor, currency, notes).map((amount) => (
         <button
           key={amount}
           type="button"

@@ -10,7 +10,8 @@ const { answer } = vi.hoisted(() => ({
   answer: { status: 200, data: undefined as unknown, error: undefined as unknown, refuse: false, calls: 0 },
 }));
 
-vi.mock("../hooks/usePosData", () => ({ useOutletId: () => "outlet-1" }));
+vi.mock("../hooks/usePosData", () => ({
+  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }), useOutletId: () => "outlet-1" }));
 vi.mock("./fnbApi", () => ({
   createFnbApi: () => ({
     fnbGetTillReasons: async () => {

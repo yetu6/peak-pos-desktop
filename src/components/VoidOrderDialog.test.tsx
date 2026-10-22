@@ -36,6 +36,7 @@ const { voidOrderMutate, sessionRef, voidState, voidReset, printAfter } = vi.hoi
 }));
 
 vi.mock("../hooks/usePosData", () => ({
+  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
   useVoidOrder: () => ({ mutate: voidOrderMutate, reset: voidReset, ...voidState }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
   usePropertyId: () => "prop-1",

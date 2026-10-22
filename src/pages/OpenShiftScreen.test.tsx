@@ -9,7 +9,7 @@ const { switchStaff, openMutate, useDeviceSessionMock, grants, dayClose, dayClos
   switchStaff: vi.fn(),
   openMutate: vi.fn((_vars: unknown) => new Promise<unknown>(() => {})),
   useDeviceSessionMock: vi.fn(),
-  grants: { permissions: [] as string[], capabilities: [] as string[] },
+  grants: { standardFloat: 0, permissions: [] as string[], capabilities: [] as string[] },
   dayClose: { error: null as unknown, data: undefined as unknown, isPending: false },
   dayCloseMutate: vi.fn(),
 }));
@@ -19,6 +19,7 @@ vi.mock("../auth/DeviceSessionProvider", () => ({
 }));
 
 vi.mock("../hooks/usePosData", () => ({
+  useOutletMoneySettings: () => ({ standardFloat: grants.standardFloat, quickCashNotes: [1000,2000,5000,10000] }),
   useHasPermission: (action: string) => grants.permissions.includes(action),
   useHasCapability: (code: string) => grants.capabilities.includes(code),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
@@ -40,6 +41,7 @@ function baseSession() {
 }
 
 beforeEach(() => {
+  grants.standardFloat = 0;
   grants.permissions = ["pos.shift.open"];
   grants.capabilities = [];
   dayClose.error = null;
@@ -66,7 +68,7 @@ describe("OpenShiftScreen", () => {
   it("asks for the drawer to be counted, in the outlet's own currency", () => {
     render(<OpenShiftScreen />);
     expect(screen.getByRole("heading", { name: "Open the shift" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Count the cash in the drawer" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Opening cash" })).toBeInTheDocument();
     expect(screen.getByText("TSh")).toBeInTheDocument();
   });
 
@@ -199,7 +201,8 @@ describe("Close the day", () => {
   });
 
   it("is not offered without pos.report.manager, nor on a hotel (night audit closes the day there)", () => {
-    grants.permissions = ["pos.shift.open"];
+    grants.standardFloat = 0;
+  grants.permissions = ["pos.shift.open"];
     const { unmount } = render(<OpenShiftScreen />);
     expect(screen.queryByTestId("close-day")).not.toBeInTheDocument();
     unmount();
@@ -208,4 +211,18 @@ describe("Close the day", () => {
     render(<OpenShiftScreen />);
     expect(screen.queryByTestId("close-day")).not.toBeInTheDocument();
   });
+});
+
+it("fills the standard float when settings arrive, preserving an edited count", async () => {
+ const view = render(<OpenShiftScreen />);
+ grants.standardFloat = 5_000_000;
+ view.rerender(<OpenShiftScreen />);
+ expect(screen.getByTestId("opening-float")).toHaveValue("50,000");
+ await userEvent.clear(screen.getByTestId("opening-float"));
+ await userEvent.type(screen.getByTestId("opening-float"), "40000");
+ grants.standardFloat = 6_000_000;
+ view.rerender(<OpenShiftScreen />);
+ expect(screen.getByTestId("opening-float")).toHaveValue("40,000");
+ await userEvent.click(screen.getByTestId("open-shift"));
+ expect(openMutate).toHaveBeenCalledWith({ openingCashMinor: 4_000_000, idempotencyKey: "key-1" });
 });

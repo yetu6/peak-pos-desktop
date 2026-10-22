@@ -66,13 +66,13 @@ describe("majorDigits", () => {
 
 describe("quickCashAmounts", () => {
   it("offers the next amount each of the largest notes makes above the bill, smallest first", () => {
-    expect(quickCashAmounts(4_250_000, "TZS")).toEqual([4_400_000, 4_500_000, 5_000_000]);
-    expect(quickCashAmounts(350_000, "TZS")).toEqual([400_000, 500_000, 1_000_000]);
+    expect(quickCashAmounts(4_250_000, "TZS")).toEqual([5_000_000, 10_000_000, 20_000_000]);
+    expect(quickCashAmounts(350_000, "TZS")).toEqual([1_000_000, 2_000_000, 5_000_000]);
   });
 
   it("skips amounts equal to the bill (that is Exact) and duplicates", () => {
-    expect(quickCashAmounts(900_000, "TZS")).toEqual([1_000_000]);
-    expect(quickCashAmounts(1_000_000, "TZS")).toEqual([1_200_000, 1_500_000, 2_000_000]);
+    expect(quickCashAmounts(900_000, "TZS")).toEqual([1_000_000, 2_000_000, 5_000_000]);
+    expect(quickCashAmounts(1_000_000, "TZS")).toEqual([2_000_000, 5_000_000, 10_000_000]);
   });
 
   it("offers nothing extra for a currency with no notes set", () => {
@@ -97,4 +97,8 @@ describe("cash denominations", () => {
     expect(CASH_DENOMINATIONS.TZS).toEqual([10_000, 5_000, 2_000, 1_000, 500, 200, 100, 50]);
     expect(CASH_DENOMINATIONS.KES).toBeUndefined();
   });
+});
+
+it("offers the owner’s next sensible TZS amounts", () => {
+ expect(quickCashAmounts(3_750_000,"TZS")).toEqual([4_000_000,5_000_000,10_000_000]);
 });

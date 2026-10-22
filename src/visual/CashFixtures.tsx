@@ -81,7 +81,7 @@ function OpenShift(props: Partial<Parameters<typeof OpenShiftView>[0]>) {
 
 /** NO_SHIFT: a cashier opening the shift. */
 export function NoShiftFixture() {
-  return <OpenShift />;
+  return <OpenShift standardFloat={SHIFT.openingCashMinor} />;
 }
 
 /** NO_SHIFT after a close, for a manager: Yetu's result and Close the day. */

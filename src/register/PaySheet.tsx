@@ -1,3 +1,4 @@
+import { useOutletMoneySettings } from "../hooks/usePosData";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { moneyFieldText } from "../cash/NoteCounterSheet";
 import { EXACT_WORDS, ignoreHeldEnter, startAmount, useFilledAmount } from "./moneyEntry";
@@ -101,6 +102,7 @@ export function PaySheet({
   /** The drawer didn't open for cash: said here, and by the page once the sheet has closed. */
   onDrawerProblem?: (words: string) => void;
 }) {
+  const moneySettings = useOutletMoneySettings();
   const [live, setLive] = useState(order);
   const [drawerProblem, setDrawerProblem] = useState<string | null>(null);
   // The last part payment Yetu recorded, said back to the person.
@@ -271,6 +273,7 @@ export function PaySheet({
       problem={problem ?? null}
       recordedMinor={recorded}
       drawerProblem={drawerProblem}
+      quickCashNotes={moneySettings.quickCashNotes}
       onClose={onClose}
       onTender={(request) => {
         setAnswer(null);
@@ -307,6 +310,7 @@ export function PaySheet({
 }
 
 export interface PaySheetViewProps {
+  quickCashNotes?: readonly number[];
   order: POSOrder;
   currency: string;
   roomAvailable: boolean;
@@ -356,6 +360,7 @@ export function PaySheetView({
   onTender,
   onChargeRoom,
   initialMethod = "CASH",
+  quickCashNotes,
   initialReceived = "",
   initialStayId,
 }: PaySheetViewProps) {
@@ -600,7 +605,7 @@ export function PaySheetView({
               }}
             >
               {nothingDue ? null : (
-                <QuickCash dueMinor={due} currency={currency} onPick={(minor) => cash.picked(moneyFieldText(minor))} />
+                <QuickCash dueMinor={due} notes={quickCashNotes} currency={currency} onPick={(minor) => cash.picked(moneyFieldText(minor))} />
               )}
               <MoneyField
                 label="Cash received"

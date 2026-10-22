@@ -51,6 +51,7 @@ const { openDrawerForCash } = vi.hoisted(() => ({
 vi.mock("../print/cashDrawer", () => ({ openDrawerForCash }));
 
 vi.mock("../hooks/usePosData", async (importOriginal) => ({
+  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
   // The real key generator: a retry must reuse its key, a new request must not.
   useIdempotencyKey: (await importOriginal<typeof import("../hooks/usePosData")>()).useIdempotencyKey,
   useRecordTender: () => ({ mutate: recordTenderMutate, reset: () => undefined, ...refs.tender }),
@@ -113,7 +114,7 @@ describe("PaySheet", () => {
   it("cash: Exact, then the next amounts the notes make above the bill", () => {
     renderPay();
     const quick = within(screen.getByRole("group", { name: "Quick cash" })).getAllByRole("button");
-    expect(quick.map((button) => button.textContent)).toEqual(["ExactTSh 42,500", "TSh 44,000", "TSh 45,000", "TSh 50,000"]);
+    expect(quick.map((button) => button.textContent)).toEqual(["ExactTSh 42,500", "TSh 50,000", "TSh 100,000", "TSh 200,000"]);
   });
 
   // The owner, 2026-10-21: where the amount is known, it is filled in.

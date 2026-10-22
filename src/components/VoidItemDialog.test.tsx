@@ -25,6 +25,7 @@ const { voidItemMutate, voidState, printAfter, answered } = vi.hoisted(() => ({
 }));
 
 vi.mock("../hooks/usePosData", () => ({
+  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
   useVoidItem: () => ({ mutate: voidItemMutate, reset: vi.fn(), ...voidState }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
   usePropertyId: () => "prop-1",
