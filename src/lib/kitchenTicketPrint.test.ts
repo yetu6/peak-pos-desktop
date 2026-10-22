@@ -28,6 +28,14 @@ describe("kitchen ticket print", () => {
     expect(text).not.toMatch(/tax|TSh|price/i);
   });
 
+  it("names its station and says the service in words, as the thermal paper does", () => {
+    const text = formatKitchenTicket({ station: "HOT", dailyNumber: 6, serviceType: "DINE_IN", tableNumber: "8", lines: [{ name: "Pilau", quantity: "1" }] });
+    expect(text).toContain("Hot kitchen");
+    expect(text).toContain("Dine in");
+    expect(text).not.toContain("DINE IN");
+    expect(formatKitchenTicket({ station: "BAR", dailyNumber: 6, lines: [{ name: "Soda", quantity: "1" }] })).not.toContain("\nBar\n");
+  });
+
   it("maps a Peak kitchen ticket payload into a device copy", () => {
     const copy = ticketCopyFromKitchenTicket({
       ticketNumber: "KT-9",

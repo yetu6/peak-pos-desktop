@@ -1,4 +1,4 @@
-import { PAPER_WORDS, roundWords, productionEndWords } from "./paperWords";
+import { PAPER_WORDS, extraCopyWords, roundWords, productionEndWords, type ExtraCopy } from "./paperWords";
 import { guestCountWords } from "../lib/words";
 import { stationWords } from "../kitchen/kitchenWords";
 import type { ServiceType } from "../lib/posContracts";
@@ -31,6 +31,8 @@ export interface KitchenTicketPaper {
   notes?: string;
   /** Printed again: says COPY, so nobody makes it twice. */
   copy?: boolean;
+  /** One of the station's extra copies (printer settings), numbered. */
+  extraCopy?: ExtraCopy;
   /** Who printed it again. */
   printedAgainByName?: string;
   printedAgainAt?: string;
@@ -58,8 +60,9 @@ export function kitchenTicketBytes(ticket: KitchenTicketPaper, width: PaperWidth
   const out = new EscPos(width).align("center").bold(true).size(1, 2).line(kitchenTicketTitle(ticket.station)).size(1, 1);
   const number = ticket.dailyNumber ?? ticket.orderNumber;
   out.wrapped(`${number !== undefined ? `ORDER ${number}` : "ORDER"}${roundWords(ticket.roundNumber)}`);
+  if (ticket.extraCopy) out.line(extraCopyWords(ticket.extraCopy));
   if (ticket.copy) {
-    out.line("*** COPY: printed again ***");
+    out.line(PAPER_WORDS.printedAgain);
     if (ticket.printedAgainAt) out.wrapped(dateTimeWords(ticket.printedAgainAt));
     if (ticket.printedAgainByName) out.wrapped(`by ${ticket.printedAgainByName}`, width);
   }
