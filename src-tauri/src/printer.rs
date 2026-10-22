@@ -63,7 +63,7 @@ pub fn printer_status() -> PrinterStatus {
 pub fn print_test_page() -> Result<(), String> {
     let name = configured_printer_name().unwrap_or_else(|| "default".to_string());
     let body = format!(
-        "YETU POS — printer test\nPrinter: {name}\nIf you can read this, the till can print.\n\n               Powered by Yetu-FBC\n"
+        "YETU POS — printer test\nPrinter: {name}\nIf you can read this, the till can print.\n\n                Powered by Yetu\n             yetu.fbcsoftwares.com\n"
     );
     send_to_os_printer("yetu-printer-test", &body)
 }

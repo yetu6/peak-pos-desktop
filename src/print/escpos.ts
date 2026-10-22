@@ -1,4 +1,4 @@
-import { PRINT_BRAND } from "./printBrand";
+import { PRINT_BRAND, PRINT_BRAND_ADDRESS } from "./printBrand";
 import type { MonochromeRaster } from "./billLogo";
 /**
  * ESC/POS for the till's thermal printers (S8a): the commands every 58 mm
@@ -109,7 +109,7 @@ export class EscPos {
 
   /** Feed past the cutter and cut, leaving a hinge (GS V 66 n). */
   cut(): this {
-    this.size(1, 1).align("center").bold(true).line(PRINT_BRAND).bold(false).feed(3);
+    this.size(1, 1).align("center").bold(true).line(PRINT_BRAND).bold(false).line(PRINT_BRAND_ADDRESS).feed(3);
     this.bytes.push(GS, 0x56, 0x42, 3);
     return this;
   }

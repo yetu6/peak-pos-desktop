@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 import { BILL_HEADING } from "../lib/receiptPrint";
 import { PAPER_WORDS } from "./paperWords";
-import { PRINT_BRAND } from "./printBrand";
+import { PRINT_BRAND, isPrintBrandLine } from "./printBrand";
 
 const HEADINGS = new Set<string>([
   PAPER_WORDS.kitchenOrder, PAPER_WORDS.barOrder, PAPER_WORDS.handOver, PAPER_WORDS.make,
@@ -13,10 +13,10 @@ export function renderPaperText(text: string | null): ReactNode {
   if (text === null) return null;
   const lines = text.split("\n");
   return lines.map((line, index) => {
-    const footer = line.trim() === PRINT_BRAND;
+    const footer = isPrintBrandLine(line);
     const heading = HEADINGS.has(line.trim());
     return <Fragment key={index}>
-      {footer ? <span style={{ display: "inline-block", width: "100%", textAlign: "center", fontWeight: 700, whiteSpace: "normal" }}>{line}</span>
+      {footer ? <span style={{ display: "inline-block", width: "100%", textAlign: "center", fontWeight: line.trim() === PRINT_BRAND ? 700 : 400, whiteSpace: "normal" }}>{line}</span>
         : heading ? <span style={{ fontWeight: 700 }}>{line}</span> : line}
       {index < lines.length - 1 ? "\n" : null}
     </Fragment>;

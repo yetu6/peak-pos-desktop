@@ -11,7 +11,7 @@ describe("ESC/POS", () => {
       0x1b, 0x61, 1, // centre
       0x34, 0x32, 0x0a, // "42"
     ]);
-    expect(readable(bytes)).toBe("42\nPowered by Yetu-FBC\n");
+    expect(readable(bytes)).toBe("42\nPowered by Yetu\nyetu.fbcsoftwares.com\n");
     expect(Array.from(bytes).slice(-4)).toEqual([0x1d, 0x56, 0x42, 3]);
   });
 
@@ -31,6 +31,6 @@ describe("ESC/POS", () => {
 
   it("reads back as the words on the paper", () => {
     const bytes = new EscPos(PAPER_58MM).bold(true).line("ORDER 42").bold(false).rule().drawer().cut().build();
-    expect(readable(bytes)).toBe(`ORDER 42\n${"-".repeat(32)}\nPowered by Yetu-FBC\n`);
+    expect(readable(bytes)).toBe(`ORDER 42\n${"-".repeat(32)}\nPowered by Yetu\nyetu.fbcsoftwares.com\n`);
   });
 });

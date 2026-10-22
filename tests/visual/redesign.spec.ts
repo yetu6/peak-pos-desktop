@@ -63,7 +63,7 @@ for (const [width,height] of [[1366,768],[1920,1080]]) for (const theme of ["lig
    await page.goto(`/?fixture=${fixture}`);await page.evaluate(()=>document.fonts.ready);
    const paper=page.getByTestId("paper-text");await expect(paper).toBeVisible();
    await expect(paper).toHaveCSS("background-color","rgb(255, 255, 255)");
-   const text=await paper.textContent();expect(text).toContain("Powered by Yetu-FBC");
+   const text=await paper.textContent();expect(text).toContain("Powered by Yetu");expect(text).toContain("yetu.fbcsoftwares.com");
    if(fixture==="papers-copy")expect(text).toContain("COPY");
    else if(fixture==="papers-cancel"){expect(text).toContain("CANCELLED");expect(text).toContain("DO NOT MAKE");}
    else{expect(text!.indexOf("HAND OVER")).toBeLessThan(text!.indexOf("MAKE"));expect(text).not.toContain("TSh");}

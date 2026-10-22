@@ -1,6 +1,6 @@
 import { billItemColumns } from "./billColumns";
 import { PAPER_WORDS } from "./paperWords";
-import { PRINT_BRAND } from "./printBrand";
+import { isPrintBrandLine } from "./printBrand";
 import type { MonochromeRaster } from "./billLogo";
 import { orderName, orderReference } from "../lib/orderNumber";
 import { BILL_HEADING, CHARGE_TO_ROOM, GUEST_SIGNATURE, type ReceiptCopy } from "../lib/receiptPrint";
@@ -94,7 +94,7 @@ export function textPaperBytes(text: string, width: PaperWidth, options: Receipt
   if (options.drawer && !options.copy) out.drawer();
   if (options.copy) out.align("center").bold(true).line("*** COPY ***").bold(false).align("left");
   for (const line of text.replace(/\n+$/, "").split("\n")) {
-    if (line.trim() === PRINT_BRAND) continue;
+    if (isPrintBrandLine(line)) continue;
     if (line.trim() === "") out.line();
     else out.wrapped(line);
   }
