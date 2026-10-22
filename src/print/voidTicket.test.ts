@@ -63,6 +63,8 @@ describe("void slip on paper (fbc-peak 00125)", () => {
 
   it("reads the same through the system's own printer", () => {
     const text = formatVoidSlip(voidSlipFromPrintDocument(DOCUMENT));
+    expect(text).toContain("Cancelled ");
+    expect(text).not.toMatch(/\bvoid(?:ed|ing|s)?\b/i);
     expect(text).toContain("CANCELLED - BAR\nORDER 1\nDO NOT MAKE");
     expect(text).toContain("  1  Tusker\n      Cold");
     expect(text).toContain("Why: Spilled\nAsked by Baraka Mushi, approved by Neema Kweka");

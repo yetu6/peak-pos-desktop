@@ -22,3 +22,5 @@ Screenshots below cover the changed sheet surfaces at both required resolutions 
 - close-count, 1366x768, dark: [before](../till-w1/after/close-count-1366x768-dark.png) · [after](after/close-count-1366x768-dark.png)
 - close-count, 1920x1080, light: [before](../till-w1/after/close-count-1920x1080-light.png) · [after](after/close-count-1920x1080-light.png)
 - close-count, 1920x1080, dark: [before](../till-w1/after/close-count-1920x1080-dark.png) · [after](after/close-count-1920x1080-dark.png)
+
+Recovery follow-up: the system-printer cancellation formatter still used “Voided” even though the thermal formatter already used “Cancelled”. Its paper-output regression failed before the fix; the restored paper/wording checks pass (six tests). Original transaction fields and API names are unchanged.
