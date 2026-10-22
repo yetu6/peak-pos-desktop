@@ -475,8 +475,9 @@ export function PaySheetView({
       footer={
         // The action stays in the sheet's footer, on screen at every size; the methods scroll above it.
         <div className="y-pay__footer">
+          {/* "Back", not "Cancel": on a till Cancel means taking an order off (owner, 2026-10-21). */}
           <Button variant="quiet" disabled={pending} onClick={onClose}>
-            Cancel
+            Back
           </Button>
           {unsure ? (
             <Button variant="primary" size={64} data-testid="pay-check" disabled={unsure.checking} onClick={onCheck}>
