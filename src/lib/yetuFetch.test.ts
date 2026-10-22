@@ -1,5 +1,4 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isDeviceNetworkFailure } from "./deviceAuth";
 import { requestTimesWords, resetRequestTimes } from "./requestTimes";
@@ -134,7 +133,8 @@ describe("every request to Yetu", () => {
     // The ops-token bridge is a helper on this computer, not Yetu.
     const notYetu = new Set(["src/lib/applyOpsToken.ts", "src/lib/yetuFetch.ts"]);
     const files = (readdirSync("src", { recursive: true }) as string[])
-      .map((file) => join("src", file))
+      // Always "/": Windows lists files with "\\", and these sets are written with "/".
+      .map((file) => `src/${file.replaceAll("\\", "/")}`)
       .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file) && !notYetu.has(file));
     // Called, or handed on as the one to use (a default like `fetchImpl = fetch`).
     const direct = files.filter((file) => /(^|[^\w.$])fetch\s*\(|=\s*fetch(?![\w$])/m.test(readFileSync(file, "utf8")));
@@ -155,7 +155,8 @@ describe("every header the till sets", () => {
     const allowed = new Set([...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]));
     expect(allowed.has("authorization")).toBe(true);
     const files = (readdirSync("src", { recursive: true }) as string[])
-      .map((file) => join("src", file))
+      // Always "/": Windows lists files with "\\", and these sets are written with "/".
+      .map((file) => `src/${file.replaceAll("\\", "/")}`)
       .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file) && !notYetu.has(file));
     const set = new Set<string>();
     for (const file of files) {
