@@ -48,9 +48,9 @@
   --space-8: 32px;
   --space-12: 48px;
 
-  /* Radii: 6 for controls, 10 for cards and sheets. */
-  --radius-control: 6px;
-  --radius-card: 10px;
+  /* Radii follow the 4px rhythm: 4 for controls, 8 for cards and sheets. */
+  --radius-control: 4px;
+  --radius-card: 8px;
 
   /* Touch sizes, with at least 8px between targets. */
   --target-min: 48px;
@@ -186,7 +186,9 @@ body {
   --gold-subtle: var(--surface-selected);
   --brass: var(--action-text);
   --brand-ink: var(--fbc-ink);
-  --receipt-paper: var(--surface-raised);
+  --receipt-paper: #ffffff;
+  --receipt-ink: var(--fbc-night);
+  --receipt-muted: var(--fbc-slate);
   --slate-ink: var(--text);
   --border: var(--line-strong);
   --border-strong: var(--line-control);

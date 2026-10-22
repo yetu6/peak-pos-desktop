@@ -134,8 +134,9 @@
 .y-options__option:hover { background: var(--surface-hover); }
 
 .y-options__option[aria-checked="true"] {
-  border: 2px solid var(--action);
+  border-color: var(--action);
   background: var(--surface-selected);
+  font-weight: 700;
 }
 
 /* The mark says what kind of choice it is: a circle for one, a box for several. */
@@ -344,6 +345,20 @@
 .y-actions__row > .y-button { padding: 0 var(--space-3); }
 .y-actions__more { flex: none; }
 
+/* Three named actions fit the ticket before Pay. Keep the words when room
+   is tight; the keyboard shortcuts themselves remain available. */
+.y-actions__row:has([data-testid="print-bill"]) {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(48px, 1fr);
+}
+.y-actions__row > .y-button { min-width: 0; font-size: var(--type-small); }
+.y-actions__row .y-kbd,
+.y-actions__more .y-button__icon { display: none; }
+@media (max-width: 1279px) {
+  .y-actions__row .y-button__icon { display: none; }
+  .y-actions__row > .y-button { padding-inline: var(--space-2); }
+}
+
 .y-more { display: grid; gap: var(--space-2); }
 
 .y-more__item {
@@ -437,8 +452,9 @@
 .y-pay__method:hover:not(:disabled) { background: var(--surface-hover); }
 
 .y-pay__method[aria-checked="true"] {
-  border: 2px solid var(--action);
+  border-color: var(--action);
   background: var(--surface-selected);
+  font-weight: 700;
 }
 
 .y-pay__method:disabled {
@@ -514,8 +530,9 @@
 }
 
 .y-pay__room[aria-pressed="true"] {
-  border: 2px solid var(--action);
+  border-color: var(--action);
   background: var(--surface-selected);
+  font-weight: 700;
 }
 
 .y-pay__room:disabled { background: var(--surface); color: var(--text-muted); cursor: not-allowed; }
@@ -572,7 +589,8 @@
   gap: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
-  background: var(--surface-raised);
+  background: var(--receipt-paper);
+  color: var(--receipt-ink);
   padding: var(--space-4);
   font-variant-numeric: tabular-nums;
 }
@@ -655,7 +673,7 @@
   align-items: stretch;
   gap: var(--space-2);
   border-bottom: 1px solid var(--border);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-4);
 }
 
 .y-open-orders__list {
@@ -676,7 +694,7 @@
   max-width: 14rem;
   min-height: 56px;
   align-content: center;
-  gap: 2px;
+  gap: var(--space-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: var(--surface);
@@ -689,8 +707,9 @@
 .y-open-orders__chip:hover:not(:disabled) { background: var(--surface-hover); }
 .y-open-orders__chip:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: 2px; }
 .y-open-orders__chip[aria-pressed="true"] {
-  border: 2px solid var(--action);
+  border-color: var(--action);
   background: var(--surface-selected);
+  font-weight: 700;
   cursor: default;
 }
 .y-open-orders__chip:disabled { color: var(--text-muted); cursor: not-allowed; }
@@ -721,11 +740,11 @@
   margin: var(--space-3) auto 0;
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: var(--surface);
+  border-radius: 0;
+  background: var(--receipt-paper);
   padding: var(--space-4);
-  color: var(--text);
-  font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace;
+  color: var(--receipt-ink);
+  font-family: Consolas, ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace;
   font-size: var(--type-small);
   line-height: 1.35;
   white-space: pre;
@@ -739,3 +758,8 @@
   justify-content: space-between;
   gap: var(--target-gap);
 }
+
+/* A saved bill is paper even while the surrounding sheet uses the night theme. */
+.y-receipt__paper .y-receipt__meta,
+.y-receipt__paper .y-receipt__option,
+.y-receipt__paper .y-receipt__footer { color: var(--receipt-muted); }

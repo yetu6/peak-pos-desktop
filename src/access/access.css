@@ -458,5 +458,5 @@
 @media (max-height: 800px) {
   .y-access__brand { gap: var(--space-6); padding-top: var(--space-8); padding-bottom: var(--space-6); }
   .y-access__main { padding: var(--space-4) var(--space-6); }
-  .y-access__panel { gap: var(--space-3); padding: var(--space-6); }
+  .y-access__panel { gap: var(--space-3); padding: var(--space-5); }
 }
