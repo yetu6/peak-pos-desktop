@@ -2,7 +2,7 @@
 
 All sheet exits now read Back, including icon dismissals whose accessible name is Back to previous screen. Cancellation actions still describe cancelling an item or order; API/data names are unchanged. Busy dismissal and uncertain-refund guards remain in place.
 
-Guard proofs: changing Back back to Cancel fails the approval-sheet test; restoring voided in staff wording fails the staff-language test; deleting the pending ReceiptView dismissal guard fails its busy test. Each mutation was restored. Original full suite: 1,319 passed, six skipped; combined W1/W2 rerun pending.
+Guard proofs: changing Back back to Cancel fails the approval-sheet test; restoring voided in staff wording fails the staff-language test; deleting the pending ReceiptView dismissal guard fails its busy test. Each mutation was restored. Original full suite: 1,319 passed, six skipped; combined W1/W2 rerun: 1,321 passed, six skipped; typecheck, lint and build passed.
 
 Screenshots below cover the changed sheet surfaces at both required resolutions and themes. Before links point to W1 evidence; after images render W2. These are development visual fixtures, not live/native acceptance.
 
