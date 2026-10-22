@@ -42,7 +42,10 @@ emit_platform() {
 	name=$(basename "$file")
 	sig_body=$(tr -d '\r\n' <"$sig")
 	# URL lives under versioned public tree (same basename as staged file).
-	printf '%s\t%s\t%s\n' "$key" "$BASE_URL/$name" "$sig_body"
+	# Encoded: the installers are named "Peak Terminal_...", and a raw space
+	# in the manifest broke the release's own download check (v0.1.2).
+	name_url=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$name")
+	printf '%s\t%s\t%s\n' "$key" "$BASE_URL/$name_url" "$sig_body"
 }
 
 tmp=$(mktemp)
