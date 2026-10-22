@@ -1,0 +1,10 @@
+58 mm bar: exact bytes and decoded paper passed
+58 mm bill: exact bytes and decoded paper passed
+58 mm paid-copy: exact bytes and decoded paper passed
+58 mm cancel: exact bytes and decoded paper passed
+58 mm refund: exact bytes and decoded paper passed
+80 mm bar: exact bytes and decoded paper passed
+80 mm bill: exact bytes and decoded paper passed
+80 mm paid-copy: exact bytes and decoded paper passed
+80 mm cancel: exact bytes and decoded paper passed
+80 mm refund: exact bytes and decoded paper passed

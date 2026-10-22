@@ -1,3 +1,4 @@
+import { PAPER_WORDS, roundWords, productionEndWords } from "./paperWords";
 import { guestCountWords } from "../lib/words";
 import { stationWords } from "../kitchen/kitchenWords";
 import type { ServiceType } from "../lib/posContracts";
@@ -40,14 +41,14 @@ export type Fulfilment = "PREPARED" | "PICKED" | "DIRECT";
 export interface QuantitySettings { quantityBold?: boolean; quantityLarge?: boolean }
 
 export function kitchenTicketTitle(station: string | undefined): string {
-  return station?.toUpperCase() === "BAR" ? "BAR ORDER" : "KITCHEN ORDER";
+  return station?.toUpperCase() === "BAR" ? PAPER_WORDS.barOrder : PAPER_WORDS.kitchenOrder;
 }
 
 /** Missing modes on older documents retain the established prepared behaviour. */
 export function productionGroups<T extends { fulfilment?: Fulfilment }>(lines: T[]): { title: string; lines: T[] }[] {
   return [
-    { title: "HAND OVER", lines: lines.filter(line => line.fulfilment === "PICKED") },
-    { title: "MAKE", lines: lines.filter(line => line.fulfilment !== "PICKED" && line.fulfilment !== "DIRECT") },
+    { title: PAPER_WORDS.handOver, lines: lines.filter(line => line.fulfilment === "PICKED") },
+    { title: PAPER_WORDS.make, lines: lines.filter(line => line.fulfilment !== "PICKED" && line.fulfilment !== "DIRECT") },
   ].filter(group => group.lines.length > 0);
 }
 
@@ -56,7 +57,7 @@ export function kitchenTicketBytes(ticket: KitchenTicketPaper, width: PaperWidth
   if (!groups.length) return new Uint8Array();
   const out = new EscPos(width).align("center").bold(true).size(1, 2).line(kitchenTicketTitle(ticket.station)).size(1, 1);
   const number = ticket.dailyNumber ?? ticket.orderNumber;
-  out.wrapped(`${number !== undefined ? `ORDER ${number}` : "ORDER"}${ticket.roundNumber ? ` · ROUND ${ticket.roundNumber}${ticket.roundNumber > 1 ? " · ADDED" : ""}` : ""}`);
+  out.wrapped(`${number !== undefined ? `ORDER ${number}` : "ORDER"}${roundWords(ticket.roundNumber)}`);
   if (ticket.copy) {
     out.line("*** COPY: printed again ***");
     if (ticket.printedAgainAt) out.wrapped(dateTimeWords(ticket.printedAgainAt));
@@ -88,6 +89,6 @@ export function kitchenTicketBytes(ticket: KitchenTicketPaper, width: PaperWidth
   if (ticket.notes?.trim()) {
     out.rule().bold(true).line("NOTE").bold(false).wrapped(ticket.notes.trim());
   }
-  out.rule().wrapped(`*** END · ${groups.flatMap(group => group.lines).reduce((sum, line) => sum + line.quantity, 0)} ITEMS ***`);
+  out.rule().wrapped(productionEndWords(groups.flatMap(group => group.lines).reduce((sum, line) => sum + line.quantity, 0)));
   return out.feed(3).cut().build();
 }

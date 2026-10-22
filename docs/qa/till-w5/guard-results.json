@@ -1,0 +1,32 @@
+[
+  {
+    "guard": "direct-only",
+    "exit": 1,
+    "assertion_failed": true
+  },
+  {
+    "guard": "claim-owner",
+    "exit": 1,
+    "assertion_failed": true
+  },
+  {
+    "guard": "uncertain-not-failed",
+    "exit": 1,
+    "assertion_failed": true
+  },
+  {
+    "guard": "preview-scope",
+    "exit": 1,
+    "assertion_failed": true
+  },
+  {
+    "guard": "observed-claim-state",
+    "exit": 1,
+    "assertion_failed": true
+  },
+  {
+    "guard": "observed-native-state",
+    "exit": 1,
+    "assertion_failed": true
+  }
+]

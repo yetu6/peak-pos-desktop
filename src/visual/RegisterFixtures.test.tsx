@@ -21,7 +21,7 @@ describe("RegisterFixtures", () => {
 
   it("renders a sent order with its time", () => {
     render(<RegisterSentFixture />);
-    expect(screen.getByTestId("ticket-sent")).toHaveTextContent("Sent to kitchen 14:05");
+    expect(screen.getByTestId("ticket-sent")).toHaveTextContent("Sent 14:05");
   });
 
   it("renders a waiter who can't send or take payment", () => {

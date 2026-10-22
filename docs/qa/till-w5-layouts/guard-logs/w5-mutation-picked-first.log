@@ -1,0 +1,54 @@
+
+ RUN  v4.1.10 /home/mwombeki/Desktop/PEAK/.worktrees/till-w5
+
+ ❯ src/print/w5Layouts.test.ts (10 tests | 3 failed) 103ms
+     × groups hand over before make, excludes direct, preserves audit at 32 68ms
+     × groups hand over before make, excludes direct, preserves audit at 48 3ms
+     × system formatter has the same grouping and audit 3ms
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  3 failed | 13 passed (16)
+   Start at  17:13:57
+   Duration  3.39s (transform 336ms, setup 665ms, import 392ms, tests 168ms, environment 3.82s)
+
+$ vitest run "src/print/w5Layouts.test.ts" src/print/billLogo.test.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/print/w5Layouts.test.ts > W5 production layouts > groups hand over before make, excludes direct, preserves audit at 32
+AssertionError: expected 179 to be less than 163
+ ❯ src/print/w5Layouts.test.ts:22:39
+     20|     expect(text).toContain("BAR ORDER");
+     21|     expect(text).toContain("ORDER 6 - ROUND 2 - ADDED");
+     22|     expect(text.indexOf("HAND OVER")).toBeLessThan(text.indexOf("MAKE"…
+       |                                       ^
+     23|     expect(text).toContain("2 x Water");
+     24|     expect(text).not.toContain("Counter snack");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  src/print/w5Layouts.test.ts > W5 production layouts > groups hand over before make, excludes direct, preserves audit at 48
+AssertionError: expected 211 to be less than 195
+ ❯ src/print/w5Layouts.test.ts:22:39
+     20|     expect(text).toContain("BAR ORDER");
+     21|     expect(text).toContain("ORDER 6 - ROUND 2 - ADDED");
+     22|     expect(text.indexOf("HAND OVER")).toBeLessThan(text.indexOf("MAKE"…
+       |                                       ^
+     23|     expect(text).toContain("2 x Water");
+     24|     expect(text).not.toContain("Counter snack");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  src/print/w5Layouts.test.ts > W5 production layouts > system formatter has the same grouping and audit
+AssertionError: expected 115 to be less than 98
+ ❯ src/print/w5Layouts.test.ts:41:39
+     39|     expect(text).toContain("13:52");
+     40|     expect(text).not.toContain("Ref POS-BAR-6");
+     41|     expect(text.indexOf("HAND OVER")).toBeLessThan(text.indexOf("MAKE"…
+       |                                       ^
+     42|     expect(text).not.toContain("Counter snack");
+     43|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+error: script "test" exited with code 1

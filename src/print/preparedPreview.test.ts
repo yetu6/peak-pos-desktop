@@ -25,3 +25,16 @@ it("does not reuse a preview across staff, outlets, changed documents or paper k
  expect(previewTokenFor("order","ROUND")).toBeUndefined();
  setOperationalSession({...session,outletId:"other"});expect(preparedPaper(job)).toBeUndefined();
 });
+
+it("expired signed previews retain their token so the server refuses instead of printing unbound",async()=>{
+ const {vi}=await import("vitest");const {rememberPreviewToken,receivedPreviewToken,PAPER_PREVIEW_TTL_MS}=await import("./preparedPreview");
+ vi.useFakeTimers();
+ try{setOperationalSession(session);rememberPreviewToken("order","BILL","expired-token");vi.advanceTimersByTime(PAPER_PREVIEW_TTL_MS+1);
+ expect(receivedPreviewToken("order","BILL")).toBe("expired-token");preparePreview("order","BILL",[paper],DEFAULT_PRINTER_SETTINGS,undefined,receivedPreviewToken("order","BILL"));vi.advanceTimersByTime(PAPER_PREVIEW_TTL_MS+1);expect(previewTokenFor("order","BILL")).toBe("expired-token");
+ }finally{vi.useRealTimers();}
+});
+it("a rendering problem does not throw before the print action can queue its paper",()=>{
+ setOperationalSession(session);
+ expect(()=>preparePreview("order","ROUND",[paper],{...DEFAULT_PRINTER_SETTINGS,kitchen:{target:{kind:"system",name:"Printer"},width:48}},()=>{throw new Error("Bad menu tags");},"token")).not.toThrow();
+ expect(previewTokenFor("order","ROUND")).toBe("token");
+});

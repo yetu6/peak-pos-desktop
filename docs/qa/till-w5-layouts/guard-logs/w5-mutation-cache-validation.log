@@ -1,0 +1,39 @@
+
+ RUN  v4.1.10 /home/mwombeki/Desktop/PEAK/.worktrees/till-w5
+
+ ❯ src/print/billLogo.test.ts (6 tests | 1 failed) 75ms
+   × reads a previously converted logo after memory is gone and refuses corrupt cache entries 17ms
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 15 passed (16)
+   Start at  17:14:36
+   Duration  2.22s (transform 394ms, setup 595ms, import 429ms, tests 141ms, environment 2.27s)
+
+$ vitest run "src/print/w5Layouts.test.ts" src/print/billLogo.test.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/print/billLogo.test.ts > reads a previously converted logo after memory is gone and refuses corrupt cache entries
+AssertionError: expected { width: 576, height: 1, …(1) } to be undefined
+
+- Expected:
+undefined
+
++ Received:
+{
+  "data": Uint8Array [],
+  "height": 1,
+  "width": 576,
+}
+
+ ❯ src/print/billLogo.test.ts:40:40
+     38|   expect(cachedBillLogo(url, 32)).toBeUndefined();
+     39|   localStorage.setItem(BILL_LOGO_CACHE_KEY, JSON.stringify([["48:broke…
+     40|   expect(cachedBillLogo("broken", 48)).toBeUndefined();
+       |                                        ^
+     41|   localStorage.removeItem(BILL_LOGO_CACHE_KEY);
+     42| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+error: script "test" exited with code 1

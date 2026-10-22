@@ -62,7 +62,7 @@ it("settings preserve legacy width, defaults and validated station copies", () =
   expect(stationCopiesFor(settingsFrom({}), "HOT")).toBe(1);
 });
 
-it("both bill paths retain the business name and reprint audit without advertising or drawer kicks", () => {
+it("both bill paths retain the business name and reprint audit with the owner’s signature and without copy drawer kicks", () => {
   const receipt = receiptCopyFromPrintDocument({ kind: "BILL", propertyName: "Bahari QA Hotel", dailyNumber: 6,
     orderNumber: "POS-BAR-6", copy: true, printedAgainByName: "Amina", printedAgainAt: document.printedAgainAt, items: [] });
   for (const text of [formatReceipt(receipt), readable(receiptBytes(receipt, 48, { copy: true, drawer: true }))]) {
@@ -87,10 +87,37 @@ it("missing fulfilment remains prepared and empty groups do not print", () => {
   const text = readable(kitchenTicketBytes(paperFromPrintDocument({ items: [{ name: "Soup", quantity: 1 }] }), 32));
   expect(text).toContain("MAKE\n");
   expect(text).not.toContain("HAND OVER");
-  expect(text).toContain("*** END - 1 ITEMS ***");
+  expect(text).toContain("*** END - 1 ITEM ***");
   expect(kitchenTicketBytes({ lines: [] }, 48)).toHaveLength(0);
 });
 it("production defaults to bold and double-height quantities", () => {
   const bytes = Array.from(kitchenTicketBytes(paperFromPrintDocument(document), 48)).join(",");
   expect(bytes).toContain(`27,69,1,29,33,1,${Array.from(new TextEncoder().encode("2 x Water")).join(",")}`);
+});
+
+it.each([32, 48] as const)("prints business contact details once on both bill paths at %s", width => {
+  const copy = receiptCopyFromPrintDocument({ kind: "BILL", propertyName: "Bahari QA Hotel",
+    propertyAddress: "Dar es Salaam", propertyPhone: "+255 700 123 456", items: [] });
+  for (const text of [formatReceipt(copy), readable(receiptBytes(copy, width))]) {
+    expect(text).toContain("Dar es Salaam");
+    expect(text).toContain("+255 700 123 456");
+    expect(text.match(/Powered by Yetu-FBC/g)).toHaveLength(1);
+    expect(text).toContain("BAHARI QA HOTEL");
+  }
+});
+it.each([32, 48] as const)("resets footer typography to normal size, centered and bold at %s", width => {
+  const bytes = receiptBytes({ propertyName: "Bahari QA Hotel", beforePayment: true, lines: [] }, width);
+  const signature = Array.from(new TextEncoder().encode("Powered by Yetu-FBC"));
+  expect(Array.from(bytes).join(",")).toContain([29,33,0,27,97,1,27,69,1,...signature,10,27,69,0,27,100,3,29,86,66,3].join(","));
+});
+it.each([32, 48] as const)("maps backend address/phone and labels item, quantity and amount columns at %s", width => {
+  const copy = receiptCopyFromPrintDocument({ kind: "BILL", propertyName: "Bahari QA Hotel", address: "Dar es Salaam", phone: "+255 700 123 456",
+    items: [{ name: "Coffee", quantity: 2, totalMinor: 1000000 }], currency: "TZS" });
+  expect(copy).toMatchObject({ propertyAddress: "Dar es Salaam", propertyPhone: "+255 700 123 456" });
+  for (const text of [formatReceipt(copy), readable(receiptBytes(copy, width))]) {
+    expect(text).toMatch(/ITEM\s+QTY\s+AMOUNT/);
+    expect(text).toContain("Dar es Salaam");
+    expect(text).toContain("+255 700 123 456");
+    expect(text).toContain("TSh 10,000");
+  }
 });

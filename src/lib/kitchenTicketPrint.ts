@@ -1,3 +1,4 @@
+import { roundWords } from "../print/paperWords";
 import { printBrandFooter } from "../print/printBrand";
 import { guestCountWords } from "./words";
 import { kitchenTicketTitle, productionGroups, type Fulfilment } from "../print/kitchenTicket";
@@ -48,7 +49,7 @@ export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
     // The paper's title (2026-10-20): an order to make, and where.
     kitchenTicketTitle(ticket.station),
     ticket.ticketNumber ? ticket.ticketNumber : null,
-    ticket.dailyNumber || ticket.orderNumber ? `${orderName(ticket)}${ticket.roundNumber ? ` · ROUND ${ticket.roundNumber}${ticket.roundNumber > 1 ? " · ADDED" : ""}` : ""}` : null,
+    ticket.dailyNumber || ticket.orderNumber ? `${orderName(ticket)}${roundWords(ticket.roundNumber)}` : null,
     ticket.copy ? "*** COPY: printed again ***" : null,
     ticket.copy && ticket.printedAgainAt ? dateTimeWords(ticket.printedAgainAt) : null,
     ticket.copy && ticket.printedAgainByName ? `by ${ticket.printedAgainByName}` : null,

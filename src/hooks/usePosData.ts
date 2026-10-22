@@ -897,7 +897,7 @@ export function useReprintKitchenTickets() {
     mutationFn: async (args: { orderId: string; idempotencyKey: string; roundNumber?: number }) => {
       const settings = await loadPrinterSettings();
       if (!settings.kitchenTickets) throw new KitchenPaperOff();
-      const token = previewTokenFor(args.orderId, "AGAIN") ?? previewTokenFor(args.orderId, "ROUND");
+      const token = previewTokenFor(args.orderId, "AGAIN");
       const reprint = await unwrap(createPosApi().reprintKitchenTickets(args.orderId, args.idempotencyKey, args.roundNumber, ...(token ? [token] : [])));
       const results = await printFor(propertyId, args.orderId, menuTags(queryClient, outletId), settings);
       return { reprint, failed: results.find((result) => !result.ok)?.error };

@@ -485,6 +485,14 @@ mod durable_tests {
         store
             .mark_print("ambiguous", &scope, 1, "RESERVED", "UNKNOWN", None)
             .unwrap();
+        // Actual transport succeeds, then the process loses its chance to mark
+        // acceptance. The restart must retain UNKNOWN and send no second copy.
+        assert!(send_journal_paper(paper()).is_ok());
+        let (mut delivered, _) = listener.accept().unwrap();
+        let mut delivered_bytes = Vec::new();
+        delivered.read_to_end(&mut delivered_bytes).unwrap();
+        assert_eq!(delivered_bytes, b"KITCHEN ORDER\n2 x Rice\n");
+        drop(delivered);
         drop(store);
         let mut store = LocalStore::open(&dir.path().join("print.sqlite3"), &keys).unwrap();
         assert_eq!(
@@ -512,6 +520,23 @@ mod durable_tests {
         // Same failed attempt cannot transport; a newly claimed attempt can.
         let listener = std::net::TcpListener::bind("127.0.0.1:9100").unwrap();
         listener.set_nonblocking(true).unwrap();
+        assert_eq!(
+            print_once(
+                &mut store,
+                "refused",
+                &scope,
+                1,
+                true,
+                JournalPaper::System {
+                    title: String::new(),
+                    text: String::new()
+                }
+            )
+            .unwrap()
+            .state,
+            "not_sent",
+            "same-attempt failed acknowledgement recovery must ignore changed printer settings"
+        );
         assert_eq!(
             print_once(&mut store, "refused", &scope, 1, true, paper())
                 .unwrap()
@@ -606,6 +631,29 @@ mod durable_tests {
                 .unwrap()
                 .state,
             "UNKNOWN"
+        );
+        // The journal transport preserves the original raw target guards.
+        let other = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        other.set_nonblocking(true).unwrap();
+        let port = other.local_addr().unwrap().port();
+        assert!(!crate::raw_print::RAW_PORTS.contains(&port));
+        assert!(matches!(
+            send_journal_network("127.0.0.1", port, b"x"),
+            Err(TransportFailure::NotSent(_))
+        ));
+        assert!(
+            other.accept().is_err(),
+            "connected outside the printer port range"
+        );
+        let nonlocal = std::net::TcpListener::bind("0.0.0.0:9100").unwrap();
+        nonlocal.set_nonblocking(true).unwrap();
+        assert!(matches!(
+            send_journal_network("0.0.0.0", 9100, b"x"),
+            Err(TransportFailure::NotSent(_))
+        ));
+        assert!(
+            nonlocal.accept().is_err(),
+            "connected to a disallowed resolved address"
         );
     }
 }
@@ -720,7 +768,11 @@ fn print_once(
     }
     if let Some(old) = store.inspect_print(key, scope)? {
         // These outcomes are independent of today's route/payload/settings.
-        if matches!(old.state.as_str(), "ACCEPTED" | "UNKNOWN") {
+        if matches!(old.state.as_str(), "ACCEPTED" | "UNKNOWN")
+            || (old.state == "NOT_SENT" && old.attempt == attempt)
+        {
+            // Same-attempt NOT_SENT only recovers the failed acknowledgement;
+            // today's settings must not rewrite its original evidence.
             return Ok(old.into());
         }
     }

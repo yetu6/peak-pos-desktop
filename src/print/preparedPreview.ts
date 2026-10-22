@@ -26,7 +26,8 @@ export function preparePreview(orderId:string,kind:PreviewKind,papers:readonly P
  const views=new Map<string,TillPaper>();
  for(const [i,paper] of papers.entries()) {
   const job:POSPrintJob={...paper,id:`preview-${i}`,sourceId:orderId,sourceType:"POS_ORDER",status:"ON_FILE",attempts:0,createdAt:""};
-  views.set(key(paper),clone(buildPaperFor(job,{settings,printRaw:async()=>undefined,tagsOf})));
+  try { views.set(key(paper),clone(buildPaperFor(job,{settings,printRaw:async()=>undefined,tagsOf}))); }
+  catch { /* Same fallback as paperViews: queue the authoritative job; a rendering failure stays visible during printing. */ }
  }
  prepared.push({scope:scope(),orderId,kind,token,until:Date.now()+PAPER_PREVIEW_TTL_MS,papers:views});
  while(prepared.length>MAX_PREPARED_PREVIEWS)prepared.shift();
@@ -39,9 +40,9 @@ export function preparedPaper(job:POSPrintJob):TillPaper|undefined {
  return undefined;
 }
 export function previewTokenFor(orderId:string,kind:PreviewKind):string|undefined {
- return [...prepared].reverse().find(p=>p.scope===scope()&&p.orderId===orderId&&p.kind===kind&&p.until>=Date.now())?.token;
+ return [...prepared].reverse().find(p=>p.scope===scope()&&p.orderId===orderId&&p.kind===kind )?.token;
 }
-export function clearPreparedPreviews():void {prepared.length=0;}
+export function clearPreparedPreviews():void {prepared.length=0;receivedTokens.clear();}
 
 const receivedTokens = new Map<string, {token:string;until:number}>();
 function tokenKey(orderId:string,kind:PreviewKind):string {return `${scope()}|${orderId}|${kind}`;}
@@ -51,5 +52,5 @@ export function rememberPreviewToken(orderId:string,kind:PreviewKind,token?:stri
  while(receivedTokens.size>MAX_PREPARED_PREVIEWS)receivedTokens.delete(receivedTokens.keys().next().value!);
 }
 export function receivedPreviewToken(orderId:string,kind:PreviewKind):string|undefined {
- const value=receivedTokens.get(tokenKey(orderId,kind));return value&&value.until>=Date.now()?value.token:undefined;
+ const value=receivedTokens.get(tokenKey(orderId,kind));return value?.token;
 }

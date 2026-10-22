@@ -1,3 +1,4 @@
+import { Papers80Fixture, Papers58Fixture, PapersCopyFixture, PapersCancelFixture } from "./W5Fixtures";
 import type { ComponentType } from "react";
 import { isVisualFixtureName, type VisualFixtureName } from "./fixtureNames";
 import {
@@ -149,6 +150,10 @@ const FIXTURES: Record<VisualFixtureName, ComponentType> = {
   "close-over": CloseOverFixture,
   "close-tabs": CloseTabsFixture,
   printers: StatusPrintersFixture,
+ "papers-80":Papers80Fixture,
+ "papers-58":Papers58Fixture,
+ "papers-copy":PapersCopyFixture,
+ "papers-cancel":PapersCancelFixture,
   register: RegisterFixture,
   "register-empty": RegisterEmptyFixture,
   "register-no-table": RegisterNoTableFixture,

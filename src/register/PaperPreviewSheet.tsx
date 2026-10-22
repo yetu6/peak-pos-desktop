@@ -1,5 +1,6 @@
+import { renderPaperText } from "../print/PaperText";
 import { Printer, Send } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Banner, Button, Sheet, Tabs } from "../components/system";
 import { usePaperPreview, usePrinterSettings } from "../hooks/usePosData";
 import { preparePreview, receivedPreviewToken } from "../print/preparedPreview";
@@ -43,8 +44,10 @@ export function PaperPreviewSheet({
   onPrint: (stations?: string[]) => void;
   onBack: () => void;
 }) {
-  const papers = usePaperPreview(orderId, kind);
+  const requestKind = kind === "ROUND" && nothingNew ? "AGAIN" : kind;
+  const papers = usePaperPreview(orderId, requestKind);
   const settings = usePrinterSettings();
+  const shownToken = useMemo(() => receivedPreviewToken(orderId, requestKind), [orderId, requestKind, papers.data]);
   const views = papers.data && settings.data ? paperViews(papers.data, settings.data, tagsOf) : null;
   const [tab, setTab] = useState("0");
   const shown = views?.[Number(tab)] ?? views?.[0] ?? null;
@@ -63,7 +66,7 @@ export function PaperPreviewSheet({
   const oneStation = stationPapers > 0 && !allOnly && shown?.station ? shown.station : null;
 
   function confirm(stations?: string[]) {
-    if (papers.data && settings.data) preparePreview(orderId, kind, papers.data, settings.data, tagsOf, receivedPreviewToken(orderId, kind));
+    if (papers.data && settings.data) preparePreview(orderId, requestKind, papers.data, settings.data, tagsOf, shownToken);
     if (stations) onPrint(stations);
     else onPrint();
   }
@@ -153,7 +156,7 @@ export function PaperPreviewSheet({
               aria-label={`${shown.name} paper`}
               data-testid="paper-text"
             >
-              {shown.text}
+              {renderPaperText(shown.text)}
             </pre>
           ) : null}
         </>

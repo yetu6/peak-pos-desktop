@@ -103,6 +103,58 @@ mod tests {
         assert_eq!(financial, 0);
     }
     #[test]
+    fn known_no_send_allows_corrected_route_only_for_a_higher_attempt() {
+        let mut s = store();
+        let scope = scope();
+        s.reserve_print_attempt("job", &scope, "old-route", "old-payload", 1)
+            .unwrap();
+        assert!(
+            s.reserve_print_attempt("job", &scope, "new-route", "new-payload", 2)
+                .is_err(),
+            "a reservation cannot silently change its paper"
+        );
+        s.mark_print("job", &scope, 1, "RESERVED", "UNKNOWN", None)
+            .unwrap();
+        s.mark_print(
+            "job",
+            &scope,
+            1,
+            "UNKNOWN",
+            "NOT_SENT",
+            Some("connection refused"),
+        )
+        .unwrap();
+        assert_eq!(
+            s.reserve_print_attempt("job", &scope, "old-route", "old-payload", 1)
+                .unwrap()
+                .state,
+            "NOT_SENT"
+        );
+        assert!(
+            s.reserve_print_attempt("job", &scope, "new-route", "new-payload", 1)
+                .is_err(),
+            "same-attempt evidence is immutable"
+        );
+        let retry = s
+            .reserve_print_attempt("job", &scope, "new-route", "new-payload", 2)
+            .unwrap();
+        assert_eq!(retry.attempt, 2);
+        assert_eq!(retry.state, "RESERVED");
+        assert_eq!(retry.route_hash, "new-route");
+        assert_eq!(retry.payload_hash, "new-payload");
+        let prior: (String, String, String) = s.connection.query_row("SELECT state,route_hash,payload_hash FROM native_print_attempts WHERE job_key='job' AND attempt=1", [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+        assert_eq!(
+            prior,
+            ("NOT_SENT".into(), "old-route".into(), "old-payload".into())
+        );
+        assert!(
+            s.reserve_print_attempt("job", &scope, "new-route", "new-payload", 1)
+                .is_err(),
+            "a stale backend attempt cannot dispatch a newer reservation"
+        );
+    }
+
+    #[test]
     fn journal_is_bounded_without_evicting_duplicate_protection() {
         let mut s = store();
         let scope = scope();
@@ -201,6 +253,9 @@ impl LocalStore {
         }
         let old = self.inspect_print(key, scope)?;
         if let Some(old) = &old {
+            if old.state == "RESERVED" && attempt != old.attempt {
+                return Err(LocalStoreError::OperationNotAllowed);
+            }
             if (old.state != "NOT_SENT" || attempt <= old.attempt)
                 && (old.route_hash != route || old.payload_hash != payload)
             {

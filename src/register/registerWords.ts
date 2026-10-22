@@ -312,3 +312,5 @@ export const ORDER_CONTEXT_WORDS = { name: "Name (optional)", table: "Table (opt
 
 /** A submitted round handed over at the counter, with no production paper. */
 export const DIRECT_HAND_OVER_WORDS = "Hand these over at the till. No kitchen or bar paper.";
+export const DIRECT_ORDER_SENT_WORDS = "Order sent. Hand these over at the till.";
+export const ORDER_SENT_WORDS = "Sent to the kitchen.";

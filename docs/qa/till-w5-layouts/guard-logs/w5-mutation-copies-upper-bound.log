@@ -1,0 +1,35 @@
+
+ RUN  v4.1.10 /home/mwombeki/Desktop/PEAK/.worktrees/till-w5
+
+ ❯ src/print/w5Layouts.test.ts (10 tests | 1 failed) 89ms
+   × rejects excessive, fractional and unsafe station copies 12ms
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 15 passed (16)
+   Start at  17:14:18
+   Duration  2.49s (transform 506ms, setup 577ms, import 527ms, tests 159ms, environment 2.67s)
+
+$ vitest run "src/print/w5Layouts.test.ts" src/print/billLogo.test.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/print/w5Layouts.test.ts > rejects excessive, fractional and unsafe station copies
+AssertionError: expected 4 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 4
+
+ ❯ src/print/w5Layouts.test.ts:82:47
+     80|   for (const count of [0, -1, 4, 1.5, Infinity, NaN, "3"]) {
+     81|     const settings = settingsFrom({ stationCopies: { BAR: count } });
+     82|     expect(stationCopiesFor(settings, "BAR")).toBe(1);
+       |                                               ^
+     83|     expect(settings.stationCopies?.BAR).toBeUndefined();
+     84|   }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+error: script "test" exited with code 1

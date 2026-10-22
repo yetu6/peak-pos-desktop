@@ -1,3 +1,4 @@
+import { PAPER_WORDS, stationCopiesWords } from "./paperWords";
 import { Printer } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Button, Field, SegmentedControl } from "../components/system";
@@ -131,11 +132,11 @@ export function PrintersCard({ billLogoUrl }: { billLogoUrl?: string } = {}) {
           />
           <label className="y-printers__switch">
             <input type="checkbox" role="switch" checked={settings.quantityBold ?? true} onChange={event => setSettings({ ...settings, quantityBold: event.target.checked })} />
-            <span>Bold quantities</span>
+            <span>{PAPER_WORDS.quantityBold}</span>
           </label>
           <label className="y-printers__switch">
             <input type="checkbox" role="switch" checked={settings.quantityLarge ?? true} onChange={event => setSettings({ ...settings, quantityLarge: event.target.checked })} />
-            <span>Large quantities</span>
+            <span>{PAPER_WORDS.quantityLarge}</span>
           </label>
           <details className="y-printers__stations">
             <summary>A printer for one station (optional)</summary>
@@ -156,8 +157,8 @@ export function PrintersCard({ billLogoUrl }: { billLogoUrl?: string } = {}) {
               />
               {settings.stations[station] !== NO_PAPER ? (
                 <label className="y-printers__label">
-                  {stationWords(station)}: copies
-                  <select className="y-printers__select" aria-label={`${stationWords(station)}: copies`} value={stationCopies(settings, station)}
+                  {stationCopiesWords(stationWords(station))}
+                  <select className="y-printers__select" aria-label={`${stationCopiesWords(stationWords(station))}`} value={stationCopies(settings, station)}
                     onChange={event => setSettings({ ...settings, stationCopies: { ...settings.stationCopies, [station]: Number(event.target.value) } })}>
                     {Array.from({ length: MAX_STATION_COPIES }, (_, index) => index + 1).map(count => <option key={count} value={count}>{count}</option>)}
                   </select>
@@ -185,12 +186,12 @@ export function PrintersCard({ billLogoUrl }: { billLogoUrl?: string } = {}) {
         <label className="y-printers__switch">
           <input type="checkbox" role="switch" checked={settings.receipt.billLogo ?? false}
             onChange={event => setSettings({ ...settings, receipt: settings.receipt ? { ...settings.receipt, billLogo: event.target.checked } : null })} />
-          <span>Print the business logo on bills</span>
+          <span>{PAPER_WORDS.billLogo}</span>
         </label>
         {settings.receipt.billLogo ? (
           <>
-            <p className="y-cash__muted">The logo comes from the property branding in the hotel app.</p>
-            <p className="y-cash__muted">Use a simple logo. Photos and gradients may print poorly. If the image cannot print, the business name still prints. Switch the logo off if the printer does not support images.</p>
+            <p className="y-cash__muted">{PAPER_WORDS.logoSource}</p>
+            <p className="y-cash__muted">{PAPER_WORDS.logoHelp}</p>
           </>
         ) : null}
         <label className="y-printers__switch">

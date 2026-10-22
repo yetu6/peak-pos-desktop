@@ -1,3 +1,5 @@
+import { billItemColumns } from "./billColumns";
+import { PAPER_WORDS } from "./paperWords";
 import { PRINT_BRAND } from "./printBrand";
 import type { MonochromeRaster } from "./billLogo";
 import { orderName, orderReference } from "../lib/orderNumber";
@@ -36,6 +38,8 @@ export function receiptBytes(receipt: ReceiptCopy, width: PaperWidth, options: R
   if (options.logo) out.align("center").raster(options.logo);
   out.align("center").bold(true).size(1, 2).wrapped((receipt.propertyName ?? "Property").toUpperCase()).size(1, 1);
   if (receipt.outletName) out.wrapped(receipt.outletName);
+  const contact = [receipt.propertyAddress, receipt.propertyPhone].filter(Boolean).join(" · ");
+  if (contact) out.wrapped(contact);
   out.bold(true).line(receipt.beforePayment ? BILL_HEADING : `${BILL_HEADING} - PAID`).bold(false);
   if (options.copy || receipt.copy) {
     out.bold(true).line("*** COPY ***").bold(false);
@@ -57,7 +61,7 @@ export function receiptBytes(receipt: ReceiptCopy, width: PaperWidth, options: R
   out.rule();
 
   if (receipt.lines.length === 0) out.line("(no items)");
-  for (const line of receipt.lines) columns(out, `${line.quantity.trim() || "1"} x ${line.name}`, line.total ?? "", width);
+  for (const line of billItemColumns(receipt.lines, width)) out.line(line);
   out.rule();
 
   if (receipt.subtotal) columns(out, receipt.vatIncluded ? "Items" : "Subtotal", receipt.subtotal, width);
@@ -80,7 +84,7 @@ export function receiptBytes(receipt: ReceiptCopy, width: PaperWidth, options: R
     out.line(`Room ${receipt.roomCharge.room ?? "_".repeat(Math.max(8, width - 6))}`).feed(1);
     out.line(GUEST_SIGNATURE).feed(2).line("_".repeat(width));
   }
-  out.rule().align("center").wrapped("Please pay at the till. Thank you.");
+  out.rule().align("center").wrapped(receipt.beforePayment ? PAPER_WORDS.payThanks : PAPER_WORDS.thanks);
   return out.feed(3).cut().build();
 }
 

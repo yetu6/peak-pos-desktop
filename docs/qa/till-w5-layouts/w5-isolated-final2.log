@@ -1,0 +1,10 @@
+$ vitest run "src/print/w5Layouts.test.ts" src/print/billLogo.test.ts src/print/PrintersCard.test.tsx src/print/kitchenTicket.test.ts src/print/printerSettings.test.ts src/print/receipt.test.ts src/lib/kitchenTicketPrint.test.ts "--maxWorkers=1"
+
+ RUN  v4.1.10 /home/mwombeki/Desktop/PEAK/.worktrees/till-w5
+
+
+ Test Files  7 passed (7)
+      Tests  56 passed (56)
+   Start at  20:46:00
+   Duration  16.59s (transform 682ms, setup 1.71s, import 1.38s, tests 2.43s, environment 8.13s)
+

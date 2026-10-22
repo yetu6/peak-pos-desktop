@@ -1,0 +1,41 @@
+
+ RUN  v4.1.10 /home/mwombeki/Desktop/PEAK/.worktrees/till-w5
+
+ ❯ src/print/billLogo.test.ts (6 tests | 1 failed) 87ms
+   × invalid raster falls back to text without printing image bytes 19ms
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 15 passed (16)
+   Start at  17:14:32
+   Duration  2.28s (transform 412ms, setup 623ms, import 452ms, tests 164ms, environment 2.40s)
+
+$ vitest run "src/print/w5Layouts.test.ts" src/print/billLogo.test.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/print/billLogo.test.ts > invalid raster falls back to text without printing image bytes
+AssertionError: expected '------------------\n-----------------…' to contain 'BAHARI QA HOTEL'
+
+- Expected
++ Received
+
+- BAHARI QA HOTEL
++ ------------------
++ ------------------------------------------------
++ (no items)
++ ------------------------------------------------
++ ------------------------------------------------
++ Please pay at the till. Thank you.
++
+
+ ❯ src/print/billLogo.test.ts:20:27
+     18|   const bytes = receiptBytes({ propertyName: "Bahari QA Hotel", before…
+     19|     { logo: { width: 576, height: 1, data: new Uint8Array(0) } });
+     20|   expect(readable(bytes)).toContain("BAHARI QA HOTEL");
+       |                           ^
+     21|   expect(Array.from(bytes).join(",")).not.toContain("29,118,48,0");
+     22| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+error: script "test" exited with code 1

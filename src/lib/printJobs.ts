@@ -1,3 +1,4 @@
+import { PRINT_RECOVERY_WORDS } from "../print/printQueueWords";
 import { getApiBaseUrl } from "./peakConfig";
 import { getOperationalSession } from "./operationalSession";
 import { restRequestHeaders } from "./restAuth";
@@ -282,6 +283,13 @@ export function buildPaperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): Ti
     const { target, width } = route.printer;
     return { kind: "thermal", target, width, bytes: receiptPaperFor(copyDocument(job), width, routes?.settings.cashDrawer ?? false, formatted.text, route.printer.billLogo ? cachedBillLogo(routes?.settings.billLogoUrl, width) : undefined) };
   }
+  if (job.jobType === KITCHEN_TICKET && routes) {
+    const count = stationCopiesFor(routes.settings, typeof job.document.station === "string" ? job.document.station : undefined);
+    if (count > 1) {
+      const copy = formatPrintDocument({ ...job, document: { ...job.document, copy: true } });
+      return { kind: "system", title: formatted.title, text: [formatted.text, ...Array<string>(count - 1).fill(copy.text)].join("\n\f\n") };
+    }
+  }
   return { kind: "system", title: formatted.title, text: formatted.text };
 }
 
@@ -290,6 +298,8 @@ export async function processPrintJob(
   printFn: (title: string, text: string) => Promise<void> = defaultPrint,
   routes?: KitchenPrintRoutes,
 ): Promise<PrintResult> {
+  const printSession = getOperationalSession();
+  const sameSession = () => getOperationalSession() === printSession;
   if (job.status === "PRINTED" || job.status === "ON_FILE") return { ok: true };
   if (job.status === "CLAIMED" && job.claimedByTerminalId !== getOperationalSession()?.terminalId) return { ok: true };
   if ((preparedPaper(job) ?? paperRoute(job, routes)).kind === "none" && job.status !== "CLAIMED") return { ok: true };
@@ -303,19 +313,21 @@ export async function processPrintJob(
     }
     return printFailure(error);
   }
+  if (!sameSession()) return { ok: false, error: PRINT_RECOVERY_WORDS.sessionChanged };
   let knownNotSent = !usesNativePrintJournal();
   try {
     if (usesNativePrintJournal()) {
-      const evidence = await inspectNativePrint(claimed.id);
-      if (evidence?.state === "unknown") return { ok: false, error: "Check the printer before making a copy. The previous paper may have printed; automatic retry is stopped." };
+      const evidence = await inspectNativePrint(claimed.id, printSession);
+      if (!sameSession()) return { ok: false, error: PRINT_RECOVERY_WORDS.sessionChanged };
+      if (evidence?.state === "unknown") return { ok: false, error: PRINT_RECOVERY_WORDS.unknown };
       if (evidence?.state !== "accepted") {
         const paper = paperFor(claimed, routes);
         if (paper.kind === "none") return { ok: true };
-        const result = await nativePrintOnce(claimed.id, claimed.attempts, paper);
-        if (result.state === "unknown" || result.state === "reserved") return { ok: false, error: "Check the printer before making a copy. The previous paper may have printed; automatic retry is stopped." };
+        const result = await nativePrintOnce(claimed.id, claimed.attempts, paper, printSession);
+        if (result.state === "unknown" || result.state === "reserved") return { ok: false, error: PRINT_RECOVERY_WORDS.unknown };
         if (result.state === "not_sent") {
           knownNotSent = true;
-          throw new Error(result.message ?? "The printer did not answer. Check it is on and try again.");
+          throw new Error(result.message ?? PRINT_RECOVERY_WORDS.offlinePrinter);
         }
       }
     } else {
@@ -325,7 +337,8 @@ export async function processPrintJob(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!knownNotSent) return { ok: false, error: "Check the printer before making a copy. Printing could not be confirmed; automatic retry is stopped." };
+    if (!sameSession()) return { ok: false, error: PRINT_RECOVERY_WORDS.sessionChanged };
+    if (!knownNotSent) return { ok: false, error: PRINT_RECOVERY_WORDS.unconfirmed };
     try {
       await ackFailed(claimed.id, message || "No printer is set up on this till", claimed.attempts);
     } catch {
@@ -333,13 +346,14 @@ export async function processPrintJob(
     }
     return { ok: false, error: message || "No printer is set up on this till" };
   }
+  if (!sameSession()) return { ok: false, error: PRINT_RECOVERY_WORDS.sessionChanged };
   try {
     await ackPrinted(claimed.id, claimed.attempts);
     return { ok: true };
   } catch {
     // The transport already accepted this paper. Keep CLAIMED and retry only
     // its acknowledgement; marking it FAILED would invite a duplicate copy.
-    return { ok: false, error: "The printer accepted this paper. Confirmation is waiting; check the paper before making a copy." };
+    return { ok: false, error: PRINT_RECOVERY_WORDS.accepted };
   }
 
 }
@@ -356,6 +370,7 @@ export async function processPendingPrintJobs(
   printFn: (title: string, text: string) => Promise<void> = defaultPrint,
   routes?: KitchenPrintRoutes,
 ): Promise<PrintResult[]> {
+  const batchSession = getOperationalSession();
   let jobs: POSPrintJob[];
   try {
     jobs = await listPrintJobs("PENDING", sourceId);
@@ -365,6 +380,7 @@ export async function processPendingPrintJobs(
   const mine = sourceId ? jobs.filter((job) => String(job.sourceId) === sourceId) : jobs;
   const results: PrintResult[] = [];
   for (const job of mine) {
+    if (getOperationalSession() !== batchSession) { results.push({ ok: false, error: PRINT_RECOVERY_WORDS.sessionChanged }); break; }
     results.push({ ...(await processPrintJob(job, printFn, routes)), jobType: job.jobType });
   }
   return results;

@@ -68,7 +68,7 @@ it("a known connection refusal can be retried, using the same financial job",asy
  const result=await processPrintJob(job);
  expect(result).toEqual({ok:false,error:"Printer did not answer"});
  expect(urls.some(url=>url.endsWith("/failed"))).toBe(true);
- expect(native.send).toHaveBeenCalledWith(job.id,1,expect.objectContaining({kind:"system"}));
+ expect(native.send).toHaveBeenCalledWith(job.id,1,expect.objectContaining({kind:"system"}),null);
 });
 
 it("does not recover a job claimed by another terminal",async()=>{
@@ -87,4 +87,20 @@ it("system paid-bill copies retain references and carry a COPY mark",async()=>{
  const {text}=formatPrintDocument({...job,jobType:"RECEIPT",document,reprintedFromId:"original",createdAt:"2026-10-22T14:00:00Z"});
  expect(text).toContain("COPY");expect(text).toContain("Ref POS-7");expect(text).toContain("TSh 5,000");
  expect(document).not.toHaveProperty("copy");
+});
+
+it("a native bridge interruption does not label uncertain delivery as a safe failed job",async()=>{
+ native.enabled=true;native.inspect.mockRejectedValue(new Error("Native process disconnected"));
+ const urls:string[]=[];vi.stubGlobal("fetch",vi.fn(async(input:string)=>{urls.push(String(input));return reply({...job,status:"CLAIMED",attempts:1});}));
+ const result=await processPrintJob(job);
+ expect(result.ok).toBe(false);expect(result.error).toContain("Check the printer");
+ expect(urls.filter(url=>url.endsWith("/failed"))).toHaveLength(0);expect(native.send).not.toHaveBeenCalled();
+});
+
+it("switching session while a claim is pending stops dispatch and acknowledgement",async()=>{
+ const {setOperationalSession,clearOperationalSession}=await import("./operationalSession");
+ const session={token:"old",expiresAt:"",tenantId:"tenant",propertyId:"old-property",outletId:"old-outlet",terminalId:"old-terminal",staffId:"staff",assurance:"RESTRICTED" as const};
+ setOperationalSession(session);const print=vi.fn(async()=>undefined);const urls:string[]=[];
+ vi.stubGlobal("fetch",vi.fn(async(input:string)=>{const url=String(input);urls.push(url);if(url.endsWith("/claim")){setOperationalSession({...session,token:"new",propertyId:"new-property",terminalId:"new-terminal"});return reply({...job,status:"CLAIMED",attempts:1,claimedByTerminalId:"old-terminal"});}return reply({});}));
+ try{const result=await processPrintJob(job,print);expect(result.ok).toBe(false);expect(print).not.toHaveBeenCalled();expect(urls).toHaveLength(1);}finally{clearOperationalSession();}
 });

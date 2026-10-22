@@ -1,0 +1,50 @@
+
+ RUN  v4.1.10 /home/mwombeki/Desktop/PEAK/.worktrees/till-w5
+
+ ❯ src/print/w5Layouts.test.ts (14 tests | 2 failed) 91ms
+   × prints business contact details once on both bill paths at 32 17ms
+   × prints business contact details once on both bill paths at 48 4ms
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  2 failed | 18 passed (20)
+   Start at  20:41:34
+   Duration  5.21s (transform 307ms, setup 778ms, import 333ms, tests 162ms, environment 3.05s)
+
+$ vitest run "src/print/w5Layouts.test.ts" src/print/billLogo.test.ts "--maxWorkers=1"
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/print/w5Layouts.test.ts > prints business contact details once on both bill paths at 32
+ FAIL  src/print/w5Layouts.test.ts > prints business contact details once on both bill paths at 48
+AssertionError: expected 'BAHARI QA HOTEL\n+255 700 123 456\nBI…' to contain 'Dar es Salaam'
+
+- Expected
++ Received
+
+- Dar es Salaam
++ BAHARI QA HOTEL
++ +255 700 123 456
++ BILL
++ order
++
++ (no items)
++
++
++
++ ----------------
++ Please pay at the till. Thank you.
++ ------------------------------------------------
++               Powered by Yetu-FBC
++
+
+ ❯ src/print/w5Layouts.test.ts:102:18
+    100|     propertyAddress: "Dar es Salaam", propertyPhone: "+255 700 123 456…
+    101|   for (const text of [formatReceipt(copy), readable(receiptBytes(copy,…
+    102|     expect(text).toContain("Dar es Salaam");
+       |                  ^
+    103|     expect(text).toContain("+255 700 123 456");
+    104|     expect(text.match(/Powered by Yetu-FBC/g)).toHaveLength(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+error: script "test" exited with code 1
