@@ -220,3 +220,15 @@ it("caches advisory cash preferences at the authenticated first bootstrap", asyn
   expect(cachedOutletMoney("another-property",session.outletId).standardFloat).toBe(0);
  } finally {vi.unstubAllGlobals();localStorage.clear();}
 });
+
+it("caches authenticated table and guest prompts before the first offline sale", async () => {
+ const {cachedOutletOrderSettings}=await import("./outletOrderSettings");
+ localStorage.clear();
+ vi.stubGlobal("fetch",vi.fn(async(input:RequestInfo|URL)=>String(input).endsWith("/catalog")
+  ? json({outletId:session.outletId,outletName:"Main Bar",products:[],askForTable:false,captureGuestCount:true}) : json([])));
+ try {
+  await bootstrapOperationalSession("https://peak.example",session);
+  expect(cachedOutletOrderSettings(session.propertyId,session.outletId)).toEqual({askForTable:false,captureGuestCount:true});
+  expect(cachedOutletOrderSettings("another-property",session.outletId)).toEqual({askForTable:true,captureGuestCount:false});
+ } finally {vi.unstubAllGlobals();localStorage.clear();}
+});

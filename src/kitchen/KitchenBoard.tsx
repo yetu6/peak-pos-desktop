@@ -1,7 +1,7 @@
 import { ChefHat, Clock } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, type FocusEvent, type KeyboardEvent } from "react";
 import { Banner, Button, EmptyState, PermissionNotice, RefusalNotice, SegmentedControl, Skeleton, StatusChip, type Choice, type Refusal } from "../components/system";
-import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
+import { clockTime, guestCountWords, orderPlaceWords, serviceTypeWords } from "../lib/words";
 import { KITCHEN_REFRESH_SECONDS } from "./kitchenSettings";
 import { boardColumns, type BoardColumn, type BoardTicket } from "./kitchenTickets";
 import { isNewTicket, nextStepFor, stationWords, ticketAge, type AgeThresholds } from "./kitchenWords";
@@ -33,7 +33,7 @@ export interface KitchenBoardProps {
 }
 
 function placeWords(ticket: BoardTicket): string {
-  return orderPlaceWords(ticket.serviceType, ticket.tableLabel) || serviceTypeWords(ticket.serviceType);
+  return orderPlaceWords(ticket.serviceType, ticket.tableLabel, ticket.askForTable) || serviceTypeWords(ticket.serviceType);
 }
 
 function countWords(count: number): string {
@@ -296,7 +296,7 @@ function TicketCard({
   const fresh = isNewTicket(ticket.status, ticket.sentAt, nowMs);
   const next = nextStepFor(ticket.status);
   const sent = ticket.sentAt ? clockTime(ticket.sentAt) : "";
-  const meta = [placeWords(ticket), ticket.staffName, sent ? `Sent ${sent}` : "", ticket.station ? stationWords(ticket.station) : ""]
+  const meta = [placeWords(ticket), ticket.guestCount ? guestCountWords(ticket.guestCount) : "", ticket.staffName, sent ? `Sent ${sent}` : "", ticket.station ? stationWords(ticket.station) : ""]
     .filter(Boolean)
     .join(" · ");
 

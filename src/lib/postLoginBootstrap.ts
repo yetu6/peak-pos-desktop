@@ -1,4 +1,5 @@
 import { cacheOutletMoney } from "./outletMoneySettings";
+import { cacheOutletOrderSettings } from "./outletOrderSettings";
 import {
   SessionExpiredError,
   type OperationalSession,
@@ -103,6 +104,7 @@ export async function bootstrapOperationalSession(
     throw new PostLoginBootstrapError("Peak register bootstrap returned invalid active orders");
   }
   cacheOutletMoney(session.propertyId, session.outletId, catalog);
+  cacheOutletOrderSettings(session.propertyId, session.outletId, catalog);
   const result: PostLoginBootstrap = {
     catalog: catalog as BootstrapCatalog,
     activeOrders: rawOrders,

@@ -27,7 +27,7 @@ export function barOrder(orders: readonly POSOrder[], staffId: string | null | u
  * or the name they typed, else its number; then what is on it.
  */
 export function openOrderWords(order: POSOrder): { name: string; items: string } {
-  const place = orderPlaceWords(order.serviceType, order.tableLabel);
+  const place = orderPlaceWords(order.serviceType, order.tableLabel, order.askForTable);
   const lines = (order.items ?? []).filter((line) => line.status !== "VOIDED");
   const shown = lines.slice(0, 2).map((line) => (line.quantity > 1 ? `${line.quantity} ${line.name}` : line.name));
   const more = lines.length > 2 ? ` +${lines.length - 2}` : "";

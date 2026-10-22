@@ -1,7 +1,7 @@
 import { orderName, orderReference } from "../lib/orderNumber";
 import { BILL_HEADING, CHARGE_TO_ROOM, GUEST_SIGNATURE, type ReceiptCopy } from "../lib/receiptPrint";
 import { EscPos, printable, wrap, type PaperWidth } from "./escpos";
-import { placeWords } from "../lib/words";
+import { guestCountWords, placeWords } from "../lib/words";
 
 /**
  * The guest's bill on a thermal printer (S8b; a bill since 2026-10-20): the
@@ -39,8 +39,9 @@ export function receiptBytes(receipt: ReceiptCopy, width: PaperWidth, options: R
   if (reference) out.line(`Ref ${reference}`);
   out.align("left").rule();
 
-  const place = [placeWords(receipt.serviceType, receipt.tableNumber) || null, receipt.settlementMethod].filter(Boolean).join("  ");
+  const place = [placeWords(receipt.serviceType, receipt.tableNumber, receipt.askForTable) || null, receipt.settlementMethod].filter(Boolean).join("  ");
   if (place) out.wrapped(place);
+  if (receipt.guestCount) out.wrapped(guestCountWords(receipt.guestCount));
   if (receipt.takenBy) out.wrapped(`Taken by ${receipt.takenBy}`);
   if (receipt.settledBy && receipt.settledBy !== receipt.takenBy) out.wrapped(`Settled by ${receipt.settledBy}`);
   if (receipt.settledAt) out.wrapped(`Paid ${receipt.settledAt}`);

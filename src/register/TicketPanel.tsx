@@ -8,13 +8,14 @@ import type { POSOrder, POSOrderItem, ServiceType } from "../lib/posContracts";
 import { MAX_LINE_QUANTITY } from "../lib/posContracts";
 import { clockTime, orderPlaceWords, serviceTypeWords } from "../lib/words";
 import { orderName } from "../lib/orderNumber";
-import { DISCOUNT_HELD_WORDS } from "./registerWords";
+import { ORDER_CONTEXT_WORDS, DISCOUNT_HELD_WORDS } from "./registerWords";
 
 /** The order types the backend accepts (posContracts ServiceType), in this order. */
 export const SERVICE_TYPES: readonly ServiceType[] = ["DINE_IN", "TAKEAWAY", "ROOM_SERVICE"];
 
 /** Where the order goes, as free text until tables and rooms are picked from lists (S14). */
-function labelFor(type: ServiceType): string | null {
+function labelFor(type: ServiceType, askForTable: boolean): string | null {
+  if (!askForTable && type !== "ROOM_SERVICE") return ORDER_CONTEXT_WORDS.name;
   if (type === "DINE_IN") return "Table or name";
   if (type === "ROOM_SERVICE") return "Room";
   return null;
@@ -27,6 +28,10 @@ export interface WaitingTap {
 }
 
 export interface TicketPanelProps {
+  askForTable?: boolean;
+  captureGuestCount?: boolean;
+  guestCount?: number;
+  onGuestCount?: (count: number | undefined) => void;
   /** The open orders, above the ticket (Sell's own; Orders has none). */
   bar?: ReactNode;
   order: POSOrder | null;
@@ -93,10 +98,14 @@ export function TicketPanel({
   actions,
   tagsOf,
   bar,
+  askForTable = true,
+  captureGuestCount = false,
+  guestCount,
+  onGuestCount,
 }: TicketPanelProps) {
   const locked = order !== null;
   const type = order?.serviceType ?? serviceType;
-  const labelName = labelFor(type);
+  const labelName = labelFor(type, askForTable);
   const lines = (order?.items ?? []).filter((line) => line.status !== "VOIDED");
   // The figures as the guest reads them: with VAT inside the prices, the menu prices (F-229).
   const figures = order ? vatFigures(order) : null;
@@ -181,15 +190,18 @@ export function TicketPanel({
           testIdPrefix="service-type"
         />
         {locked ? (
-          orderPlaceWords(type, order?.tableLabel) ? (
+          orderPlaceWords(type, order?.tableLabel, order?.askForTable ?? askForTable) ? (
             <p className="y-ticket__where" data-testid="table-label">
-              {orderPlaceWords(type, order?.tableLabel)}
+              {orderPlaceWords(type, order?.tableLabel, order?.askForTable ?? askForTable)}
               <span className="y-ticket__saved"> · Saved with the order.</span>
             </p>
           ) : null
         ) : labelName ? (
           <Field label={labelName} value={label} onChange={onLabel} autoComplete="off" data-testid="table-label" />
         ) : null}
+        {!locked && type === "DINE_IN" && captureGuestCount && onGuestCount ? (
+          <div><p className="y-ticket__who">{ORDER_CONTEXT_WORDS.guests}</p><Stepper label={ORDER_CONTEXT_WORDS.guests} value={guestCount ?? 0} min={0} max={2_147_483_647} onChange={(count) => onGuestCount(count > 0 ? count : undefined)} /></div>
+        ) : order?.guestCount ? <p className="y-ticket__who">{ORDER_CONTEXT_WORDS.guestCount(order.guestCount)}</p> : null}
         {sent ? (
           <StatusChip tone="info" icon={<ChefHat aria-hidden="true" />} data-testid="ticket-sent">
             {sentAt ? `Sent to kitchen ${clockTime(sentAt)}` : "Sent to kitchen"}

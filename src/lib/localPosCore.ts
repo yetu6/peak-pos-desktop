@@ -21,7 +21,7 @@ export interface LocalCatalogProduct { id: string; categoryId?: string; code: st
 export interface LocalCatalogView { snapshotId: string; version: string; currency: string; taxMode: "EXCLUSIVE" | "INCLUSIVE"; serviceTypes: Array<{id:string;label:string;requiresContext:boolean}>; categories: Array<{id:string;code:string;name:string}>; products: LocalCatalogProduct[] }
 export interface LocalOrderModifierView { id:string;optionId:string;groupName:string;name:string;priceDeltaMinor:number }
 export interface LocalOrderLineView { id:string;productId:string;name:string;quantity:number;unitPriceMinor:number;modifierTotalMinor:number;lineTotalMinor:number;pricing:{unitNetMinor:number;unitTaxMinor:number;unitTotalMinor:number;lineSubtotalMinor:number;lineTaxMinor:number;lineTotalMinor:number};modifiers:LocalOrderModifierView[] }
-export interface LocalOrderView { id:string;state:"DRAFT"|"COMMITTED"|"SETTLED";syncState:"LOCAL_DRAFT"|"SYNC_PENDING"|"ACKNOWLEDGED"|"MANUAL_REVIEW";version:number;staffId:string;serviceType:string;tableLabel?:string;notes?:string;currency:string;subtotalMinor:number;taxMinor:number;totalMinor:number;orderNumber?:string;lines:LocalOrderLineView[] }
+export interface LocalOrderView { id:string;state:"DRAFT"|"COMMITTED"|"SETTLED";syncState:"LOCAL_DRAFT"|"SYNC_PENDING"|"ACKNOWLEDGED"|"MANUAL_REVIEW";version:number;staffId:string;serviceType:string;tableLabel?:string;guestCount?:number;askForTable?:boolean;notes?:string;currency:string;subtotalMinor:number;taxMinor:number;totalMinor:number;orderNumber?:string;lines:LocalOrderLineView[] }
 export interface OfflineCashCommitResult {order:LocalOrderView;localSettlementId:string;amountDueMinor:number;cashReceivedMinor:number;changeMinor:number;operationId:string;syncState:string}
 // status is a fully-formed cashier-facing label decided by Rust (the sync
 // truth owner), e.g. "Live", "Reconnecting", "Sync issue", "Offline · 3
@@ -34,8 +34,8 @@ export interface LocalPosCore {
   installBootstrap(expectedTerminalId:string,expectedPropertyId:string,expectedOutletId:string,bootstrap:unknown):Promise<{authorization:import("./offlineAuthorization").AuthorizationStageResult;catalog:CatalogActivationResult}>;
   installCatalog(envelope:SignedCatalogSnapshot):Promise<CatalogActivationResult>;
   catalog(query?:string,categoryId?:string):Promise<LocalCatalogView>;
-  getOrCreateDraft(intent:{serviceType:string;tableLabel?:string;notes?:string}):Promise<LocalOrderView>;
-  updateContext(intent:{orderId:string;expectedVersion:number;serviceType:string;tableLabel?:string;notes?:string}):Promise<LocalOrderView>;
+  getOrCreateDraft(intent:{serviceType:string;tableLabel?:string;guestCount?:number;askForTable?:boolean;notes?:string}):Promise<LocalOrderView>;
+  updateContext(intent:{orderId:string;expectedVersion:number;serviceType:string;tableLabel?:string;guestCount?:number;askForTable?:boolean;notes?:string}):Promise<LocalOrderView>;
   addItem(intent:{orderId:string;expectedVersion:number;productId:string;quantity:number;modifierOptionIds:string[]}):Promise<LocalOrderView>;
   setQuantity(orderId:string,lineId:string,quantity:number,expectedVersion:number):Promise<LocalOrderView>;
   removeLine(orderId:string,lineId:string,expectedVersion:number):Promise<LocalOrderView>;

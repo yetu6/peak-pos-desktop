@@ -1,3 +1,5 @@
+import { cachedOutletOrderSettings } from "../lib/outletOrderSettings";
+import { getOperationalSession } from "../lib/operationalSession";
 import { useEffect, useMemo, useState } from "react";
 import { useLocalCatalog, useLocalDraft } from "../hooks/useLocalOrder";
 import type { OfflineCashCommitResult } from "../lib/localPosCore";
@@ -41,6 +43,9 @@ export function OfflineNewOrder() {
   const catalog = useLocalCatalog("", undefined);
   const { draft, addItem, setQuantity, removeLine, updateContext, commit, settleCash } = useLocalDraft(FIRST_SERVICE_TYPE);
   const order = draft.data;
+  const session = getOperationalSession();
+  const prompts = cachedOutletOrderSettings(session?.propertyId ?? null, session?.outletId ?? null);
+  const askForTable = order?.askForTable ?? prompts.askForTable;
   const currency = catalog.data?.currency ?? order?.currency ?? "";
   const menu = useMemo(() => menuOf(catalog.data), [catalog.data]);
   // The groups, tags and sizes Yetu last sent, when the till has them: never asked for offline.
@@ -145,16 +150,19 @@ export function OfflineNewOrder() {
             currency={currency}
             serviceTypes={catalog.data?.serviceTypes ?? []}
             vatIncluded={catalog.data?.taxMode === "INCLUSIVE"}
+            askForTable={askForTable}
+            captureGuestCount={prompts.captureGuestCount}
+            onGuestCount={(guestCount) => void change(() => updateContext.mutateAsync({ serviceType, tableLabel: label.trim() || undefined, askForTable, guestCount }), "change")}
             serviceType={serviceType}
             onServiceType={(next) => {
               setServiceType(next);
-              void change(() => updateContext.mutateAsync({ serviceType: next, tableLabel: label.trim() || undefined }), "change");
+              void change(() => updateContext.mutateAsync({ serviceType: next, tableLabel: label.trim() || undefined, askForTable, guestCount: next === "DINE_IN" ? order?.guestCount : undefined }), "change");
             }}
             label={label}
             onLabel={setLabel}
             onLabelDone={() => {
               if (!order || (order.tableLabel ?? "") === label.trim()) return;
-              void change(() => updateContext.mutateAsync({ serviceType, tableLabel: label.trim() || undefined }), "change");
+              void change(() => updateContext.mutateAsync({ serviceType, tableLabel: label.trim() || undefined, askForTable, guestCount: order?.guestCount }), "change");
             }}
             selectedLineId={selectedLineId}
             onSelectLine={setSelectedLineId}

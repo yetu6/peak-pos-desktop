@@ -59,3 +59,13 @@ describe("kitchen ticket on paper (S8a)", () => {
     }
   });
 });
+
+it.each([PAPER_58MM, PAPER_80MM])("keeps a short name and optional guests without inventing a table at width %s", (width) => {
+  const text = readable(kitchenTicketBytes({ ...TICKET, askForTable: false, guestCount: 3 }, width));
+  expect(text).toContain("12 - Dine in");
+  expect(text).not.toContain("Table 12");
+  expect(text).toContain("Guests: 3");
+  const absent = readable(kitchenTicketBytes({ ...TICKET, label: undefined, guestCount: undefined }, width));
+  expect(absent).not.toContain("Guests:");
+  expect(absent).not.toContain("Table");
+});

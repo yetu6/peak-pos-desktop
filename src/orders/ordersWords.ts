@@ -33,7 +33,7 @@ export function orderMatches(order: POSOrder, query: string): boolean {
   if ((!said || orderReference(order) === null) && order.orderNumber.toLowerCase().includes(needle)) return true;
   const label = order.tableLabel?.trim().toLowerCase() ?? "";
   if (label && label.includes(needle)) return true;
-  const place = orderPlaceWords(order.serviceType, order.tableLabel).toLowerCase();
+  const place = orderPlaceWords(order.serviceType, order.tableLabel, order.askForTable).toLowerCase();
   if (place && place.includes(needle)) return true;
   const amount = needle.replace(/^tsh/, "").replace(/[\s,]/g, "");
   if (!AMOUNT_TYPED.test(amount)) return false;

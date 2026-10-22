@@ -101,3 +101,12 @@ describe("a printed receipt whose prices include VAT", () => {
     expect(text).toContain("VAT  TSh 1,983.05");
   });
 });
+
+it.each([PAPER_58MM, PAPER_80MM])("preserves optional order context on bills at width %s", (width) => {
+  const receipt = receiptCopyFromPrintDocument({ ...RECEIPT, serviceType: "DINE_IN", tableLabel: "12", askForTable: false, guestCount: 3 });
+  const paper = readable(receiptBytes(receipt, width));
+  expect(paper).not.toContain("Table 12");
+  expect(paper).toContain("Guests: 3");
+  expect(formatReceipt(receipt)).toContain("Guests: 3");
+  expect(formatReceipt(receipt)).not.toContain("Table 12");
+});

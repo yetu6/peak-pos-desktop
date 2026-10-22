@@ -29,6 +29,8 @@ export interface BoardTicket {
   version: number;
   serviceType: ServiceType;
   tableLabel?: string;
+  guestCount?: number;
+  askForTable?: boolean;
   staffName?: string;
   notes?: string;
   station?: string;
@@ -92,6 +94,8 @@ export function ticketsFromOrders(orders: readonly POSOrder[], stationTickets: r
         version: order.version,
         serviceType: order.serviceType,
         tableLabel: order.tableLabel,
+        guestCount: order.guestCount,
+        askForTable: order.askForTable,
         staffName: order.initiatedByName || undefined,
         notes: order.notes,
         sentAt: sent.get(order.id),
@@ -117,6 +121,8 @@ export function ticketsFromStations(tickets: readonly POSStationTicket[]): Board
         version: ticket.version,
         serviceType: ticket.serviceType,
         tableLabel: ticket.tableLabel,
+        guestCount: ticket.guestCount,
+        askForTable: ticket.askForTable,
         staffName: ticket.waiterName || undefined,
         notes: ticket.notes,
         station: ticket.station,

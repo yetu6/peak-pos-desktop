@@ -1,3 +1,5 @@
+import { cachedOutletOrderSettings } from "../lib/outletOrderSettings";
+import { getOperationalSession } from "../lib/operationalSession";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { billNotPrintedWords, printProblemOnce } from "../print/printProblems";
@@ -73,6 +75,11 @@ export function NewOrder({
   const [search, setSearch] = useState("");
   const [serviceType, setServiceType] = useState<ServiceType>(resume?.serviceType ?? "DINE_IN");
   const [tableLabel, setTableLabel] = useState(resume?.tableLabel ?? "");
+  const [guestCount, setGuestCount] = useState<number | undefined>(resume?.guestCount);
+  const session = getOperationalSession();
+  const savedPrompts = cachedOutletOrderSettings(session?.propertyId ?? null, session?.outletId ?? null);
+  const askForTable = catalog.data?.askForTable ?? savedPrompts.askForTable;
+  const captureGuestCount = catalog.data?.captureGuestCount ?? savedPrompts.captureGuestCount;
   const [notes, setNotes] = useState("");
   const [order, setOrder] = useState<POSOrder | null>(resume);
   // The order as it is now, for taps waiting their turn (their render's `order` is older).
@@ -219,7 +226,8 @@ export function NewOrder({
         shiftId: shift.id,
         serviceType,
         // Takeaway has no table or room; a label typed under another type is not sent.
-        tableLabel: serviceType === "TAKEAWAY" ? undefined : tableLabel.trim() || undefined,
+        tableLabel: serviceType === "TAKEAWAY" && askForTable ? undefined : tableLabel.trim() || undefined,
+        guestCount: serviceType === "DINE_IN" ? guestCount : undefined,
         notes: notes.trim() || undefined,
         idempotencyKey: createKey.next(),
       });
@@ -401,6 +409,7 @@ export function NewOrder({
 
   function clearTicket() {
     adopt(null);
+    setGuestCount(undefined);
     setTableLabel("");
     setNotes("");
     setSelectedLineId(null);
@@ -502,7 +511,11 @@ export function NewOrder({
             currency={currency}
             tagsOf={(productId) => (menu ? tagNote(menu, productId) : undefined)}
             serviceType={serviceType}
-            onServiceType={setServiceType}
+            onServiceType={(type) => { setServiceType(type); setGuestCount(undefined); }}
+            askForTable={askForTable}
+            captureGuestCount={captureGuestCount}
+            guestCount={guestCount}
+            onGuestCount={setGuestCount}
             label={tableLabel}
             onLabel={setTableLabel}
             selectedLineId={selectedLineId}

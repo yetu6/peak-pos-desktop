@@ -55,7 +55,7 @@ export interface OrdersViewProps {
 const ROW_SELECTOR = "[data-order-row]";
 
 function placeWords(order: POSOrder): string {
-  return orderPlaceWords(order.serviceType, order.tableLabel) || serviceTypeWords(order.serviceType);
+  return orderPlaceWords(order.serviceType, order.tableLabel, order.askForTable) || serviceTypeWords(order.serviceType);
 }
 
 function matchWords(count: number): string {

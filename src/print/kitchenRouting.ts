@@ -32,6 +32,8 @@ export function paperFromPrintDocument(
     station: text("station"),
     serviceType: service && (SERVICE_TYPES as readonly string[]).includes(service) ? (service as ServiceType) : undefined,
     label: text("tableLabel"),
+    askForTable: typeof document.askForTable === "boolean" ? document.askForTable : undefined,
+    guestCount: number("guestCount"),
     waiterName: text("waiterName"),
     sentByName: text("sentByName"),
     sentAt: text("sentAt"),

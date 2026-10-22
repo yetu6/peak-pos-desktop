@@ -1,3 +1,4 @@
+import { cacheOutletOrderSettings } from "../lib/outletOrderSettings";
 import { cacheOutletMoney, cachedOutletMoney, moneySettingsFrom } from "../lib/outletMoneySettings";
 import type { FnbTillMenu } from "../fnb/fnbContracts";
 import type { PrintResult } from "../lib/kitchenTicketPrint";
@@ -110,6 +111,7 @@ export function useCatalog() {
     queryFn: async () => {
       const catalog = await unwrap(createPosApi().getCatalog());
       cacheOutletMoney(propertyId ?? null, outletId ?? null, catalog);
+      cacheOutletOrderSettings(propertyId ?? null, outletId ?? null, catalog);
       return catalog;
     },
     retry: false,
@@ -398,6 +400,7 @@ export function useCreateOrder() {
       shiftId: string;
       serviceType?: ServiceType;
       tableLabel?: string;
+      guestCount?: number;
       notes?: string;
       idempotencyKey: string;
     }) =>
@@ -407,6 +410,7 @@ export function useCreateOrder() {
             shiftId: args.shiftId,
             serviceType: args.serviceType,
             tableLabel: args.tableLabel,
+            guestCount: args.guestCount,
             notes: args.notes,
           },
           args.idempotencyKey,

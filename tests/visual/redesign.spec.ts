@@ -29,3 +29,28 @@ for (const [width, height, columns] of [[1366, 768, 4], [1920, 1080, 6]]) {
     });
   }
 }
+
+for (const [width,height] of [[1366,768],[1920,1080]]) for (const theme of ["light","dark"]) {
+ test(`optional order prompts ${width} ${theme}`, async({page})=>{
+  await page.setViewportSize({width,height});
+  await page.addInitScript(value=>localStorage.setItem("yetu-till-theme",value),theme);
+  await page.goto("/?fixture=register-no-table");
+  await expect(page.getByRole("textbox",{name:"Name (optional)"})).toBeVisible();
+  await expect(page.getByRole("textbox",{name:/Table/})).toHaveCount(0);
+  await page.getByRole("textbox",{name:"Name (optional)"}).fill("12");
+  await expect(page.getByRole("textbox",{name:"Name (optional)"})).toHaveValue("12");
+  await page.evaluate(()=>document.fonts.ready);
+  const {mkdir}=await import("node:fs/promises");
+  await mkdir("docs/qa/till-w4/after",{recursive:true});
+  await page.screenshot({path:`docs/qa/till-w4/after/name-${width}x${height}-${theme}.png`});
+  await page.goto("/?fixture=register-guests");
+  const guests=page.getByRole("group",{name:"Guests (optional) quantity"});
+  await expect(guests).toBeVisible();
+  await guests.getByRole("button",{name:"One more Guests (optional)"}).click();
+  await expect(guests.locator("output")).toHaveText("1");
+  await page.evaluate(()=>document.fonts.ready);
+  await page.screenshot({path:`docs/qa/till-w4/after/guests-${width}x${height}-${theme}.png`});
+  await page.getByRole("radio",{name:"Takeaway",exact:true}).click();
+  await expect(page.getByRole("group",{name:"Guests (optional) quantity"})).toHaveCount(0);
+ });
+}

@@ -45,6 +45,8 @@ function Sell({
   canPay = true,
   category = ALL_CATEGORIES,
   moreOpen = false,
+  askForTable = true,
+  captureGuestCount = false,
   menu,
   children,
 }: {
@@ -55,10 +57,15 @@ function Sell({
   canPay?: boolean;
   category?: string;
   moreOpen?: boolean;
+  askForTable?: boolean;
+  captureGuestCount?: boolean;
   /** The outlet's menu (S16): groups, tags and sizes. */
   menu?: FnbTillMenu;
   children?: ReactNode;
 }) {
+  const [serviceType, setServiceType] = useState(order?.serviceType ?? "DINE_IN");
+  const [label, setLabel] = useState(order?.tableLabel ?? "");
+  const [guestCount, setGuestCount] = useState<number | undefined>(order?.guestCount);
   const [activeCategory, setActiveCategory] = useState(category);
   const [search, setSearch] = useState("");
   const [selectedLine, setSelectedLine] = useState<string | null>(selected);
@@ -85,10 +92,14 @@ function Sell({
             bar={<OpenOrdersBar orders={OPEN_ORDERS} current={order} staffId={ORDER.initiatedById} currency={CURRENCY} onPick={nothing} onNew={nothing} />}
             order={order}
             currency={CURRENCY}
-            serviceType="DINE_IN"
-            onServiceType={nothing}
-            label=""
-            onLabel={nothing}
+            serviceType={serviceType}
+            onServiceType={setServiceType}
+            label={label}
+            onLabel={setLabel}
+            askForTable={askForTable}
+            captureGuestCount={captureGuestCount}
+            guestCount={guestCount}
+            onGuestCount={setGuestCount}
             selectedLineId={selectedLine}
             onSelectLine={setSelectedLine}
             onQuantity={nothing}
@@ -269,3 +280,7 @@ export function ReceiptFixture() {
     </Sell>
   );
 }
+
+/** W4: the existing empty sale with each outlet prompt preference. */
+export function RegisterNoTableFixture() { return <Sell order={null} askForTable={false} />; }
+export function RegisterGuestsFixture() { return <Sell order={null} captureGuestCount />; }

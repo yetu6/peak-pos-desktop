@@ -8,7 +8,7 @@ import { formatMoney } from "../lib/money";
 import type { POSReceipt } from "../lib/posContracts";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
 import { useRequestKey } from "../lib/useRequestKey";
-import { businessDayWords, clockTime, orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
+import { businessDayWords, guestCountWords, clockTime, orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { Banner, Button, Dialog, RefusalNotice, Skeleton, type Refusal } from "./system";
 import { orderName, orderReference } from "../lib/orderNumber";
 
@@ -117,7 +117,7 @@ export function ReceiptSheet({
             </div>
             <div className="y-receipt__meta-block">
               <p className="y-receipt__order">
-                {[orderName(doc), serviceTypeWords(doc.serviceType), orderPlaceWords(doc.serviceType, doc.tableLabel)]
+                {[orderName(doc), doc.guestCount ? guestCountWords(doc.guestCount) : "", serviceTypeWords(doc.serviceType), orderPlaceWords(doc.serviceType, doc.tableLabel, doc.askForTable)]
                   .filter(Boolean)
                   .join(" · ")}
               </p>
