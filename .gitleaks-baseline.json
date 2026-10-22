@@ -40,5 +40,26 @@
   "Message": "Add PR CI, VPS download publish, and shift-safe signed updater.\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
   "Tags": [],
   "Fingerprint": "3fe59b32cc52092dc00f6a36afacdcc7c8e8ed45:scripts/ci-write-ssh-key.py:private-key:16"
+ },
+ {
+  "RuleID": "generic-api-key",
+  "Description": "Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+  "StartLine": 6,
+  "EndLine": 6,
+  "StartColumn": 15,
+  "EndColumn": 56,
+  "Match": "BILL_LOGO_CACHE_KEY = \"REDACTED\"",
+  "Secret": "REDACTED",
+  "File": "src/print/billLogo.ts",
+  "SymlinkFile": "",
+  "Commit": "8f93a6579fbd40ff9dee57ac01497ade62c523c9",
+  "Link": "https://github.com/yetu6/peak-pos-desktop/blob/8f93a6579fbd40ff9dee57ac01497ade62c523c9/src/print/billLogo.ts#L6",
+  "Entropy": 3.530493,
+  "Author": "mwombeki6",
+  "Email": "hackerlubex@protonmail.com",
+  "Date": "2026-10-22T17:35:49Z",
+  "Message": "wip(till): checkpoint W5 paper layouts and durable print recovery\n\nCo-authored-by: Codex <noreply@openai.com>",
+  "Tags": [],
+  "Fingerprint": "8f93a6579fbd40ff9dee57ac01497ade62c523c9:src/print/billLogo.ts:generic-api-key:6"
  }
 ]

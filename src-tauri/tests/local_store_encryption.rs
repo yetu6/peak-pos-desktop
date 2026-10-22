@@ -35,7 +35,7 @@ fn first_boot_creates_encrypted_database_and_reopens_with_same_envelope() {
 
     let first = LocalStore::open(&path, &keys).expect("first encrypted open");
     assert_eq!(first.cipher_version(), "4.14.0 community");
-    assert_eq!(first.schema_version(), 5);
+    assert_eq!(first.schema_version(), 6);
     drop(first);
 
     let envelope = keys
@@ -151,7 +151,7 @@ fn key_rotation_rekeys_database_and_rejects_old_envelope() {
     let new_envelope = keys.load().unwrap().unwrap();
     assert_ne!(old_envelope, new_envelope);
     drop(store);
-    assert_eq!(LocalStore::open(&path, &keys).unwrap().schema_version(), 5);
+    assert_eq!(LocalStore::open(&path, &keys).unwrap().schema_version(), 6);
 
     let old_keys = MemoryKeyStore::default();
     old_keys.save(&old_envelope).unwrap();
@@ -202,6 +202,57 @@ fn restart_recovers_rotation_interrupted_after_rekey() {
 
     *keys.fail_on_save.lock().unwrap() = None;
     let recovered = LocalStore::open(&path, &keys).expect("recover prepared rotation");
-    assert_eq!(recovered.schema_version(), 5);
+    assert_eq!(recovered.schema_version(), 6);
     assert!(!path.with_extension("sqlite3.rekey-recovery").exists());
+}
+
+#[test]
+fn encrypted_version_four_upgrades_order_context_and_print_journal_to_six() {
+    let directory = tempfile::tempdir().unwrap();
+    let keys = MemoryKeyStore::default();
+    drop(LocalStore::open(&directory.path().join("key-seed.sqlite3"), &keys).unwrap());
+    let envelope: serde_json::Value = serde_json::from_str(&keys.load().unwrap().unwrap()).unwrap();
+    let key = STANDARD_NO_PAD
+        .decode(envelope["currentKey"].as_str().unwrap())
+        .unwrap();
+    let key_hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
+    let path = directory.path().join("version-four.sqlite3");
+    let connection = Connection::open(&path).unwrap();
+    connection
+        .execute_batch(&format!("PRAGMA key = \"x'{key_hex}'\";"))
+        .unwrap();
+    for schema in [
+        include_str!("../src/local_store/migrations/0001_initial.sql"),
+        include_str!("../src/local_store/migrations/0002_terminal_authority.sql"),
+        include_str!("../src/local_store/migrations/0003_catalog_ordering.sql"),
+        include_str!("../src/local_store/migrations/0004_reconciliation.sql"),
+    ] {
+        connection.execute_batch(schema).unwrap();
+    }
+    connection.pragma_update(None, "user_version", 4).unwrap();
+    drop(connection);
+    let migrated = LocalStore::open(&path, &keys).unwrap();
+    assert_eq!(migrated.schema_version(), 6);
+    migrated.integrity_check().unwrap();
+    drop(migrated);
+    let unkeyed = Connection::open(&path).unwrap();
+    assert!(unkeyed
+        .query_row("SELECT count(*) FROM sqlite_master", [], |r| r
+            .get::<_, i64>(0))
+        .is_err());
+    drop(unkeyed);
+    let connection = Connection::open(&path).unwrap();
+    connection
+        .execute_batch(&format!("PRAGMA key = \"x'{key_hex}'\";"))
+        .unwrap();
+    let optional_context: i64 = connection.query_row("SELECT count(*) FROM pragma_table_info('orders') WHERE name IN ('ask_for_table','guest_count')", [], |r| r.get(0)).unwrap();
+    assert_eq!(optional_context, 2);
+    let journal_rows: i64 = connection
+        .query_row("SELECT count(*) FROM native_print_attempts", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(journal_rows, 0);
+    drop(connection);
+    assert_eq!(LocalStore::open(&path, &keys).unwrap().schema_version(), 6);
 }

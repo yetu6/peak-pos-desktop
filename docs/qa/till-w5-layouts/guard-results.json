@@ -1,0 +1,70 @@
+[
+  {
+    "guard": "direct filtering",
+    "status": "KILLED"
+  },
+  {
+    "guard": "empty paper",
+    "status": "KILLED"
+  },
+  {
+    "guard": "picked first",
+    "status": "KILLED"
+  },
+  {
+    "guard": "quantity bold switch",
+    "status": "KILLED"
+  },
+  {
+    "guard": "quantity size switch",
+    "status": "KILLED"
+  },
+  {
+    "guard": "default quantity bold",
+    "status": "KILLED"
+  },
+  {
+    "guard": "default quantity size",
+    "status": "KILLED"
+  },
+  {
+    "guard": "copies upper bound",
+    "status": "KILLED"
+  },
+  {
+    "guard": "copy drawer guard",
+    "status": "KILLED"
+  },
+  {
+    "guard": "bill no advertising",
+    "status": "SUPERSEDED by latest owner instruction: Powered by Yetu-FBC on every print"
+  },
+  {
+    "guard": "raster validation",
+    "status": "KILLED"
+  },
+  {
+    "guard": "cache validation",
+    "status": "KILLED"
+  },
+  {
+    "guard": "required styled footer",
+    "status": "KILLED"
+  },
+  {
+    "guard": "required footer text",
+    "status": "KILLED"
+  },
+  {
+    "guard": "disabled logo no download",
+    "status": "KILLED"
+  },
+  {
+    "guard": "bill address map",
+    "status": "KILLED"
+  },
+  {
+    "guard": "thermal bill contact",
+    "status": "KILLED"
+  }
+]

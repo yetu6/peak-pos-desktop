@@ -588,7 +588,7 @@ mod tests {
         let runtime = LocalStoreRuntime::initialize(temporary.path(), &MemoryKeyStore::default());
         let status = runtime.status();
         assert_eq!(status.state, "READY");
-        assert_eq!(status.schema_version, Some(5));
+        assert_eq!(status.schema_version, Some(6));
         assert_eq!(status.cipher_version.as_deref(), Some("4.14.0 community"));
         assert_eq!(status.issue, None);
         let json = serde_json::to_string(&status).unwrap();

@@ -153,3 +153,16 @@ describe("PaperPreviewSheet (owner, 2026-10-21)", () => {
     expect(screen.getByTestId("paper-print")).toBeDisabled();
   });
 });
+
+it("sends a Direct-only round without making an empty production paper",async()=>{
+ preview.mockReturnValue({data:[],isLoading:false,isError:false});
+ const {onPrint}=renderSheet({directOnly:true});
+ expect(screen.getByText("Hand these over at the till. No kitchen or bar paper.")).toBeVisible();
+ await userEvent.click(screen.getByRole("button",{name:"Send order"}));
+ expect(onPrint).toHaveBeenCalledTimes(1);
+});
+it.each([{directOnly:false},{directOnly:true,nothingNew:true},{directOnly:true,kind:"BILL" as const}])("does not treat an unrelated empty preview as a new Direct round: %j",props=>{
+ preview.mockReturnValue({data:[],isLoading:false,isError:false});
+ renderSheet(props);
+ expect(screen.getByTestId("paper-print")).toBeDisabled();
+});

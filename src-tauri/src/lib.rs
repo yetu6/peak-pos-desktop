@@ -36,6 +36,8 @@ pub fn run() {
             printer::printer_status,
             printer::print_test_page,
             printer::print_raw,
+            printer::get_print_attempt,
+            printer::print_job_once,
             printer::list_printers,
             printer::load_printer_settings,
             printer::save_printer_settings,

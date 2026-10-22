@@ -1,0 +1,53 @@
+
+ RUN  v4.1.10 /home/mwombeki/Desktop/PEAK/.worktrees/till-w5
+
+ ❯ src/print/billLogo.test.ts (6 tests | 1 failed) 60ms
+   × image loading errors and disabled logos safely return text fallback 13ms
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 19 passed (20)
+   Start at  20:41:28
+   Duration  4.45s (transform 270ms, setup 544ms, import 301ms, tests 153ms, environment 2.47s)
+
+$ vitest run "src/print/w5Layouts.test.ts" src/print/billLogo.test.ts "--maxWorkers=1"
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/print/billLogo.test.ts > image loading errors and disabled logos safely return text fallback
+AssertionError: expected "fetch" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st fetch call:
+
+    Array [
+      "https://example.invalid/logo.png",
+      Object {
+        "credentials": "omit",
+        "signal": AbortSignal {
+          Symbol(kEvents): Map {},
+          Symbol(events.maxEventTargetListeners): 0,
+          Symbol(events.maxEventTargetListenersWarned): false,
+          Symbol(kHandlers): Map {},
+          Symbol(kAborted): false,
+          Symbol(kReason): undefined,
+          Symbol(kComposite): false,
+          Symbol(kTimeout): true,
+        },
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ src/print/billLogo.test.ts:27:25
+     25|   try {
+     26|     expect(await loadBillLogo("https://example.invalid/logo.png", 48, …
+     27|     expect(fetcher).not.toHaveBeenCalled();
+       |                         ^
+     28|     expect(await loadBillLogo("not a URL", 48, true)).toBeUndefined();
+     29|     expect(await loadBillLogo("https://example.invalid/missing.png", 4…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+error: script "test" exited with code 1

@@ -163,7 +163,8 @@ vi.mock("../auth/DeviceSessionProvider", () => ({
 
 vi.mock("../print/cashDrawer", () => ({ openDrawerForCash: spies.openDrawerForCash }));
 
-vi.mock("../lib/printJobs", () => ({
+vi.mock("../lib/printJobs", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../lib/printJobs")>(),
   processPendingPrintJobs: spies.processPendingPrintJobs,
   processPrintJob: spies.processPrintJob,
 }));

@@ -1,3 +1,4 @@
+import { printBrandFooter } from "../print/printBrand";
 import { formatMoney } from "./money";
 import { orderName, orderReference } from "./orderNumber";
 import { dateTimeWords, paymentMethodWords, type SettlementMethod } from "./words";
@@ -100,7 +101,7 @@ export function formatRefundReceipt(refund: RefundReceiptCopy): string {
     .filter(Boolean)
     .join("\n");
 
-  const footer = ["----------------", "Powered by Yetu"].join("\n");
+  const footer = printBrandFooter();
 
   return [header, lines || "(no items)", totals, how, who, footer].filter(Boolean).join("\n\n") + "\n";
 }

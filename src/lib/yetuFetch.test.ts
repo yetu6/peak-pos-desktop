@@ -130,8 +130,9 @@ describe("yetuFetch outside the till", () => {
 // preflight per new address and, on Linux, a new connection per change.
 describe("every request to Yetu", () => {
   it("goes through yetuFetch", () => {
-    // The ops-token bridge is a helper on this computer, not Yetu.
-    const notYetu = new Set(["src/lib/applyOpsToken.ts", "src/lib/yetuFetch.ts"]);
+    // The ops-token bridge is local. Bill logos use signed object-store URLs,
+    // with credentials omitted; they are not requests to the Yetu API.
+    const notYetu = new Set(["src/lib/applyOpsToken.ts", "src/lib/yetuFetch.ts", "src/print/billLogo.ts"]);
     const files = (readdirSync("src", { recursive: true }) as string[])
       // Always "/": Windows lists files with "\\", and these sets are written with "/".
       .map((file) => `src/${file.replaceAll("\\", "/")}`)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { POSOrderItem } from "../lib/posContracts";
-import { payWaitsWords, printWords, roundWords, sendWords, stationPrintWords, takesMore, unsentLines, unsentStations } from "./rounds";
+import { directOnlyUnsent, payWaitsWords, printWords, roundWords, sendWords, stationPrintWords, takesMore, unsentLines, unsentStations } from "./rounds";
 
 const line = (status: POSOrderItem["status"], roundNumber?: number) => ({ status, roundNumber }) as POSOrderItem;
 
@@ -60,5 +60,23 @@ describe("printing one station at a time", () => {
     expect(printWords({ status: "OPEN", items: [at("ADDED")] })).toBe("Print order");
     expect(printWords({ status: "SERVED", items: [at("SENT", "BAR", 1)], roundsSent: 1 })).toBe("Print again");
     expect(printWords(null)).toBe("Print order");
+  });
+});
+
+
+describe("Direct hand-over rounds", () => {
+  const direct = { ...line("ADDED"), fulfilment: "DIRECT" as const };
+  it("only a nonempty round of explicit Direct new lines skips production paper", () => {
+    expect(directOnlyUnsent({status:"OPEN",items:[direct]})).toBe(true);
+    expect(directOnlyUnsent({status:"OPEN",items:[]})).toBe(false);
+    expect(directOnlyUnsent(null)).toBe(false);
+    expect(directOnlyUnsent({status:"OPEN",items:[line("ADDED")]})).toBe(false);
+    expect(directOnlyUnsent({status:"OPEN",items:[direct,{...line("ADDED"),fulfilment:"PICKED"}]})).toBe(false);
+    expect(directOnlyUnsent({status:"OPEN",items:[{...direct,status:"SENT"}]})).toBe(false);
+    expect(directOnlyUnsent({status:"OPEN",items:[direct,line("SENT")]})).toBe(true);
+    expect(printWords({status:"OPEN",items:[direct]})).toBe("Send order");
+  });
+  it("Direct lines do not add stations to a mixed production round", () => {
+    expect(unsentStations({status:"OPEN",items:[direct,{...line("ADDED"),prepStation:"BAR",fulfilment:"PICKED"}]})).toEqual(["BAR"]);
   });
 });

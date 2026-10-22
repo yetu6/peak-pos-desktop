@@ -11,6 +11,7 @@ import { useRequestKey } from "../lib/useRequestKey";
 import { businessDayWords, guestCountWords, clockTime, orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { Banner, Button, Dialog, RefusalNotice, Skeleton, type Refusal } from "./system";
 import { orderName, orderReference } from "../lib/orderNumber";
+import { PRINT_BRAND, PRINT_BRAND_ADDRESS } from "../print/printBrand";
 
 /** How the order was settled: one method, or SPLIT when more than one tender paid it. */
 function settledWords(method: string): string {
@@ -182,7 +183,9 @@ export function ReceiptSheet({
               </p>
             ) : null}
             <p className="y-receipt__footer" data-testid="receipt-footer">
-              Powered by Yetu
+              {PRINT_BRAND}
+              <br />
+              {PRINT_BRAND_ADDRESS}
             </p>
           </div>
         ) : null}

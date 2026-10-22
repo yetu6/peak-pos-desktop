@@ -1,12 +1,14 @@
+import { PAPER_WORDS, stationCopiesWords } from "./paperWords";
 import { Printer } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Button, Field, SegmentedControl } from "../components/system";
 import { PREP_STATIONS, stationWords } from "../kitchen/kitchenWords";
 import { PAPER_58MM, PAPER_80MM, type PaperWidth } from "./escpos";
 import { kitchenTicketBytes } from "./kitchenTicket";
+import { loadBillLogo } from "./billLogo";
 import { receiptBytes } from "./receipt";
 import {
-  DEFAULT_PRINTER_SETTINGS, NO_PAPER, parseNetworkAddress, printerWords, type PrinterChoice, type PrinterSettings,
+  DEFAULT_PRINTER_SETTINGS, MAX_STATION_COPIES, stationCopies, NO_PAPER, parseNetworkAddress, printerWords, type PrinterChoice, type PrinterSettings,
 } from "./printerSettings";
 import { listSystemPrinters, loadPrinterSettings, printRawToPrinter, savePrinterSettings } from "./printerStore";
 
@@ -52,7 +54,7 @@ function savedWords(settings: PrinterSettings): string {
  * without a screen, to the kitchen's printer -- by name on this computer or
  * by address on the network -- with a printer of its own for any station.
  */
-export function PrintersCard() {
+export function PrintersCard({ billLogoUrl }: { billLogoUrl?: string } = {}) {
   const headingId = useId();
   const [settings, setSettings] = useState<PrinterSettings>(DEFAULT_PRINTER_SETTINGS);
   const [printers, setPrinters] = useState<string[]>([]);
@@ -88,8 +90,8 @@ export function PrintersCard() {
       await printRawToPrinter(
         choice.target,
         what === "receipt"
-          ? receiptBytes(TEST_RECEIPT, choice.width, { drawer: settings.cashDrawer })
-          : kitchenTicketBytes(TEST_TICKET, choice.width),
+          ? receiptBytes(TEST_RECEIPT, choice.width, { drawer: settings.cashDrawer, logo: await loadBillLogo(billLogoUrl, choice.width, choice.billLogo) })
+          : kitchenTicketBytes(TEST_TICKET, choice.width, settings),
       );
       const sample = what === "receipt" ? "A test bill" : "A test ticket";
       setWords({ ok: true, text: `${sample} went to ${printerWords(choice)}. If nothing came out, check the printer is on and has paper.` });
@@ -128,11 +130,19 @@ export function PrintersCard() {
             onChange={(kitchen) => setSettings({ ...settings, kitchen: kitchen === NO_PAPER ? null : kitchen })}
             testId="kitchen-printer"
           />
+          <label className="y-printers__switch">
+            <input type="checkbox" role="switch" checked={settings.quantityBold ?? true} onChange={event => setSettings({ ...settings, quantityBold: event.target.checked })} />
+            <span>{PAPER_WORDS.quantityBold}</span>
+          </label>
+          <label className="y-printers__switch">
+            <input type="checkbox" role="switch" checked={settings.quantityLarge ?? true} onChange={event => setSettings({ ...settings, quantityLarge: event.target.checked })} />
+            <span>{PAPER_WORDS.quantityLarge}</span>
+          </label>
           <details className="y-printers__stations">
             <summary>A printer for one station (optional)</summary>
             {PREP_STATIONS.map((station) => (
+              <div key={station}>
               <PrinterPicker
-                key={station}
                 label={stationWords(station)}
                 value={settings.stations[station] ?? null}
                 printers={printers}
@@ -145,6 +155,16 @@ export function PrintersCard() {
                 }}
                 testId={`station-printer-${station}`}
               />
+              {settings.stations[station] !== NO_PAPER ? (
+                <label className="y-printers__label">
+                  {stationCopiesWords(stationWords(station))}
+                  <select className="y-printers__select" aria-label={`${stationCopiesWords(stationWords(station))}`} value={stationCopies(settings, station)}
+                    onChange={event => setSettings({ ...settings, stationCopies: { ...settings.stationCopies, [station]: Number(event.target.value) } })}>
+                    {Array.from({ length: MAX_STATION_COPIES }, (_, index) => index + 1).map(count => <option key={count} value={count}>{count}</option>)}
+                  </select>
+                </label>
+              ) : null}
+              </div>
             ))}
           </details>
         </>
@@ -162,6 +182,18 @@ export function PrintersCard() {
         testId="receipt-printer"
       />
       {settings.receipt ? (
+        <>
+        <label className="y-printers__switch">
+          <input type="checkbox" role="switch" checked={settings.receipt.billLogo ?? false}
+            onChange={event => setSettings({ ...settings, receipt: settings.receipt ? { ...settings.receipt, billLogo: event.target.checked } : null })} />
+          <span>{PAPER_WORDS.billLogo}</span>
+        </label>
+        {settings.receipt.billLogo ? (
+          <>
+            <p className="y-cash__muted">{PAPER_WORDS.logoSource}</p>
+            <p className="y-cash__muted">{PAPER_WORDS.logoHelp}</p>
+          </>
+        ) : null}
         <label className="y-printers__switch">
           <input
             type="checkbox"
@@ -172,6 +204,7 @@ export function PrintersCard() {
           />
           <span>A cash drawer is plugged into this printer: open it for cash</span>
         </label>
+        </>
       ) : null}
       <div className="y-printers__actions">
         <Button variant="primary" size={56} disabled={busy} onClick={() => void save()} data-testid="save-printers">
@@ -234,8 +267,8 @@ function PrinterPicker({
           setKind(next);
           if (next === OWN || next === SAME) onChange(null);
           else if (next === NO_PAPER_KIND) onChange(NO_PAPER);
-          else if (next === NETWORK) onChange(parsed ? { target: { kind: "network", ...parsed }, width } : null);
-          else onChange({ target: { kind: "system", name: next.slice("system:".length) }, width });
+          else if (next === NETWORK) onChange(parsed ? { ...choice, target: { kind: "network", ...parsed }, width } : null);
+          else onChange({ ...choice, target: { kind: "system", name: next.slice("system:".length) }, width });
         }}
       >
         {allowOwn ? <option value={OWN}>This till's own printer</option> : <option value={SAME}>The kitchen printer</option>}
@@ -251,7 +284,7 @@ function PrinterPicker({
           onChange={(next) => {
             setAddress(next);
             const ok = parseNetworkAddress(next);
-            onChange(ok ? { target: { kind: "network", ...ok }, width } : null);
+            onChange(ok ? { ...choice, target: { kind: "network", ...ok }, width } : null);
           }}
           error={address && !parsed ? "That isn't a printer in this building. Write its address as on its test page, such as 192.168.1.50." : undefined}
           autoComplete="off"

@@ -40,6 +40,10 @@ export const VISUAL_FIXTURE_NAMES = [
   "close-over",
   "close-tabs",
   "printers",
+ "papers-80",
+ "papers-58",
+ "papers-copy",
+ "papers-cancel",
   // S4 register.
   "register",
   "register-empty",

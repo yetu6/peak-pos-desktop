@@ -51,3 +51,10 @@ describe("printProblemOnce", () => {
     );
   });
 });
+
+it("does not claim that an uncertain or accepted paper failed to print",()=>{
+ const uncertain="Check the printer before making a copy. The previous paper may have printed; automatic retry is stopped.";
+ const accepted="The printer accepted this paper. Confirmation is waiting; check the paper before making a copy.";
+ expect(printProblemOnce([{ok:false,error:uncertain}],"kitchen ticket")).toBe(uncertain);
+ expect(copyNotPrintedWords(accepted)).toBe(accepted);
+});

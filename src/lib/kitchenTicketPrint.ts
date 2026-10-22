@@ -1,15 +1,22 @@
+import { roundWords } from "../print/paperWords";
+import { printBrandFooter } from "../print/printBrand";
 import { guestCountWords } from "./words";
-import { kitchenTicketTitle } from "../print/kitchenTicket";
+import { kitchenTicketTitle, productionGroups, type Fulfilment } from "../print/kitchenTicket";
 import { orderName } from "./orderNumber";
-import { placeWords } from "./words";
+import { dateTimeWords, placeWords } from "./words";
 export interface KitchenTicketLine {
   name: string;
   quantity: string;
   note?: string;
+  fulfilment?: Fulfilment;
 }
 
 /** Device copy of a Peak kitchen ticket. No prices — Peak already owns those. */
 export interface KitchenTicketCopy {
+  roundNumber?: number;
+  copy?: boolean;
+  printedAgainByName?: string;
+  printedAgainAt?: string;
   ticketNumber?: string;
   /** The order's reference; printed only when it has no number for the day. */
   orderNumber?: string;
@@ -36,11 +43,16 @@ export interface PrintResult {
 }
 
 export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
+  const groups = productionGroups(ticket.lines);
+  if (!groups.length) return "";
   const header = [
     // The paper's title (2026-10-20): an order to make, and where.
     kitchenTicketTitle(ticket.station),
     ticket.ticketNumber ? ticket.ticketNumber : null,
-    ticket.dailyNumber || ticket.orderNumber ? orderName(ticket) : null,
+    ticket.dailyNumber || ticket.orderNumber ? `${orderName(ticket)}${roundWords(ticket.roundNumber)}` : null,
+    ticket.copy ? "*** COPY: printed again ***" : null,
+    ticket.copy && ticket.printedAgainAt ? dateTimeWords(ticket.printedAgainAt) : null,
+    ticket.copy && ticket.printedAgainByName ? `by ${ticket.printedAgainByName}` : null,
     [
       placeWords(ticket.serviceType, ticket.tableNumber, ticket.askForTable) || null,
       ticket.serviceType ? ticket.serviceType.replaceAll("_", " ") : null,
@@ -56,15 +68,15 @@ export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
     .filter((line) => line && line.length > 0)
     .join("\n");
 
-  const lines = ticket.lines
+  const lines = groups.map(group => `${group.title}\n${group.lines
     .map((line) => {
       const qty = line.quantity.trim() || "1";
       const row = `${qty.padStart(3, " ")}  ${line.name}`;
       return line.note?.trim() ? `${row}\n      ${line.note.trim()}` : row;
     })
-    .join("\n");
+    .join("\n")}`).join("\n");
 
-  return `${header}\n\n${lines || "(no items)"}\n`;
+  return `${header}\n\n${lines || "(no items)"}\n\n${printBrandFooter()}\n`;
 }
 
 export function ticketCopyFromOrder(order: {

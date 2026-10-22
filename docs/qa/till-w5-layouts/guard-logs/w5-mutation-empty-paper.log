@@ -1,0 +1,55 @@
+
+ RUN  v4.1.10 /home/mwombeki/Desktop/PEAK/.worktrees/till-w5
+
+ ❯ src/print/w5Layouts.test.ts (10 tests | 2 failed) 96ms
+     × emits no bytes for an entirely direct round 19ms
+   × missing fulfilment remains prepared and empty groups do not print 3ms
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  2 failed | 14 passed (16)
+   Start at  17:13:53
+   Duration  2.47s (transform 488ms, setup 688ms, import 545ms, tests 172ms, environment 2.48s)
+
+$ vitest run "src/print/w5Layouts.test.ts" src/print/billLogo.test.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/print/w5Layouts.test.ts > W5 production layouts > emits no bytes for an entirely direct round
+AssertionError: expected Uint8Array[ 27, 64, 27, 97, 1, …(190) ] to have a length of +0 but got 216
+
+- Expected
++ Received
+
+- 0
++ 216
+
+ ❯ src/print/w5Layouts.test.ts:30:92
+     28|   });
+     29|   it("emits no bytes for an entirely direct round", () => {
+     30|     expect(kitchenTicketBytes(paperFromPrintDocument({ items: [documen…
+       |                                                                                            ^
+     31|   });
+     32|   it("system formatter has the same grouping and audit", () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/print/w5Layouts.test.ts > missing fulfilment remains prepared and empty groups do not print
+AssertionError: expected Uint8Array[ 27, 64, 27, 97, 1, …(190) ] to have a length of +0 but got 216
+
+- Expected
++ Received
+
+- 0
++ 216
+
+ ❯ src/print/w5Layouts.test.ts:91:49
+     89|   expect(text).not.toContain("HAND OVER");
+     90|   expect(text).toContain("*** END - 1 ITEMS ***");
+     91|   expect(kitchenTicketBytes({ lines: [] }, 48)).toHaveLength(0);
+       |                                                 ^
+     92| });
+     93| it("production defaults to bold and double-height quantities", () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+error: script "test" exited with code 1

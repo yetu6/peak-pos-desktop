@@ -1,3 +1,6 @@
+import { billItemColumns } from "../print/billColumns";
+import { PAPER_WORDS } from "../print/paperWords";
+import { printBrandFooter } from "../print/printBrand";
 import { guestCountWords } from "./words";
 import { formatMoney } from "./money";
 import { vatFigures } from "./vatWords";
@@ -22,7 +25,12 @@ export interface ReceiptLine {
 }
 
 export interface ReceiptCopy {
+  copy?: boolean;
+  printedAgainByName?: string;
+  printedAgainAt?: string;
   propertyName?: string;
+  propertyAddress?: string;
+  propertyPhone?: string;
   outletName?: string;
   /** The order's reference: printed small as "Ref …" when the order has a number for the day. */
   orderNumber?: string;
@@ -119,7 +127,12 @@ export function receiptCopyFromPrintDocument(document: Record<string, unknown>, 
         : undefined;
 
   return {
+    copy: document.copy === true,
+    printedAgainByName: typeof document.printedAgainByName === "string" ? document.printedAgainByName : undefined,
+    printedAgainAt: typeof document.printedAgainAt === "string" ? dateTimeWords(document.printedAgainAt) || undefined : undefined,
     propertyName: typeof document.propertyName === "string" ? document.propertyName : undefined,
+    propertyAddress: typeof document.address === "string" ? document.address.trim() || undefined : typeof document.propertyAddress === "string" ? document.propertyAddress.trim() || undefined : undefined,
+    propertyPhone: typeof document.phone === "string" ? document.phone.trim() || undefined : typeof document.propertyPhone === "string" ? document.propertyPhone.trim() || undefined : undefined,
     outletName: typeof document.outletName === "string" ? document.outletName : undefined,
     orderNumber: typeof document.orderNumber === "string" ? document.orderNumber : undefined,
     dailyNumber: typeof document.dailyNumber === "number" ? document.dailyNumber : undefined,
@@ -211,6 +224,10 @@ export function formatReceipt(receipt: ReceiptCopy): string {
   const header = [
     (receipt.propertyName ?? "PROPERTY").toUpperCase(),
     receipt.outletName ? receipt.outletName : null,
+    [receipt.propertyAddress, receipt.propertyPhone].filter(Boolean).join(" · "),
+    receipt.copy ? "*** COPY ***" : null,
+    receipt.copy && receipt.printedAgainAt ? `Printed again ${receipt.printedAgainAt}` : null,
+    receipt.copy && receipt.printedAgainByName ? `by ${receipt.printedAgainByName}` : null,
     receipt.beforePayment ? BILL_HEADING : `${BILL_HEADING} · PAID`,
     receipt.dailyNumber || receipt.orderNumber ? orderName(receipt) : "order",
     orderReference(receipt) ? `Ref ${orderReference(receipt)}` : null,
@@ -231,13 +248,7 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     .filter((line) => line && line.length > 0)
     .join("\n");
 
-  const lines = receipt.lines
-    .map((line) => {
-      const qty = (line.quantity.trim() || "1").padStart(3, " ");
-      const total = line.total?.trim() ? line.total.trim().padStart(8, " ") : "";
-      return `${qty}  ${line.name}${total ? `  ${total}` : ""}`;
-    })
-    .join("\n");
+  const lines = billItemColumns(receipt.lines, 48).join("\n");
 
   const totals = [
     receipt.subtotal ? `${receipt.vatIncluded ? "Items" : "Subtotal"}  ${receipt.subtotal}` : null,
@@ -254,7 +265,7 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     ? ["----------------", CHARGE_TO_ROOM, `Room ${receipt.roomCharge.room ?? "________"}`, GUEST_SIGNATURE, "", "________________________"].join("\n") + "\n\n"
     : "";
 
-  const footer = ["----------------", "Powered by Yetu"].join("\n");
+  const footer = ["----------------", receipt.beforePayment ? PAPER_WORDS.payThanks : PAPER_WORDS.thanks, printBrandFooter()].join("\n");
 
   return `${header}\n\n${lines || "(no items)"}\n\n${totals}\n\n${signing}${footer}\n`;
 }

@@ -1,0 +1,134 @@
+
+ RUN  v4.1.10 /home/mwombeki/Desktop/PEAK/.worktrees/till-w5
+
+ ❯ src/print/w5Layouts.test.ts (10 tests | 4 failed) 87ms
+     × groups hand over before make, excludes direct, preserves audit at 32 47ms
+     × groups hand over before make, excludes direct, preserves audit at 48 8ms
+     × emits no bytes for an entirely direct round 8ms
+     × system formatter has the same grouping and audit 5ms
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  4 failed | 12 passed (16)
+   Start at  17:13:50
+   Duration  2.33s (transform 334ms, setup 561ms, import 361ms, tests 156ms, environment 2.55s)
+
+$ vitest run "src/print/w5Layouts.test.ts" src/print/billLogo.test.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/print/w5Layouts.test.ts > W5 production layouts > groups hand over before make, excludes direct, preserves audit at 32
+AssertionError: expected 'BAR ORDER\nORDER 6 - ROUND 2 - ADDED\…' not to contain 'Counter snack'
+
+- Expected
++ Received
+
+- Counter snack
++ BAR ORDER
++ ORDER 6 - ROUND 2 - ADDED
++ *** COPY: printed again ***
++ Thu 22 Oct 2026 - 13:52
++ by Amina
++ --------------------------------
++ --------------------------------
++ HAND OVER
++ 2 x Water
++ MAKE
++ 1 x Coffee
++ 1 x Counter snack
++ --------------------------------
++ *** END - 4 ITEMS ***
++
+
+ ❯ src/print/w5Layouts.test.ts:24:22
+     22|     expect(text.indexOf("HAND OVER")).toBeLessThan(text.indexOf("MAKE"…
+     23|     expect(text).toContain("2 x Water");
+     24|     expect(text).not.toContain("Counter snack");
+       |                      ^
+     25|     expect(text).toContain("by Amina");
+     26|     expect(text).toContain("13:52");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/print/w5Layouts.test.ts > W5 production layouts > groups hand over before make, excludes direct, preserves audit at 48
+AssertionError: expected 'BAR ORDER\nORDER 6 - ROUND 2 - ADDED\…' not to contain 'Counter snack'
+
+- Expected
++ Received
+
+- Counter snack
++ BAR ORDER
++ ORDER 6 - ROUND 2 - ADDED
++ *** COPY: printed again ***
++ Thu 22 Oct 2026 - 13:52
++ by Amina
++ ------------------------------------------------
++ ------------------------------------------------
++ HAND OVER
++ 2 x Water
++ MAKE
++ 1 x Coffee
++ 1 x Counter snack
++ ------------------------------------------------
++ *** END - 4 ITEMS ***
++
+
+ ❯ src/print/w5Layouts.test.ts:24:22
+     22|     expect(text.indexOf("HAND OVER")).toBeLessThan(text.indexOf("MAKE"…
+     23|     expect(text).toContain("2 x Water");
+     24|     expect(text).not.toContain("Counter snack");
+       |                      ^
+     25|     expect(text).toContain("by Amina");
+     26|     expect(text).toContain("13:52");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/print/w5Layouts.test.ts > W5 production layouts > emits no bytes for an entirely direct round
+AssertionError: expected Uint8Array[ 27, 64, 27, 97, 1, …(231) ] to have a length of +0 but got 257
+
+- Expected
++ Received
+
+- 0
++ 257
+
+ ❯ src/print/w5Layouts.test.ts:30:92
+     28|   });
+     29|   it("emits no bytes for an entirely direct round", () => {
+     30|     expect(kitchenTicketBytes(paperFromPrintDocument({ items: [documen…
+       |                                                                                            ^
+     31|   });
+     32|   it("system formatter has the same grouping and audit", () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/print/w5Layouts.test.ts > W5 production layouts > system formatter has the same grouping and audit
+AssertionError: expected 'BAR ORDER\nOrder 6 · ROUND 2 · ADDED\…' not to contain 'Counter snack'
+
+- Expected
++ Received
+
+- Counter snack
++ BAR ORDER
++ Order 6 · ROUND 2 · ADDED
++ *** COPY: printed again ***
++ Thu 22 Oct 2026 · 13:52
++ by Amina
++
++ HAND OVER
++   2  Water
++ MAKE
++   1  Coffee
++   1  Counter snack
++
+
+ ❯ src/print/w5Layouts.test.ts:42:22
+     40|     expect(text).not.toContain("Ref POS-BAR-6");
+     41|     expect(text.indexOf("HAND OVER")).toBeLessThan(text.indexOf("MAKE"…
+     42|     expect(text).not.toContain("Counter snack");
+       |                      ^
+     43|   });
+     44|   it("quantity emphasis can be switched off independently", () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+error: script "test" exited with code 1

@@ -1,7 +1,7 @@
 import { BACK_WORDS } from "../lib/words";
 import { BadgePercent, ChefHat, Plus, Printer, ReceiptText, Trash2, Undo2, Wallet } from "lucide-react";
 import { vatFigures } from "../lib/vatWords";
-import { linesByRound, sendWords, takesMore } from "../register/rounds";
+import { directOnlyUnsent, linesByRound, sendWords, takesMore } from "../register/rounds";
 import { orderStatusIcon } from "./orderStatusIcon";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, PermissionNotice, RefusalNotice, Sheet, StatusChip, Stepper, TicketLine, type Refusal } from "../components/system";
@@ -46,7 +46,7 @@ import {
 import { orderName, orderReference } from "../lib/orderNumber";
 import { refundAvailability, refundGivenWords } from "./refundWords";
 import { billNotPrintedWords, copyNotPrintedWords, printProblemOnce } from "../print/printProblems";
-import { DISCOUNT_HELD_WORDS } from "../register/registerWords";
+import { DIRECT_ORDER_SENT_WORDS, ORDER_SENT_WORDS, DISCOUNT_HELD_WORDS } from "../register/registerWords";
 
 export type DetailPending = "send" | "remove" | "quantity" | "reprint" | "kitchen" | "take-over" | "bill" | null;
 
@@ -698,11 +698,12 @@ export function OrderDetail({
       {
         onSuccess: (updated) => {
           focusAfter.current = true;
-          setResult("Sent to the kitchen.");
+          const sentWords = directOnlyUnsent(order) ? DIRECT_ORDER_SENT_WORDS : ORDER_SENT_WORDS;
+          setResult(sentWords);
           // The kitchen tickets Yetu made, printed as before; one that didn't print is said (F-233).
           void printAfter(updated.id).then((results) => {
             const words = printProblemOnce(results, "kitchen ticket");
-            if (words) setResult(`Sent to the kitchen. ${words}`);
+            if (words) setResult(`${sentWords} ${words}`);
           });
         },
         onError: (error) => {
@@ -901,6 +902,7 @@ export function OrderDetail({
       {preview ? (
         <PaperPreviewSheet
           orderId={order.id}
+          directOnly={directOnlyUnsent(order)}
           kind={preview.kind}
           busy={pending !== null}
           nothingNew={!unsent}

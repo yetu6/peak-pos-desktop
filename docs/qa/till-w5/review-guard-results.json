@@ -1,0 +1,32 @@
+[
+  {
+    "guard": "session-after-claim",
+    "exit": 1,
+    "assertion_failed": true,
+    "source_sha256": "24a08f44c6d993acaf48088d033701550e538c7f1425d9bff03f3c1ab75089c5"
+  },
+  {
+    "guard": "native-scope-after-import",
+    "exit": 1,
+    "assertion_failed": true,
+    "source_sha256": "125da57889d558c5c09059a1929bfdc0d37ec4c527743d6ed12cdf307a261838"
+  },
+  {
+    "guard": "retain-expired-token",
+    "exit": 1,
+    "assertion_failed": true,
+    "source_sha256": "7b14cb5b5d151e050f01d9bed93459c5450abd959d1de1fb10ae3b48657a974a"
+  },
+  {
+    "guard": "render-fallback",
+    "exit": 1,
+    "assertion_failed": true,
+    "source_sha256": "7b14cb5b5d151e050f01d9bed93459c5450abd959d1de1fb10ae3b48657a974a"
+  },
+  {
+    "guard": "layout-no-send",
+    "exit": 1,
+    "assertion_failed": true,
+    "source_sha256": "24a08f44c6d993acaf48088d033701550e538c7f1425d9bff03f3c1ab75089c5"
+  }
+]

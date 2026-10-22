@@ -204,7 +204,7 @@ export function TicketPanel({
         ) : order?.guestCount ? <p className="y-ticket__who">{ORDER_CONTEXT_WORDS.guestCount(order.guestCount)}</p> : null}
         {sent ? (
           <StatusChip tone="info" icon={<ChefHat aria-hidden="true" />} data-testid="ticket-sent">
-            {sentAt ? `Sent to kitchen ${clockTime(sentAt)}` : "Sent to kitchen"}
+            {sentAt ? `Sent ${clockTime(sentAt)}` : "Sent"}
           </StatusChip>
         ) : null}
       </header>

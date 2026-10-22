@@ -28,7 +28,7 @@ import {
 import { ReceiptView } from "../components/ReceiptView";
 import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OptionsSheet } from "../register/OptionsSheet";
-import { takesMore, unsentLines } from "../register/rounds";
+import { directOnlyUnsent, takesMore, unsentLines } from "../register/rounds";
 import { useTillMenu } from "../fnb/useTillMenu";
 import { sizesOf, tagNote } from "../fnb/fnbWords";
 import { PaymentDone } from "../register/PaymentDone";
@@ -556,6 +556,7 @@ export function NewOrder({
       {preview && order ? (
         <PaperPreviewSheet
           orderId={order.id}
+          directOnly={directOnlyUnsent(order)}
           kind={preview}
           busy={sendOrder.isPending || printBill.isPending || reprintKitchen.isPending}
           nothingNew={unsentLines(order) === 0}

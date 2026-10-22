@@ -22,6 +22,12 @@ export function unsentLines(order: OrderState | null): number {
   return (order?.items ?? []).filter((line) => line.status === "ADDED").length;
 }
 
+/** No production paper only when every new line explicitly says Direct. */
+export function directOnlyUnsent(order: OrderState | null): boolean {
+  const lines = (order?.items ?? []).filter((line) => line.status === "ADDED");
+  return lines.length > 0 && lines.every((line) => line.fulfilment === "DIRECT");
+}
+
 /**
  * The stations with something new to print, each once, in the till's order
  * of stations (owner, 2026-10-22: Print for bar, Print for kitchen). Null
@@ -29,7 +35,7 @@ export function unsentLines(order: OrderState | null): number {
  * lines): the till can't choose for it, and prints the whole order.
  */
 export function unsentStations(order: OrderState | null): PrepStation[] | null {
-  const unsent = (order?.items ?? []).filter((line) => line.status === "ADDED");
+  const unsent = (order?.items ?? []).filter((line) => line.status === "ADDED" && line.fulfilment !== "DIRECT");
   if (unsent.some((line) => !line.prepStation)) return null;
   return PREP_STATIONS.filter((station) => unsent.some((line) => line.prepStation === station));
 }
@@ -56,6 +62,7 @@ export function stationSendWords(station: string): string {
  */
 export function printWords(order: OrderState | null): string {
   if (order && unsentLines(order) === 0 && (order.roundsSent ?? 0) > 0) return "Print again";
+  if (directOnlyUnsent(order)) return "Send order";
   const stations = unsentStations(order);
   return stations?.length === 1 ? stationPrintWords(stations[0]) : "Print order";
 }

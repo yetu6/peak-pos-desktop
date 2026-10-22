@@ -1,3 +1,4 @@
+import { prepareBillBranding } from "./billBranding";
 import { processPendingPrintJobs, processPrintJob } from "../lib/printJobs";
 import type { POSPrintJob } from "../lib/posContracts";
 import type { PrintResult } from "../lib/kitchenTicketPrint";
@@ -16,7 +17,7 @@ export async function printFor(
   settings?: PrinterSettings,
 ): Promise<PrintResult[]> {
   return processPendingPrintJobs(propertyId, sourceId, undefined, {
-    settings: settings ?? (await loadPrinterSettings()),
+    settings: await prepareBillBranding(settings ?? (await loadPrinterSettings())),
     printRaw: printRawToPrinter,
     tagsOf,
   });
@@ -28,7 +29,12 @@ export async function printFor(
  */
 export async function printJobNow(job: POSPrintJob, settings?: PrinterSettings): Promise<PrintResult> {
   return processPrintJob(job, undefined, {
-    settings: settings ?? (await loadPrinterSettings()),
+    settings: await prepareBillBranding(settings ?? (await loadPrinterSettings())),
     printRaw: printRawToPrinter,
   });
+}
+
+/** Recover one existing job; the native journal distinguishes an ACK retry from a paper retry. */
+export async function retryPrintJob(job: POSPrintJob): Promise<PrintResult> {
+  return printJobNow(job);
 }

@@ -23,7 +23,7 @@ describe("kitchen ticket on paper (S8a)", () => {
     const text = readable(kitchenTicketBytes(TICKET, PAPER_58MM));
     const lines = text.split("\n");
     // The paper's title first (2026-10-20): an order to make, and where.
-    expect(lines.slice(0, 3)).toEqual(["TO PREPARE - HOT KITCHEN", "ORDER 42", "ROUND 2"]);
+    expect(lines.slice(0, 3)).toEqual(["KITCHEN ORDER", "ORDER 42 - ROUND 2 - ADDED", "Hot kitchen"]);
     expect(text).toContain("Table 12 - Dine in");
     expect(text).toContain("Taken by Amina Hassan");
     expect(text).toContain("Sent by Juma Said");
@@ -40,7 +40,7 @@ describe("kitchen ticket on paper (S8a)", () => {
   it("large type for the number and the waiter; a cut at the end", () => {
     const bytes = Array.from(kitchenTicketBytes(TICKET, PAPER_58MM));
     const at = (needle: number[]) => bytes.findIndex((_, i) => needle.every((b, j) => bytes[i + j] === b));
-    expect(at([0x1d, 0x21, 0x11])).toBeLessThan(at([0x4f, 0x52, 0x44, 0x45, 0x52])); // double size before "ORDER"
+    expect(at([0x1d, 0x21, 0x01])).toBeLessThan(at(Array.from(new TextEncoder().encode("KITCHEN ORDER")))); // double size before "ORDER"
     expect(bytes.slice(-4)).toEqual([0x1d, 0x56, 0x42, 3]);
   });
 
@@ -48,7 +48,8 @@ describe("kitchen ticket on paper (S8a)", () => {
     const again = readable(kitchenTicketBytes({ ...TICKET, copy: true, roundNumber: 1, sentByName: "Amina Hassan" }, PAPER_58MM));
     expect(again).toContain("*** COPY: printed again ***");
     expect(readable(kitchenTicketBytes({ ...TICKET, copy: true, printedAgainByName: "Grace Mushi" }, PAPER_58MM))).toContain("by Grace Mushi");
-    expect(again).not.toContain("ROUND");
+    expect(again).toContain("ROUND 1");
+    expect(again).not.toContain("ADDED");
     expect(again).not.toContain("Sent by");
   });
 

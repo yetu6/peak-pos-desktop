@@ -1,3 +1,7 @@
+import { billItemColumns } from "./billColumns";
+import { PAPER_WORDS } from "./paperWords";
+import { isPrintBrandLine } from "./printBrand";
+import type { MonochromeRaster } from "./billLogo";
 import { orderName, orderReference } from "../lib/orderNumber";
 import { BILL_HEADING, CHARGE_TO_ROOM, GUEST_SIGNATURE, type ReceiptCopy } from "../lib/receiptPrint";
 import { EscPos, printable, wrap, type PaperWidth } from "./escpos";
@@ -11,6 +15,7 @@ import { guestCountWords, placeWords } from "../lib/words";
  * are the text bill's (lib/receiptPrint.ts); only the layout is the paper's.
  */
 export interface ReceiptPaperOptions {
+  logo?: MonochromeRaster;
   /** Open the cash drawer first (a cash payment's original receipt). */
   drawer?: boolean;
   /** A copy printed again: says COPY. */
@@ -29,11 +34,18 @@ function columns(out: EscPos, left: string, right: string, width: number): void 
 
 export function receiptBytes(receipt: ReceiptCopy, width: PaperWidth, options: ReceiptPaperOptions = {}): Uint8Array {
   const out = new EscPos(width);
-  if (options.drawer) out.drawer();
+  if (options.drawer && !options.copy && !receipt.copy) out.drawer();
+  if (options.logo) out.align("center").raster(options.logo);
   out.align("center").bold(true).size(1, 2).wrapped((receipt.propertyName ?? "Property").toUpperCase()).size(1, 1);
   if (receipt.outletName) out.wrapped(receipt.outletName);
+  const contact = [receipt.propertyAddress, receipt.propertyPhone].filter(Boolean).join(" · ");
+  if (contact) out.wrapped(contact);
   out.bold(true).line(receipt.beforePayment ? BILL_HEADING : `${BILL_HEADING} - PAID`).bold(false);
-  if (options.copy) out.bold(true).line("*** COPY ***").bold(false);
+  if (options.copy || receipt.copy) {
+    out.bold(true).line("*** COPY ***").bold(false);
+    if (receipt.printedAgainAt) out.wrapped(`Printed again ${receipt.printedAgainAt}`);
+    if (receipt.printedAgainByName) out.wrapped(`by ${receipt.printedAgainByName}`);
+  }
   if (receipt.dailyNumber || receipt.orderNumber) out.bold(true).size(2, 2).line(orderName(receipt)).size(1, 1).bold(false);
   const reference = orderReference(receipt);
   if (reference) out.line(`Ref ${reference}`);
@@ -49,7 +61,7 @@ export function receiptBytes(receipt: ReceiptCopy, width: PaperWidth, options: R
   out.rule();
 
   if (receipt.lines.length === 0) out.line("(no items)");
-  for (const line of receipt.lines) columns(out, `${line.quantity.trim() || "1"} x ${line.name}`, line.total ?? "", width);
+  for (const line of billItemColumns(receipt.lines, width)) out.line(line);
   out.rule();
 
   if (receipt.subtotal) columns(out, receipt.vatIncluded ? "Items" : "Subtotal", receipt.subtotal, width);
@@ -72,16 +84,17 @@ export function receiptBytes(receipt: ReceiptCopy, width: PaperWidth, options: R
     out.line(`Room ${receipt.roomCharge.room ?? "_".repeat(Math.max(8, width - 6))}`).feed(1);
     out.line(GUEST_SIGNATURE).feed(2).line("_".repeat(width));
   }
-  out.rule().align("center").line("Powered by Yetu");
+  out.rule().align("center").wrapped(receipt.beforePayment ? PAPER_WORDS.payThanks : PAPER_WORDS.thanks);
   return out.feed(3).cut().build();
 }
 
 /** A slip Yetu's text formatter already laid out (a refund), wrapped to the paper, with a cut. */
 export function textPaperBytes(text: string, width: PaperWidth, options: ReceiptPaperOptions = {}): Uint8Array {
   const out = new EscPos(width);
-  if (options.drawer) out.drawer();
+  if (options.drawer && !options.copy) out.drawer();
   if (options.copy) out.align("center").bold(true).line("*** COPY ***").bold(false).align("left");
   for (const line of text.replace(/\n+$/, "").split("\n")) {
+    if (isPrintBrandLine(line)) continue;
     if (line.trim() === "") out.line();
     else out.wrapped(line);
   }

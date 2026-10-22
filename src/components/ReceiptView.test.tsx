@@ -66,9 +66,9 @@ describe("ReceiptView", () => {
     expect(doc).toHaveTextContent("TSh 141.70");
     expect(doc).toHaveTextContent("VAT");
     expect(screen.getByTestId("receipt-taken-by")).toHaveTextContent("Taken by Amina Hassan");
-    expect(screen.getByTestId("receipt-footer")).toHaveTextContent(
-      "Powered by Yetu",
-    );
+    const footer = screen.getByTestId("receipt-footer");
+    expect(footer).toHaveTextContent(/^Powered by Yetu\s*yetu\.fbcsoftwares\.com$/);
+    expect(footer.querySelector("br")).not.toBeNull();
     expect(sheet).not.toHaveTextContent(/invoice/i);
     expect(screen.queryByTestId("receipt-error")).not.toBeInTheDocument();
   });

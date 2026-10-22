@@ -54,3 +54,24 @@ for (const [width,height] of [[1366,768],[1920,1080]]) for (const theme of ["lig
   await expect(page.getByRole("group",{name:"Guests (optional) quantity"})).toHaveCount(0);
  });
 }
+
+for (const [width,height] of [[1366,768],[1920,1080]]) for (const theme of ["light","dark"]) for (const fixture of ["papers-80","papers-58","papers-copy","papers-cancel"]) {
+ test(`W5 ${fixture} ${width} ${theme}`,async({page})=>{
+  await page.setViewportSize({width,height});
+  await page.addInitScript(value=>localStorage.setItem("yetu-till-theme",value),theme);
+  const {mkdir}=await import("node:fs/promises");await mkdir("docs/qa/till-w5/after",{recursive:true});
+   await page.goto(`/?fixture=${fixture}`);await page.evaluate(()=>document.fonts.ready);
+   const paper=page.getByTestId("paper-text");await expect(paper).toBeVisible();
+   await expect(paper).toHaveCSS("background-color","rgb(255, 255, 255)");
+   const text=await paper.textContent();expect(text).toContain("Powered by Yetu");expect(text).toContain("yetu.fbcsoftwares.com");
+   if(fixture==="papers-copy")expect(text).toContain("COPY");
+   else if(fixture==="papers-cancel"){expect(text).toContain("CANCELLED");expect(text).toContain("DO NOT MAKE");}
+   else{expect(text!.indexOf("HAND OVER")).toBeLessThan(text!.indexOf("MAKE"));expect(text).not.toContain("TSh");}
+   await page.screenshot({path:`docs/qa/till-w5/after/${fixture}-${width}x${height}-${theme}.png`});
+   if(fixture==="papers-80"||fixture==="papers-58"){
+    await page.getByRole("tab",{name:"Bill",exact:true}).click();
+    await expect(paper).toContainText("TOTAL");await expect(paper).toContainText("TSh");
+    await page.screenshot({path:`docs/qa/till-w5/after/bill-${fixture}-${width}x${height}-${theme}.png`});
+   }
+ });
+}

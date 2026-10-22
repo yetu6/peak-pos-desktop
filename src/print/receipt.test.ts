@@ -32,7 +32,7 @@ describe("the receipt on a thermal printer (S8b)", () => {
   it("puts each amount at the paper's right edge, the discount with its reason, and a large total", () => {
     const paper = readable(receiptBytes(RECEIPT, PAPER_80MM)).split("\n");
     for (const line of paper) expect(line.length).toBeLessThanOrEqual(48);
-    expect(paper).toContain(`2 x Kilimanjaro lager${" ".repeat(48 - "2 x Kilimanjaro lager".length - "TSh 12,000".length)}TSh 12,000`);
+    expect(paper).toContain(`Kilimanjaro lager${" ".repeat(48 - "Kilimanjaro lager".length - "2 TSh 12,000".length)}2 TSh 12,000`);
     expect(paper.some((line) => line.startsWith("Discount (Regular guest)") && line.endsWith("-TSh 3,000"))).toBe(true);
     expect(paper.some((line) => line.startsWith("TOTAL") && line.endsWith("TSh 31,860"))).toBe(true);
     expect(paper).toContain("Order 42");
@@ -44,7 +44,7 @@ describe("the receipt on a thermal printer (S8b)", () => {
   it("wraps a long item on 58 mm paper, its amount on the last line", () => {
     const paper = readable(receiptBytes(RECEIPT, PAPER_58MM)).split("\n");
     for (const line of paper) expect(line.length).toBeLessThanOrEqual(32);
-    const start = paper.findIndex((line) => line.startsWith("1 x Grilled tilapia"));
+    const start = paper.findIndex((line) => line.startsWith("Grilled tilapia"));
     expect(paper[start]).not.toContain("TSh");
     const end = paper.slice(start).find((line) => line.endsWith("TSh 18,000"));
     expect(end).toBeDefined();

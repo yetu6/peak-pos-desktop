@@ -1,3 +1,5 @@
+import { PRINT_BRAND, PRINT_BRAND_ADDRESS } from "./printBrand";
+import type { MonochromeRaster } from "./billLogo";
 /**
  * ESC/POS for the till's thermal printers (S8a): the commands every 58 mm
  * and 80 mm receipt printer takes -- start, bold, large type, centring, a
@@ -107,6 +109,7 @@ export class EscPos {
 
   /** Feed past the cutter and cut, leaving a hinge (GS V 66 n). */
   cut(): this {
+    this.size(1, 1).align("center").bold(true).line(PRINT_BRAND).bold(false).line(PRINT_BRAND_ADDRESS).feed(3);
     this.bytes.push(GS, 0x56, 0x42, 3);
     return this;
   }
@@ -114,6 +117,16 @@ export class EscPos {
   /** Open the cash drawer on pin 2 (ESC p 0 25 250). */
   drawer(): this {
     this.bytes.push(ESC, 0x70, 0, 25, 250);
+    return this;
+  }
+
+  /** GS v 0: an optional monochrome branding image. Invalid data leaves text intact. */
+  raster(image: MonochromeRaster): this {
+    const expected = this.width === PAPER_80MM ? 576 : 384;
+    if (image.width !== expected || !Number.isSafeInteger(image.height) || image.height < 1 || image.height > 288 || image.data.length !== image.width / 8 * image.height) return this;
+    const rowBytes = image.width / 8;
+    this.bytes.push(GS, 0x76, 0x30, 0, rowBytes & 255, rowBytes >> 8, image.height & 255, image.height >> 8);
+    for (const byte of image.data) this.bytes.push(byte);
     return this;
   }
 
@@ -131,7 +144,11 @@ export function readable(bytes: Uint8Array): string {
       const op = bytes[i + 1];
       i += op === 0x40 ? 1 : op === 0x70 ? 4 : 2; // ESC @ | ESC p m t1 t2 | ESC x n
     } else if (b === GS) {
-      i += bytes[i + 1] === 0x56 ? 3 : 2; // GS V m n | GS ! n
+      if (bytes[i + 1] === 0x76 && bytes[i + 2] === 0x30) {
+        const rowBytes = bytes[i + 4] + 256 * bytes[i + 5];
+        const height = bytes[i + 6] + 256 * bytes[i + 7];
+        i += 7 + rowBytes * height;
+      } else i += bytes[i + 1] === 0x56 ? 3 : 2; // GS V m n | GS ! n
     } else out += String.fromCharCode(b);
   }
   return out;

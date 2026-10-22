@@ -1,0 +1,98 @@
+
+ RUN  v4.1.10 /home/mwombeki/Desktop/PEAK/.worktrees/till-w5
+
+ ❯ src/print/w5Layouts.test.ts (14 tests | 5 failed) 100ms
+   × both bill paths retain the business name and reprint audit with the owner’s signature and without copy drawer kicks 20ms
+   × prints business contact details once on both bill paths at 32 2ms
+   × prints business contact details once on both bill paths at 48 1ms
+   × resets footer typography to normal size, centered and bold at 32 13ms
+   × resets footer typography to normal size, centered and bold at 48 3ms
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  5 failed | 15 passed (20)
+   Start at  20:41:22
+   Duration  4.41s (transform 312ms, setup 599ms, import 327ms, tests 160ms, environment 2.39s)
+
+$ vitest run "src/print/w5Layouts.test.ts" src/print/billLogo.test.ts "--maxWorkers=1"
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/print/w5Layouts.test.ts > both bill paths retain the business name and reprint audit with the owner’s signature and without copy drawer kicks
+AssertionError: expected 'BAHARI QA HOTEL\nBILL\n*** COPY ***\n…' to contain 'Powered by Yetu-FBC'
+
+- Expected
++ Received
+
+- Powered by Yetu-FBC
++ BAHARI QA HOTEL
++ BILL
++ *** COPY ***
++ Printed again Thu 22 Oct 2026 - 13:52
++ by Amina
++ Order 6
++ Ref POS-BAR-6
++ ------------------------------------------------
++ ------------------------------------------------
++ (no items)
++ ------------------------------------------------
++ ------------------------------------------------
++ Please pay at the till. Thank you.
++
++
+
+ ❯ src/print/w5Layouts.test.ts:74:18
+     72|     expect(text).toContain("13:52");
+     73|     expect(text).toContain("Ref POS-BAR-6");
+     74|     expect(text).toContain("Powered by Yetu-FBC");
+       |                  ^
+     75|   }
+     76|   expect(Array.from(receiptBytes(receipt, 48, { copy: true, drawer: tr…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  src/print/w5Layouts.test.ts > prints business contact details once on both bill paths at 32
+ FAIL  src/print/w5Layouts.test.ts > prints business contact details once on both bill paths at 48
+AssertionError: Target cannot be null or undefined.
+ ❯ src/print/w5Layouts.test.ts:104:48
+    102|     expect(text).toContain("Dar es Salaam");
+    103|     expect(text).toContain("+255 700 123 456");
+    104|     expect(text.match(/Powered by Yetu-FBC/g)).toHaveLength(1);
+       |                                                ^
+    105|     expect(text).toContain("BAHARI QA HOTEL");
+    106|   }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  src/print/w5Layouts.test.ts > resets footer typography to normal size, centered and bold at 32
+AssertionError: expected '27,64,27,97,1,27,69,1,29,33,1,66,65,7…' to contain '29,33,0,27,97,1,27,69,1,80,111,119,10…'
+
+Expected: "29,33,0,27,97,1,27,69,1,80,111,119,101,114,101,100,32,98,121,32,89,101,116,117,45,70,66,67,10,27,69,0,27,100,3,29,86,66,3"
+Received: "27,64,27,97,1,27,69,1,29,33,1,66,65,72,65,82,73,32,81,65,32,72,79,84,69,76,10,29,33,0,27,69,1,66,73,76,76,10,27,69,0,27,97,0,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,10,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,10,40,110,111,32,105,116,101,109,115,41,10,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,10,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,10,27,97,1,80,108,101,97,115,101,32,112,97,121,32,97,116,32,116,104,101,32,116,105,108,108,46,32,84,104,97,110,107,10,121,111,117,46,10,27,100,3,29,33,0,27,97,1,27,69,1,10,27,69,0,27,100,3,29,86,66,3"
+
+ ❯ src/print/w5Layouts.test.ts:111:39
+    109|   const bytes = receiptBytes({ propertyName: "Bahari QA Hotel", before…
+    110|   const signature = Array.from(new TextEncoder().encode("Powered by Ye…
+    111|   expect(Array.from(bytes).join(",")).toContain([29,33,0,27,97,1,27,69…
+       |                                       ^
+    112| });
+    113|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  src/print/w5Layouts.test.ts > resets footer typography to normal size, centered and bold at 48
+AssertionError: expected '27,64,27,97,1,27,69,1,29,33,1,66,65,7…' to contain '29,33,0,27,97,1,27,69,1,80,111,119,10…'
+
+Expected: "29,33,0,27,97,1,27,69,1,80,111,119,101,114,101,100,32,98,121,32,89,101,116,117,45,70,66,67,10,27,69,0,27,100,3,29,86,66,3"
+Received: "27,64,27,97,1,27,69,1,29,33,1,66,65,72,65,82,73,32,81,65,32,72,79,84,69,76,10,29,33,0,27,69,1,66,73,76,76,10,27,69,0,27,97,0,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,10,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,10,40,110,111,32,105,116,101,109,115,41,10,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,10,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,45,10,27,97,1,80,108,101,97,115,101,32,112,97,121,32,97,116,32,116,104,101,32,116,105,108,108,46,32,84,104,97,110,107,32,121,111,117,46,10,27,100,3,29,33,0,27,97,1,27,69,1,10,27,69,0,27,100,3,29,86,66,3"
+
+ ❯ src/print/w5Layouts.test.ts:111:39
+    109|   const bytes = receiptBytes({ propertyName: "Bahari QA Hotel", before…
+    110|   const signature = Array.from(new TextEncoder().encode("Powered by Ye…
+    111|   expect(Array.from(bytes).join(",")).toContain([29,33,0,27,97,1,27,69…
+       |                                       ^
+    112| });
+    113|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+error: script "test" exited with code 1

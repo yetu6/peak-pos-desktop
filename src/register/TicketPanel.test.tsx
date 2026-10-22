@@ -220,9 +220,9 @@ describe("TicketPanel", () => {
     expect(onSelectLine).toHaveBeenCalledWith(null);
   });
 
-  it("says when the order went to the kitchen", () => {
+  it("says when the order was sent without claiming every item goes to a kitchen", () => {
     renderTicket({ order: { ...ORDER, status: "SENT" }, sentAt: new Date(2026, 9, 12, 14, 5) });
-    expect(screen.getByTestId("ticket-sent")).toHaveTextContent("Sent to kitchen 14:05");
+    expect(screen.getByTestId("ticket-sent")).toHaveTextContent("Sent 14:05");
   });
 
   it("starts empty with what to do", () => {

@@ -1,0 +1,10 @@
+$ vitest run src/print/PaperText.test.tsx "src/print/w5Layouts.test.ts" src/print/receipt.test.ts src/register/PaperPreviewSheet.test.tsx "--maxWorkers=1"
+
+ RUN  v4.1.10 /home/mwombeki/Desktop/PEAK/.worktrees/till-w5
+
+
+ Test Files  4 passed (4)
+      Tests  44 passed (44)
+   Start at  20:47:03
+   Duration  10.94s (transform 1.72s, setup 1.03s, import 2.33s, tests 1.57s, environment 4.45s)
+

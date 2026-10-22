@@ -1,3 +1,4 @@
+import { PRINT_RECOVERY_WORDS } from "../print/printQueueWords";
 import { getApiBaseUrl } from "./peakConfig";
 import { getOperationalSession } from "./operationalSession";
 import { restRequestHeaders } from "./restAuth";
@@ -9,12 +10,15 @@ import {
 } from "./kitchenTicketPrint";
 import { formatReceipt, receiptCopyFromPrintDocument } from "./receiptPrint";
 import { formatRefundReceipt, refundReceiptCopyFromPrintDocument } from "./refundReceiptPrint";
-import type { POSPrintJob, PrintJobStatus } from "./posContracts";
+import type { POSFulfilment, POSPrintJob, PrintJobStatus } from "./posContracts";
 import { kitchenTicketBytes } from "../print/kitchenTicket";
 import { formatVoidSlip, voidSlipBytes, voidSlipFromPrintDocument } from "../print/voidTicket";
 import { paperFromPrintDocument, type KitchenPrintRoutes } from "../print/kitchenRouting";
-import { printerFor, stationPrintsNoPaper, type PrinterChoice, type PrinterTarget } from "../print/printerSettings";
+import { stationCopiesFor, printerFor, stationPrintsNoPaper, type PrinterChoice, type PrinterTarget } from "../print/printerSettings";
 import { hotelHere, receiptPaperFor } from "../print/receiptRouting";
+import { cachedBillLogo } from "../print/billLogo";
+import { preparedPaper } from "../print/preparedPreview";
+import { inspectNativePrint, nativePrintOnce, usesNativePrintJournal } from "../print/nativePrintJournal";
 import { yetuFetch } from "./yetuFetch";
 
 /**
@@ -96,6 +100,7 @@ export function ticketCopyFromPrintDocument(document: Record<string, unknown>): 
           {
             name: row.name,
             quantity: String(row.quantity ?? "1"),
+            fulfilment: row.fulfilment === "DIRECT" || row.fulfilment === "PICKED" || row.fulfilment === "PREPARED" ? row.fulfilment as POSFulfilment : undefined,
             note:
               typeof row.note === "string"
                 ? row.note
@@ -123,11 +128,24 @@ export function ticketCopyFromPrintDocument(document: Record<string, unknown>): 
     notes: typeof document.notes === "string" ? document.notes : undefined,
     waiterName: typeof document.waiterName === "string" ? document.waiterName : undefined,
     sentAt: typeof document.sentAt === "string" ? document.sentAt : undefined,
+    roundNumber: typeof document.roundNumber === "number" ? document.roundNumber : undefined,
+    copy: document.copy === true,
+    printedAgainByName: typeof document.printedAgainByName === "string" ? document.printedAgainByName : undefined,
+    printedAgainAt: typeof document.printedAgainAt === "string" ? document.printedAgainAt : undefined,
     lines,
   };
 }
 
+function copyDocument(job: POSPrintJob): POSPrintJob {
+  if (!job.reprintedFromId) return job;
+  return { ...job, document: { ...job.document, copy: true, printedAgainAt: job.document.printedAgainAt ?? job.createdAt, originalDocumentId: job.reprintedFromId } };
+}
 export function formatPrintDocument(job: POSPrintJob): { title: string; text: string } {
+  const formatted = formatJobDocument(copyDocument(job));
+  if (job.reprintedFromId && !/^.*COPY.*$/m.test(formatted.text)) formatted.text = `*** COPY ***\n${formatted.text}`;
+  return formatted;
+}
+function formatJobDocument(job: POSPrintJob): { title: string; text: string } {
   if (job.jobType === RECEIPT || job.jobType === BILL) {
     return { title: "yetu-bill", text: formatReceipt(receiptCopyFromPrintDocument(job.document, { hotel: hotelHere() })) };
   }
@@ -174,29 +192,30 @@ export async function listPrintJobs(status: PrintJobStatus | "" = "PENDING", sou
  * from them is stable across polling cycles and app restarts alike, which a
  * held-in-memory random key never could be.
  */
-function printJobIdempotencyKey(jobId: string, action: "claim" | "printed" | "failed"): string {
-  return `pos-print-job:${jobId}:${action}`;
+function printJobIdempotencyKey(jobId: string, action: "claim" | "printed" | "failed", attempt: number): string {
+  return `pos-print-job:${jobId}:${action}:${attempt}`;
 }
 
-export async function claimPrintJob(jobId: string): Promise<POSPrintJob> {
+export async function claimPrintJob(jobId: string, attempt = 1): Promise<POSPrintJob> {
   return request(`/api/v1/pos/print-jobs/${jobId}/claim`, {
     method: "POST",
-    headers: { "Idempotency-Key": printJobIdempotencyKey(jobId, "claim") },
+    headers: { "Idempotency-Key": printJobIdempotencyKey(jobId, "claim", attempt) },
   });
 }
 
-export async function ackPrinted(jobId: string): Promise<POSPrintJob> {
+export async function ackPrinted(jobId: string, attempt = 1): Promise<POSPrintJob> {
   return request(`/api/v1/pos/print-jobs/${jobId}/printed`, {
     method: "POST",
-    headers: { "Idempotency-Key": printJobIdempotencyKey(jobId, "printed") },
+    headers: { "Idempotency-Key": printJobIdempotencyKey(jobId, "printed", attempt) },
+    body: JSON.stringify({ attempt }),
   });
 }
 
-export async function ackFailed(jobId: string, error: string): Promise<POSPrintJob> {
+export async function ackFailed(jobId: string, error: string, attempt = 1): Promise<POSPrintJob> {
   return request(`/api/v1/pos/print-jobs/${jobId}/failed`, {
     method: "POST",
-    headers: { "Idempotency-Key": printJobIdempotencyKey(jobId, "failed") },
-    body: JSON.stringify({ error }),
+    headers: { "Idempotency-Key": printJobIdempotencyKey(jobId, "failed", attempt) },
+    body: JSON.stringify({ error, attempt }),
   });
 }
 
@@ -236,6 +255,10 @@ function paperRoute(job: POSPrintJob, routes?: KitchenPrintRoutes): PaperRoute {
  * read; callers catch that.
  */
 export function paperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): TillPaper {
+  return preparedPaper(job) ?? buildPaperFor(job, routes);
+}
+
+export function buildPaperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): TillPaper {
   const route = paperRoute(job, routes);
   if (route.kind === "none") return route;
   if (route.kind === "kitchen") {
@@ -243,14 +266,29 @@ export function paperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): TillPap
     const { target, width } = route.printer;
     const bytes = job.jobType === KITCHEN_VOID
       ? voidSlipBytes(voidSlipFromPrintDocument(job.document), width)
-      : kitchenTicketBytes(paperFromPrintDocument(job.document, routes?.tagsOf), width);
+      : kitchenTicketBytes(paperFromPrintDocument(job.document, routes?.tagsOf), width, routes?.settings);
+    const count = job.jobType === KITCHEN_TICKET && routes ? stationCopiesFor(routes.settings, typeof job.document.station === "string" ? job.document.station : undefined) : 1;
+    if (count > 1 && bytes.length > 0) {
+      const copy = kitchenTicketBytes({ ...paperFromPrintDocument(job.document, routes?.tagsOf), copy: true }, width, routes?.settings);
+      const combined = new Uint8Array(bytes.length + (count - 1) * copy.length);
+      combined.set(bytes);
+      for (let index = 1; index < count; index++) combined.set(copy, bytes.length + (index - 1) * copy.length);
+      return { kind: "thermal", target, width, bytes: combined };
+    }
     return { kind: "thermal", target, width, bytes };
   }
   const formatted = formatPrintDocument(job);
   if (route.kind === "receipt") {
     // The thermal receipt printer: columns, a cut, and the cash drawer for cash on an original (S8b).
     const { target, width } = route.printer;
-    return { kind: "thermal", target, width, bytes: receiptPaperFor(job, width, routes?.settings.cashDrawer ?? false, formatted.text) };
+    return { kind: "thermal", target, width, bytes: receiptPaperFor(copyDocument(job), width, routes?.settings.cashDrawer ?? false, formatted.text, route.printer.billLogo ? cachedBillLogo(routes?.settings.billLogoUrl, width) : undefined) };
+  }
+  if (job.jobType === KITCHEN_TICKET && routes) {
+    const count = stationCopiesFor(routes.settings, typeof job.document.station === "string" ? job.document.station : undefined);
+    if (count > 1) {
+      const copy = formatPrintDocument({ ...job, document: { ...job.document, copy: true } });
+      return { kind: "system", title: formatted.title, text: [formatted.text, ...Array<string>(count - 1).fill(copy.text)].join("\n\f\n") };
+    }
   }
   return { kind: "system", title: formatted.title, text: formatted.text };
 }
@@ -260,10 +298,14 @@ export async function processPrintJob(
   printFn: (title: string, text: string) => Promise<void> = defaultPrint,
   routes?: KitchenPrintRoutes,
 ): Promise<PrintResult> {
-  if (paperRoute(job, routes).kind === "none") return { ok: true };
+  const printSession = getOperationalSession();
+  const sameSession = () => getOperationalSession() === printSession;
+  if (job.status === "PRINTED" || job.status === "ON_FILE") return { ok: true };
+  if (job.status === "CLAIMED" && job.claimedByTerminalId !== getOperationalSession()?.terminalId) return { ok: true };
+  if ((preparedPaper(job) ?? paperRoute(job, routes)).kind === "none" && job.status !== "CLAIMED") return { ok: true };
   let claimed: POSPrintJob;
   try {
-    claimed = job.status === "PENDING" ? await claimPrintJob(job.id) : job;
+    claimed = job.status === "PENDING" || job.status === "FAILED" ? await claimPrintJob(job.id, job.attempts + 1) : job;
   } catch (error) {
     // Another till won SKIP LOCKED. That till prints; this one must not.
     if (error instanceof PrintJobRequestError && error.status === 409) {
@@ -271,21 +313,53 @@ export async function processPrintJob(
     }
     return printFailure(error);
   }
+  if (!sameSession()) return { ok: false, error: PRINT_RECOVERY_WORDS.sessionChanged };
+  let knownNotSent = !usesNativePrintJournal();
   try {
-    const paper = paperFor(claimed, routes);
-    if (paper.kind === "thermal" && routes) await routes.printRaw(paper.target, paper.bytes);
-    else if (paper.kind === "system") await printFn(paper.title, paper.text);
-    await ackPrinted(claimed.id);
-    return { ok: true };
+    if (usesNativePrintJournal()) {
+      const evidence = await inspectNativePrint(claimed.id, printSession);
+      if (!sameSession()) return { ok: false, error: PRINT_RECOVERY_WORDS.sessionChanged };
+      if (evidence?.state === "unknown") return { ok: false, error: PRINT_RECOVERY_WORDS.unknown };
+      if (evidence?.state !== "accepted") {
+        // Layout preparation has no physical side effect. A layout failure
+        // here is safely retryable; uncertainty starts at native dispatch.
+        knownNotSent = true;
+        const paper = paperFor(claimed, routes);
+        if (paper.kind === "none") return { ok: true };
+        knownNotSent = false;
+        const result = await nativePrintOnce(claimed.id, claimed.attempts, paper, printSession);
+        if (result.state === "unknown" || result.state === "reserved") return { ok: false, error: PRINT_RECOVERY_WORDS.unknown };
+        if (result.state === "not_sent") {
+          knownNotSent = true;
+          throw new Error(result.message ?? PRINT_RECOVERY_WORDS.offlinePrinter);
+        }
+      }
+    } else {
+      const paper = paperFor(claimed, routes);
+      if (paper.kind === "thermal" && routes) await routes.printRaw(paper.target, paper.bytes);
+      else if (paper.kind === "system") await printFn(paper.title, paper.text);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (!sameSession()) return { ok: false, error: PRINT_RECOVERY_WORDS.sessionChanged };
+    if (!knownNotSent) return { ok: false, error: PRINT_RECOVERY_WORDS.unconfirmed };
     try {
-      await ackFailed(claimed.id, message || "No printer is set up on this till");
+      await ackFailed(claimed.id, message || "No printer is set up on this till", claimed.attempts);
     } catch {
       // Peak already owns the job; a second ack failure must not look like a send failure.
     }
     return { ok: false, error: message || "No printer is set up on this till" };
   }
+  if (!sameSession()) return { ok: false, error: PRINT_RECOVERY_WORDS.sessionChanged };
+  try {
+    await ackPrinted(claimed.id, claimed.attempts);
+    return { ok: true };
+  } catch {
+    // The transport already accepted this paper. Keep CLAIMED and retry only
+    // its acknowledgement; marking it FAILED would invite a duplicate copy.
+    return { ok: false, error: PRINT_RECOVERY_WORDS.accepted };
+  }
+
 }
 
 /**
@@ -300,6 +374,7 @@ export async function processPendingPrintJobs(
   printFn: (title: string, text: string) => Promise<void> = defaultPrint,
   routes?: KitchenPrintRoutes,
 ): Promise<PrintResult[]> {
+  const batchSession = getOperationalSession();
   let jobs: POSPrintJob[];
   try {
     jobs = await listPrintJobs("PENDING", sourceId);
@@ -309,6 +384,7 @@ export async function processPendingPrintJobs(
   const mine = sourceId ? jobs.filter((job) => String(job.sourceId) === sourceId) : jobs;
   const results: PrintResult[] = [];
   for (const job of mine) {
+    if (getOperationalSession() !== batchSession) { results.push({ ok: false, error: PRINT_RECOVERY_WORDS.sessionChanged }); break; }
     results.push({ ...(await processPrintJob(job, printFn, routes)), jobType: job.jobType });
   }
   return results;

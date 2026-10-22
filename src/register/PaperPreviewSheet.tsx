@@ -1,8 +1,11 @@
-import { Printer } from "lucide-react";
-import { useState } from "react";
+import { renderPaperText } from "../print/PaperText";
+import { Printer, Send } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Banner, Button, Sheet, Tabs } from "../components/system";
 import { usePaperPreview, usePrinterSettings } from "../hooks/usePosData";
+import { preparePreview, receivedPreviewToken } from "../print/preparedPreview";
 import { paperViews } from "../print/paperPreview";
+import { DIRECT_HAND_OVER_WORDS } from "./registerWords";
 import { stationPrintWords, stationSendWords } from "./rounds";
 
 /**
@@ -18,6 +21,7 @@ export function PaperPreviewSheet({
   kind,
   busy,
   nothingNew = false,
+  directOnly = false,
   refusalOf,
   tagsOf,
   allOnly = false,
@@ -29,6 +33,8 @@ export function PaperPreviewSheet({
   busy: boolean;
   /** Print order with nothing new: it can only print the last papers again. */
   nothingNew?: boolean;
+  /** All new lines are explicitly handed over at this till. */
+  directOnly?: boolean;
   /** Yetu's refusal of these papers in the till's words, or null when it was the connection. */
   refusalOf?: (error: unknown) => string | null;
   tagsOf?: (productId: string) => string | undefined;
@@ -38,8 +44,10 @@ export function PaperPreviewSheet({
   onPrint: (stations?: string[]) => void;
   onBack: () => void;
 }) {
-  const papers = usePaperPreview(orderId, kind);
+  const requestKind = kind === "ROUND" && nothingNew ? "AGAIN" : kind;
+  const papers = usePaperPreview(orderId, requestKind);
   const settings = usePrinterSettings();
+  const shownToken = useMemo(() => receivedPreviewToken(orderId, requestKind), [orderId, requestKind, papers.data]);
   const views = papers.data && settings.data ? paperViews(papers.data, settings.data, tagsOf) : null;
   const [tab, setTab] = useState("0");
   const shown = views?.[Number(tab)] ?? views?.[0] ?? null;
@@ -51,10 +59,17 @@ export function PaperPreviewSheet({
   const refused = papers.isError ? refusalOf?.(papers.error) ?? null : null;
   const loading = papers.isLoading || settings.isLoading;
   const title = kind === "BILL" ? "Print bill" : kind === "AGAIN" ? "Print the kitchen ticket again" : "Print order";
-  const blocked = busy || loading || refused !== null || nothingToDo || views?.length === 0;
+  const sendDirect = directOnly && kind === "ROUND" && !nothingNew && views?.length === 0 && !papers.isError && !settings.isError;
+  const blocked = busy || loading || refused !== null || nothingToDo || (views?.length === 0 && !sendDirect);
   // New items for more than one station: each paper prints on its own (not before payment), or all together.
   const stationPapers = kind === "ROUND" && !nothingNew && views !== null && views.length > 1 ? views.length : 0;
   const oneStation = stationPapers > 0 && !allOnly && shown?.station ? shown.station : null;
+
+  function confirm(stations?: string[]) {
+    if (papers.data && settings.data) preparePreview(orderId, requestKind, papers.data, settings.data, tagsOf, shownToken);
+    if (stations) onPrint(stations);
+    else onPrint();
+  }
 
   return (
     <Sheet
@@ -77,20 +92,22 @@ export function PaperPreviewSheet({
             Back
           </Button>
           {oneStation && shown ? (
-            <Button size={64} disabled={blocked} onClick={() => onPrint([oneStation])} data-testid="paper-print-one">
+            <Button size={64} disabled={blocked} onClick={() => confirm([oneStation])} data-testid="paper-print-one">
               {shown.printsHere ? stationPrintWords(oneStation) : stationSendWords(oneStation)}
             </Button>
           ) : null}
           <Button
             variant="primary"
             size={64}
-            icon={<Printer />}
+            icon={sendDirect ? <Send /> : <Printer />}
             disabled={blocked}
-            onClick={() => onPrint()}
+            onClick={() => confirm()}
             data-testid="paper-print"
           >
             {busy
               ? "Printing…"
+              : sendDirect
+                ? "Send order"
               : nothingToDo
                 ? "Nothing new to send"
                 : screenOnly
@@ -117,7 +134,7 @@ export function PaperPreviewSheet({
           The papers can't be shown just now. You can still print.
         </Banner>
       ) : views && views.length === 0 ? (
-        <p className="y-paper-preview__status">Nothing to print yet.</p>
+        <p className="y-paper-preview__status">{sendDirect ? DIRECT_HAND_OVER_WORDS : "Nothing to print yet."}</p>
       ) : views ? (
         <>
           {views.length > 1 ? (
@@ -139,7 +156,7 @@ export function PaperPreviewSheet({
               aria-label={`${shown.name} paper`}
               data-testid="paper-text"
             >
-              {shown.text}
+              {renderPaperText(shown.text)}
             </pre>
           ) : null}
         </>

@@ -17,6 +17,7 @@ mod migrations;
 mod offline_pin;
 mod orders;
 mod pricing;
+pub mod print_journal;
 pub mod runtime;
 mod sync;
 
