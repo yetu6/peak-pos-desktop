@@ -8,7 +8,7 @@ import { receiptBytes } from "./receipt";
 import { settingsFrom, stationCopiesFor } from "./printerSettings";
 
 const document = { station: "BAR", dailyNumber: 6, orderNumber: "POS-BAR-6", roundNumber: 2, copy: true,
-  printedAgainByName: "Amina", printedAgainAt: "2026-10-22T10:52:00Z", items: [
+  printedAgainByName: "Amina", printedAgainAt: new Date(2026, 9, 22, 13, 52).toISOString(), items: [
     { name: "Coffee", quantity: 1, fulfilment: "PREPARED" },
     { name: "Water", quantity: 2, fulfilment: "PICKED" },
     { name: "Counter snack", quantity: 1, fulfilment: "DIRECT" },
@@ -71,7 +71,8 @@ it("both bill paths retain the business name and reprint audit with the owner’
     expect(text).toContain("Amina");
     expect(text).toContain("13:52");
     expect(text).toContain("Ref POS-BAR-6");
-    expect(text).toContain("Powered by Yetu-FBC");
+    expect(text).toContain("Powered by Yetu");
+    expect(text).toContain("yetu.fbcsoftwares.com");
   }
   expect(Array.from(receiptBytes(receipt, 48, { copy: true, drawer: true })).join(",")).not.toContain("27,112,0,25,250");
 });
@@ -101,14 +102,16 @@ it.each([32, 48] as const)("prints business contact details once on both bill pa
   for (const text of [formatReceipt(copy), readable(receiptBytes(copy, width))]) {
     expect(text).toContain("Dar es Salaam");
     expect(text).toContain("+255 700 123 456");
-    expect(text.match(/Powered by Yetu-FBC/g)).toHaveLength(1);
+    expect(text.match(/Powered by Yetu/g)).toHaveLength(1);
+    expect(text.match(/yetu\.fbcsoftwares\.com/g)).toHaveLength(1);
     expect(text).toContain("BAHARI QA HOTEL");
   }
 });
 it.each([32, 48] as const)("resets footer typography to normal size, centered and bold at %s", width => {
   const bytes = receiptBytes({ propertyName: "Bahari QA Hotel", beforePayment: true, lines: [] }, width);
-  const signature = Array.from(new TextEncoder().encode("Powered by Yetu-FBC"));
-  expect(Array.from(bytes).join(",")).toContain([29,33,0,27,97,1,27,69,1,...signature,10,27,69,0,27,100,3,29,86,66,3].join(","));
+  const signature = Array.from(new TextEncoder().encode("Powered by Yetu"));
+  const address = Array.from(new TextEncoder().encode("yetu.fbcsoftwares.com"));
+  expect(Array.from(bytes).join(",")).toContain([29,33,0,27,97,1,27,69,1,...signature,10,27,69,0,...address,10,27,100,3,29,86,66,3].join(","));
 });
 it.each([32, 48] as const)("maps backend address/phone and labels item, quantity and amount columns at %s", width => {
   const copy = receiptCopyFromPrintDocument({ kind: "BILL", propertyName: "Bahari QA Hotel", address: "Dar es Salaam", phone: "+255 700 123 456",
