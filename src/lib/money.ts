@@ -95,14 +95,25 @@ export function formatMoney(amountMinor: number | null | undefined, currency: st
  * gives 50,000, 45,000 and 44,000). Exact is offered separately; a currency
  * with no notes set gets none.
  */
-export function quickCashAmounts(dueMinor: number, currency: string | null | undefined): number[] {
-  if (!Number.isFinite(dueMinor) || dueMinor <= 0) return [];
-  const amounts: number[] = [];
-  for (const note of cashNotes(currency)) {
-    const noteMinor = note * MINOR_PER_MAJOR;
-    const next = (Math.floor(dueMinor / noteMinor) + 1) * noteMinor;
-    if (!amounts.includes(next)) amounts.push(next);
-    if (amounts.length === QUICK_CASH_MAX) break;
+/** Named setting: quickCashNotes, in major units. Outlet values override this list. */
+export const QUICK_CASH_NOTES: Readonly<Record<string, readonly number[]>> = {
+  TZS: [1000, 2000, 5000, 10000],
+};
+
+export function quickCashAmounts(dueMinor: number, currency: string | null | undefined, configured?: readonly number[]): number[] {
+  if (!Number.isSafeInteger(dueMinor) || dueMinor <= 0) return [];
+  const notes = configured ?? QUICK_CASH_NOTES[currency?.trim().toUpperCase() ?? ""] ?? [];
+  if (notes.length === 0 || notes.some((n) => !Number.isSafeInteger(n) || n <= 0 || n > 1_000_000)) return [];
+  const note = Math.max(...notes) * MINOR_PER_MAJOR;
+  const candidates = new Set<number>([(Math.floor(dueMinor / note) + 1) * note]);
+  // The next whole largest note, then round bundles of 1, 2, 5 notes,
+  // 10, 20, 50 notes, and so on. Never suggest a figure equal to Exact.
+  for (let scale = 1; scale * note <= Number.MAX_SAFE_INTEGER; scale *= 10) {
+    for (const multiplier of [1, 2, 5]) {
+      const amount = multiplier * scale * note;
+      if (Number.isSafeInteger(amount) && amount > dueMinor) candidates.add(amount);
+    }
+    if (candidates.size >= QUICK_CASH_MAX) break;
   }
-  return amounts.sort((a, b) => a - b);
+  return [...candidates].filter((n) => Number.isSafeInteger(n) && n > dueMinor).sort((a, b) => a - b).slice(0, QUICK_CASH_MAX);
 }

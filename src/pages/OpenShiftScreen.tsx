@@ -1,3 +1,5 @@
+import { typedOver } from "../register/moneyEntry";
+import { useOutletMoneySettings } from "../hooks/usePosData";
 import { useState, type ReactNode } from "react";
 import { placeOf, type TillPlace } from "../lib/tillPlace";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
@@ -28,6 +30,7 @@ export function OpenShiftScreen() {
   const { session, identity, switchStaff, roster } = useDeviceSession();
   const { open } = usePosShift();
   const currency = useCatalogCurrency();
+  const moneySettings = useOutletMoneySettings();
   const canOpenShift = useHasPermission("pos.shift.open");
   const isManager = useHasPermission("pos.report.manager");
   const hotel = useHasCapability("LODGING");
@@ -38,6 +41,7 @@ export function OpenShiftScreen() {
     <OpenShiftView
       person={personLabel(session?.staffId, roster)}
       place={placeOf(identity)}
+      standardFloat={moneySettings.standardFloat}
       currency={currency}
       canOpenShift={canOpenShift}
       pending={open.isPending}
@@ -59,6 +63,7 @@ export function OpenShiftScreen() {
 }
 
 export interface OpenShiftViewProps {
+  standardFloat?: number;
   person: { name: string; initials: string };
   /** The hotel, the outlet and the till (F-252). */
   place: TillPlace;
@@ -88,9 +93,15 @@ export function OpenShiftView({
   closeDay,
   onSwitchPerson,
   onOpen,
+  standardFloat = 0,
   initialNoteCounter = false,
 }: OpenShiftViewProps) {
-  const [openingFloat, setOpeningFloat] = useState("");
+  const [opening, setOpening] = useState({ text: moneyFieldText(standardFloat), source: standardFloat, edited: false });
+  if (opening.source !== standardFloat) {
+    setOpening({ ...opening, source: standardFloat, text: opening.edited ? opening.text : moneyFieldText(standardFloat) });
+  }
+  const openingFloat = opening.text;
+  const setOpeningFloat = (text: string) => setOpening((previous) => ({ ...previous, text, edited: true }));
   const [noteCounter, setNoteCounter] = useState(initialNoteCounter);
   const openingMinor = toMinor(openingFloat);
   // A second column only when there is something to put in it.
@@ -166,11 +177,12 @@ export function OpenShiftView({
               }}
             >
               <MoneyField
-                label="Count the cash in the drawer"
-                hint="This is the float the shift starts with."
+                selectOnFocus
+                label="Opening cash"
+                hint="Usual float. Change it if the drawer has more or less."
                 currency={currency}
                 value={openingFloat}
-                onValueChange={(text) => setOpeningFloat(text)}
+                onValueChange={(text, _minor, edit) => setOpening((previous) => ({ ...previous, text: typedOver(previous.text, text, !previous.edited, edit), edited: true }))}
                 inputTestId="opening-float"
                 autoFocus
               />

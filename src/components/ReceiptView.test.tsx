@@ -13,6 +13,7 @@ const { reprintMutate, receiptRef, keys, reprintState } = vi.hoisted(() => ({
 }));
 
 vi.mock("../hooks/usePosData", () => ({
+  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
   useReceipt: () => receiptRef,
   useReprintReceipt: () => ({ mutate: reprintMutate, isPending: reprintState.isPending, error: null, data: reprintState.data }),
   useIdempotencyKey: () => ({ current: "", next: () => `key-${++keys.minted}` }),

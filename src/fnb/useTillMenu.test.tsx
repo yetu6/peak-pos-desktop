@@ -10,7 +10,8 @@ const { realtime, answer } = vi.hoisted(() => ({
   answer: { status: 200, data: undefined as unknown, error: undefined as unknown },
 }));
 
-vi.mock("../hooks/usePosData", () => ({ useOutletId: () => "outlet-1" }));
+vi.mock("../hooks/usePosData", () => ({
+  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }), useOutletId: () => "outlet-1" }));
 vi.mock("../realtime/RealtimeProvider", () => ({
   useRealtimeEvents: (_target: unknown, handler: (event: { type: string }) => void) => {
     realtime.handler = handler;

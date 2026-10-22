@@ -16,6 +16,7 @@ const { closeAsync, closeState, tabs } = vi.hoisted(() => ({
 }));
 
 vi.mock("../hooks/usePosData", () => ({
+  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
   usePosShift: () => ({ close: { mutateAsync: closeAsync, isPending: closeState.isPending } }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
   useOpenTabsOf: () => tabs,

@@ -31,6 +31,7 @@ const { recordMutate, record, sessionRef, recordReset } = vi.hoisted(() => ({
 }));
 
 vi.mock("../hooks/usePosData", () => ({
+  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
   useRecordCashMovement: () => ({ mutate: recordMutate, isPending: record.isPending, error: record.error, reset: recordReset }),
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
 }));

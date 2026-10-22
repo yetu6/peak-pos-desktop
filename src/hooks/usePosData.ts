@@ -1,3 +1,4 @@
+import { cacheOutletMoney, cachedOutletMoney, moneySettingsFrom } from "../lib/outletMoneySettings";
 import type { FnbTillMenu } from "../fnb/fnbContracts";
 import type { PrintResult } from "../lib/kitchenTicketPrint";
 import { tagNote } from "../fnb/fnbWords";
@@ -106,7 +107,11 @@ export function useCatalog() {
   const outletId = useOutletId();
   return useQuery({
     queryKey: ["pos", "catalog", propertyId, outletId],
-    queryFn: () => unwrap(createPosApi().getCatalog()),
+    queryFn: async () => {
+      const catalog = await unwrap(createPosApi().getCatalog());
+      cacheOutletMoney(propertyId ?? null, outletId ?? null, catalog);
+      return catalog;
+    },
     retry: false,
     staleTime: 60_000,
   });
@@ -937,4 +942,12 @@ export function usePrintAfter(propertyId: string) {
 export function useOrdersByStatus(statuses: POSOrder["status"][]) {
   const { data: orders = [] } = useActiveOrders();
   return useMemo(() => orders.filter((order) => statuses.includes(order.status)), [orders, statuses]);
+}
+
+/** Advisory opening cash and quick notes; never part of offline financial authority. */
+export function useOutletMoneySettings() {
+ const propertyId = usePropertyId();
+ const outletId = useOutletId();
+ const catalog = useCatalog();
+ return catalog.data ? moneySettingsFrom(catalog.data) : cachedOutletMoney(propertyId ?? null, outletId ?? null);
 }
