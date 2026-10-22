@@ -6,25 +6,26 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // What release.yml stages for 0.1.4: the real file names a Tauri release makes.
 const FILES = [
-  "Yetu Till_0.1.4_x64-setup.exe",
-  "Yetu Till_0.1.4_x64_en-US.msi",
-  "Yetu Till_0.1.4_x64_en-US.msi.sig",
-  "Yetu Till_0.1.4_aarch64.dmg",
-  "Yetu Till.app.tar.gz",
-  "Yetu Till.app.tar.gz.sig",
-  "Yetu Till_0.1.4_amd64.AppImage",
-  "Yetu Till_0.1.4_amd64.AppImage.sig",
-  "Yetu Till_0.1.4_amd64.deb",
-  "Yetu Till-0.1.4-1.x86_64.rpm",
+  "Yetu_0.1.4_x64-setup.exe",
+  "Yetu_0.1.4_x64_en-US.msi",
+  "Yetu_0.1.4_x64_en-US.msi.sig",
+  "Yetu_0.1.4_aarch64.dmg",
+  "Yetu.app.tar.gz",
+  "Yetu.app.tar.gz.sig",
+  "Yetu_0.1.4_amd64.AppImage",
+  "Yetu_0.1.4_amd64.AppImage.sig",
+  "Yetu_0.1.4_amd64.deb",
+  "Yetu-0.1.4-1.x86_64.rpm",
+  "yetu-icon.png",
 ];
 const BASE = "https://downloads.yetu.fbcsoftwares.com/pos/0.1.4";
 const MANIFEST = {
   version: "0.1.4",
   pub_date: "2026-10-23T01:30:00Z",
   platforms: {
-    "windows-x86_64": { url: `${BASE}/Yetu%20Till_0.1.4_x64_en-US.msi`, signature: "sig" },
-    "linux-x86_64": { url: `${BASE}/Yetu%20Till_0.1.4_amd64.AppImage`, signature: "sig" },
-    "darwin-aarch64": { url: `${BASE}/Yetu%20Till.app.tar.gz`, signature: "sig" },
+    "windows-x86_64": { url: `${BASE}/Yetu_0.1.4_x64_en-US.msi`, signature: "sig" },
+    "linux-x86_64": { url: `${BASE}/Yetu_0.1.4_amd64.AppImage`, signature: "sig" },
+    "darwin-aarch64": { url: `${BASE}/Yetu.app.tar.gz`, signature: "sig" },
   },
 };
 
@@ -57,21 +58,24 @@ describe.skipIf(process.platform === "win32")("the downloads page (the bare addr
   it("a release publishes a page people can download from, with the version in words", () => {
     expect(publish().status).toBe(0);
     const page = readFileSync(join(root, "index.html"), "utf8");
-    expect(page).toContain("<title>Download Yetu Till</title>");
-    expect(page).toContain("Version 0.1.4");
-    expect(page).toContain("Fri 23 Oct 2026");
-    // The main button is Windows, where the tills are; every installer is a link by its encoded address.
-    expect(page).toMatch(/class="primary" href="pos\/0\.1\.4\/Yetu%20Till_0\.1\.4_x64-setup\.exe"[^>]*>Download for Windows</);
-    for (const name of ["Yetu Till_0.1.4_x64_en-US.msi", "Yetu Till_0.1.4_aarch64.dmg", "Yetu Till_0.1.4_amd64.AppImage", "Yetu Till_0.1.4_amd64.deb", "Yetu Till-0.1.4-1.x86_64.rpm", "SHA256SUMS"]) {
+    expect(page).toContain("<title>Download Yetu</title>");
+    expect(page).toContain("Version 0.1.4, released Fri 23 Oct 2026.");
+    expect(page).toContain('<img src="pos/0.1.4/yetu-icon.png"');
+    // The main button is the .msi: Windows tills update with it (latest.json), so a till
+    // installed from the page is never left with a second copy after its first update.
+    expect(page).toMatch(/class="primary" href="pos\/0\.1\.4\/Yetu_0\.1\.4_x64_en-US\.msi">Download for Windows</);
+    expect(page).not.toContain("x64-setup.exe");
+    for (const name of ["Yetu_0.1.4_aarch64.dmg", "Yetu_0.1.4_amd64.AppImage", "Yetu_0.1.4_amd64.deb", "Yetu-0.1.4-1.x86_64.rpm", "SHA256SUMS"]) {
       expect(page).toContain(`href="pos/0.1.4/${encodeURIComponent(name)}"`);
     }
     // Updater files are for the tills, not for people.
     expect(page).not.toMatch(/\.sig"|\.tar\.gz"|latest\.json"/);
-    expect(page).toContain("Installed tills update themselves");
+    expect(page).toContain("Yetu updates itself.");
+    expect(page).toContain("Get a code, then a manager types it in Yetu.");
   });
 
   it("a release that fails its checksums publishes nothing, page included", () => {
-    writeFileSync(join(stage, "Yetu Till_0.1.4_x64-setup.exe"), "tampered");
+    writeFileSync(join(stage, "Yetu_0.1.4_x64-setup.exe"), "tampered");
     const result = publish();
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(/did NOT match/);

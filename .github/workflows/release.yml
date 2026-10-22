@@ -259,6 +259,8 @@ jobs:
           done
           PUBLIC_BASE="https://downloads.yetu.fbcsoftwares.com/pos/${VERSION}"
           scripts/build-updater-manifest.sh "$VERSION" "$PUBLIC_BASE" manifest-src > stage/latest.json
+          # The app icon for the downloads page, checked like every other file.
+          cp src-tauri/icons/128x128@2x.png stage/yetu-icon.png
           (
             cd stage
             find . -type f ! -name 'SHA256SUMS' ! -name 'SHA256SUMS.asc' \

@@ -26,7 +26,7 @@ trap cleanup EXIT
 
 WIN=""
 for _ in $(seq 1 90); do
-  WIN=$(DISPLAY="$DISPLAY_NUM" xdotool search --name "Yetu till" 2>/dev/null | head -1 || true)
+  WIN=$(DISPLAY="$DISPLAY_NUM" xdotool search --name "^Yetu$" 2>/dev/null | head -1 || true)
   [ -n "$WIN" ] && break
   sleep 1
 done

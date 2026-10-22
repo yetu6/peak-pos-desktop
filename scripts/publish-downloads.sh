@@ -108,56 +108,93 @@ def link(name):
     return f"pos/{quote(version)}/{quote(name)}"
 def first(test):
     return next((n for n in names if test(n)), None)
+def size(name):
+    mb = os.path.getsize(os.path.join(folder, name)) / 1_000_000
+    return f"{mb:.0f} MB" if mb >= 1 else "under 1 MB"
 released = ""
 try:
     when = datetime.datetime.fromisoformat(json.load(open(manifest))["pub_date"].replace("Z", "+00:00"))
-    released = f" · released {when:%a} {when.day} {when:%b %Y}"
+    released = f", released {when:%a} {when.day} {when:%b %Y}"
 except (KeyError, ValueError, OSError):
     pass
-setup = first(lambda n: n.endswith("-setup.exe"))
+# Windows tills update with the .msi (latest.json), so the page offers the same installer:
+# a till installed another way would get the update as a second copy.
+msi = first(lambda n: n.endswith(".msi"))
+icon = first(lambda n: n == "yetu-icon.png")
 rows = []
-def row(label, name):
+def row(system, detail, name):
     if name:
-        rows.append(f'<li><a href="{link(name)}">{html.escape(label)}</a> <span>{html.escape(name)}</span></li>')
-row("Windows installer package (.msi)", first(lambda n: n.endswith(".msi")))
-row("macOS, Apple silicon (.dmg)", first(lambda n: n.endswith(".dmg") and "aarch64" in n))
-row("macOS, Intel (.dmg)", first(lambda n: n.endswith(".dmg") and "x64" in n))
-row("Linux (.AppImage)", first(lambda n: n.endswith(".AppImage")))
-row("Linux, Ubuntu and Debian (.deb)", first(lambda n: n.endswith(".deb")))
-row("Linux, Fedora (.rpm)", first(lambda n: n.endswith(".rpm")))
-row("Checksums (SHA256SUMS)", first(lambda n: n == "SHA256SUMS"))
-primary = f'<a class="primary" href="{link(setup)}">Download for Windows</a>' if setup else ""
+        rows.append(f'<li><a href="{link(name)}"><span class="system">{html.escape(system)}</span>'
+                    f'<span class="detail">{html.escape(detail)} · {size(name)}</span></a></li>')
+row("macOS", "Apple silicon (.dmg)", first(lambda n: n.endswith(".dmg") and "aarch64" in n))
+row("macOS", "Intel (.dmg)", first(lambda n: n.endswith(".dmg") and "x64" in n))
+row("Linux", "Any distribution (.AppImage)", first(lambda n: n.endswith(".AppImage")))
+row("Linux", "Ubuntu and Debian (.deb)", first(lambda n: n.endswith(".deb")))
+row("Linux", "Fedora (.rpm)", first(lambda n: n.endswith(".rpm")))
+mark = f'<img src="{link(icon)}" alt="" width="40" height="40">' if icon else ""
+primary = (f'<a class="primary" href="{link(msi)}">Download for Windows</a>'
+           f'<p class="note">Windows 10 or 11, 64-bit · {size(msi)}</p>') if msi else ""
+sums = first(lambda n: n == "SHA256SUMS")
+check = f'<a href="{link(sums)}">Check the files (SHA256SUMS)</a> · ' if sums else ""
 print(f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Download Yetu Till</title>
+<title>Download Yetu</title>
 <style>
-:root {{ --ink: #10417c; --text: #10202f; --muted: #5a6577; --paper: #fcfdfe; --line: #dbe1ea; --pay: #c24309; --on-pay: #ffffff; }}
-@media (prefers-color-scheme: dark) {{ :root {{ --ink: #6aa6ef; --text: #e9eff7; --muted: #9db0c7; --paper: #0f2033; --line: #22405f; --pay: #f75e2d; --on-pay: #1a0d08; }} }}
-body {{ margin: 0; background: var(--paper); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }}
-main {{ max-width: 40rem; margin: 0 auto; padding: 48px 16px; }}
-h1 {{ margin: 0 0 4px; color: var(--ink); font-size: 32px; }}
-p {{ margin: 0 0 24px; color: var(--muted); }}
-.primary {{ box-sizing: border-box; display: inline-flex; align-items: center; min-height: 48px; padding: 12px 24px; border-radius: 8px; background: var(--pay); color: var(--on-pay); font-weight: 700; text-decoration: none; }}
-.primary:focus-visible, a:focus-visible {{ outline: 3px solid var(--ink); outline-offset: 2px; }}
-ul {{ list-style: none; margin: 32px 0 0; padding: 0; border-top: 1px solid var(--line); }}
-li {{ padding: 12px 0; border-bottom: 1px solid var(--line); }}
-li a {{ color: var(--ink); font-weight: 600; }}
-li span {{ display: block; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }}
+:root {{ --ink: #10417c; --text: #10202f; --muted: #5a6577; --paper: #fcfdfe; --card: #ffffff; --line: #dbe1ea; --pay: #c24309; --pay-hover: #a63a08; --on-pay: #ffffff; --focus: #10417c; }}
+@media (prefers-color-scheme: dark) {{ :root {{ --ink: #6aa6ef; --text: #e9eff7; --muted: #9db0c7; --paper: #0f2033; --card: #12263c; --line: #22405f; --pay: #f75e2d; --pay-hover: #ff8a5c; --on-pay: #1a0d08; --focus: #8fb8f2; }} }}
+* {{ box-sizing: border-box; }}
+body {{ margin: 0; background: var(--paper); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }}
+a {{ color: var(--ink); }}
+a:focus-visible {{ outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 4px; }}
+header {{ display: flex; align-items: center; gap: 12px; max-width: 44rem; margin: 0 auto; padding: 24px 16px 0; }}
+header img {{ border-radius: 10px; }}
+header strong {{ font-size: 20px; }}
+header span {{ color: var(--muted); font-size: 14px; }}
+main {{ max-width: 44rem; margin: 0 auto; padding: 32px 16px 48px; }}
+h1 {{ margin: 0 0 8px; font-size: 36px; line-height: 1.15; }}
+h2 {{ margin: 40px 0 12px; font-size: 20px; }}
+.lead {{ margin: 0 0 24px; color: var(--muted); font-size: 18px; }}
+.download {{ padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }}
+.primary {{ display: inline-flex; align-items: center; min-height: 56px; padding: 12px 28px; border-radius: 10px; background: var(--pay); color: var(--on-pay); font-size: 18px; font-weight: 700; text-decoration: none; }}
+.primary:hover {{ background: var(--pay-hover); }}
+.note {{ margin: 12px 0 0; color: var(--muted); font-size: 14px; }}
+.files {{ list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; }}
+.files li + li {{ border-top: 1px solid var(--line); }}
+.files a {{ display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; min-height: 56px; padding: 14px 20px; text-decoration: none; }}
+.files a:hover .system {{ text-decoration: underline; }}
+.system {{ font-weight: 700; }}
+.detail {{ color: var(--muted); font-variant-numeric: tabular-nums; }}
+@media (max-width: 560px) {{ .files a {{ flex-direction: column; justify-content: center; }} h1 {{ font-size: 30px; }} }}
+ol {{ margin: 0; padding-left: 24px; }}
+ol li + li {{ margin-top: 8px; }}
+p {{ margin: 0; }}
+footer {{ max-width: 44rem; margin: 0 auto; padding: 24px 16px 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }}
 </style>
 </head>
 <body>
+<header>{mark}<div><strong>Yetu</strong><br><span>by FBC Traders</span></div></header>
 <main>
-<h1>Yetu Till</h1>
-<p>Version {html.escape(version)}{released}. Installed tills update themselves overnight.</p>
-{primary}
-<ul>
+<h1>Download Yetu</h1>
+<p class="lead">The till for restaurants, bars and hotels. Version {html.escape(version)}{released}.</p>
+<section class="download" aria-label="Windows">{primary}</section>
+<h2>Other computers</h2>
+<ul class="files">
 {chr(10).join(rows)}
 </ul>
+<h2>After installing</h2>
+<ol>
+<li>Open Yetu. It opens by itself whenever the computer starts.</li>
+<li>Get a code, then a manager types it in Yetu. The till connects by itself once they approve.</li>
+<li>Staff tap their name and type their PIN.</li>
+</ol>
+<h2>Updates</h2>
+<p>Yetu updates itself. A new version downloads quietly and installs between 00:00 and 05:00 while the till is locked, or the next time the till is started.</p>
 </main>
+<footer>{check}<a href="https://yetu.fbcsoftwares.com">yetu.fbcsoftwares.com</a></footer>
 </body>
 </html>""")
 PY
