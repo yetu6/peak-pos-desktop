@@ -1,9 +1,11 @@
-import { roundWords } from "../print/paperWords";
+import { PAPER_WORDS, extraCopyWords, roundWords, type ExtraCopy } from "../print/paperWords";
 import { printBrandFooter } from "../print/printBrand";
 import { guestCountWords } from "./words";
 import { kitchenTicketTitle, productionGroups, type Fulfilment } from "../print/kitchenTicket";
 import { orderName } from "./orderNumber";
-import { dateTimeWords, placeWords } from "./words";
+import { dateTimeWords, placeWords, serviceTypeWords } from "./words";
+import { stationWords } from "../kitchen/kitchenWords";
+import type { ServiceType } from "./posContracts";
 export interface KitchenTicketLine {
   name: string;
   quantity: string;
@@ -15,6 +17,8 @@ export interface KitchenTicketLine {
 export interface KitchenTicketCopy {
   roundNumber?: number;
   copy?: boolean;
+  /** One of the station's extra copies (printer settings), numbered. */
+  extraCopy?: ExtraCopy;
   printedAgainByName?: string;
   printedAgainAt?: string;
   ticketNumber?: string;
@@ -50,12 +54,15 @@ export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
     kitchenTicketTitle(ticket.station),
     ticket.ticketNumber ? ticket.ticketNumber : null,
     ticket.dailyNumber || ticket.orderNumber ? `${orderName(ticket)}${roundWords(ticket.roundNumber)}` : null,
-    ticket.copy ? "*** COPY: printed again ***" : null,
+    ticket.extraCopy ? extraCopyWords(ticket.extraCopy) : null,
+    ticket.copy ? PAPER_WORDS.printedAgain : null,
     ticket.copy && ticket.printedAgainAt ? dateTimeWords(ticket.printedAgainAt) : null,
     ticket.copy && ticket.printedAgainByName ? `by ${ticket.printedAgainByName}` : null,
+    // As on the thermal paper: the station by name, the bar's own title says Bar.
+    ticket.station && ticket.station !== "BAR" ? stationWords(ticket.station) : null,
     [
       placeWords(ticket.serviceType, ticket.tableNumber, ticket.askForTable) || null,
-      ticket.serviceType ? ticket.serviceType.replaceAll("_", " ") : null,
+      ticket.serviceType ? serviceTypeWords(ticket.serviceType as ServiceType) : null,
     ]
       .filter(Boolean)
       .join("  "),

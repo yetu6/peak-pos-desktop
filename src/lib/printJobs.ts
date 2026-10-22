@@ -269,10 +269,12 @@ export function buildPaperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): Ti
       : kitchenTicketBytes(paperFromPrintDocument(job.document, routes?.tagsOf), width, routes?.settings);
     const count = job.jobType === KITCHEN_TICKET && routes ? stationCopiesFor(routes.settings, typeof job.document.station === "string" ? job.document.station : undefined) : 1;
     if (count > 1 && bytes.length > 0) {
-      const copy = kitchenTicketBytes({ ...paperFromPrintDocument(job.document, routes?.tagsOf), copy: true }, width, routes?.settings);
-      const combined = new Uint8Array(bytes.length + (count - 1) * copy.length);
+      const extra = Array.from({ length: count - 1 }, (_, n) =>
+        kitchenTicketBytes({ ...paperFromPrintDocument(job.document, routes?.tagsOf), extraCopy: { index: n + 2, of: count } }, width, routes?.settings));
+      const combined = new Uint8Array(bytes.length + extra.reduce((sum, page) => sum + page.length, 0));
       combined.set(bytes);
-      for (let index = 1; index < count; index++) combined.set(copy, bytes.length + (index - 1) * copy.length);
+      let offset = bytes.length;
+      for (const page of extra) { combined.set(page, offset); offset += page.length; }
       return { kind: "thermal", target, width, bytes: combined };
     }
     return { kind: "thermal", target, width, bytes };
@@ -286,8 +288,9 @@ export function buildPaperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): Ti
   if (job.jobType === KITCHEN_TICKET && routes) {
     const count = stationCopiesFor(routes.settings, typeof job.document.station === "string" ? job.document.station : undefined);
     if (count > 1) {
-      const copy = formatPrintDocument({ ...job, document: { ...job.document, copy: true } });
-      return { kind: "system", title: formatted.title, text: [formatted.text, ...Array<string>(count - 1).fill(copy.text)].join("\n\f\n") };
+      const extra = Array.from({ length: count - 1 }, (_, n) =>
+        formatKitchenTicket({ ...ticketCopyFromPrintDocument(copyDocument(job).document), extraCopy: { index: n + 2, of: count } }));
+      return { kind: "system", title: formatted.title, text: [formatted.text, ...extra].join("\n\f\n") };
     }
   }
   return { kind: "system", title: formatted.title, text: formatted.text };

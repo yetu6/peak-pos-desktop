@@ -93,20 +93,31 @@ export const QUICK_CASH_NOTES: Readonly<Record<string, readonly number[]>> = {
   TZS: [1000, 2000, 5000, 10000],
 };
 
+/** A guest counts out at most this many of one note: a TSh 37,500 bill is never offered 38 × 1,000. */
+export const QUICK_CASH_MOST_NOTES = 10;
+
+/**
+ * The next sensible amounts a guest hands over, smallest first: for every note, and for round
+ * bundles of the largest (2, 5, 10, 20, 50 … of it), the next multiple above the bill, counting
+ * only notes a guest would count out. TSh 37,500 → 40,000, 50,000, 100,000 (owner, 22 Oct);
+ * TSh 3,500 → 4,000, 5,000, 10,000. A figure equal to the bill is Exact's, never offered twice.
+ */
 export function quickCashAmounts(dueMinor: number, currency: string | null | undefined, configured?: readonly number[]): number[] {
   if (!Number.isSafeInteger(dueMinor) || dueMinor <= 0) return [];
   const notes = configured ?? QUICK_CASH_NOTES[currency?.trim().toUpperCase() ?? ""] ?? [];
   if (notes.length === 0 || notes.some((n) => !Number.isSafeInteger(n) || n <= 0 || n > 1_000_000)) return [];
-  const note = Math.max(...notes) * MINOR_PER_MAJOR;
-  const candidates = new Set<number>([(Math.floor(dueMinor / note) + 1) * note]);
-  // The next whole largest note, then round bundles of 1, 2, 5 notes,
-  // 10, 20, 50 notes, and so on. Never suggest a figure equal to Exact.
-  for (let scale = 1; scale * note <= Number.MAX_SAFE_INTEGER; scale *= 10) {
-    for (const multiplier of [1, 2, 5]) {
-      const amount = multiplier * scale * note;
-      if (Number.isSafeInteger(amount) && amount > dueMinor) candidates.add(amount);
-    }
-    if (candidates.size >= QUICK_CASH_MAX) break;
+  const steps = notes.map((note) => note * MINOR_PER_MAJOR);
+  const largest = Math.max(...steps);
+  for (let scale = 1; ; scale *= 10) {
+    const bundles = [2, 5, 10].map((multiplier) => multiplier * scale * largest);
+    steps.push(...bundles.filter((bundle) => Number.isSafeInteger(bundle)));
+    if (!bundles.every((bundle) => Number.isSafeInteger(bundle)) || bundles[2] > dueMinor * QUICK_CASH_MOST_NOTES) break;
   }
-  return [...candidates].filter((n) => Number.isSafeInteger(n) && n > dueMinor).sort((a, b) => a - b).slice(0, QUICK_CASH_MAX);
+  const amounts = new Set<number>();
+  for (const step of steps) {
+    if (step * QUICK_CASH_MOST_NOTES < dueMinor) continue;
+    const amount = Math.ceil(dueMinor / step) * step;
+    if (amount > dueMinor && Number.isSafeInteger(amount)) amounts.add(amount);
+  }
+  return [...amounts].sort((a, b) => a - b).slice(0, QUICK_CASH_MAX);
 }

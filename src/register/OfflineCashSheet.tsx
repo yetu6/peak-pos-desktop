@@ -21,6 +21,7 @@ export function OfflineCashSheet({
   onCancel,
   onConfirm,
   initialReceived = "",
+  quickCashNotes,
 }: {
   dueMinor: number;
   currency: string;
@@ -31,6 +32,8 @@ export function OfflineCashSheet({
   onConfirm: (cashReceivedMinor: number) => void;
   /** Fixtures start part-way through. */
   initialReceived?: string;
+  /** The outlet's quickCashNotes, from the copy kept for offline use. */
+  quickCashNotes?: readonly number[];
 }) {
   // The cash received starts at what is owed (owner, 2026-10-21; register.fillAmountDue);
   // the first key replaces it.
@@ -77,9 +80,9 @@ export function OfflineCashSheet({
           confirm();
         }}
       >
-        <p className="y-pay__label">Amount due</p>
+        <p className="y-pay__label">To pay</p>
         <Money minor={dueMinor} currency={currency} size="display" data-testid="amount-due" />
-        <QuickCash dueMinor={dueMinor} currency={currency} onPick={(minor) => cash.picked(moneyFieldText(minor))} />
+        <QuickCash dueMinor={dueMinor} notes={quickCashNotes} currency={currency} onPick={(minor) => cash.picked(moneyFieldText(minor))} />
         <MoneyField
           label="Cash received"
           currency={currency}

@@ -37,7 +37,7 @@ const MOVEMENTS: POSCashMovement[] = [
 ];
 
 vi.mock("../hooks/usePosData", () => ({
-  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
+  useOutletMoneySettings: () => ({ standardFloat: 5_000_000, quickCashNotes: [1000,2000,5000,10000] }),
   usePosShift: () => ({
     shift: SHIFT,
     open: { mutate: vi.fn(), isPending: false, error: null },
@@ -92,6 +92,8 @@ describe("the blind count", () => {
     await userEvent.click(screen.getByTestId("open-close-shift"));
     const sheet = screen.getByRole("dialog", { name: "Close the shift" });
     expect(within(sheet).getByTestId("close-step-count")).toBeInTheDocument();
+    // The count starts empty: never the usual float, never Yetu's figure.
+    expect(screen.getByTestId("counted-cash")).toHaveValue("");
     expect(document.body).not.toHaveTextContent(EXPECTED);
     expect(document.body).not.toHaveTextContent(/expected/i);
 

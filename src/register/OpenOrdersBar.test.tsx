@@ -6,7 +6,7 @@ import { OpenOrdersBar } from "./OpenOrdersBar";
 
 function order(id: string, over: Partial<POSOrder> = {}): POSOrder {
   return {
-    id, shiftId: "s", orderNumber: id, dailyNumber: Number(id.replace(/\D/g, "")) || 1, createdAt: "2026-10-21T14:05:00Z",
+    id, shiftId: "s", orderNumber: id, dailyNumber: Number(id.replace(/\D/g, "")) || 1, createdAt: new Date(2026, 9, 21, 14, 5).toISOString(),
     closedAt: null, payments: [], status: "OPEN", serviceType: "DINE_IN", initiatedById: "amina", initiatedByName: "Amina",
     subtotalMinor: 0, discountMinor: 0, discountKind: "NONE", discountInput: 0, taxMinor: 0, totalMinor: 1_200_000,
     paidMinor: 0, remainingMinor: 1_200_000, version: 1,
@@ -38,9 +38,9 @@ describe("OpenOrdersBar (owner, 2026-10-21)", () => {
     const bar = screen.getByRole("navigation", { name: "Open orders" });
     const chips = within(bar).getAllByRole("button").filter((button) => button.dataset.testid?.startsWith("open-order-"));
     expect(chips.map((chip) => chip.textContent)).toEqual([
-      "Table 92 Soda · TSh 12,000",
-      "Mama Neema2 Soda · TSh 12,000",
-      "Order 92 Soda · TSh 12,000",
+      "Table 92 Soda · 14:05 · TSh 12,000",
+      "Mama Neema2 Soda · 14:05 · TSh 12,000",
+      "Order 92 Soda · 14:05 · TSh 12,000",
     ]);
     expect(chips[0]).toHaveAttribute("aria-pressed", "true");
     expect(chips[1]).toHaveAttribute("aria-pressed", "false");

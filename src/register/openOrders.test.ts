@@ -14,6 +14,11 @@ const line = (name: string, quantity = 1, status: "ADDED" | "SENT" | "VOIDED" = 
   ({ id: name, productId: name, name, quantity, unitPriceMinor: 1, taxMinor: 0, totalMinor: 1, status });
 
 describe("the open-orders bar (owner, 2026-10-21)", () => {
+  it("says when each order was started, as the waiter reads a clock (W4: Order 7 · 2 Soda, Samosa · 14:05)", () => {
+    const started = order({ createdAt: new Date(2026, 9, 21, 14, 5).toISOString(), items: [line("Soda", 2), line("Samosa")] as POSOrder["items"] });
+    expect(openOrderWords(started)).toEqual({ name: "Order 7", items: "2 Soda, Samosa", time: "14:05" });
+  });
+
   it("names an order by its table, the name the waiter typed, or its number", () => {
     expect(openOrderWords(order({ tableLabel: "9" })).name).toBe("Table 9");
     expect(openOrderWords(order({ tableLabel: "T4" })).name).toBe("Table T4");

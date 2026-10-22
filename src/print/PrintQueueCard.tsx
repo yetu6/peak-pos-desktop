@@ -6,7 +6,7 @@ import type { POSPrintJob } from "../lib/posContracts";
 import { retryPrintJob } from "./printFor";
 import { getOperationalSession } from "../lib/operationalSession";
 import { inspectNativePrint, usesNativePrintJournal } from "./nativePrintJournal";
-import { confirmPaperPrinted } from "./printResolution";
+import { confirmPaperNotPrinted, confirmPaperPrinted } from "./printResolution";
 import { PRINT_RESOLUTION_WORDS } from "./printQueueWords";
 import { PRINT_QUEUE_WORDS as words, queuedPaperName } from "./printQueueWords";
 
@@ -33,17 +33,17 @@ export function PrintQueueCard() {
   } catch {setProblem(words.loadFailed);}
   finally{setBusy(false);}
  }
- async function confirmObserved() {
+ async function resolveObserved(printed:boolean) {
   if(!unknownJob)return;
   setBusy(true);
-  try{await confirmPaperPrinted(unknownJob);setUnknownJob(null);setProblem(null);await refresh();}
+  try{await (printed?confirmPaperPrinted:confirmPaperNotPrinted)(unknownJob);setUnknownJob(null);setProblem(null);await refresh();}
   catch(error){setProblem(error instanceof Error?error.message:words.loadFailed);}
   finally{setBusy(false);}
  }
  return <section className="y-printers" aria-labelledby="print-queue-title" data-testid="print-queue">
   <h2 id="print-queue-title" className="y-status__name">{words.title}</h2>
   {problem?<div role="alert"><Banner inline tone="warning">{problem}</Banner></div>:null}
-  {unknownJob?<div><p>{PRINT_RESOLUTION_WORDS.hint}</p><Button variant="secondary" disabled={busy} onClick={()=>void confirmObserved()}>{PRINT_RESOLUTION_WORDS.confirm}</Button></div>:null}
+  {unknownJob?<div><p>{PRINT_RESOLUTION_WORDS.hint}</p><Button variant="secondary" disabled={busy} onClick={()=>void resolveObserved(true)}>{PRINT_RESOLUTION_WORDS.confirm}</Button><Button variant="secondary" disabled={busy} onClick={()=>void resolveObserved(false)}>{PRINT_RESOLUTION_WORDS.notPrinted}</Button></div>:null}
   {jobs===null?<p role="status">{words.checking}</p>:jobs.length===0?<p>{words.empty}</p>:<ul className="y-print-queue">
    {jobs.map(job=><li key={job.id}>
     <div><strong>{queuedPaperName(job)}</strong><p>{job.status==="FAILED"?words.failed:job.status==="CLAIMED"?words.claimed:words.pending}</p>{job.lastError?<p>{job.lastError}</p>:null}</div>

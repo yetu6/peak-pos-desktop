@@ -181,13 +181,13 @@ describe("Keypad and QuickCash", () => {
     const buttons = within(screen.getByRole("group", { name: "Quick cash" })).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
       "ExactTSh 42,500",
+      "TSh 45,000",
       "TSh 50,000",
-      "TSh 100,000",
-      "TSh 200,000",
+      "TSh 60,000",
     ]);
     await userEvent.click(buttons[0]);
     await userEvent.click(buttons[3]);
-    expect(onPick.mock.calls.map(([minor]) => minor)).toEqual([4_250_000, 20_000_000]);
+    expect(onPick.mock.calls.map(([minor]) => minor)).toEqual([4_250_000, 6_000_000]);
   });
 });
 

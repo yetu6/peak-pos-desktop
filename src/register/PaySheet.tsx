@@ -531,7 +531,7 @@ export function PaySheetView({
     >
       <div className="y-pay">
         <section className="y-pay__left" aria-label="What is owed">
-          <p className="y-pay__label">{partPaid ? "Still to pay" : "Amount due"}</p>
+          <p className="y-pay__label">{partPaid ? "Still to pay" : "To pay"}</p>
           <Money minor={due} currency={currency} size="display" data-testid="amount-due" />
           {partPaid ? (
             <div className="y-pay__progress">
@@ -675,7 +675,7 @@ export function PaySheetView({
               <p className="y-pay__step">{RECORDED_STEP[method]}</p>
               <MoneyField
                 label="Amount"
-                hint="Type less to split the payment."
+                hint="Less than the bill? The rest stays to pay."
                 currency={currency}
                 value={amountText}
                 selectOnFocus
@@ -708,7 +708,7 @@ export function PaySheetView({
             <Banner inline tone="danger" data-testid="pay-unsure">
               {`The connection dropped while Yetu was recording this ${unsure.room ? "charge" : "payment"}. We don't know yet if it went through. `}
               {unsure.checking
-                ? "Asking Yetu again with the same request…"
+                ? "Checking…"
                 : unsure.failed
                   ? `Still can't reach Yetu. Don't ${unsure.room ? "charge the room" : "take the money"} again until Yetu answers.`
                   : ""}

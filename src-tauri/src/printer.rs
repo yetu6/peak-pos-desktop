@@ -638,6 +638,49 @@ mod durable_tests {
                 "UNKNOWN"
             );
         }
+        // Staff looked and no paper came out. A till that died mid-send leaves
+        // the attempt UNKNOWN, as here. Only this attempt's unknown outcome can
+        // become not sent: never an accepted paper, never another attempt. The
+        // job then prints again as itself on the next attempt.
+        let reserved = store
+            .reserve_print_attempt("uncertain", &scope, "route", "payload", 1)
+            .unwrap();
+        store
+            .mark_print(
+                "uncertain",
+                &scope,
+                reserved.attempt,
+                "RESERVED",
+                "UNKNOWN",
+                None,
+            )
+            .unwrap();
+        assert!(resolve_not_printed(&mut store, "job", &scope, 1).is_err());
+        assert!(resolve_not_printed(&mut store, "uncertain", &scope, 2).is_err());
+        let resolved = resolve_not_printed(&mut store, "uncertain", &scope, 1).unwrap();
+        assert_eq!(resolved.state, "not_sent");
+        assert_eq!(resolved.message.as_deref(), Some(STAFF_SAW_NO_PAPER));
+        let listener = std::net::TcpListener::bind("127.0.0.1:9100").unwrap();
+        let receive = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut bytes = vec![];
+            socket.read_to_end(&mut bytes).unwrap();
+            bytes
+        });
+        let again = JournalPaper::Thermal {
+            target: PrintTarget::Network {
+                host: "127.0.0.1".into(),
+                port: 9100,
+            },
+            bytes: b"KITCHEN ORDER\n1 x Chips\n".to_vec(),
+        };
+        assert_eq!(
+            print_once(&mut store, "uncertain", &scope, 2, true, again)
+                .unwrap()
+                .state,
+            "accepted"
+        );
+        assert_eq!(receive.join().unwrap(), b"KITCHEN ORDER\n1 x Chips\n");
         // The journal transport preserves the original raw target guards.
         let other = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         other.set_nonblocking(true).unwrap();
@@ -726,6 +769,41 @@ pub fn get_print_attempt(
                 .map(|v| v.map(Into::into))
         })
         .map_err(|e| format!("Print journal unavailable: {e:?}"))
+}
+
+/// Staff looked at the printer and no paper came out: this attempt's unknown
+/// outcome becomes not sent, so the job can print again as itself. Only an
+/// UNKNOWN attempt changes; an accepted paper or another attempt never does.
+#[tauri::command]
+pub fn resolve_print_not_printed(
+    runtime: tauri::State<'_, LocalStoreRuntime>,
+    scope: PrintScope,
+    job_id: String,
+    attempt: i64,
+) -> Result<NativePrintResult, String> {
+    runtime
+        .with_store(|store| resolve_not_printed(store, &job_id, &scope, attempt))
+        .map_err(|e| format!("Print journal refused the request: {e:?}"))
+}
+
+pub(crate) const STAFF_SAW_NO_PAPER: &str = "Staff checked the printer: the paper did not print.";
+
+fn resolve_not_printed(
+    store: &mut LocalStore,
+    key: &str,
+    scope: &PrintScope,
+    attempt: i64,
+) -> Result<NativePrintResult, LocalStoreError> {
+    store
+        .mark_print(
+            key,
+            scope,
+            attempt,
+            "UNKNOWN",
+            "NOT_SENT",
+            Some(STAFF_SAW_NO_PAPER),
+        )
+        .map(Into::into)
 }
 
 /// The server still authenticates/authorizes/claims the job. This assertion is

@@ -52,7 +52,7 @@ export function OpenOrdersBar({
               >
                 <span className="y-open-orders__name">{words.name}</span>
                 <span className="y-open-orders__meta">
-                  {words.items} · {formatMoney(order.totalMinor, currency)}
+                  {[words.items, words.time, formatMoney(order.totalMinor, currency)].filter(Boolean).join(" · ")}
                 </span>
               </button>
             </li>
