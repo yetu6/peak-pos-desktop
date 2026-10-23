@@ -211,12 +211,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v0.1.0-build.{0}', github.run_number) }}
-          name: Yetu POS ${{ steps.meta.outputs.version }}
+          name: Yetu ${{ steps.meta.outputs.version }}
           draft: ${{ github.ref_type != 'tag' }}
           files: release/*
           fail_on_unmatched_files: true
           body: |
-            Yetu POS Desktop ${{ steps.meta.outputs.version }}
+            Yetu ${{ steps.meta.outputs.version }}
 
             - Checksums: `SHA256SUMS`
             - Updater channel: `https://downloads.yetu.fbcsoftwares.com/pos/stable/latest.json`

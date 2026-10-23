@@ -21,7 +21,7 @@ const FILES = [
 const BASE = "https://downloads.yetu.fbcsoftwares.com/pos/0.1.4";
 const MANIFEST = {
   version: "0.1.4",
-  pub_date: "2026-10-23T01:30:00Z",
+  pub_date: "2026-10-22T23:42:33Z",
   platforms: {
     "windows-x86_64": { url: `${BASE}/Yetu_0.1.4_x64_en-US.msi`, signature: "sig" },
     "linux-x86_64": { url: `${BASE}/Yetu_0.1.4_amd64.AppImage`, signature: "sig" },
