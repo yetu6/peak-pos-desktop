@@ -153,6 +153,7 @@ describe("DeviceSessionProvider", () => {
         return jsonResponse({ outletId: "o1", outletName: "Bar 1", products: [] });
       }
       if (url.endsWith("/pos/orders?active=true")) return jsonResponse([]);
+      if (url.endsWith("/pos/device/roster/events")) return jsonResponse({ code: "REALTIME_UNAVAILABLE" }, 503);
       throw new Error(`unexpected fetch: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -174,7 +175,7 @@ describe("DeviceSessionProvider", () => {
     expect(
       fetchMock.mock.calls
         .map(([url]) => String(url))
-        .filter((url) => !url.includes("/heartbeat")),
+        .filter((url) => !url.includes("/heartbeat") && !url.includes("/roster/events")),
     ).toEqual([
       "http://peak.test/api/v1/pos/device/challenges",
       "http://peak.test/api/v1/pos/device/challenges",
@@ -413,6 +414,54 @@ describe("DeviceSessionProvider", () => {
     } finally {
       intervals.mockRestore();
     }
+  });
+
+  // Owner, 2026-10-25: a new waiter appears at the till "immediately real-time
+  // ... not manually but auto", not at the next 30-second refresh.
+  it("reads the names again as soon as Yetu says they changed, and stops listening once someone signs in", async () => {
+    const keys = await generateDeviceKeyPair();
+    const store = memoryStore(
+      JSON.stringify({ ...keys, deviceCode: "dev_abc", terminalId: "terminal-1", deviceCredential: "device-secret", approved: true, terminalName: "Bar 1" }),
+    );
+    const staff = [{ id: "00001", displayName: "Amina Hassan", staffSuffix: "001", needsSetup: false }];
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const streams: RequestInit[] = [];
+    const challenges = vi.fn(async () =>
+      jsonResponse({ challengeId: "11111111-1111-1111-1111-111111111111", nonce: btoa("n".repeat(32)), expiresAt: "2099-01-01T00:00:00Z", staff: [...staff] }),
+    );
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/pos/device/challenges")) return challenges();
+      if (url.endsWith("/pos/device/roster/events")) {
+        streams.push(init ?? {});
+        return new Response(new ReadableStream<Uint8Array>({ start: (c) => { streamController = c; } }), { status: 200 });
+      }
+      if (url.endsWith("/pos/sessions")) {
+        return jsonResponse({ token: `ops_live${"x".repeat(40)}`, expiresAt: "2099-01-01T00:00:00Z", assurance: "RESTRICTED", terminalId: "terminal-1", propertyId: "p1", tenantId: "t1", staffId: "00001", outletId: "o1" });
+      }
+      if (url.endsWith("/pos/catalog")) return jsonResponse({ outletId: "o1", outletName: "Bar", products: [] });
+      if (url.endsWith("/pos/orders?active=true")) return jsonResponse([]);
+      if (url.includes("/heartbeat")) return jsonResponse({}, 204);
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+
+    renderSession(store);
+    await waitFor(() => expect(screen.getByTestId("roster")).toHaveTextContent("Amina Hassan"));
+    await waitFor(() => expect(streams).toHaveLength(1));
+    expect(JSON.parse(String(streams[0].body))).toEqual({ terminalId: "terminal-1", deviceCredential: "device-secret" });
+    const readsBefore = challenges.mock.calls.length;
+
+    // A manager adds Neema in Yetu; the till hears it on its open line.
+    staff.push({ id: "00002", displayName: "Neema Mollel", staffSuffix: "002", needsSetup: true });
+    act(() => streamController.enqueue(new TextEncoder().encode("event: roster\ndata: {}\n\n")));
+    await waitFor(() => expect(screen.getByTestId("roster")).toHaveTextContent("Neema Mollel"));
+    expect(challenges.mock.calls.length).toBe(readsBefore + 1);
+
+    // Signed in: the sign-in screen is gone, and so is its line to Yetu.
+    expect(streams[0].signal?.aborted).toBe(false);
+    await userEvent.click(screen.getByTestId("unlock"));
+    await waitFor(() => expect(screen.getByTestId("shell")).toHaveTextContent("OPERATIONAL"));
+    expect(streams[0].signal?.aborted).toBe(true);
   });
 
   // 2026-10-20, Bahari's lock screen: the till coming to the front fires focus

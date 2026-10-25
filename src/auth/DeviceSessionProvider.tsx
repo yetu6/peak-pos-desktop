@@ -30,6 +30,7 @@ import {
   StaffSetupCodeExpiredError,
   type RosterEntry,
 } from "../lib/deviceAuth";
+import { followRosterStream } from "../lib/rosterStream";
 import { generateDeviceKeyPair, rawPublicKeyB64Url } from "../lib/deviceCrypto";
 import {
   loadNativeDeviceAuthority,
@@ -293,6 +294,23 @@ export function DeviceSessionProvider({
       document.removeEventListener("visibilitychange", again);
     };
   }, [phase, refreshRoster]);
+
+  // And as soon as Yetu says the list changed (owner, 2026-10-25), while the
+  // till stays on this screen. The refresh above remains the fallback.
+  const streamTerminalId = identity?.terminalId ?? identity?.deviceCode;
+  const streamCredential = identity?.deviceCredential ?? identity?.deviceCode;
+  useEffect(() => {
+    if (phase !== "locked" || !identity?.approved || !streamTerminalId || !streamCredential) return;
+    const controller = new AbortController();
+    void followRosterStream({
+      baseUrl: peakUrl,
+      terminalId: streamTerminalId,
+      deviceCredential: streamCredential,
+      onRoster: () => void refreshRoster(),
+      signal: controller.signal,
+    });
+    return () => controller.abort();
+  }, [identity?.approved, peakUrl, phase, refreshRoster, streamCredential, streamTerminalId]);
 
   useEffect(() => {
     let cancelled = false;
