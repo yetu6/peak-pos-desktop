@@ -1,13 +1,13 @@
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, UserPlus } from "lucide-react";
 import { placeOf, type TillPlace } from "../lib/tillPlace";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useDeviceSession } from "../auth/DeviceSessionProvider";
+import { useDeviceSession, type UnlockOutcome } from "../auth/DeviceSessionProvider";
 import { AccessLayout } from "../access/AccessLayout";
 import { PIN_LENGTH, ROSTER_SEARCH_AFTER } from "../access/accessSettings";
 import { offlineReadinessWords, pinNotice } from "../access/accessWords";
 import { rateLimitWords } from "../lib/posErrors";
 import { useNetworkOnline } from "../access/useNetworkOnline";
-import { Avatar, Banner, Button, Field, Keypad, SearchField, type KeypadKey } from "../components/system";
+import { Avatar, Banner, Button, Field, Keypad, SearchField, StatusChip, type KeypadKey } from "../components/system";
 import type { RosterEntry } from "../lib/deviceAuth";
 import { isComposing } from "../lib/keyboard";
 import type { OfflineEligibilityStatus } from "../lib/offlineAuthorization";
@@ -44,7 +44,8 @@ export interface PinUnlockViewProps {
   /** The device session's message after the last attempt or lock. */
   error: string | null;
   online: boolean;
-  onUnlock: (staffNumber: string, pin: string) => Promise<void>;
+  /** `newPin`: with a setup code as `pin`, the PIN the person chose. */
+  onUnlock: (staffNumber: string, pin: string, newPin?: string) => Promise<UnlockOutcome | undefined>;
   /** After too many sign-in attempts: when Yetu allows the next one (ms since the epoch). */
   heldUntil?: number | null;
   /** Fixtures and tests start part-way through. */
@@ -52,6 +53,20 @@ export interface PinUnlockViewProps {
   initialManual?: boolean;
   initialFailures?: number;
 }
+
+/**
+ * What the keypad is for now. A new person types the setup code their manager
+ * gave them, then chooses their own PIN and types it again; a person typing a
+ * setup code on "Enter your PIN" (a list from before they were given one) is
+ * taken the same way once Yetu says the code is right.
+ */
+type PinStep = "pin" | "setup-code" | "choose" | "confirm";
+
+const STEP_TITLE: Record<Exclude<PinStep, "pin">, string> = {
+  "setup-code": "Enter the setup code your manager gave you",
+  choose: "Choose your own six-digit PIN",
+  confirm: "Type it again",
+};
 
 export function PinUnlockView({
   place,
@@ -87,7 +102,17 @@ export function PinUnlockView({
   const [failures, setFailures] = useState<Record<string, number>>(() =>
     initialStaff && initialFailures ? { [initialStaff.staffNumber]: initialFailures } : {},
   );
-  const [attempt, setAttempt] = useState<{ staff: string; count: number } | null>(null);
+  const [attempt, setAttempt] = useState<{ staff: string; count: number; finishing: boolean } | null>(null);
+  const [step, setStepState] = useState<PinStep>(initialStaff?.needsSetup ? "setup-code" : "pin");
+  // Read at once by a submit that follows a step change, like pendingRef.
+  const stepRef = useRef(step);
+  const setStep = (next: PinStep) => {
+    stepRef.current = next;
+    setStepState(next);
+  };
+  // The setup code and the PIN chosen from it, until both go to Yetu. Never shown.
+  const setupCodeRef = useRef("");
+  const chosenPinRef = useRef("");
   const keypadRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => Date.now());
   // Read by the keypad and the keyboard at once, like pendingRef.
@@ -109,17 +134,42 @@ export function PinUnlockView({
   // pause rule (offline refusals never do), and focus returns to the keypad for the next try.
   useEffect(() => {
     if (!attempt) return;
-    if (pinNotice(error, { failures: 0, manual: false })?.kind === "pin-rejected") {
+    const kind = pinNotice(error, { failures: 0, manual: false })?.kind;
+    if (kind === "pin-rejected") {
       setFailures((current) => ({ ...current, [attempt.staff]: (current[attempt.staff] ?? 0) + 1 }));
     }
-    keypadRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+    // The setup code was refused with the chosen PIN (a new code was issued, or it ran out
+    // meanwhile): the chosen PIN goes with it, and the person starts again from the code.
+    if (attempt.finishing && (kind === "pin-rejected" || kind === "setup-code-expired")) {
+      setupCodeRef.current = "";
+      chosenPinRef.current = "";
+      setStep("setup-code");
+    }
+    focusKeypad();
     // Only a new attempt counts, not a re-render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempt]);
 
+  // Each step is a new panel (and a new keypad): focus goes to it, as after an attempt.
+  const shownStep = useRef(step);
+  useEffect(() => {
+    if (shownStep.current === step) return;
+    shownStep.current = step;
+    focusKeypad();
+  }, [step]);
+
+  function focusKeypad() {
+    keypadRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+  }
+
   function setPinValue(next: string) {
     pinRef.current = next;
     setPin(next);
+  }
+
+  function forgetSetup() {
+    setupCodeRef.current = "";
+    chosenPinRef.current = "";
   }
 
   async function submit(pinValue: string) {
@@ -129,14 +179,42 @@ export function PinUnlockView({
       setPinValue("");
       return;
     }
+    const at = stepRef.current;
+    if (at === "choose") {
+      chosenPinRef.current = pinValue;
+      setLocalProblem(null);
+      setPinValue("");
+      setStep("confirm");
+      return;
+    }
+    if (at === "confirm" && pinValue !== chosenPinRef.current) {
+      chosenPinRef.current = "";
+      setLocalProblem("The two PINs were different. Choose your PIN again.");
+      setPinValue("");
+      setStep("choose");
+      return;
+    }
+    const finishing = at === "confirm";
     setLocalProblem(null);
     setPending(true);
+    let outcome: UnlockOutcome | undefined;
     try {
-      await onUnlock(staff, pinValue);
+      outcome = finishing
+        ? await onUnlock(staff, setupCodeRef.current, chosenPinRef.current)
+        : await onUnlock(staff, pinValue);
     } finally {
       setPinValue("");
       setPending(false);
-      setAttempt((last) => ({ staff, count: (last?.count ?? 0) + 1 }));
+      setAttempt((last) => ({ staff, count: (last?.count ?? 0) + 1, finishing }));
+    }
+    if (outcome?.next === "choose-pin") {
+      // Yetu says only a right setup code: it goes with the chosen PIN at the end.
+      setupCodeRef.current = pinValue;
+      setStep("choose");
+    } else if (outcome?.next === "choose-again") {
+      chosenPinRef.current = "";
+      setLocalProblem(outcome.words);
+      setStep("choose");
     }
   }
 
@@ -173,6 +251,8 @@ export function PinUnlockView({
     setManual(false);
     setPinValue("");
     setLocalProblem(null);
+    forgetSetup();
+    setStep(entry.needsSetup ? "setup-code" : "pin");
   }
 
   function changePerson() {
@@ -181,12 +261,14 @@ export function PinUnlockView({
     setPinValue("");
     setLocalProblem(null);
     setManual(false);
+    forgetSetup();
+    setStep("pin");
   }
 
   // After too many attempts Yetu says when the next one is allowed: the keypad waits until then.
   const held = heldUntil !== null && now < heldUntil;
   heldRef.current = held;
-  const rawNotice = pinNotice(error, { failures: failures[currentStaff] ?? 0, manual: !selected });
+  const rawNotice = pinNotice(error, { failures: failures[currentStaff] ?? 0, manual: !selected, setup: step !== "pin" });
   // Once the wait is over, "too many attempts" no longer applies.
   const notice = rawNotice?.kind === "sign-in-held" ? (held ? { ...rawNotice, words: rateLimitWords((heldUntil! - now) / 1000, new Date(now)) } : null) : rawNotice;
   const info = notice?.tone === "info" ? notice : null;
@@ -249,6 +331,11 @@ export function PinUnlockView({
               >
                 <Avatar name={entry.fullName} initials={initialsOf(entry.fullName)} />
                 <span className="y-roster__name">{entry.fullName}</span>
+                {entry.needsSetup ? (
+                  <StatusChip tone="info" icon={<UserPlus aria-hidden="true" />} className="y-roster__new">
+                    New
+                  </StatusChip>
+                ) : null}
               </button>
             ))}
           </div>
@@ -267,10 +354,15 @@ export function PinUnlockView({
     );
   }
 
+  const title = step === "pin" ? (selected ? "Enter your PIN" : "Sign in with your staff number") : STEP_TITLE[step];
+  const checking =
+    step === "confirm" ? "Signing you in…" : step === "setup-code" ? "Checking your setup code…" : "Checking your PIN…";
+
   return (
     <AccessLayout
       testId="pin-screen"
-      title={selected ? "Enter your PIN" : "Sign in with your staff number"}
+      title={title}
+      lede={step === "choose" ? <p>Six digits only you know. You will sign in with it from now on.</p> : undefined}
       place={place}
       notice={notices}
     >
@@ -285,6 +377,13 @@ export function PinUnlockView({
             </span>
             <Button variant="quiet" data-testid="staff-change" onClick={changePerson}>
               Not you?
+            </Button>
+          </div>
+        ) : step !== "pin" ? (
+          // Typed by number and choosing a PIN: the number stays as typed, or the person starts again.
+          <div className="y-pin__who y-pin__who--manual">
+            <Button variant="quiet" data-testid="staff-change" onClick={changePerson}>
+              Start again
             </Button>
           </div>
         ) : (
@@ -317,10 +416,10 @@ export function PinUnlockView({
         </div>
         <Keypad label="PIN" variant="pin" onKey={onKey} disabled={pending || held} testIdPrefix="pin-key" groupRef={keypadRef} />
         <p className="y-pin__status" role="status">
-          {pending ? "Checking your PIN…" : ""}
+          {pending ? checking : ""}
         </p>
         {problemLine}
-        {!selected && sortedRoster.length > 0 ? (
+        {!selected && step === "pin" && sortedRoster.length > 0 ? (
           <Button variant="quiet" data-testid="staff-choose-from-roster" onClick={() => setManual(false)}>
             Choose your name instead
           </Button>

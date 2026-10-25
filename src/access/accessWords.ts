@@ -10,6 +10,7 @@ import { PIN_PAUSE_AFTER_FAILURES } from "./accessSettings";
 export type AccessNoticeKind =
   | "pin-rejected"
   | "sign-in-held"
+  | "setup-code-expired"
   | "offline-pin-rejected"
   | "offline-pin-locked"
   | "session-ended"
@@ -58,6 +59,12 @@ const MESSAGES: Record<string, AccessNotice> = {
     kind: "offline-pin-locked",
     tone: "danger",
     words: "Too many tries on this till without internet. Reconnect to Yetu to sign in.",
+  },
+  // A new person's setup code ran out before they chose their own PIN (401 POS_SETUP_CODE_EXPIRED).
+  "This setup code has expired. Ask your manager for a new one.": {
+    kind: "setup-code-expired",
+    tone: "danger",
+    words: "This setup code has expired. Ask your manager for a new one.",
   },
   "Session expired — enter your PIN again": {
     kind: "session-ended",
@@ -160,11 +167,12 @@ export function accessNotice(message: string | null | undefined): AccessNotice |
  * pause rule it says the PIN may be paused: the till counts only its own
  * tries, and the server's count also includes other tills and earlier tries,
  * so a pause is never stated as certain. Offline refusals have their own
- * rules and never count toward it.
+ * rules and never count toward it. A new person types the setup code their
+ * manager gave them, so a refusal then speaks of that code.
  */
 export function pinNotice(
   message: string | null | undefined,
-  { failures, manual }: { failures: number; manual: boolean },
+  { failures, manual, setup = false }: { failures: number; manual: boolean; setup?: boolean },
 ): AccessNotice | null {
   const notice = accessNotice(message);
   if (notice?.kind === "offline-pin-rejected" && manual) {
@@ -174,6 +182,14 @@ export function pinNotice(
     };
   }
   if (notice?.kind !== "pin-rejected") return notice;
+  if (setup) {
+    return {
+      ...notice,
+      words: failures >= PIN_PAUSE_AFTER_FAILURES
+        ? "Too many tries. Signing in may be paused for a minute — wait, then try again, or ask a manager."
+        : "That setup code didn't match. Try again.",
+    };
+  }
   if (failures >= PIN_PAUSE_AFTER_FAILURES) {
     return {
       ...notice,

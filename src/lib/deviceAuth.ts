@@ -18,6 +18,36 @@ export class StaffLoginRejectedError extends Error {
   }
 }
 
+/**
+ * The PIN typed is this person's setup code (409 POS_PIN_SETUP_REQUIRED, sent
+ * only when the code is right): they choose their own PIN now, at this till.
+ */
+export class StaffPinSetupRequiredError extends Error {
+  constructor(message = "Choose your own PIN.") {
+    super(message);
+    this.name = "StaffPinSetupRequiredError";
+  }
+}
+
+/** The setup code is past its time (401 POS_SETUP_CODE_EXPIRED): a manager issues a new one. */
+export class StaffSetupCodeExpiredError extends Error {
+  constructor(message = "This setup code has expired.") {
+    super(message);
+    this.name = "StaffSetupCodeExpiredError";
+  }
+}
+
+/** Words for a refused new PIN when Yetu's answer has none of its own. */
+export const NEW_PIN_REFUSED_WORDS = "Choose a different six-digit PIN, one nobody could guess.";
+
+/** Yetu refused the PIN the person chose (422); `words` is Yetu's own sentence saying why. */
+export class StaffNewPinRefusedError extends Error {
+  constructor(readonly words: string) {
+    super("The new PIN was not accepted.");
+    this.name = "StaffNewPinRefusedError";
+  }
+}
+
 /** Named setting: the wait after a 429 that came with no time at all (Yetu's limiter always sends one). */
 export const SIGN_IN_FALLBACK_WAIT_SECONDS = 60;
 
@@ -36,7 +66,12 @@ export class StaffLoginRateLimitedError extends Error {
   }
 }
 
-async function retryAfterSecondsOf(response: Response): Promise<number> {
+/**
+ * How long a 429 asked the till to wait. A web view reading a cross-origin
+ * answer sees no Retry-After (Yetu does not expose it), so Yetu's own sentence
+ * is read too.
+ */
+export async function retryAfterSecondsOf(response: Response): Promise<number> {
   const header = response.headers.get("Retry-After")?.trim() ?? "";
   if (/^\d+$/.test(header)) return Number(header);
   const body = (await readJson(response)) as { detail?: unknown } | null;
@@ -84,13 +119,15 @@ export interface DeviceChallenge {
   challengeId: string;
   nonce: string;
   expiresAt: string;
-	staff?: Array<{ id: string; displayName: string; staffSuffix: string }>;
+	staff?: Array<{ id: string; displayName: string; staffSuffix: string; needsSetup?: boolean }>;
 }
 
 export interface RosterEntry {
   fullName: string;
   /** The local sequence to type on this terminal ("00042"), not the full staff number. */
   staffNumber: string;
+  /** New here: signs in with the setup code a manager gave them, then chooses their own PIN at the till. */
+  needsSetup?: boolean;
 }
 
 function publicJsonHeaders(): HeadersInit {
@@ -103,6 +140,14 @@ async function readJson(response: Response): Promise<unknown> {
   } catch {
     return null;
   }
+}
+
+async function readProblem(response: Response): Promise<{ code?: string; detail?: string }> {
+  const body = (await readJson(response)) as Record<string, unknown> | null;
+  return {
+    code: typeof body?.code === "string" ? body.code : undefined,
+    detail: typeof body?.detail === "string" ? body.detail : undefined,
+  };
 }
 
 /** Human copy for the till. Never a stack trace. */
@@ -118,6 +163,9 @@ export function humanDeviceError(error: unknown): string {
   }
   if (error instanceof StaffLoginRateLimitedError) {
     return error.message;
+  }
+  if (error instanceof StaffSetupCodeExpiredError) {
+    return "This setup code has expired. Ask your manager for a new one.";
   }
   const msg = error instanceof Error ? error.message : String(error);
   if (/fetch|network|Failed to fetch|ECONNREFUSED|NetworkError/i.test(msg)) {
@@ -319,7 +367,11 @@ export async function fetchLockScreen(
 		const challenge = await issueChallenge(baseUrl, terminalId, deviceCredential);
     if (!challenge) return { staff: [], place: {} };
     return {
-      staff: (challenge.staff ?? []).map((entry) => ({ fullName: entry.displayName, staffNumber: entry.id })),
+      staff: (challenge.staff ?? []).map((entry) => ({
+        fullName: entry.displayName,
+        staffNumber: entry.id,
+        needsSetup: entry.needsSetup === true,
+      })),
       place: placeFrom(challenge),
     };
   } catch {
@@ -335,7 +387,10 @@ export async function createStaffSession(args: {
   privateKeyPkcs8?: string;
   signChallenge?: (nonce: string) => Promise<string>;
   staffNumber: string;
+  /** The person's PIN, or the setup code a manager gave them. */
   pin: string;
+  /** With a setup code as `pin`: the PIN the person chose, which they sign in with from now on. */
+  newPin?: string;
   /** True when this till already completed pairing. A 401 challenge is then revocation. */
   previouslyApproved?: boolean;
 }): Promise<OperationalSession> {
@@ -363,10 +418,21 @@ export async function createStaffSession(args: {
 			signature,
 			staffId: args.staffNumber,
       pin: args.pin,
+      newPin: args.newPin,
     }),
   });
-  if (response.status === 401) throw new StaffLoginRejectedError();
+  if (response.status === 401) {
+    const problem = await readProblem(response);
+    if (problem.code === "POS_SETUP_CODE_EXPIRED") throw new StaffSetupCodeExpiredError();
+    throw new StaffLoginRejectedError();
+  }
   if (response.status === 429) throw new StaffLoginRateLimitedError(await retryAfterSecondsOf(response));
+  if (response.status === 409 && !args.newPin) {
+    if ((await readProblem(response)).code === "POS_PIN_SETUP_REQUIRED") throw new StaffPinSetupRequiredError();
+  } else if (response.status === 422 && args.newPin) {
+    const { detail } = await readProblem(response);
+    throw new StaffNewPinRefusedError(detail?.trim() || NEW_PIN_REFUSED_WORDS);
+  }
   if (!response.ok) {
     throw new Error(`Staff session failed with HTTP ${response.status}`);
   }
