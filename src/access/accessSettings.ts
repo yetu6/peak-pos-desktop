@@ -25,6 +25,20 @@ export const ROSTER_SEARCH_AFTER = 12;
  */
 export const ROSTER_REFRESH_SECONDS = 30;
 
+/**
+ * access.rosterLive*: the sign-in screen also keeps a line open to Yetu that
+ * says when its staff list changes, so a new waiter appears within seconds
+ * (owner, 2026-10-25; fbc-peak POST /pos/device/roster/events). When the line
+ * drops it tries again after RETRY_FIRST, doubling each time up to RETRY_MAX;
+ * a line that stayed up STEADY seconds counts as recovered, so the next drop
+ * starts from RETRY_FIRST again. Yetu allows 120 connections an hour from one
+ * address (fbc-peak cmd/api/routes_pos.go pos_roster_events). The refresh
+ * above carries on either way.
+ */
+export const ROSTER_LIVE_RETRY_FIRST_SECONDS = 1;
+export const ROSTER_LIVE_RETRY_MAX_SECONDS = 30;
+export const ROSTER_LIVE_STEADY_SECONDS = 60;
+
 /** Opening the till normally takes a few seconds; after this it says what to do. */
 export const SPLASH_SLOW_AFTER_MS = 20_000;
 

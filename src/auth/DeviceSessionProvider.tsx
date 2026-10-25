@@ -25,8 +25,12 @@ import {
   sendHeartbeat,
   StaffLoginRateLimitedError,
   StaffLoginRejectedError,
+  StaffNewPinRefusedError,
+  StaffPinSetupRequiredError,
+  StaffSetupCodeExpiredError,
   type RosterEntry,
 } from "../lib/deviceAuth";
+import { followRosterStream } from "../lib/rosterStream";
 import { generateDeviceKeyPair, rawPublicKeyB64Url } from "../lib/deviceCrypto";
 import {
   loadNativeDeviceAuthority,
@@ -79,6 +83,15 @@ export function shellStateOf(phase: DevicePhase): AppShellState {
   return "UNPAIRED";
 }
 
+/**
+ * What a sign-in attempt asks of the PIN screen next, when it is more than
+ * showing `error`: a new person's setup code was right and they choose their
+ * own PIN now, or Yetu refused the PIN they chose and said why.
+ */
+export type UnlockOutcome =
+  | { next: "choose-pin" }
+  | { next: "choose-again"; words: string };
+
 export interface DeviceSessionValue {
   phase: DevicePhase;
   shell: AppShellState;
@@ -89,7 +102,8 @@ export interface DeviceSessionValue {
   startPairing: () => Promise<void>;
   continueAfterApproval: () => Promise<void>;
   resetPairing: () => Promise<void>;
-  unlock: (staffNumber: string, pin: string) => Promise<void>;
+  /** `newPin`: with a setup code as `pin`, the PIN the person chose to sign in with from now on. */
+  unlock: (staffNumber: string, pin: string, newPin?: string) => Promise<UnlockOutcome | undefined>;
   /** End the waiter ops session. Does not unpair or close the cashier till. */
   switchStaff: (reason?: string) => void;
   /** Present when the OS secure-store boundary cannot provide hardware-backed storage. */
@@ -280,6 +294,23 @@ export function DeviceSessionProvider({
       document.removeEventListener("visibilitychange", again);
     };
   }, [phase, refreshRoster]);
+
+  // And as soon as Yetu says the list changed (owner, 2026-10-25), while the
+  // till stays on this screen. The refresh above remains the fallback.
+  const streamTerminalId = identity?.terminalId ?? identity?.deviceCode;
+  const streamCredential = identity?.deviceCredential ?? identity?.deviceCode;
+  useEffect(() => {
+    if (phase !== "locked" || !identity?.approved || !streamTerminalId || !streamCredential) return;
+    const controller = new AbortController();
+    void followRosterStream({
+      baseUrl: peakUrl,
+      terminalId: streamTerminalId,
+      deviceCredential: streamCredential,
+      onRoster: () => void refreshRoster(),
+      signal: controller.signal,
+    });
+    return () => controller.abort();
+  }, [identity?.approved, peakUrl, phase, refreshRoster, streamCredential, streamTerminalId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -571,9 +602,9 @@ export function DeviceSessionProvider({
   }, [peakUrl]);
 
   const unlock = useCallback(
-    async (staffNumber: string, pin: string) => {
+    async (staffNumber: string, pin: string, newPin?: string): Promise<UnlockOutcome | undefined> => {
       const current = identityRef.current;
-		if (!current || !(current.terminalId || current.deviceCode) || !(current.deviceCredential || current.deviceCode)) return;
+		if (!current || !(current.terminalId || current.deviceCode) || !(current.deviceCredential || current.deviceCode)) return undefined;
       clearStaffAuthority();
       setError(null);
       try {
@@ -591,6 +622,7 @@ export function DeviceSessionProvider({
             : authorityRef.current?.signChallenge,
           staffNumber,
           pin,
+          newPin,
           previouslyApproved: current.approved === true,
         });
         if (!store) {
@@ -627,7 +659,8 @@ export function DeviceSessionProvider({
             bootstrap.offlineAuthorization?.state === "ACTIVE");
         if (offlineAuthorityReady) {
           try {
-            await offlineAuthorityRef.current!.authenticateStaff(next.staffId, pin);
+            // Offline the person signs in with their own PIN, never a spent setup code.
+            await offlineAuthorityRef.current!.authenticateStaff(next.staffId, newPin ?? pin);
             setOfflineEligibility(
               await offlineAuthorityRef.current!.eligibilityStatus(next.staffId),
             );
@@ -655,8 +688,13 @@ export function DeviceSessionProvider({
         });
         armExpiry(next);
         setPhase("ready");
+        // No longer new: the list loses its "New" before anyone comes back to it.
+        if (newPin) void refreshRoster();
+        return undefined;
       } catch (err) {
         clearStaffAuthority();
+        if (err instanceof StaffPinSetupRequiredError) return { next: "choose-pin" };
+        if (err instanceof StaffNewPinRefusedError) return { next: "choose-again", words: err.words };
         if (err instanceof DeviceRevokedError) {
           await persist({
             ...current,
@@ -683,7 +721,11 @@ export function DeviceSessionProvider({
           setError(humanDeviceError(err));
           return;
         }
-        if (err instanceof StaffLoginRejectedError || err instanceof SessionExpiredError) {
+        if (
+          err instanceof StaffLoginRejectedError ||
+          err instanceof StaffSetupCodeExpiredError ||
+          err instanceof SessionExpiredError
+        ) {
           setError(err instanceof SessionExpiredError
             ? "Session expired — enter your PIN again"
             : humanDeviceError(err));
@@ -736,7 +778,7 @@ export function DeviceSessionProvider({
         setError(humanDeviceError(err));
       }
     },
-    [applyOpsToken, armExpiry, clearStaffAuthority, peakUrl, persist],
+    [applyOpsToken, armExpiry, clearStaffAuthority, peakUrl, persist, refreshRoster],
   );
 
   const value = useMemo<DeviceSessionValue>(
