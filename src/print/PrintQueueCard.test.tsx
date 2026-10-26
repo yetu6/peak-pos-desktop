@@ -52,3 +52,18 @@ it("an uncertain paper can be answered either way: printed, or not printed so it
  expect(printed).not.toHaveBeenCalled();
  expect(screen.queryByRole("button",{name:"It did not print"})).not.toBeInTheDocument();
 });
+it("an answer that arrives after the card has left the screen changes nothing",async()=>{
+ // CI once saw this answer land after the test's window was gone (setJobs on
+ // an unmounted card). The card must not even read a late answer.
+ const pending:Array<(jobs:POSPrintJob[])=>void>=[];
+ list.mockImplementation(()=>new Promise<POSPrintJob[]>(resolve=>{pending.push(resolve);}));
+ const {unmount}=render(<PrintQueueCard/>);
+ await waitFor(()=>expect(pending).toHaveLength(3));
+ unmount();
+ let read=0;
+ const late={...paper};
+ Object.defineProperty(late,"id",{get(){read++;return paper.id;}});
+ pending.forEach(resolve=>resolve([late]));
+ await new Promise(resolve=>setTimeout(resolve,0));
+ expect(read).toBe(0);
+});
