@@ -1,5 +1,5 @@
 import { Printer, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Banner, Button } from "../components/system";
 import { listPrintJobs } from "../lib/printJobs";
 import type { POSPrintJob } from "../lib/posContracts";
@@ -16,29 +16,34 @@ export function PrintQueueCard() {
  const [problem,setProblem]=useState<string|null>(null);
  const [busy,setBusy]=useState(false);
  const [unknownJob,setUnknownJob]=useState<POSPrintJob|null>(null);
+ // Answers that arrive after the card has left the screen change nothing.
+ const shown=useRef(true);
+ useEffect(()=>{shown.current=true;return()=>{shown.current=false;};},[]);
  const refresh=useCallback(async()=>{
   try { const pages = await Promise.all([listPrintJobs("FAILED"), listPrintJobs("CLAIMED"), listPrintJobs("PENDING")]);
+   if(!shown.current)return;
    const waiting = [...new Map(pages.flat().map(job => [job.id, job])).values()];
    setJobs(waiting.filter(job=>["PENDING","FAILED","CLAIMED"].includes(job.status))); }
-  catch { setProblem(words.loadFailed); }
+  catch { if(shown.current)setProblem(words.loadFailed); }
  },[]);
  useEffect(()=>{void refresh();},[refresh]);
  async function retry(job:POSPrintJob) {
   setBusy(true);setProblem(null);
   try {
    const result=await retryPrintJob(job);
+   if(!shown.current)return;
    if(!result.ok)setProblem(result.error??words.loadFailed);
-   if(job.status === "CLAIMED" && usesNativePrintJournal() && (await inspectNativePrint(job.id))?.state === "unknown") setUnknownJob(job);
+   if(job.status === "CLAIMED" && usesNativePrintJournal() && (await inspectNativePrint(job.id))?.state === "unknown" && shown.current) setUnknownJob(job);
    await refresh();
-  } catch {setProblem(words.loadFailed);}
-  finally{setBusy(false);}
+  } catch {if(shown.current)setProblem(words.loadFailed);}
+  finally{if(shown.current)setBusy(false);}
  }
  async function resolveObserved(printed:boolean) {
   if(!unknownJob)return;
   setBusy(true);
-  try{await (printed?confirmPaperPrinted:confirmPaperNotPrinted)(unknownJob);setUnknownJob(null);setProblem(null);await refresh();}
-  catch(error){setProblem(error instanceof Error?error.message:words.loadFailed);}
-  finally{setBusy(false);}
+  try{await (printed?confirmPaperPrinted:confirmPaperNotPrinted)(unknownJob);if(!shown.current)return;setUnknownJob(null);setProblem(null);await refresh();}
+  catch(error){if(shown.current)setProblem(error instanceof Error?error.message:words.loadFailed);}
+  finally{if(shown.current)setBusy(false);}
  }
  return <section className="y-printers" aria-labelledby="print-queue-title" data-testid="print-queue">
   <h2 id="print-queue-title" className="y-status__name">{words.title}</h2>
