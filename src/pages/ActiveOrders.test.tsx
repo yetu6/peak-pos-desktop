@@ -952,7 +952,7 @@ describe("Orders: Pay sends what isn't sent first (Toast, Square)", () => {
     ordersStore.set("order-1", ROUND2);
     renderOrders();
     const sheet = await openDetail("order-1");
-    expect(within(sheet).getByTestId("detail-send")).toHaveTextContent("Send round 2");
+    expect(within(sheet).getByTestId("detail-send")).toHaveTextContent(/Print (order|for )/);
     expect(within(sheet).getByTestId("detail-send")).toBeEnabled();
   });
 

@@ -1,5 +1,5 @@
 import { linesByRound } from "./rounds";
-import { vatFigures } from "../lib/vatWords";
+import { lineAmountMinor, vatFigures } from "../lib/vatWords";
 import { Ban, ChefHat, Trash2 } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Banner, Button, EmptyState, Field, Money, PermissionNotice, SegmentedControl, StatusChip, Stepper, TicketLine, type Refusal } from "../components/system";
@@ -126,7 +126,7 @@ export function TicketPanel({
           name={line.name}
           options={(line.modifiers ?? []).map((modifier) => modifier.optionName)}
           tags={tagsOf?.(line.productId)}
-          amount={formatMoney(line.totalMinor, currency)}
+          amount={formatMoney(lineAmountMinor(order?.pricesIncludeTax, line), currency)}
           sent={line.status === "SENT"}
           sentChip={false}
           selected={selected}

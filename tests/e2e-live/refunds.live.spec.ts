@@ -21,7 +21,7 @@
 import { expect, test, type Response } from "@playwright/test";
 import { WebSession, ensurePlainDish, loadSeededProperty, tsh, typed, chooseApprovers, SEEDED_MANAGER_ROLE } from "./liveApi";
 import { LIVE_API_URL } from "./liveSettings";
-import { body, nextApi, openShift, pairTill, setServerAddress, signInWithPin, tapper, type Shift } from "./liveTill";
+import { body, nextApi, openShift, pairTill, payAfterPapers, setServerAddress, signInWithPin, tapper, type Shift } from "./liveTill";
 
 /** The cash the cashier counts into the drawer when the shift opens. */
 const OPENING_FLOAT_MINOR = 5_000_000;
@@ -99,7 +99,7 @@ test("refunds by item on the till, against the live API", async ({ page }, testI
     await tap(page.getByTestId(`menu-${plainDish.name}`));
     order = await body<Order>(added);
     expect(order.items.reduce((sum, line) => sum + line.quantity, 0)).toBe(2);
-    await tap(page.getByTestId("pay-order"));
+    await payAfterPapers(page, tap, page.getByTestId("pay-order"));
     await page.getByTestId("amount-received").fill(typed(order.totalMinor));
     const paid = nextApi(page, "POST", new RegExp(`^/api/v1/pos/orders/${order.id}/payments$`));
     await tap(page.getByTestId("confirm-settle"));
@@ -132,7 +132,9 @@ test("refunds by item on the till, against the live API", async ({ page }, testI
     await expect(sheet.getByTestId("refund-summary")).toHaveText(`Give back ${tsh(quote.totalMinor)} in cash`);
 
     await tap(page.getByTestId("refund-ask"));
-    await expect(sheet.getByRole("radio", { name: new RegExp(cashier.displayName) })).toBeDisabled();
+    // Only the people the owner chose to approve refunds are offered: the cashier is not one, so can't approve their own.
+    await expect(sheet.getByRole("radio", { name: new RegExp(manager.displayName) })).toBeVisible();
+    await expect(sheet.getByRole("radio", { name: new RegExp(cashier.displayName) })).toHaveCount(0);
     await tap(sheet.getByRole("radio", { name: new RegExp(manager.displayName) }));
     await pin("refund-pin-key", seeded.managerPin);
     await expect(page.getByTestId("refund-give")).toHaveText(`Give back ${tsh(quote.totalMinor)}`);
@@ -148,7 +150,7 @@ test("refunds by item on the till, against the live API", async ({ page }, testI
     const done = page.getByTestId("refund-done-view");
     await expect(done).toContainText(`Refunded ${tsh(first.totalMinor)}`);
     await expect(done).toContainText(`Give ${tsh(first.totalMinor)} back in cash from the drawer.`);
-    await expect(page.getByTestId("refund-print")).toHaveText("The refund slip didn't print (No printer is configured). The refund is recorded.");
+    await expect(page.getByTestId("refund-print")).toHaveText("The refund slip didn't print (No printer is set up on this till). The refund is recorded.");
 
     // The drawer expects the refund less: Yetu's figure, as the till reads it.
     shift = await body<Shift>(shiftAfter);

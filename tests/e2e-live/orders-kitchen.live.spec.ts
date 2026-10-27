@@ -27,7 +27,7 @@ import { expect, test, type Page, type Response } from "@playwright/test";
 import { WebSession, ensurePlainDish, loadSeededProperty, tsh, typed } from "./liveApi";
 import { LIVE_API_URL } from "./liveSettings";
 import { ORDERS_REFRESH_SECONDS } from "../../src/orders/ordersSettings";
-import { body, nextApi, openShift, pairTill, setServerAddress, signInWithPin, tapper } from "./liveTill";
+import { body, nextApi, openShift, pairTill, printShownPapers, setServerAddress, signInWithPin, tapper } from "./liveTill";
 
 /** The cash counted into the selling till's drawer. */
 const OPENING_FLOAT_MINOR = 5_000_000;
@@ -43,7 +43,7 @@ interface Order {
   createdAt: string;
   closedAt: string | null;
   payments: Array<{ paymentMethod: string; amountMinor: number; createdAt: string; recordedByName: string }>;
-  items: Array<{ name: string }>;
+  items: Array<{ name: string; quantity: number }>;
 }
 /** One page of the till's orders list (S5b). */
 interface OrderPage {
@@ -132,10 +132,12 @@ test("orders and the kitchen on the redesigned till, against the live API", asyn
       await tap(page.getByTestId(`menu-${plainDish.name}`));
       order = await body<Order>(added, 201);
     }
-    expect(order!.items).toHaveLength(count);
+    // A repeat tap is one more of the same line (Yetu merges them), never a second line.
+    expect(order!.items.reduce((sum, line) => sum + line.quantity, 0)).toBe(count);
     const sent = nextApi(page, "POST", new RegExp(`^/api/v1/pos/orders/${order!.id}/send$`));
     const fresh = nextApi(page, "GET", new RegExp(`^/api/v1/pos/orders/${order!.id}$`));
     await tap(page.getByTestId("send-order"));
+    await printShownPapers(page, tap);
     expect((await sent).ok()).toBe(true);
     const after = await body<Order>(fresh);
     expect(after.status).toBe("SENT");
@@ -266,11 +268,12 @@ test("orders and the kitchen on the redesigned till, against the live API", asyn
     expect((await reprinted).status()).toBe(201);
     await expect.poll(() => receipts.at(-1)?.reprintCount).toBe(receipt.reprintCount + 1);
     const counted = receipts.at(-1)!;
-    await expect(detail.getByTestId("order-detail-result")).toHaveText("A copy of the receipt was sent to the printer.");
+    // Yetu made the copy; a browser has no printer, so the till says the copy didn't print (F-233) and that Yetu has the bill.
+    await expect(detail.getByRole("alert")).toContainText(/The copy didn't print: no printer is (set up|configured).*Yetu has the bill/);
     await expect(detail.getByTestId("order-detail-payment")).toContainText(
       `Printed again ${counted.reprintCount} ${counted.reprintCount === 1 ? "time" : "times"}`,
     );
-    await tap(detail.getByRole("button", { name: "Close" }).last());
+    await tap(detail.getByRole("button", { name: "Back", exact: true }).last());
     await expect(detail).toHaveCount(0);
   });
 
@@ -355,7 +358,7 @@ test("orders and the kitchen on the redesigned till, against the live API", asyn
     await expect
       .poll(() => told.orders.at(-1)?.find((entry) => entry.id === order.id)?.status, { message: "the order follows its station ticket" })
       .toBe("SERVED");
-    await tap(detail.getByRole("button", { name: "Close" }).first());
+    await tap(detail.getByRole("button", { name: "Back", exact: true }).first());
     await expect(page.getByTestId(`order-row-${order.id}`)).toContainText("Served");
   });
 

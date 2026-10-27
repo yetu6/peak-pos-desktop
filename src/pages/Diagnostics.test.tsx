@@ -146,7 +146,7 @@ describe("Diagnostics", () => {
     expect(screen.getByTestId("diagnostics")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("diag-check-yetu")).toHaveTextContent("Yetu answers."));
     expect(screen.getByTestId("diag-check-live")).toHaveTextContent("On.");
-    expect(screen.getByTestId("diag-check-receipt-printer")).toHaveTextContent("The till can send receipts to front-bar.");
+    expect(screen.getByTestId("diag-check-receipt-printer")).toHaveTextContent("The till can send bills to front-bar.");
     expect(screen.queryByText("SECRET_PRIVATE_KEY")).not.toBeInTheDocument();
     expect(screen.queryByText("ops_SUPERSECRET")).not.toBeInTheDocument();
   });
@@ -200,7 +200,7 @@ describe("Diagnostics", () => {
       expect(screen.getByTestId("diag-check-internet")).toHaveTextContent("This till is on a network.");
       expect(screen.getByTestId("diag-check-live")).toHaveTextContent("On. New orders and changes show at once.");
       expect(screen.getByTestId("diag-check-receipt-printer")).toHaveTextContent(
-        "The till can send receipts to front-bar. It can't tell whether the printer is on or has paper.",
+        "The till can send bills to front-bar. It can't tell whether the printer is on or has paper.",
       );
       expect(screen.getByTestId("diag-check-kitchen-printer")).toHaveTextContent(
         "Kitchen tickets print on the same printer as bills (front-bar). Kitchen and bar displays show them too.",

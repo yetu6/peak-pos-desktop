@@ -254,6 +254,12 @@ export function NewOrder({
     if (product.isAvailable === false) return;
     setNotice(null);
     if ((product.modifierGroups?.length ?? 0) > 0 || sizesOf(menu, product.id).length > 1) {
+      // A tap that comes while the last add is still with Yetu waits its turn, as a plain tap does (F-230):
+      // the choices open once that line is on the ticket. Silently dropped, the dish was never ordered.
+      if (adding) {
+        taps.current = taps.current.then(() => openOptions(product));
+        return;
+      }
       if (busy) return;
       openOptions(product);
       return;

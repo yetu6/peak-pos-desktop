@@ -1,7 +1,7 @@
 import { BACK_WORDS } from "../lib/words";
 import { Printer } from "lucide-react";
 import { copyNotPrintedWords } from "../print/printProblems";
-import { vatFigures } from "../lib/vatWords";
+import { lineAmountMinor, vatFigures } from "../lib/vatWords";
 import { useReceipt, useReprintReceipt } from "../hooks/usePosData";
 import { reprintProblem } from "../orders/ordersWords";
 import { formatMoney } from "../lib/money";
@@ -22,7 +22,7 @@ function settledWords(method: string): string {
  * The receipt Yetu kept when the order was settled
  * (`GET /pos/orders/{orderId}/receipt`), shown as it is: never rebuilt from
  * the live menu. It is not a tax receipt: those come from the outlet's EFD
- * machine. Print again uses the existing reprint.
+ * machine. Print bill again uses the existing reprint.
  */
 export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: () => void }) {
   const receipt = useReceipt(orderId);
@@ -91,7 +91,7 @@ export function ReceiptSheet({
             onClick={onReprint}
             disabled={!receipt || reprinting}
           >
-            {reprinting ? "Sending to the printer…" : "Print again"}
+            {reprinting ? "Printing…" : "Print bill again"}
           </Button>
         </div>
       }
@@ -105,7 +105,7 @@ export function ReceiptSheet({
         ) : null}
         {failed ? (
           <Banner inline tone="danger" data-testid="receipt-error">
-            The receipt couldn't be loaded. Check the connection, then try again.
+            The bill couldn't be loaded. Check the connection, then try again.
           </Banner>
         ) : null}
         {doc ? (
@@ -152,7 +152,7 @@ export function ReceiptSheet({
                       </span>
                     ))}
                   </span>
-                  <span className="y-receipt__amount">{formatMoney(line.totalMinor, doc.currency)}</span>
+                  <span className="y-receipt__amount">{formatMoney(lineAmountMinor(doc.pricesIncludeTax, line), doc.currency)}</span>
                 </li>
               ))}
             </ul>

@@ -206,6 +206,15 @@ describe("the offline register", () => {
     expect(screen.getByTestId("offline-pay")).toHaveClass("y-button--pay");
   });
 
+  it("offline with VAT on top, the lines add up to the Subtotal (2 chips: TSh 10,000, plus VAT TSh 1,800, is TSh 11,800)", async () => {
+    renderRegister();
+    await addChips();
+    expect(screen.getByTestId("cart-Chips")).toHaveTextContent("TSh 10,000");
+    expect(screen.getByTestId("ticket-totals")).toHaveTextContent("SubtotalTSh 10,000");
+    expect(screen.getByTestId("ticket-totals")).toHaveTextContent("VATTSh 1,800");
+    expect(screen.getByTestId("ticket-totals")).toHaveTextContent("TotalTSh 11,800");
+  });
+
   it("changes the quantity and removes a line through the local store", async () => {
     renderRegister();
     await addChips();
