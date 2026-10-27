@@ -60,6 +60,15 @@ export function usePosPermissions(): string[] {
   return getOperationalSession()?.permissions ?? [];
 }
 
+/**
+ * A waiter sees and works on only their own orders (owner, 2026-10-27): Yetu
+ * lists them only, and this says so in words. Cashiers and managers hold
+ * pos.order.read_all and see every order of the outlet.
+ */
+export function useOwnOrdersOnly(): boolean {
+  return !usePosPermissions().includes("pos.order.read_all");
+}
+
 export function useHasCapability(code: string): boolean {
   return usePropertyCapabilities().includes(code);
 }

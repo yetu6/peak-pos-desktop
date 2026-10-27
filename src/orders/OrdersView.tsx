@@ -50,6 +50,8 @@ export interface OrdersViewProps {
   paidState: ListState;
   /** What just happened to an order, in words. */
   notice?: string | null;
+  /** The person sees only the orders they took (a waiter): the lists say so. */
+  ownOnly?: boolean;
 }
 
 const ROW_SELECTOR = "[data-order-row]";
@@ -94,6 +96,7 @@ export function OrdersView({
   paidState,
   paidPaging = ALL_READ,
   notice = null,
+  ownOnly = false,
 }: OrdersViewProps) {
   const list = tab === "open" ? openOrders : (paidOrders ?? []);
   const state = tab === "open" ? openState : paidState;
@@ -106,7 +109,7 @@ export function OrdersView({
   const status = [notice, searching && !state.loading ? searchWords : null].filter(Boolean).join(" ");
   // A search that stopped at its ceiling says how far it looked.
   const searchedWhat =
-    paged && !paidPaging.searchedAll ? `Only the latest ${list.length} paid orders today were searched.` : "Check the number, table, room or amount.";
+    paged && !paidPaging.searchedAll ? `Only the latest ${list.length} ${ownOnly ? "of your " : ""}paid orders today were searched.` : "Check the number, table, room or amount.";
 
   function focusFirstRow(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== "ArrowDown") return;
@@ -125,9 +128,9 @@ export function OrdersView({
           value={tab}
           onChange={onTab}
           tabs={[
-            { value: "open", label: "Open", count: openState.loading ? undefined : openOrders.length },
+            { value: "open", label: ownOnly ? "Your open" : "Open", count: openState.loading ? undefined : openOrders.length },
             // Today's count is known only once every page is read.
-            { value: "paid", label: "Paid today", count: paidOrders === null || paidPaging.hasMore ? undefined : paidOrders.length },
+            { value: "paid", label: ownOnly ? "Your paid today" : "Paid today", count: paidOrders === null || paidPaging.hasMore ? undefined : paidOrders.length },
           ]}
         />
         <SearchField
@@ -143,7 +146,7 @@ export function OrdersView({
         {status}
       </p>
 
-      <div className="y-orders__list" aria-label={tab === "open" ? "Open orders" : "Paid today"} role="region">
+      <div className="y-orders__list" aria-label={tab === "open" ? (ownOnly ? "Your open orders" : "Open orders") : ownOnly ? "Your paid orders today" : "Paid today"} role="region">
         {state.failed ? (
           <Banner
             inline
@@ -168,8 +171,8 @@ export function OrdersView({
           state.failed ? null : tab === "open" ? (
             <EmptyState
               icon={<ReceiptText />}
-              title="No open orders"
-              description="Orders appear here once they're started on Sell."
+              title={ownOnly ? "You have no open orders" : "No open orders"}
+              description={ownOnly ? "Orders you start on Sell appear here." : "Orders appear here once they're started on Sell."}
               action={
                 onNewSale ? (
                   <Button variant="primary" size={56} icon={<Plus />} onClick={onNewSale}>
@@ -179,20 +182,24 @@ export function OrdersView({
               }
             />
           ) : (
-            <EmptyState icon={<ReceiptText />} title="No paid orders today yet" description="Orders appear here once they're paid." />
+            <EmptyState
+              icon={<ReceiptText />}
+              title={ownOnly ? "None of your orders are paid yet today" : "No paid orders today yet"}
+              description={ownOnly ? "The orders you took appear here once they're paid." : "Orders appear here once they're paid."}
+            />
           )
         ) : shown.length === 0 && !stillReading ? (
           <EmptyState
             icon={<SearchX />}
             title={`No order matches “${query.trim()}”`}
             description={searchedWhat}
-            action={<Button onClick={() => onQuery("")}>Show all orders</Button>}
+            action={<Button onClick={() => onQuery("")}>{ownOnly ? "Show my orders" : "Show all orders"}</Button>}
           />
         ) : (
           <>
             {paged && !searching ? (
               <p className="y-orders__caption" data-testid="orders-caption">
-                Latest paid first · {shown.length} shown
+                {ownOnly ? "The orders you took, latest paid first" : "Latest paid first"} · {shown.length} shown
               </p>
             ) : null}
             <ul className="y-orders__rows" onKeyDown={moveBetweenRows}>

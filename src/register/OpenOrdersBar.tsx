@@ -1,7 +1,7 @@
 import { List, Plus } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Button, Sheet } from "../components/system";
-import { useActiveOrders } from "../hooks/usePosData";
+import { useActiveOrders, useOwnOrdersOnly } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
 import type { POSOrder } from "../lib/posContracts";
 import { BACK_WORDS } from "../lib/words";
@@ -26,6 +26,7 @@ export function OpenOrdersBar({
   staffId,
   currency,
   disabled = false,
+  ownOnly = false,
   onPick,
   onNew,
 }: {
@@ -36,6 +37,8 @@ export function OpenOrdersBar({
   currency: string | undefined;
   /** While the ticket is busy with Yetu, the ticket stays where it is. */
   disabled?: boolean;
+  /** A waiter: the bar holds only the orders they took, and says so. */
+  ownOnly?: boolean;
   onPick: (order: POSOrder) => void;
   onNew: () => void;
 }) {
@@ -63,7 +66,7 @@ export function OpenOrdersBar({
     if (order.id !== current?.id) onPick(order);
   };
   return (
-    <nav className="y-open-orders" aria-label="Open orders" data-testid="open-orders">
+    <nav className="y-open-orders" aria-label={ownOnly ? "Your open orders" : "Open orders"} data-testid="open-orders">
       <ul className="y-open-orders__list" ref={listRef}>
         {chips.map((order) => {
           const words = openOrderWords(order);
@@ -92,11 +95,11 @@ export function OpenOrdersBar({
         variant="secondary"
         size={56}
         icon={<List />}
-        aria-label={`All ${shown.length} open orders`}
+        aria-label={ownOnly ? `Your ${shown.length} open orders` : `All ${shown.length} open orders`}
         onClick={() => setAll(true)}
         data-testid="open-orders-all"
       >
-        {`All ${shown.length}`}
+        {`${ownOnly ? "Yours" : "All"} ${shown.length}`}
       </Button>
       <Button
         variant="secondary"
@@ -114,7 +117,7 @@ export function OpenOrdersBar({
           onOpenChange={(open) => {
             if (!open) setAll(false);
           }}
-          title="Open orders"
+          title={ownOnly ? "Your open orders" : "Open orders"}
           footer={
             <div className="y-options__footer">
               <span />
@@ -171,5 +174,6 @@ export function visibleChips(shown: readonly POSOrder[], current: POSOrder | nul
 /** Sell's bar: the outlet's open orders, kept up to date as orders change. */
 export function LiveOpenOrdersBar(props: Omit<Parameters<typeof OpenOrdersBar>[0], "orders">) {
   const active = useActiveOrders();
-  return <OpenOrdersBar {...props} orders={active.data ?? []} />;
+  const ownOnly = useOwnOrdersOnly();
+  return <OpenOrdersBar {...props} ownOnly={ownOnly} orders={active.data ?? []} />;
 }
