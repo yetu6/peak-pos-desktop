@@ -58,14 +58,25 @@ function job(jobType: string, document: Record<string, unknown>): POSPrintJob {
 }
 
 describe("the bill before payment", () => {
+  it("lines its totals up with the item rows above them: the money ends at the same edge", () => {
+    const text = formatReceipt(receiptCopyFromPrintDocument(BILL));
+    const rows = text.split("\n");
+    const edge = rows.find((row) => /^ITEM\s+QTY\s+AMOUNT$/.test(row))?.length;
+    expect(edge).toBe(48);
+    for (const label of ["TOTAL", "Paid already", "TO PAY"]) {
+      const row = rows.find((candidate) => candidate.startsWith(label));
+      expect(row?.length, label).toBe(edge);
+    }
+  });
+
   it("says BILL, what is paid already and what is still to pay, who printed it when; nothing about TRA", () => {
     const text = formatReceipt(receiptCopyFromPrintDocument(BILL));
     expect(text).toContain("BILL\nOrder 14");
     expect(text).toContain("Printed ");
-    expect(text).toContain("Discount (Birthday)  -TSh 250");
-    expect(text).toContain("TOTAL  TSh 4,750");
-    expect(text).toContain("Paid already  TSh 1,000");
-    expect(text).toContain("TO PAY  TSh 3,750");
+    expect(text).toMatch(/^Discount \(Birthday\) {2,}\-TSh 250$/m);
+    expect(text).toMatch(/^TOTAL {2,}TSh\ 4,750$/m);
+    expect(text).toMatch(/^Paid\ already {2,}TSh\ 1,000$/m);
+    expect(text).toMatch(/^TO\ PAY {2,}TSh\ 3,750$/m);
     expect(text).not.toMatch(/Paid Tue|Cash/);
     expect(text).not.toMatch(/TRA|tax receipt|INVOICE/);
     expect(text.trimEnd().split("\n").slice(-2).map((line) => line.trim())).toEqual(["Powered by Yetu", "yetu.fbcsoftwares.com"]);

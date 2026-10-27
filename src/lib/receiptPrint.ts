@@ -1,4 +1,4 @@
-import { billItemColumns } from "../print/billColumns";
+import { amountRow, billItemColumns } from "../print/billColumns";
 import { PAPER_WORDS } from "../print/paperWords";
 import { printBrandFooter } from "../print/printBrand";
 import { guestCountWords } from "./words";
@@ -255,12 +255,12 @@ export function formatReceipt(receipt: ReceiptCopy): string {
   const lines = billItemColumns(receipt.lines, 48).join("\n");
 
   const totals = [
-    receipt.subtotal ? `${receipt.vatIncluded ? "Items" : "Subtotal"}  ${receipt.subtotal}` : null,
-    receipt.discount ? `${receipt.discountReason ? `Discount (${receipt.discountReason})` : "Discount"}  -${receipt.discount}` : null,
-    receipt.taxAmount ? `${receipt.vatIncluded ? "VAT included" : "VAT"}  ${receipt.taxAmount}` : null,
-    receipt.totalAmount ? `TOTAL  ${receipt.totalAmount}` : null,
-    receipt.paidAlready ? `Paid already  ${receipt.paidAlready}` : null,
-    receipt.toPay ? `TO PAY  ${receipt.toPay}` : null,
+    receipt.subtotal ? amountRow(receipt.vatIncluded ? "Items" : "Subtotal", receipt.subtotal) : null,
+    receipt.discount ? amountRow(receipt.discountReason ? `Discount (${receipt.discountReason})` : "Discount", `-${receipt.discount}`) : null,
+    receipt.taxAmount ? amountRow(receipt.vatIncluded ? "VAT included" : "VAT", receipt.taxAmount) : null,
+    receipt.totalAmount ? amountRow("TOTAL", receipt.totalAmount) : null,
+    receipt.paidAlready ? amountRow("Paid already", receipt.paidAlready) : null,
+    receipt.toPay ? amountRow("TO PAY", receipt.toPay) : null,
   ]
     .filter(Boolean)
     .join("\n");

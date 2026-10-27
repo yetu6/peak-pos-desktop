@@ -85,10 +85,10 @@ describe("a printed receipt whose prices include VAT", () => {
   it("reads Items at the menu prices, the TSh 2,000 that came off, VAT included and the total", () => {
     const copy = receiptCopyFromPrintDocument(document);
     const text = formatReceipt(copy);
-    expect(text).toContain("Items  TSh 15,000");
-    expect(text).toContain("Discount (Regular guest)  -TSh 2,000");
-    expect(text).toContain("VAT included  TSh 1,983.05");
-    expect(text).toContain("TOTAL  TSh 13,000");
+    expect(text).toMatch(/^Items {2,}TSh 15,000$/m);
+    expect(text).toMatch(/^Discount \(Regular guest\) {2,}\-TSh 2,000$/m);
+    expect(text).toMatch(/^VAT included {2,}TSh 1,983\.05$/m);
+    expect(text).toMatch(/^TOTAL {2,}TSh 13,000$/m);
     expect(text).not.toContain("Subtotal");
     const paper = readable(receiptBytes(copy, PAPER_58MM)).split("\n");
     expect(paper.some((line) => line.startsWith("VAT included") && line.endsWith("TSh 1,983.05"))).toBe(true);
@@ -97,8 +97,8 @@ describe("a printed receipt whose prices include VAT", () => {
 
   it("an order with VAT on top prints as before", () => {
     const text = formatReceipt(receiptCopyFromPrintDocument({ ...document, pricesIncludeTax: false }));
-    expect(text).toContain("Subtotal  TSh 12,711.86");
-    expect(text).toContain("VAT  TSh 1,983.05");
+    expect(text).toMatch(/^Subtotal {2,}TSh 12,711\.86$/m);
+    expect(text).toMatch(/^VAT {2,}TSh 1,983\.05$/m);
   });
 });
 
