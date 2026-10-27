@@ -412,7 +412,7 @@ describe("Refund items: a supervisor approves", () => {
     await chooseChipsAndReason();
     await approveAsGrace();
     await userEvent.click(screen.getByTestId("refund-give"));
-    expect(screen.getByTestId("refund-error")).toHaveTextContent("That PIN wasn't accepted, or they can't approve refunds.");
+    expect(screen.getByTestId("refund-error")).toHaveTextContent("Their PIN wasn't accepted, or they can't approve refunds.");
     expect(screen.getByTestId("refund-give")).toBeDisabled();
     for (const digit of "654321") await userEvent.click(screen.getByTestId(`refund-pin-key-${digit}`));
     await userEvent.click(screen.getByTestId("refund-give"));

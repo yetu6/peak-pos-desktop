@@ -85,7 +85,7 @@ export function refundProblem(error: unknown, ask: RefundAsk = "record"): Refund
         ? { kind: "permission", words: "Only a cashier or manager can give a refund. Ask one to help." }
         : {
             kind: "supervisor",
-            words: "A different person who may approve refunds must enter their PIN. That PIN wasn't accepted, or they can't approve refunds.",
+            words: "A different supervisor must approve the refund. Their PIN wasn't accepted, or they can't approve refunds.",
           };
     case "NO_APPROVER_SET":
       return { kind: "no-approver", words: noApproverWords("refunds") };
