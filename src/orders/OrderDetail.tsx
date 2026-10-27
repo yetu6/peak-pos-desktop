@@ -1,7 +1,7 @@
 import { BACK_WORDS } from "../lib/words";
-import { BadgePercent, ChefHat, Plus, Printer, ReceiptText, Trash2, Undo2, Wallet } from "lucide-react";
+import { BadgePercent, Plus, Printer, ReceiptText, Trash2, Undo2, Wallet } from "lucide-react";
 import { vatFigures } from "../lib/vatWords";
-import { directOnlyUnsent, linesByRound, sendWords, takesMore } from "../register/rounds";
+import { directOnlyUnsent, linesByRound, printWords, takesMore } from "../register/rounds";
 import { orderStatusIcon } from "./orderStatusIcon";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, PermissionNotice, RefusalNotice, Sheet, StatusChip, Stepper, TicketLine, type Refusal } from "../components/system";
@@ -114,8 +114,9 @@ function takenWords(payment: POSOrderPayment): string {
 
 /**
  * One order: its lines, totals, payment and what happened to it, with the
- * actions its state allows. Open: Send to kitchen, Pay, Void. In the
- * kitchen: Pay, Void. Paid: Print receipt (a copy of the one Yetu kept).
+ * actions its state allows. Open: Print for the kitchen (the words and the key F8 of Sell's
+ * button: new items, else the last papers again), Pay, Cancel. In the
+ * kitchen: Pay, Cancel. Paid: Print bill again (a copy of the one Yetu kept).
  * Void is not offered once part is paid (Yetu refuses it). Pay is the one
  * primary action while anything is owed.
  */
@@ -159,6 +160,8 @@ export function OrderDetailView({
   // Rounds (S17a): an order takes more until it is paid, so what isn't sent can be sent.
   const takesLines = takesMore(order);
   const sendable = takesLines && lines.some((line) => line.status === "ADDED");
+  // With nothing new, the same button prints the last papers again, as Sell's does.
+  const reprintable = !sendable && Boolean(onKitchenReprint) && sentToKitchen(order);
   const payable = owing && lines.length > 0 && order.remainingMinor > 0;
   // Pay sends what isn't sent first (as Sell does): the kitchen hears of everything paid for.
   const sendsOnPay = canSend && sendable;
@@ -170,16 +173,17 @@ export function OrderDetailView({
   const figures = vatFigures(order);
 
   // Send (F8) and Pay (F9), as on Sell, while this sheet has the keys.
-  const keys = useRef({ sendable, payable, canSend, canPay, busy, onSend, onPay });
-  keys.current = { sendable, payable, canSend, canPay, busy, onSend, onPay };
+  const keys = useRef({ sendable, reprintable, payable, canSend, canPay, busy, onSend, onKitchenReprint, onPay });
+  keys.current = { sendable, reprintable, payable, canSend, canPay, busy, onSend, onKitchenReprint, onPay };
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || isComposing(event)) return;
       const now = keys.current;
       if (now.busy) return;
-      if (event.key === REGISTER_KEYS.send && now.canSend && now.sendable) {
+      if (event.key === REGISTER_KEYS.send && now.canSend && (now.sendable || now.reprintable)) {
         event.preventDefault();
-        now.onSend();
+        if (now.sendable) now.onSend();
+        else now.onKitchenReprint?.();
       } else if (event.key === REGISTER_KEYS.pay && now.canPay && now.payable) {
         event.preventDefault();
         now.onPay();
@@ -244,13 +248,13 @@ export function OrderDetailView({
                   canSend ? (
                     <Button
                       size={56}
-                      icon={<ChefHat />}
+                      icon={<Printer />}
                       keyHint={REGISTER_KEYS.send}
-                      data-testid="detail-send"
-                      disabled={busy || !sendable}
-                      onClick={onSend}
+                      data-testid={reprintable ? "detail-kitchen-reprint" : "detail-send"}
+                      disabled={busy || (!sendable && !reprintable)}
+                      onClick={sendable ? onSend : onKitchenReprint}
                     >
-                      {pending === "send" ? "Sending…" : sendWords(order)}
+                      {pending === "send" || pending === "kitchen" ? "Printing…" : printWords(order)}
                     </Button>
                   ) : (
                     <PermissionNotice who="staff who take orders" action="send them to the kitchen" next="Ask one to help." />
@@ -278,18 +282,6 @@ export function OrderDetailView({
                     </Button>
                   ) : null}
                 </div>
-              ) : null}
-              {onKitchenReprint ? (
-                <Button
-                  variant="quiet"
-                  size={56}
-                  icon={<Printer />}
-                  data-testid="detail-kitchen-reprint"
-                  disabled={busy}
-                  onClick={onKitchenReprint}
-                >
-                  {pending === "kitchen" ? "Sending to the printer…" : "Print kitchen ticket again"}
-                </Button>
               ) : null}
               {partPaid ? (
                 <p className="y-detail__why" id={voidReasonId}>
