@@ -1,6 +1,6 @@
 [package]
 name = "peak-pos-desktop"
-version = "0.1.5"
+version = "0.1.6"
 description = "Peak POS desktop shell"
 authors = ["Peak"]
 edition = "2021"
