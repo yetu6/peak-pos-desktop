@@ -10,6 +10,7 @@ import { PRINTERS_PLACE } from "../print/printProblems";
 import { loadPrinterSettings } from "../print/printerStore";
 import { useMemo, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { POSCatalog } from "../lib/posContracts";
 import { createPosApi } from "../lib/posApi";
 import { describePosError } from "../lib/posErrors";
 import { READ_AFTER_RECORD_FAILED } from "../lib/problemWords";
@@ -61,12 +62,23 @@ export function usePosPermissions(): string[] {
 }
 
 /**
- * A waiter sees and works on only their own orders (owner, 2026-10-27): Yetu
- * lists them only, and this says so in words. Cashiers and managers hold
- * pos.order.read_all and see every order of the outlet.
+ * Whether this till sees only the orders its holder took. Yetu says so itself
+ * in the catalog (ownOrdersOnly: no pos.order.read_all, and the outlet's
+ * "Waiters see only the orders they take" switch still on). Until the catalog
+ * has loaded, or against an older Yetu, the permission decides: a role without
+ * pos.order.read_all is a waiter.
  */
+export function ownOrdersOnlyFor(permissions: readonly string[], catalogSays: boolean | undefined): boolean {
+  return typeof catalogSays === "boolean" ? catalogSays : !permissions.includes("pos.order.read_all");
+}
+
 export function useOwnOrdersOnly(): boolean {
-  return !usePosPermissions().includes("pos.order.read_all");
+  const permissions = usePosPermissions();
+  const propertyId = usePropertyId();
+  const outletId = useOutletId();
+  // Reads the catalog the till already loaded; never fetches it.
+  const catalog = useQuery<POSCatalog>({ queryKey: ["pos", "catalog", propertyId, outletId], enabled: false });
+  return ownOrdersOnlyFor(permissions, catalog.data?.ownOrdersOnly);
 }
 
 export function useHasCapability(code: string): boolean {

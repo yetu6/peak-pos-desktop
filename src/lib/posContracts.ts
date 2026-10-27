@@ -229,6 +229,8 @@ export interface POSCategory {
 }
 
 export interface POSCatalog {
+  /** This session sees only the orders it took (no read_all, and the outlet's switch is on). */
+  ownOrdersOnly?: boolean;
   askForTable?: boolean;
   captureGuestCount?: boolean;
   standardFloat?: number;
