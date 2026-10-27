@@ -95,14 +95,9 @@ function refundGiven(extra: Partial<POSRefund> = {}): POSRefund {
     orderId: "order-1",
     orderNumber: "0142",
     dailyNumber: 42,
-    outletId: "outlet-1",
-    shiftId: "shift-1",
-    terminalId: "till-1",
     businessDate: "2026-10-18",
     reason: "Cold or not as ordered",
-    initiatedById: "staff-1",
     initiatedByName: "Amina Hassan",
-    authorizedById: "staff-2",
     authorizedByName: "Grace Mushi",
     netMinor: 650_000,
     discountMinor: 0,
@@ -111,7 +106,7 @@ function refundGiven(extra: Partial<POSRefund> = {}): POSRefund {
     currency: "TZS",
     createdAt: new Date(2026, 9, 18, 17, 40).toISOString(),
     lines: [],
-    tenders: [{ id: "t-1", paymentId: "pay-1", paymentMethod: "CASH", amountMinor: 767_000 }],
+    tenders: [{ paymentId: "pay-1", paymentMethod: "CASH", amountMinor: 767_000 }],
     ...extra,
   };
 }
@@ -167,7 +162,7 @@ describe("OrderDetailView: refunds (S7)", () => {
   });
 
   it("an order refunded in full reads Refunded, and a room charge as taken off the bill", () => {
-    const room = refundGiven({ totalMinor: 1_534_000, tenders: [{ id: "t-2", paymentId: "pay-2", paymentMethod: "ROOM_CHARGE", amountMinor: 1_534_000 }] });
+    const room = refundGiven({ totalMinor: 1_534_000, tenders: [{ paymentId: "pay-2", paymentMethod: "ROOM_CHARGE", amountMinor: 1_534_000 }] });
     renderDetail({ order: order(PAID), receipt: RECEIPT, refunds: refundsOf([room]), refundOffer: { offer: false, why: "Everything on this order has been refunded." } });
     expect(screen.getByTestId("order-detail-status")).toHaveTextContent("Refunded");
     expect(screen.getByTestId("order-detail-refunds")).toHaveTextContent("TSh 15,340 taken off the room bill");

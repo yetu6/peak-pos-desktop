@@ -31,12 +31,8 @@ const RECEIPT: POSReceipt = {
     orderNumber: "POS-1",
     businessDate: "2026-09-04",
     propertyName: "Mama Rose Hotel",
-    outletId: "outlet-1",
     outletName: "Main restaurant",
-    terminalId: "terminal-1",
-    initiatedById: "staff-1",
     initiatedByName: "Amina Hassan",
-    operatorId: "staff-1",
     operatorName: "Amina Hassan",
     serviceType: "DINE_IN",
     items: [{ name: "Cappuccino", quantity: 2, unitPriceMinor: 6_500, taxMinor: 1_170, totalMinor: 14_170 }],
@@ -127,7 +123,7 @@ describe("ReceiptView", () => {
   it("says where the order went and who took the payment, when someone else did", () => {
     receiptRef.data = {
       ...RECEIPT,
-      document: { ...RECEIPT.document, tableLabel: "12", operatorId: "staff-2", operatorName: "Grace Mushi" },
+      document: { ...RECEIPT.document, tableLabel: "12", operatorName: "Grace Mushi" },
     };
     render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
     expect(screen.getByTestId("receipt-document")).toHaveTextContent("Order POS-1 · Dine in · Table 12");

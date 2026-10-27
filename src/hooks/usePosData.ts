@@ -17,7 +17,7 @@ import { devIdentityFromEnv } from "../lib/env";
 import { useRealtimeEvents } from "../realtime/RealtimeProvider";
 import { isOrderEvent } from "../realtime/subscriptions";
 import { getOperationalSession } from "../lib/operationalSession";
-import { listEveryPage } from "../orders/orderPages";
+import { listWholeList } from "../orders/orderPages";
 import { OPEN_MOST_PAGES } from "../orders/ordersSettings";
 import type {
   CashMoneyType,
@@ -329,11 +329,11 @@ export function useActiveOrders() {
     queryKey: ["pos", "orders", "active", outletId],
     queryFn: async () => {
       const api = createPosApi();
-      const { orders } = await listEveryPage(
+      // Every page, or an error: never part of the open orders as if all (2026-10-27).
+      return listWholeList(
         (cursor) => unwrap(api.listOrderPage({ view: "open", ...(cursor ? { cursor } : {}) })),
         OPEN_MOST_PAGES,
       );
-      return orders;
     },
     retry: false,
   });

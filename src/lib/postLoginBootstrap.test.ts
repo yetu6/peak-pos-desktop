@@ -27,31 +27,26 @@ function json(body: unknown, status = 200): Response {
 describe("production POS post-login bootstrap", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("uses only current session-bound catalog and active-order routes", async () => {
+  it("reads only the catalogue: no orders, and no route Yetu doesn't have", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/api/v1/pos/catalog")) {
         return json({ outletId: "outlet-1", outletName: "Main Bar", products: [] });
       }
-      if (url.endsWith("/api/v1/pos/orders?active=true")) return json([]);
       throw new Error(`unexpected URL: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await bootstrapOperationalSession("https://peak.example", session);
 
-    expect(result).toEqual({
-      catalog: { outletId: "outlet-1", outletName: "Main Bar", products: [] },
-      activeOrders: [],
-    });
-    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
-      "https://peak.example/api/v1/pos/catalog",
-      "https://peak.example/api/v1/pos/orders?active=true",
-    ]);
+    expect(result).toEqual({ catalog: { outletId: "outlet-1", outletName: "Main Bar", products: [] } });
+    // The open orders come from the orders list, every page (useActiveOrders);
+    // ?active=true, /terminals/{id}/offline-leases and /catalog/snapshots/{v}
+    // are never asked (2026-10-27).
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(["https://peak.example/api/v1/pos/catalog"]);
     for (const [, init] of fetchMock.mock.calls) {
       expect(init).toEqual({ headers: { Authorization: "Bearer ops_live_token" } });
     }
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("onboarding"))).toBe(false);
   });
 
   it("rejects catalog authority that does not match the authenticated outlet", async () => {
@@ -78,78 +73,6 @@ describe("production POS post-login bootstrap", () => {
     await expect(bootstrapOperationalSession("https://peak.example", session)).rejects.toBeInstanceOf(
       PostLoginBootstrapError,
     );
-  });
-
-  it("keeps online bootstrap usable when the offline-lease backend contract is absent", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith("/catalog")) {
-        return json({ outletId: "outlet-1", outletName: "Main Bar", products: [] });
-      }
-      if (url.includes("orders?active=true")) return json([]);
-      if (url.endsWith("/terminals/terminal-1/offline-leases")) return json({}, 501);
-      throw new Error(`unexpected URL: ${url}`);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const stageOfflineAuthorization = vi.fn();
-
-    const result = await bootstrapOperationalSession("https://peak.example", session, {
-      stageOfflineAuthorization,
-    });
-
-    expect(result.offlineAuthorization).toEqual({ state: "BACKEND_GAP" });
-    expect(stageOfflineAuthorization).not.toHaveBeenCalled();
-  });
-
-  it("passes an opaque signed authorization envelope to the native staging boundary", async () => {
-    const envelope = { keyId: "key-1", payloadB64: "cGF5bG9hZA", signatureB64: "c2ln" };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith("/catalog")) return json({ outletId: "outlet-1", outletName: "Main Bar", products: [] });
-      if (url.includes("orders?active=true")) return json([]);
-      return json(envelope, 201);
-    }));
-    const stageOfflineAuthorization = vi.fn(async () => ({
-      state: "STAGED" as const,
-      hardExpiresAt: 1_800_007_200_000,
-      staffCount: 1,
-      catalogVersion: "v1",
-      catalogDigest: "a".repeat(64),
-      prerequisite: "CATALOG_REQUIRED" as const,
-    }));
-
-    const result = await bootstrapOperationalSession("https://peak.example", session, {
-      stageOfflineAuthorization,
-    });
-
-    expect(stageOfflineAuthorization).toHaveBeenCalledWith(envelope);
-    expect(result.offlineAuthorization?.state).toBe("STAGED");
-  });
-
-  it("installs only the opaque signed snapshot named by the staged lease", async () => {
-    const lease={keyId:"key-1",payloadB64:"lease",signatureB64:"signature"};
-    const snapshot={keyId:"key-1",digest:"a".repeat(64),payloadB64:"catalog",signatureB64:"signature"};
-    vi.stubGlobal("fetch",vi.fn(async(input:RequestInfo|URL)=>{const url=String(input);if(url.endsWith("/catalog"))return json({outletId:"outlet-1",outletName:"Main Bar",products:[]});if(url.includes("orders?active=true"))return json([]);if(url.endsWith("offline-leases"))return json(lease,201);if(url.endsWith("catalog/snapshots/v1"))return json(snapshot);throw new Error(url);}));
-    const installCatalogSnapshot=vi.fn(async()=>({state:"ACTIVE" as const,snapshotId:"snap-1",version:"v1",digest:"a".repeat(64),productCount:4}));
-    const result=await bootstrapOperationalSession("https://peak.example",session,{stageOfflineAuthorization:vi.fn(async()=>({state:"STAGED" as const,hardExpiresAt:9999,staffCount:1,catalogVersion:"v1",catalogDigest:"a".repeat(64),prerequisite:"CATALOG_REQUIRED" as const})),installCatalogSnapshot});
-    expect(installCatalogSnapshot).toHaveBeenCalledWith(snapshot);expect(result.certifiedCatalog?.state).toBe("ACTIVE");
-  });
-
-  it("fails the offline authority closed without denying an otherwise valid online session", async () => {
-    const envelope = { keyId: "key-1", payloadB64: "altered", signatureB64: "invalid" };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith("/catalog")) return json({ outletId: "outlet-1", outletName: "Main Bar", products: [] });
-      if (url.includes("orders?active=true")) return json([]);
-      return json(envelope, 201);
-    }));
-
-    const result = await bootstrapOperationalSession("https://peak.example", session, {
-      stageOfflineAuthorization: vi.fn(async () => { throw new Error("INVALID_AUTHORIZATION"); }),
-    });
-
-    expect(result.catalog.outletName).toBe("Main Bar");
-    expect(result.offlineAuthorization).toEqual({ state: "INVALID" });
   });
 });
 
@@ -203,7 +126,7 @@ describe("the till's offline start-up (F-228)", () => {
       installTrustKeyset,
       installOfflineBootstrap: vi.fn(async () => installed),
     });
-    expect(order).toEqual(["/pos/catalog", "/pos/orders?active=true", "keyset", "/pos/offline/bootstrap"]);
+    expect(order).toEqual(["/pos/catalog", "keyset", "/pos/offline/bootstrap"]);
     expect(result.catalog.outletName).toBe("Main Bar");
     expect(result.offlineAuthorization).toEqual({ state: "UNAVAILABLE" });
   });

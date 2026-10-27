@@ -233,8 +233,9 @@ export function createPosApi() {
       orderId: string,
       stayId: string,
       idempotencyKey: string,
-    ): Promise<ApiResult<{ folioItemId: string }>> {
-      return client.POST<{ folioItemId: string }>(
+    ): Promise<ApiResult<Record<string, never>>> {
+      // Charged: nothing of the guest's bill comes back; the till reads the order again.
+      return client.POST<Record<string, never>>(
         `/api/v1/pos/orders/${encodeURIComponent(orderId)}/room-charge`,
         { headers: idempotent(idempotencyKey), body: { stayId } },
       );

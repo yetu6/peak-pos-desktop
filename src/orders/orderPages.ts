@@ -34,3 +34,21 @@ export async function listEveryPage(fetchPage: (cursor?: string) => Promise<POSO
   }
   return { orders, complete: false };
 }
+
+/** The open orders went on past the ceiling of pages: what was read is not all of them. */
+export class IncompleteOrdersError extends Error {
+  constructor(read: number) {
+    super(`Yetu has more open orders than this till reads (${read} read); none are shown as if they were all.`);
+    this.name = "IncompleteOrdersError";
+  }
+}
+
+/**
+ * Every page, or a refusal: a list cut at the ceiling is never handed on as
+ * the whole list (owner, 2026-10-27). The till's open orders use this.
+ */
+export async function listWholeList(fetchPage: (cursor?: string) => Promise<POSOrderPage>, mostPages: number): Promise<POSOrder[]> {
+  const { orders, complete } = await listEveryPage(fetchPage, mostPages);
+  if (!complete) throw new IncompleteOrdersError(orders.length);
+  return orders;
+}
