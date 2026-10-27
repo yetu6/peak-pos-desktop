@@ -360,15 +360,13 @@
    is tight; the keyboard shortcuts themselves remain available. */
 .y-actions__row:has([data-testid="print-bill"]) {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(48px, 1fr);
+  /* The longest words ("Print for kitchen") get the room they need, with their padding; More keeps its own. */
+  grid-template-columns: minmax(max-content, 1.4fr) minmax(0, 1fr) minmax(48px, auto);
 }
 .y-actions__row > .y-button { min-width: 0; font-size: var(--type-small); }
 .y-actions__row .y-kbd,
-.y-actions__more .y-button__icon { display: none; }
-@media (max-width: 1279px) {
-  .y-actions__row .y-button__icon { display: none; }
-  .y-actions__row > .y-button { padding-inline: var(--space-2); }
-}
+.y-actions__row .y-button__icon { display: none; }
+.y-actions__row > .y-button { padding-inline: var(--space-3); }
 
 .y-more { display: grid; gap: var(--space-2); }
 
