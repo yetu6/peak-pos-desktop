@@ -205,7 +205,9 @@ test("one order's money reads the same everywhere, against the live API", async 
     const billLines = (await sheet.locator(".y-receipt__line").allInnerTexts()).flatMap(moneyIn).reduce((sum, amount) => sum + amount, 0);
     expect(billLines, "the bill sheet's lines add up to the figure under them").toBe(yetu().pricesIncludeTax ? yetu().items.filter((l) => l.status !== "VOIDED").reduce((s, l) => s + l.totalMinor, 0) : yetu().subtotalMinor);
     await page.keyboard.press("Escape");
-    await tap(page.getByTestId("payment-done").getByRole("button", { name: "New sale" }));
+    // Esc leaves the bill, and the Paid screen goes with it when it was still up.
+    const stillDone = page.getByTestId("payment-done").getByRole("button", { name: "New sale" });
+    if (await stillDone.isVisible().catch(() => false)) await tap(stillDone);
     await tap(page.getByTestId("nav-orders"));
     await tap(page.getByRole("tab", { name: /Paid/ }));
     await tap(page.getByTestId(`order-row-${orderId}`));
