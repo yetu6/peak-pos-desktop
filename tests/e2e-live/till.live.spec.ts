@@ -43,7 +43,7 @@
 import { expect, test, type Response } from "@playwright/test";
 import { WebSession, ensurePlainDish, loadSeededProperty, tsh, typed, chooseApprovers, SEEDED_MANAGER_ROLE } from "./liveApi";
 import { LIVE_API_URL } from "./liveSettings";
-import { body, nextApi, openShift, pairTill, setServerAddress, signInWithPin, tapper, type Shift } from "./liveTill";
+import { body, nextApi, openShift, pairTill, payAfterPapers, printShownPapers, setServerAddress, signInWithPin, tapper, type Shift } from "./liveTill";
 
 /** The cash the cashier counts into the drawer when the shift opens. */
 const OPENING_FLOAT_MINOR = 5_000_000;
@@ -165,6 +165,7 @@ test("a cashier's shift on the redesigned till, against the live API", async ({ 
     const sent = nextApi(page, "POST", new RegExp(`^/api/v1/pos/orders/${firstOrder!.id}/send$`));
     const fresh = nextApi(page, "GET", new RegExp(`^/api/v1/pos/orders/${firstOrder!.id}$`));
     await tap(page.getByTestId("send-order"));
+    await printShownPapers(page, tap);
     expect((await sent).ok()).toBe(true);
     firstOrder = await body<Order>(fresh);
     expect(firstOrder.status).toBe("SENT");
@@ -220,7 +221,7 @@ test("a cashier's shift on the redesigned till, against the live API", async ({ 
     const added = nextApi(page, "POST", /^\/api\/v1\/pos\/orders\/[^/]+\/items$/);
     await tap(page.getByTestId(`menu-${plainDish.name}`));
     const order = await body<Order>(added);
-    await tap(page.getByTestId("pay-order"));
+    await payAfterPapers(page, tap, page.getByTestId("pay-order"));
     await expect(page.getByTestId("amount-due")).toHaveText(tsh(order.totalMinor));
     // The guest hands over the next ten thousand above the bill.
     const receivedMinor = (Math.floor(order.totalMinor / (10 * THOUSAND_TSH)) + 1) * 10 * THOUSAND_TSH;

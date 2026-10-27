@@ -27,7 +27,7 @@ import { expect, test, type Page, type Response } from "@playwright/test";
 import { WebSession, ensurePlainDish, loadSeededProperty, tsh, typed } from "./liveApi";
 import { LIVE_API_URL } from "./liveSettings";
 import { ORDERS_REFRESH_SECONDS } from "../../src/orders/ordersSettings";
-import { body, nextApi, openShift, pairTill, setServerAddress, signInWithPin, tapper } from "./liveTill";
+import { body, nextApi, openShift, pairTill, printShownPapers, setServerAddress, signInWithPin, tapper } from "./liveTill";
 
 /** The cash counted into the selling till's drawer. */
 const OPENING_FLOAT_MINOR = 5_000_000;
@@ -136,6 +136,7 @@ test("orders and the kitchen on the redesigned till, against the live API", asyn
     const sent = nextApi(page, "POST", new RegExp(`^/api/v1/pos/orders/${order!.id}/send$`));
     const fresh = nextApi(page, "GET", new RegExp(`^/api/v1/pos/orders/${order!.id}$`));
     await tap(page.getByTestId("send-order"));
+    await printShownPapers(page, tap);
     expect((await sent).ok()).toBe(true);
     const after = await body<Order>(fresh);
     expect(after.status).toBe("SENT");

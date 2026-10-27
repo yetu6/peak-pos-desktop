@@ -21,7 +21,7 @@
 import { expect, test, type Response } from "@playwright/test";
 import { WebSession, ensurePlainDish, loadSeededProperty, tsh, typed, chooseApprovers, SEEDED_MANAGER_ROLE } from "./liveApi";
 import { LIVE_API_URL } from "./liveSettings";
-import { body, nextApi, openShift, pairTill, setServerAddress, signInWithPin, tapper, type Shift } from "./liveTill";
+import { body, nextApi, openShift, pairTill, payAfterPapers, setServerAddress, signInWithPin, tapper, type Shift } from "./liveTill";
 
 /** The cash the cashier counts into the drawer when the shift opens. */
 const OPENING_FLOAT_MINOR = 5_000_000;
@@ -99,7 +99,7 @@ test("refunds by item on the till, against the live API", async ({ page }, testI
     await tap(page.getByTestId(`menu-${plainDish.name}`));
     order = await body<Order>(added);
     expect(order.items.reduce((sum, line) => sum + line.quantity, 0)).toBe(2);
-    await tap(page.getByTestId("pay-order"));
+    await payAfterPapers(page, tap, page.getByTestId("pay-order"));
     await page.getByTestId("amount-received").fill(typed(order.totalMinor));
     const paid = nextApi(page, "POST", new RegExp(`^/api/v1/pos/orders/${order.id}/payments$`));
     await tap(page.getByTestId("confirm-settle"));

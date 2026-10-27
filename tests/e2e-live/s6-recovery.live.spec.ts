@@ -15,7 +15,7 @@ import { expect, test, type Page, type Request } from "@playwright/test";
 import { WebSession, ensurePlainDish, loadSeededProperty, tsh, typed, chooseApprovers, SEEDED_MANAGER_ROLE } from "./liveApi";
 import { paymentRows, startLiveApi, stopLiveApi } from "./liveControl";
 import { BRIDGE_PORT, LIVE_API_URL } from "./liveSettings";
-import { body, nextApi, openShift, pairTill, setServerAddress, signInWithPin, tapper } from "./liveTill";
+import { body, nextApi, openShift, pairTill, payAfterPapers, setServerAddress, signInWithPin, tapper } from "./liveTill";
 import { PAY_CHECK_EVERY_SECONDS } from "../../src/register/registerSettings";
 
 interface Order {
@@ -90,7 +90,7 @@ test("S6: one realtime connection, lost payment answers resolved by Yetu, refusa
     const added = nextApi(page, "POST", /^\/api\/v1\/pos\/orders\/[^/]+\/items$/);
     await tap(page.getByTestId(`menu-${plainDish.name}`));
     const order = await body<Order>(added);
-    await tap(page.getByTestId("pay-order"));
+    await payAfterPapers(page, tap, page.getByTestId("pay-order"));
     await expect(page.getByTestId("amount-due")).toHaveText(tsh(order.totalMinor));
     await page.getByTestId("amount-received").fill(typed(order.totalMinor + 1_000_000));
     return order;

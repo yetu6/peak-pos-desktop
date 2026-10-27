@@ -16,7 +16,7 @@
 import { expect, test, type Response } from "@playwright/test";
 import { WebSession, ensurePlainDish, loadSeededProperty, typed } from "./liveApi";
 import { LIVE_API_URL } from "./liveSettings";
-import { body, nextApi, openShift, pairTill, setServerAddress, signInWithPin, tapper } from "./liveTill";
+import { body, nextApi, openShift, pairTill, payAfterPapers, printShownPapers, setServerAddress, signInWithPin, tapper } from "./liveTill";
 
 const OPENING_FLOAT_MINOR = 5_000_000;
 
@@ -62,6 +62,7 @@ test("rounds on the till, against the live API", async ({ page }, testInfo) => {
     await body<Order>(added);
     const read = nextApi(page, "GET", /^\/api\/v1\/pos\/orders\/[0-9a-f-]{36}$/);
     await tap(page.getByTestId("send-order"));
+    await printShownPapers(page, tap);
     order = await body<Order>(read);
     expect(order.roundsSent).toBe(1);
   });
@@ -79,13 +80,14 @@ test("rounds on the till, against the live API", async ({ page }, testInfo) => {
   await test.step("4. Round 2 sent: each line says its round; then paid in full", async () => {
     const read = nextApi(page, "GET", /^\/api\/v1\/pos\/orders\/[0-9a-f-]{36}$/);
     await tap(page.getByTestId("send-order"));
+    await printShownPapers(page, tap);
     order = await body<Order>(read);
     expect(order.roundsSent).toBe(2);
     expect(order.items.map((line) => line.roundNumber).sort()).toEqual([1, 2]);
     const ticket = page.getByTestId("ticket-panel");
     await expect(ticket.getByText("Round 1")).toBeVisible();
     await expect(ticket.getByText("Round 2")).toBeVisible();
-    await tap(page.getByTestId("pay-order"));
+    await payAfterPapers(page, tap, page.getByTestId("pay-order"));
     await page.getByTestId("amount-received").fill(typed(order.totalMinor));
     const paid = nextApi(page, "POST", new RegExp(`^/api/v1/pos/orders/${order.id}/payments$`));
     await tap(page.getByTestId("confirm-settle"));
