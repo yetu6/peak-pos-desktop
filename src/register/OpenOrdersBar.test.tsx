@@ -117,3 +117,19 @@ describe("OpenOrdersBar (owner, 2026-10-21)", () => {
     expect(screen.queryByRole("navigation", { name: "Open orders" })).toBeNull();
   });
 });
+
+describe("OpenOrdersBar for a waiter (owner, 2026-10-27)", () => {
+  it("is the waiter's own orders, and says so", async () => {
+    renderBar({ ownOnly: true });
+    expect(screen.getByRole("navigation", { name: "Your open orders" })).toBeInTheDocument();
+    expect(screen.getByTestId("open-orders-all")).toHaveTextContent("Yours 3");
+    await userEvent.click(screen.getByTestId("open-orders-all"));
+    expect(within(screen.getByRole("dialog")).getByText("Your open orders")).toBeInTheDocument();
+  });
+
+  it("keeps All for a cashier", () => {
+    renderBar();
+    expect(screen.getByRole("navigation", { name: "Open orders" })).toBeInTheDocument();
+    expect(screen.getByTestId("open-orders-all")).toHaveTextContent("All 3");
+  });
+});

@@ -328,6 +328,7 @@ describe("NewOrder", () => {
       permissions: [
         "pos.shift.open",
         "pos.shift.close",
+        "pos.order.read_all",
         "pos.order.create",
         "pos.order.item.add",
         "pos.order.send",
