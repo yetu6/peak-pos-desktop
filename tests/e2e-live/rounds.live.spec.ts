@@ -67,14 +67,15 @@ test("rounds on the till, against the live API", async ({ page }, testInfo) => {
     expect(order.roundsSent).toBe(1);
   });
 
-  await test.step("3. Another after it was sent: Round 2 to send, and Pay waits in Yetu's words", async () => {
+  await test.step("3. Another after it was sent: Round 2 to print, and Pay prints it first", async () => {
     const added = nextApi(page, "POST", /^\/api\/v1\/pos\/orders\/[^/]+\/items$/);
     await tap(page.getByTestId(`menu-${dish.name}`));
     order = await body<Order>(added);
     expect(order.items.filter((line) => line.status === "ADDED")).toHaveLength(1);
     await expect(page.getByTestId("send-order")).toHaveText(/Print (order|for )/);
-    await expect(page.getByTestId("pay-order")).toBeDisabled();
-    await expect(page.getByTestId("pay-waits")).toHaveText("Print the new items first, or remove them, then take payment.");
+    // A cashier can print what is new, so Pay does it first and says so; Pay waits only for someone who can't (pay-waits).
+    await expect(page.getByTestId("pay-order")).toBeEnabled();
+    await expect(page.getByTestId("pay-prints-first")).toHaveText("New items print for the kitchen first.");
   });
 
   await test.step("4. Round 2 sent: each line says its round; then paid in full", async () => {

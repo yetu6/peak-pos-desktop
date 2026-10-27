@@ -132,7 +132,9 @@ test("refunds by item on the till, against the live API", async ({ page }, testI
     await expect(sheet.getByTestId("refund-summary")).toHaveText(`Give back ${tsh(quote.totalMinor)} in cash`);
 
     await tap(page.getByTestId("refund-ask"));
-    await expect(sheet.getByRole("radio", { name: new RegExp(cashier.displayName) })).toBeDisabled();
+    // Only the people the owner chose to approve refunds are offered: the cashier is not one, so can't approve their own.
+    await expect(sheet.getByRole("radio", { name: new RegExp(manager.displayName) })).toBeVisible();
+    await expect(sheet.getByRole("radio", { name: new RegExp(cashier.displayName) })).toHaveCount(0);
     await tap(sheet.getByRole("radio", { name: new RegExp(manager.displayName) }));
     await pin("refund-pin-key", seeded.managerPin);
     await expect(page.getByTestId("refund-give")).toHaveText(`Give back ${tsh(quote.totalMinor)}`);

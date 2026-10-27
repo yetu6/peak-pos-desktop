@@ -250,8 +250,9 @@ test("a cashier's shift on the redesigned till, against the live API", async ({ 
     await page.getByTestId("movement-amount").fill(typed(CASH_OUT_MINOR));
     await page.getByTestId("movement-reason-other").click();
     await page.getByTestId("movement-reason-text").fill("Gas delivery");
-    // The cashier can't approve their own cash out.
-    await expect(dialog.getByRole("radio", { name: new RegExp(cashier.displayName) })).toBeDisabled();
+    // The cashier can't approve their own cash out: only the people the owner chose to approve are offered (the cashier is not one).
+    await expect(dialog.getByRole("radio", { name: new RegExp(manager.displayName) })).toBeVisible();
+    await expect(dialog.getByRole("radio", { name: new RegExp(cashier.displayName) })).toHaveCount(0);
     await expect(page.getByTestId("confirm-movement")).toBeDisabled();
     await tap(dialog.getByRole("radio", { name: new RegExp(manager.displayName) }));
     await pin("movement-pin-key", seeded.managerPin);

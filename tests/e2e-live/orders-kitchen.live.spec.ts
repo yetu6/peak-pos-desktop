@@ -43,7 +43,7 @@ interface Order {
   createdAt: string;
   closedAt: string | null;
   payments: Array<{ paymentMethod: string; amountMinor: number; createdAt: string; recordedByName: string }>;
-  items: Array<{ name: string }>;
+  items: Array<{ name: string; quantity: number }>;
 }
 /** One page of the till's orders list (S5b). */
 interface OrderPage {
@@ -132,7 +132,8 @@ test("orders and the kitchen on the redesigned till, against the live API", asyn
       await tap(page.getByTestId(`menu-${plainDish.name}`));
       order = await body<Order>(added, 201);
     }
-    expect(order!.items).toHaveLength(count);
+    // A repeat tap is one more of the same line (Yetu merges them), never a second line.
+    expect(order!.items.reduce((sum, line) => sum + line.quantity, 0)).toBe(count);
     const sent = nextApi(page, "POST", new RegExp(`^/api/v1/pos/orders/${order!.id}/send$`));
     const fresh = nextApi(page, "GET", new RegExp(`^/api/v1/pos/orders/${order!.id}$`));
     await tap(page.getByTestId("send-order"));

@@ -167,20 +167,20 @@ test("S6: one realtime connection, lost payment answers resolved by Yetu, refusa
     await expect(page.getByTestId("diag-check-receipt-printer")).toContainText("Printing works only in the till app on the counter computer.");
     await expect(page.getByRole("button", { name: "Print test page" })).toHaveCount(0);
     await tap(page.getByTestId("connectivity"));
-    const sync = page.getByRole("dialog", { name: "Sync" });
+    const sync = page.getByRole("dialog", { name: "Sending sales" });
     await expect(sync).toContainText("Sales go to Yetu as they happen. Nothing is kept on this till for later.");
-    await tap(sync.getByRole("button", { name: "Close" }).first());
+    await tap(sync.getByRole("button", { name: "Back" }).first());
     await expect(sync).toHaveCount(0);
   });
 
-  /** An open sale of one plain dish, with the void sheet open on it. */
+  /** An open sale of one plain dish, with the cancel-order sheet open on it. */
   async function voidSheet(): Promise<Order> {
     await tap(page.getByTestId("nav-new"));
     const added = nextApi(page, "POST", /^\/api\/v1\/pos\/orders\/[^/]+\/items$/);
     await tap(page.getByTestId(`menu-${plainDish.name}`));
     const order = await body<Order>(added);
     await tap(page.getByRole("button", { name: "More" }));
-    await tap(page.getByRole("button", { name: /Void the order/ }));
+    await tap(page.getByRole("button", { name: /^Cancel order/ }));
     const sheet = page.getByTestId("void-order-dialog");
     await sheet.getByRole("radio", { name: "Guest left" }).click();
     const manager = staff.find((person) => person.id === seeded.managerStaffId)!;
@@ -200,10 +200,10 @@ test("S6: one realtime connection, lost payment answers resolved by Yetu, refusa
     expect(answer.status()).toBe(403);
     expect((await answer.json()).code).toBe("FORBIDDEN");
     await expect(sheet.getByRole("alert")).toHaveText(
-      "A different supervisor must approve the void. Their PIN wasn't accepted, or they can't approve voids.",
+      "A different supervisor must approve this. Their PIN wasn't accepted, or they can't approve cancellations.",
     );
     await expect(sheet).not.toContainText(/403|FORBIDDEN|permission denied/i);
-    await tap(sheet.getByRole("button", { name: "Cancel" }));
+    await tap(sheet.getByRole("button", { name: "Back" }));
   });
 
   await testInfo.attach("payment-requests.json", { body: JSON.stringify(payments, null, 2), contentType: "application/json" });
