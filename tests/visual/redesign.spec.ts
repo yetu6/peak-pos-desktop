@@ -103,6 +103,10 @@ for (const [width, height] of [[1024, 768], [1366, 768], [1920, 1080]]) {
     await page.evaluate(() => document.fonts.ready);
     const tight = await page.evaluate(() => {
       const out: string[] = [];
+      // The fixture's first button says "Print order"; "Print for kitchen" is the longest it ever says.
+      const first = document.querySelector<HTMLElement>(".y-actions__row > .y-button");
+      const text = document.createTreeWalker(first!, NodeFilter.SHOW_TEXT).nextNode();
+      if (text) text.nodeValue = "Print for kitchen";
       for (const button of document.querySelectorAll<HTMLElement>(".y-actions__row > .y-button")) {
         const box = button.getBoundingClientRect();
         const range = document.createRange();
