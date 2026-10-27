@@ -209,7 +209,7 @@ describe("printJobs", () => {
     });
     expect(formatted.title).toBe("yetu-bill");
     // A paid order's bill, printed again on request (2026-10-20); nothing about TRA on it (the owner).
-    expect(formatted.text).toContain("BILL · PAID");
+    expect(formatted.text).toContain("BILL - PAID");
     expect(formatted.text).not.toContain("INVOICE");
     expect(formatted.text).not.toMatch(/TRA|tax receipt/);
     expect(formatted.text).toContain("POS-1");

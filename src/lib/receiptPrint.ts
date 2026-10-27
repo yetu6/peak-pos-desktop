@@ -232,7 +232,7 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     receipt.copy ? "*** COPY ***" : null,
     receipt.copy && receipt.printedAgainAt ? `Printed again ${receipt.printedAgainAt}` : null,
     receipt.copy && receipt.printedAgainByName ? `by ${receipt.printedAgainByName}` : null,
-    receipt.beforePayment ? BILL_HEADING : `${BILL_HEADING} · PAID`,
+    receipt.beforePayment ? BILL_HEADING : `${BILL_HEADING} - PAID`,
     receipt.dailyNumber || receipt.orderNumber ? orderName(receipt) : "order",
     orderReference(receipt) ? `Ref ${orderReference(receipt)}` : null,
     [

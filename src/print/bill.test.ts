@@ -83,7 +83,7 @@ describe("the bill before payment", () => {
 
   it("a paid order's bill, printed again, says it was paid", () => {
     const text = formatReceipt(receiptCopyFromPrintDocument(PAID));
-    expect(text).toContain("BILL · PAID");
+    expect(text).toContain("BILL - PAID");
     expect(text).toContain("Paid Tue 20 Oct 2026");
     expect(text).not.toContain("TO PAY");
     expect(text).not.toMatch(/TRA|tax receipt/);

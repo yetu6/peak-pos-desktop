@@ -5,7 +5,7 @@ import { PRINT_BRAND, isPrintBrandLine } from "./printBrand";
 
 const HEADINGS = new Set<string>([
   PAPER_WORDS.kitchenOrder, PAPER_WORDS.barOrder, PAPER_WORDS.handOver, PAPER_WORDS.make,
-  BILL_HEADING, `${BILL_HEADING} - PAID`, `${BILL_HEADING} · PAID`,
+  BILL_HEADING, `${BILL_HEADING} - PAID`,
 ]);
 
 /** Styling annotates decoded text; no content is inserted, trimmed or reconstructed. */
