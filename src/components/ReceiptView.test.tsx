@@ -180,7 +180,7 @@ describe("ReceiptView", () => {
     receiptRef.isError = true;
     render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
 
-    expect(screen.getByTestId("receipt-error")).toHaveTextContent("The receipt couldn't be loaded. Check the connection, then try again.");
+    expect(screen.getByTestId("receipt-error")).toHaveTextContent("The bill couldn't be loaded. Check the connection, then try again.");
     expect(screen.getByTestId("reprint-receipt")).toBeDisabled();
   });
 });

@@ -118,7 +118,7 @@ export function statusChecks(input: {
             id: "receipt-printer",
             name: "Bill printer",
             state: "ok",
-            words: `The till can send receipts to ${printerName}. It can't tell whether the printer is on or has paper.`,
+            words: `The till can send bills to ${printerName}. It can't tell whether the printer is on or has paper.`,
             fix: "If nothing prints, check the printer is on, has paper and is this computer's default printer, then print a test page.",
           }
         : {

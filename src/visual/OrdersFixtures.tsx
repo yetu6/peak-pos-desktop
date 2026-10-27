@@ -139,7 +139,7 @@ export function OrderPartPaidFixture() {
 
 /** Paid: how and by whom, and a copy of the receipt just sent to the printer. */
 export function OrderPaidFixture() {
-  return <Detail order={PAID_ORDERS[0]} tab="paid" result="A copy of the receipt was sent to the printer." />;
+  return <Detail order={PAID_ORDERS[0]} tab="paid" result="A copy of the bill was sent to the printer." />;
 }
 
 /** A waiter who can neither send nor take payment. */

@@ -105,7 +105,7 @@ export function ReceiptSheet({
         ) : null}
         {failed ? (
           <Banner inline tone="danger" data-testid="receipt-error">
-            The receipt couldn't be loaded. Check the connection, then try again.
+            The bill couldn't be loaded. Check the connection, then try again.
           </Banner>
         ) : null}
         {doc ? (
