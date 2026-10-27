@@ -383,7 +383,7 @@ describe("PaySheet", () => {
   it("charge to room: only with lodging and the permission; posts the stay, never a folio", async () => {
     refs.roomAvailable = true;
     refs.candidates = [
-      { stayId: "stay-12", roomId: "room-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
+      { stayId: "stay-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
     ];
     const { onPaid } = renderPay();
     await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
@@ -401,7 +401,7 @@ describe("PaySheet", () => {
   it("charge to room on a room-service order starts the search at its room", async () => {
     refs.roomAvailable = true;
     refs.candidates = [
-      { stayId: "stay-201", roomId: "room-201", roomNumber: "201", guestDisplayName: "Grace Mollel", postingEligible: true },
+      { stayId: "stay-201", roomNumber: "201", guestDisplayName: "Grace Mollel", postingEligible: true },
     ];
     renderPay({ ...ORDER, serviceType: "ROOM_SERVICE", tableLabel: "201" });
     await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
@@ -425,7 +425,7 @@ describe("PaySheet", () => {
   it("once part is paid, the rest can go on a room", async () => {
     refs.roomAvailable = true;
     refs.candidates = [
-      { stayId: "stay-12", roomId: "room-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
+      { stayId: "stay-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
     ];
     renderPay({ ...ORDER, paidMinor: 1_000_000, remainingMinor: 3_250_000 });
     const room = screen.getByRole("radio", { name: "Charge to room" });
@@ -457,7 +457,7 @@ describe("PaySheet", () => {
   it("a guest whose bill isn't open can't be charged", async () => {
     refs.roomAvailable = true;
     refs.candidates = [
-      { stayId: "stay-8", roomId: "room-8", roomNumber: "8", guestDisplayName: "Guest", postingEligible: false },
+      { stayId: "stay-8", roomNumber: "8", guestDisplayName: "Guest", postingEligible: false },
     ];
     renderPay();
     await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
@@ -567,7 +567,7 @@ describe("PaySheet", () => {
     it("a room charge whose answer was lost is asked again with its key", async () => {
       refs.roomAvailable = true;
       refs.candidates = [
-        { stayId: "stay-12", roomId: "room-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
+        { stayId: "stay-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
       ];
       chargeToRoomMutate.mockImplementationOnce(lost);
       renderPay();
@@ -584,8 +584,8 @@ describe("PaySheet", () => {
   it("a room charge to a different guest is a new request with a new key", async () => {
     refs.roomAvailable = true;
     refs.candidates = [
-      { stayId: "stay-12", roomId: "room-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
-      { stayId: "stay-14", roomId: "room-14", roomNumber: "14", guestDisplayName: "Daniel Mrema", postingEligible: true },
+      { stayId: "stay-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
+      { stayId: "stay-14", roomNumber: "14", guestDisplayName: "Daniel Mrema", postingEligible: true },
     ];
     // Yetu refuses the first guest (their bill isn't open): a different guest is a new request.
     chargeToRoomMutate.mockImplementationOnce((_vars: unknown, opts?: { onError?: (error: Error) => void }) =>
@@ -897,7 +897,7 @@ describe("PaySheet", () => {
 
     it("a room charge whose answer was lost: the same request again decides", async () => {
       refs.roomAvailable = true;
-      refs.candidates = [{ stayId: "stay-12", roomId: "room-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true }];
+      refs.candidates = [{ stayId: "stay-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true }];
       chargeToRoomMutate.mockImplementationOnce(lost).mockImplementationOnce(recorded(CLOSED));
       const { onPaid } = renderPay();
       await userEvent.click(screen.getByRole("radio", { name: "Charge to room" }));
@@ -911,7 +911,7 @@ describe("PaySheet", () => {
 
     it("a room charge refused after a lost answer claims no charge", async () => {
       refs.roomAvailable = true;
-      refs.candidates = [{ stayId: "stay-12", roomId: "room-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true }];
+      refs.candidates = [{ stayId: "stay-12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true }];
       refs.refetchOrder.mockResolvedValue({ status: "success", data: { ...CLOSED, version: 4 } });
       chargeToRoomMutate.mockImplementationOnce(lost).mockImplementationOnce(refused({ status: 409, code: "ORDER_STATE_CHANGED", detail: "order is not eligible for room charge" }));
       const { onPaid } = renderPay();

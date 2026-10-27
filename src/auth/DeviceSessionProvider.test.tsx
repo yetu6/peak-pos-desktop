@@ -181,7 +181,6 @@ describe("DeviceSessionProvider", () => {
       "http://peak.test/api/v1/pos/device/challenges",
       "http://peak.test/api/v1/pos/sessions",
       "http://peak.test/api/v1/pos/catalog",
-      "http://peak.test/api/v1/pos/orders?active=true",
     ]);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/heartbeat"))).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("onboarding"))).toBe(false);
@@ -351,7 +350,7 @@ describe("DeviceSessionProvider", () => {
           challengeId: "11111111-1111-1111-1111-111111111111",
           nonce: btoa("n".repeat(32)),
           expiresAt: "2099-01-01T00:00:00Z",
-          staff: [{ id: "00001", displayName: "Amina Hassan", staffSuffix: "001" }],
+          staff: [{ id: "00001", displayName: "Amina Hassan" }],
         });
       }
       throw new Error(`unexpected fetch: ${String(input)}`);
@@ -377,7 +376,7 @@ describe("DeviceSessionProvider", () => {
         terminalName: "Bar 1",
       }),
     );
-    const staff = [{ id: "00001", displayName: "Amina Hassan", staffSuffix: "001" }];
+    const staff = [{ id: "00001", displayName: "Amina Hassan" }];
     const challenges = vi.fn(async () =>
       jsonResponse({ challengeId: "11111111-1111-1111-1111-111111111111", nonce: btoa("n".repeat(32)), expiresAt: "2099-01-01T00:00:00Z", staff: [...staff] }),
     );
@@ -401,12 +400,12 @@ describe("DeviceSessionProvider", () => {
       expect(refreshes.length).toBeGreaterThan(0);
 
       // Zawadi chooses her PIN at the desk; the refresh comes round.
-      staff.push({ id: "00002", displayName: "Zawadi Said", staffSuffix: "002" });
+      staff.push({ id: "00002", displayName: "Zawadi Said" });
       act(() => refreshes.at(-1)?.());
       await waitFor(() => expect(screen.getByTestId("roster")).toHaveTextContent("Zawadi Said"));
 
       // Baraka too; the till's window is brought back to the front.
-      staff.push({ id: "00003", displayName: "Baraka Mushi", staffSuffix: "003" });
+      staff.push({ id: "00003", displayName: "Baraka Mushi" });
       act(() => {
         window.dispatchEvent(new Event("focus"));
       });
@@ -423,7 +422,7 @@ describe("DeviceSessionProvider", () => {
     const store = memoryStore(
       JSON.stringify({ ...keys, deviceCode: "dev_abc", terminalId: "terminal-1", deviceCredential: "device-secret", approved: true, terminalName: "Bar 1" }),
     );
-    const staff = [{ id: "00001", displayName: "Amina Hassan", staffSuffix: "001", needsSetup: false }];
+    const staff = [{ id: "00001", displayName: "Amina Hassan", needsSetup: false }];
     let streamController!: ReadableStreamDefaultController<Uint8Array>;
     const streams: RequestInit[] = [];
     const challenges = vi.fn(async () =>
@@ -452,7 +451,7 @@ describe("DeviceSessionProvider", () => {
     const readsBefore = challenges.mock.calls.length;
 
     // A manager adds Neema in Yetu; the till hears it on its open line.
-    staff.push({ id: "00002", displayName: "Neema Mollel", staffSuffix: "002", needsSetup: true });
+    staff.push({ id: "00002", displayName: "Neema Mollel", needsSetup: true });
     act(() => streamController.enqueue(new TextEncoder().encode("event: roster\ndata: {}\n\n")));
     await waitFor(() => expect(screen.getByTestId("roster")).toHaveTextContent("Neema Mollel"));
     expect(challenges.mock.calls.length).toBe(readsBefore + 1);
@@ -484,7 +483,7 @@ describe("DeviceSessionProvider", () => {
         challengeId: "11111111-1111-1111-1111-111111111111",
         nonce: btoa("n".repeat(32)),
         expiresAt: "2099-01-01T00:00:00Z",
-        staff: [{ id: "00001", displayName: "Amina Hassan", staffSuffix: "001" }],
+        staff: [{ id: "00001", displayName: "Amina Hassan" }],
       }),
     );
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {

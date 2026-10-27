@@ -119,7 +119,8 @@ export interface DeviceChallenge {
   challengeId: string;
   nonce: string;
   expiresAt: string;
-	staff?: Array<{ id: string; displayName: string; staffSuffix: string; needsSetup?: boolean }>;
+	/** Who may sign in here, by name: Yetu sends no staff number (2026-10-27). */
+	staff?: Array<{ id: string; displayName: string; needsSetup?: boolean }>;
 }
 
 export interface RosterEntry {

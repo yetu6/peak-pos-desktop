@@ -228,9 +228,9 @@ export const CASH_RECEIVED = 5_000_000;
 export const CHANGE_GIVEN = CASH_RECEIVED - PAID_ORDER.totalMinor;
 
 export const STAYS: POSRoomChargeCandidate[] = [
-  { stayId: "s12", roomId: "r12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
-  { stayId: "s14", roomId: "r14", roomNumber: "14", guestDisplayName: "Daniel Mrema", postingEligible: true },
-  { stayId: "s21", roomId: "r21", roomNumber: "21", guestDisplayName: "Neema Kiwelu", postingEligible: false },
+  { stayId: "s12", roomNumber: "12", guestDisplayName: "Asha Mollel", postingEligible: true },
+  { stayId: "s14", roomNumber: "14", guestDisplayName: "Daniel Mrema", postingEligible: true },
+  { stayId: "s21", roomNumber: "21", guestDisplayName: "Neema Kiwelu", postingEligible: false },
 ];
 
 export const RECEIPT: POSReceipt = {
@@ -245,12 +245,8 @@ export const RECEIPT: POSReceipt = {
     dailyNumber: PAID_ORDER.dailyNumber,
     businessDate: "2026-10-12",
     propertyName: "Jacaranda Lodge",
-    outletId: "o",
     outletName: "Main Restaurant",
-    terminalId: "t",
-    initiatedById: "staff-amina",
     initiatedByName: "Amina Hassan",
-    operatorId: "staff-grace",
     operatorName: "Grace Mushi",
     serviceType: PAID_ORDER.serviceType,
     tableLabel: PAID_ORDER.tableLabel,
