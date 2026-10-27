@@ -138,7 +138,7 @@ export function OfflineTicket({
                     quantity={line.quantity}
                     name={line.name}
                     options={line.modifiers.map((modifier) => modifier.name)}
-                    amount={formatMoney(line.lineTotalMinor, currency)}
+                    amount={formatMoney(vatIncluded ? line.lineTotalMinor : line.pricing.lineSubtotalMinor, currency)}
                     selected={selected}
                     onSelect={open ? () => onSelectLine(selected ? null : line.id) : undefined}
                   />
@@ -170,9 +170,10 @@ export function OfflineTicket({
       <footer className="y-ticket__foot">
         <dl className="y-ticket__totals" data-testid="ticket-totals">
           <div>
-            <dt>Subtotal</dt>
+            <dt>{vatIncluded ? "Items" : "Subtotal"}</dt>
             <dd>
-              <Money minor={order && lines.length > 0 ? order.subtotalMinor : null} currency={currency} />
+              {/* With VAT inside the prices the items are what the guest pays, as on Sell. */}
+              <Money minor={order && lines.length > 0 ? (vatIncluded ? order.subtotalMinor + order.taxMinor : order.subtotalMinor) : null} currency={currency} />
             </dd>
           </div>
           <div>

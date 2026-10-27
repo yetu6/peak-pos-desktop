@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { idleLockHeld } from "../lib/idleLock";
 import { ReceiptView } from "./ReceiptView";
@@ -71,6 +71,17 @@ describe("ReceiptView", () => {
     expect(footer.querySelector("br")).not.toBeNull();
     expect(sheet).not.toHaveTextContent(/invoice/i);
     expect(screen.queryByTestId("receipt-error")).not.toBeInTheDocument();
+  });
+
+  it("a bill with VAT on top shows each line without its VAT, so the lines add up to the Subtotal", () => {
+    receiptRef.data = RECEIPT;
+    receiptRef.isLoading = false;
+    receiptRef.isError = false;
+    render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+    const doc = screen.getByTestId("receipt-document");
+    expect(within(doc).getByText("2 × Cappuccino").parentElement).toHaveTextContent("TSh 130");
+    expect(doc).toHaveTextContent("SubtotalTSh 130");
+    expect(doc).not.toHaveTextContent("TSh 141.70TSh");
   });
 
   // F-229: a TSh 22,000 biryani at a hotel whose prices include VAT.

@@ -209,6 +209,13 @@ describe("OrderDetailView", () => {
     expect(handlers.onVoid).toHaveBeenCalled();
   });
 
+  it("with VAT on top the lines add up to the Subtotal under them (Cappuccino 6,500 + Flat white 6,500 = 13,000)", () => {
+    renderDetail();
+    const lines = within(screen.getByTestId("order-detail-lines"));
+    expect(lines.getAllByText("TSh 6,500")).toHaveLength(2);
+    expect(screen.getByTestId("order-detail-totals")).toHaveTextContent("SubtotalTSh 13,000");
+  });
+
   it("with nothing new to print, the same button says Print again and F8 prints the last papers again, as on Sell", async () => {
     const onKitchenReprint = vi.fn();
     const handlers = renderDetail({

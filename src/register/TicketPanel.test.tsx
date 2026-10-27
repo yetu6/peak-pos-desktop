@@ -94,6 +94,23 @@ function renderTicket(props: Partial<TicketPanelProps> = {}) {
 }
 
 describe("TicketPanel", () => {
+  it("with VAT on top each line reads without its VAT, so the lines add up to the Subtotal under them", () => {
+    renderTicket({
+      order: {
+        ...ORDER,
+        discountMinor: 0,
+        discountKind: "NONE",
+        subtotalMinor: 1_000_000,
+        taxMinor: 180_000,
+        totalMinor: 1_180_000,
+        remainingMinor: 1_180_000,
+        items: [line("l1", "Chips", 2, 1_180_000, { unitPriceMinor: 500_000, taxMinor: 180_000 })],
+      },
+    });
+    expect(screen.getByTestId("cart-Chips")).toHaveTextContent("TSh 10,000");
+    expect(screen.getByTestId("ticket-totals")).toHaveTextContent("SubtotalTSh 10,000");
+  });
+
   it("offers the backend's three order types only", () => {
     renderTicket({ order: null });
     const types = within(screen.getByRole("radiogroup", { name: "Order type" })).getAllByRole("radio");

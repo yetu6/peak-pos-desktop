@@ -1,7 +1,7 @@
 import { BACK_WORDS } from "../lib/words";
 import { Printer } from "lucide-react";
 import { copyNotPrintedWords } from "../print/printProblems";
-import { vatFigures } from "../lib/vatWords";
+import { lineAmountMinor, vatFigures } from "../lib/vatWords";
 import { useReceipt, useReprintReceipt } from "../hooks/usePosData";
 import { reprintProblem } from "../orders/ordersWords";
 import { formatMoney } from "../lib/money";
@@ -152,7 +152,7 @@ export function ReceiptSheet({
                       </span>
                     ))}
                   </span>
-                  <span className="y-receipt__amount">{formatMoney(line.totalMinor, doc.currency)}</span>
+                  <span className="y-receipt__amount">{formatMoney(lineAmountMinor(doc.pricesIncludeTax, line), doc.currency)}</span>
                 </li>
               ))}
             </ul>

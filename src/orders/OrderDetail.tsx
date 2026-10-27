@@ -1,6 +1,6 @@
 import { BACK_WORDS } from "../lib/words";
 import { BadgePercent, Plus, Printer, ReceiptText, Trash2, Undo2, Wallet } from "lucide-react";
-import { vatFigures } from "../lib/vatWords";
+import { lineAmountMinor, vatFigures } from "../lib/vatWords";
 import { directOnlyUnsent, linesByRound, printWords, takesMore } from "../register/rounds";
 import { orderStatusIcon } from "./orderStatusIcon";
 import { useEffect, useId, useRef, useState } from "react";
@@ -434,7 +434,7 @@ export function OrderDetailView({
                           quantity={line.quantity}
                           name={line.name}
                           options={(line.modifiers ?? []).map((modifier) => modifier.optionName)}
-                          amount={formatMoney(line.totalMinor, currency)}
+                          amount={formatMoney(lineAmountMinor(order.pricesIncludeTax, line), currency)}
                           sent={owing && line.status === "SENT"}
                           sentChip={false}
                           selected={selected}

@@ -90,7 +90,10 @@ const YETU_RECEIPT: POSPrintJob = {
 describe("printJobs: Yetu's receipt as a guest reads it", () => {
   it("prints money as money, never the minor units Yetu sends", () => {
     const { text } = formatPrintDocument(YETU_RECEIPT);
-    expect(text).toContain("TSh 11,800");
+    // VAT on top: each line without its VAT, so the lines (10,000 + 1,500) add up to the Subtotal under them.
+    expect(text).toContain("TSh 10,000");
+    expect(text).toContain("TSh 1,500");
+    expect(text).not.toContain("TSh 11,800");
     expect(text).toContain("Subtotal  TSh 11,500");
     expect(text).toContain("VAT  TSh 2,070");
     expect(text).toContain("TOTAL  TSh 13,570");
