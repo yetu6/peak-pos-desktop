@@ -100,12 +100,14 @@ for (const [width, height] of [[1024, 768], [1366, 768], [1920, 1080]]) {
   test(`the ticket's print buttons keep their words inside their padding: ${width}x${height}`, async ({ page }) => {
     await page.setViewportSize({ width, height });
     await page.goto("/?fixture=register");
+    await expect(page.getByRole("button", { name: "Print bill", exact: true })).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
     const tight = await page.evaluate(() => {
       const out: string[] = [];
       // The fixture's first button says "Print order"; "Print for kitchen" is the longest it ever says.
       const first = document.querySelector<HTMLElement>(".y-actions__row > .y-button");
-      const text = document.createTreeWalker(first!, NodeFilter.SHOW_TEXT).nextNode();
+      if (!first) return ["the print buttons are not on the screen"];
+      const text = document.createTreeWalker(first, NodeFilter.SHOW_TEXT).nextNode();
       if (text) text.nodeValue = "Print for kitchen";
       for (const button of document.querySelectorAll<HTMLElement>(".y-actions__row > .y-button")) {
         const box = button.getBoundingClientRect();
