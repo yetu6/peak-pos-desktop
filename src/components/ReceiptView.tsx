@@ -22,7 +22,7 @@ function settledWords(method: string): string {
  * The receipt Yetu kept when the order was settled
  * (`GET /pos/orders/{orderId}/receipt`), shown as it is: never rebuilt from
  * the live menu. It is not a tax receipt: those come from the outlet's EFD
- * machine. Print again uses the existing reprint.
+ * machine. Print bill again uses the existing reprint.
  */
 export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: () => void }) {
   const receipt = useReceipt(orderId);
@@ -91,7 +91,7 @@ export function ReceiptSheet({
             onClick={onReprint}
             disabled={!receipt || reprinting}
           >
-            {reprinting ? "Sending to the printer…" : "Print again"}
+            {reprinting ? "Printing…" : "Print bill again"}
           </Button>
         </div>
       }

@@ -140,6 +140,14 @@ describe("ReceiptView", () => {
     expect(screen.getByTestId("receipt-document")).toHaveTextContent("Paid by Split payment");
   });
 
+  it("says Print bill again, as the order sheet does (Print again is Sell's kitchen button)", () => {
+    receiptRef.data = RECEIPT;
+    receiptRef.isLoading = false;
+    receiptRef.isError = false;
+    render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+    expect(screen.getByTestId("reprint-receipt")).toHaveTextContent("Print bill again");
+  });
+
   it("disables reprint until the real settled document has loaded", () => {
     receiptRef.data = undefined;
     receiptRef.isLoading = true;

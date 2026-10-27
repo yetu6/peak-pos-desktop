@@ -299,7 +299,7 @@ export function OrderDetailView({
                   disabled={busy || lines.length === 0}
                   onClick={onPrintBill}
                 >
-                  {pending === "bill" ? "Sending to the printer…" : "Print bill"}
+                  {pending === "bill" ? "Printing…" : "Print bill"}
                 </Button>
               ) : null}
               {canPay ? (
@@ -349,7 +349,7 @@ export function OrderDetailView({
                     disabled={busy || !receipt}
                     onClick={onReprint}
                   >
-                    {pending === "reprint" ? "Sending to the printer…" : "Print bill again"}
+                    {pending === "reprint" ? "Printing…" : "Print bill again"}
                   </Button>
                 ) : (
                   <PermissionNotice who="a cashier or manager" action="print the bill again" next="Ask one to help." />
