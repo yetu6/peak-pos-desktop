@@ -169,7 +169,7 @@ test("S6: one realtime connection, lost payment answers resolved by Yetu, refusa
     await tap(page.getByTestId("connectivity"));
     const sync = page.getByRole("dialog", { name: "Sending sales" });
     await expect(sync).toContainText("Sales go to Yetu as they happen. Nothing is kept on this till for later.");
-    await tap(sync.getByRole("button", { name: "Back" }).first());
+    await tap(sync.getByRole("button", { name: "Back", exact: true }).first());
     await expect(sync).toHaveCount(0);
   });
 
@@ -203,7 +203,7 @@ test("S6: one realtime connection, lost payment answers resolved by Yetu, refusa
       "A different supervisor must approve this. Their PIN wasn't accepted, or they can't approve cancellations.",
     );
     await expect(sheet).not.toContainText(/403|FORBIDDEN|permission denied/i);
-    await tap(sheet.getByRole("button", { name: "Back" }));
+    await tap(sheet.getByRole("button", { name: "Back", exact: true }));
   });
 
   await testInfo.attach("payment-requests.json", { body: JSON.stringify(payments, null, 2), contentType: "application/json" });

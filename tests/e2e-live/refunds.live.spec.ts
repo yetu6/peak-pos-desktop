@@ -150,7 +150,7 @@ test("refunds by item on the till, against the live API", async ({ page }, testI
     const done = page.getByTestId("refund-done-view");
     await expect(done).toContainText(`Refunded ${tsh(first.totalMinor)}`);
     await expect(done).toContainText(`Give ${tsh(first.totalMinor)} back in cash from the drawer.`);
-    await expect(page.getByTestId("refund-print")).toHaveText("The refund slip didn't print (No printer is configured). The refund is recorded.");
+    await expect(page.getByTestId("refund-print")).toHaveText("The refund slip didn't print (No printer is set up on this till). The refund is recorded.");
 
     // The drawer expects the refund less: Yetu's figure, as the till reads it.
     shift = await body<Shift>(shiftAfter);

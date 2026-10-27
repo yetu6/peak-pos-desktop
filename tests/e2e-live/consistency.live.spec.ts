@@ -41,10 +41,21 @@ function moneyIn(words: string): number[] {
   return [...words.matchAll(/TSh\s*[\d,]+(?:\.\d+)?/g)].map((match) => minor(match[0]));
 }
 
+/** What Yetu last said the shift's drawer should hold. */
+const shiftSaid: { expectedCashMinor: number | null; answers: number } = { expectedCashMinor: null, answers: 0 };
+
 function watchOrders(page: Page) {
   const seen = new Map<string, Order>();
   page.on("response", (response: Response) => {
     if (!response.url().startsWith(LIVE_API_URL) || !response.ok()) return;
+    if (response.request().method() === "GET" && /\/api\/v1\/pos\/shifts\/(current|[0-9a-f-]{36})$/.test(new URL(response.url()).pathname)) {
+      void response.json().then((shift: { expectedCashMinor?: number }) => {
+        if (typeof shift.expectedCashMinor === "number") {
+          shiftSaid.expectedCashMinor = shift.expectedCashMinor;
+          shiftSaid.answers += 1;
+        }
+      }, () => undefined);
+    }
     if (!/\/api\/v1\/pos\/orders(\/[0-9a-f-]{36})?(\/(items|discount|send|payments|void))?$/.test(new URL(response.url()).pathname)) return;
     void response.json().then(
       (json: unknown) => {
@@ -225,6 +236,10 @@ test("one order's money reads the same everywhere, against the live API", async 
     const shiftExpected = OPENING_FLOAT_MINOR + cashPart;
     await page.getByTestId("counted-cash").fill(typed(shiftExpected));
     await tap(page.getByRole("button", { name: "Check the count" }));
+    await expect(page.getByTestId("close-expected")).toBeVisible();
+    await page.waitForTimeout(1500);
+    // What the sheet shows is what Yetu last said, and Yetu's is the float plus the cash taken.
+    expect(shiftSaid.expectedCashMinor, `Yetu's own figure (after ${shiftSaid.answers} answers)`).toBe(shiftExpected);
     await expect(page.getByTestId("close-expected")).toHaveText(`TSh ${(shiftExpected / 100).toLocaleString("en-GB")}`);
     await expect(page.getByTestId("close-outcome")).toHaveText("Balanced. The drawer matches what Yetu expects.");
     await tap(page.getByTestId("close-shift"));

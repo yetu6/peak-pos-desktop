@@ -268,11 +268,12 @@ test("orders and the kitchen on the redesigned till, against the live API", asyn
     expect((await reprinted).status()).toBe(201);
     await expect.poll(() => receipts.at(-1)?.reprintCount).toBe(receipt.reprintCount + 1);
     const counted = receipts.at(-1)!;
-    await expect(detail.getByTestId("order-detail-result")).toHaveText("A copy of the bill was sent to the printer.");
+    // Yetu made the copy; a browser has no printer, so the till says the copy didn't print (F-233) and that Yetu has the bill.
+    await expect(detail.getByRole("alert")).toContainText(/The copy didn't print: no printer is (set up|configured).*Yetu has the bill/);
     await expect(detail.getByTestId("order-detail-payment")).toContainText(
       `Printed again ${counted.reprintCount} ${counted.reprintCount === 1 ? "time" : "times"}`,
     );
-    await tap(detail.getByRole("button", { name: "Close" }).last());
+    await tap(detail.getByRole("button", { name: "Back", exact: true }).last());
     await expect(detail).toHaveCount(0);
   });
 
@@ -357,7 +358,7 @@ test("orders and the kitchen on the redesigned till, against the live API", asyn
     await expect
       .poll(() => told.orders.at(-1)?.find((entry) => entry.id === order.id)?.status, { message: "the order follows its station ticket" })
       .toBe("SERVED");
-    await tap(detail.getByRole("button", { name: "Close" }).first());
+    await tap(detail.getByRole("button", { name: "Back", exact: true }).first());
     await expect(page.getByTestId(`order-row-${order.id}`)).toContainText("Served");
   });
 
