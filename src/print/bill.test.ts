@@ -73,10 +73,10 @@ describe("the bill before payment", () => {
     const text = formatReceipt(receiptCopyFromPrintDocument(BILL));
     expect(text).toContain("BILL\nOrder 14");
     expect(text).toContain("Printed ");
-    expect(text).toMatch(/^Discount \(Birthday\) {2,}\-TSh 250$/m);
-    expect(text).toMatch(/^TOTAL {2,}TSh\ 4,750$/m);
-    expect(text).toMatch(/^Paid\ already {2,}TSh\ 1,000$/m);
-    expect(text).toMatch(/^TO\ PAY {2,}TSh\ 3,750$/m);
+    expect(text).toMatch(/^Discount \(Birthday\) {2,}-TSh 250$/m);
+    expect(text).toMatch(/^TOTAL {2,}TSh 4,750$/m);
+    expect(text).toMatch(/^Paid already {2,}TSh 1,000$/m);
+    expect(text).toMatch(/^TO PAY {2,}TSh 3,750$/m);
     expect(text).not.toMatch(/Paid Tue|Cash/);
     expect(text).not.toMatch(/TRA|tax receipt|INVOICE/);
     expect(text.trimEnd().split("\n").slice(-2).map((line) => line.trim())).toEqual(["Powered by Yetu", "yetu.fbcsoftwares.com"]);

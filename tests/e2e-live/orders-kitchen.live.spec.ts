@@ -266,7 +266,7 @@ test("orders and the kitchen on the redesigned till, against the live API", asyn
     expect((await reprinted).status()).toBe(201);
     await expect.poll(() => receipts.at(-1)?.reprintCount).toBe(receipt.reprintCount + 1);
     const counted = receipts.at(-1)!;
-    await expect(detail.getByTestId("order-detail-result")).toHaveText("A copy of the receipt was sent to the printer.");
+    await expect(detail.getByTestId("order-detail-result")).toHaveText("A copy of the bill was sent to the printer.");
     await expect(detail.getByTestId("order-detail-payment")).toContainText(
       `Printed again ${counted.reprintCount} ${counted.reprintCount === 1 ? "time" : "times"}`,
     );

@@ -71,9 +71,9 @@ test("rounds on the till, against the live API", async ({ page }, testInfo) => {
     await tap(page.getByTestId(`menu-${dish.name}`));
     order = await body<Order>(added);
     expect(order.items.filter((line) => line.status === "ADDED")).toHaveLength(1);
-    await expect(page.getByTestId("send-order")).toHaveText(/Send round 2/);
+    await expect(page.getByTestId("send-order")).toHaveText(/Print (order|for )/);
     await expect(page.getByTestId("pay-order")).toBeDisabled();
-    await expect(page.getByTestId("pay-waits")).toHaveText("Send or remove what isn't sent yet, then take payment.");
+    await expect(page.getByTestId("pay-waits")).toHaveText("Print the new items first, or remove them, then take payment.");
   });
 
   await test.step("4. Round 2 sent: each line says its round; then paid in full", async () => {

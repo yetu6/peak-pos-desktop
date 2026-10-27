@@ -94,9 +94,9 @@ describe("printJobs: Yetu's receipt as a guest reads it", () => {
     expect(text).toContain("TSh 10,000");
     expect(text).toContain("TSh 1,500");
     expect(text).not.toContain("TSh 11,800");
-    expect(text).toMatch(/^Subtotal {2,}TSh\ 11,500$/m);
-    expect(text).toMatch(/^VAT {2,}TSh\ 2,070$/m);
-    expect(text).toMatch(/^TOTAL {2,}TSh\ 13,570$/m);
+    expect(text).toMatch(/^Subtotal {2,}TSh 11,500$/m);
+    expect(text).toMatch(/^VAT {2,}TSh 2,070$/m);
+    expect(text).toMatch(/^TOTAL {2,}TSh 13,570$/m);
     expect(text).not.toMatch(/1180000|1357000|207000/);
   });
 
@@ -154,8 +154,8 @@ describe("printJobs: a refund receipt", () => {
   it("says what was given back, how, why, and who asked and approved", () => {
     const { text } = formatPrintDocument(YETU_REFUND_RECEIPT);
     expect(text).toMatch(/^ {2}1 {2}Chips {2,}TSh 5,900$/m);
-    expect(text).toMatch(/^Given\ back {2,}TSh\ 5,900$/m);
-    expect(text).toMatch(/^VAT\ included {2,}TSh\ 900$/m);
+    expect(text).toMatch(/^Given back {2,}TSh 5,900$/m);
+    expect(text).toMatch(/^VAT included {2,}TSh 900$/m);
     expect(text).toMatch(/^Cash {2,}TSh 5,900$/m);
     expect(text).toContain("Reason: Cold when served");
     expect(text).toContain("Asked by Amina Juma");
@@ -177,7 +177,7 @@ describe("printJobs: a refund receipt", () => {
       ...YETU_REFUND_RECEIPT,
       document: { ...YETU_REFUND_RECEIPT.document, discountMinor: 50_000, netMinor: 450_000, taxMinor: 81_000, totalMinor: 531_000 },
     });
-    expect(text).toMatch(/^Less\ the\ order's\ discount {2,}TSh\ 500$/m);
+    expect(text).toMatch(/^Less the order's discount {2,}TSh 500$/m);
   });
 });
 
@@ -475,7 +475,7 @@ describe("printJobs: receipts on a thermal printer, the cash drawer (S8b)", () =
     const plain = await printed(job("BILL", BILL_DOCUMENT), true, null);
     expect(plain.raw).toEqual([]);
     expect(plain.text[0]).toContain("BILL\nOrder 7");
-    expect(plain.text[0]).toMatch(/^TO\ PAY {2,}TSh\ 5,820$/m);
+    expect(plain.text[0]).toMatch(/^TO PAY {2,}TSh 5,820$/m);
   });
 
   it("a card sale opens no drawer; a split with a cash part does", async () => {

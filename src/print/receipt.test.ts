@@ -86,7 +86,7 @@ describe("a printed receipt whose prices include VAT", () => {
     const copy = receiptCopyFromPrintDocument(document);
     const text = formatReceipt(copy);
     expect(text).toMatch(/^Items {2,}TSh 15,000$/m);
-    expect(text).toMatch(/^Discount \(Regular guest\) {2,}\-TSh 2,000$/m);
+    expect(text).toMatch(/^Discount \(Regular guest\) {2,}-TSh 2,000$/m);
     expect(text).toMatch(/^VAT included {2,}TSh 1,983\.05$/m);
     expect(text).toMatch(/^TOTAL {2,}TSh 13,000$/m);
     expect(text).not.toContain("Subtotal");
