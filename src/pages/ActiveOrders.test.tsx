@@ -233,14 +233,14 @@ function renderOrders(onNewOrder = vi.fn(), onAddItems?: (order: POSOrder) => vo
     cursorStorage: { get: () => null, set: () => {} },
   });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <RealtimeProvider client={client} queryClient={queryClient}>
         <ActiveOrders onNewOrder={onNewOrder} onAddItems={onAddItems} />
       </RealtimeProvider>
     </QueryClientProvider>,
   );
-  return { socket, onNewOrder };
+  return { socket, onNewOrder, unmount: view.unmount };
 }
 
 function signIn(permissions: string[]) {
@@ -258,7 +258,7 @@ function signIn(permissions: string[]) {
   });
 }
 
-const EVERYTHING = ["pos.order.read", "pos.order.create", "pos.order.item.add", "pos.order.item.remove", "pos.order.send", "pos.payment.record"];
+const EVERYTHING = ["pos.order.read", "pos.order.read_all", "pos.order.create", "pos.order.item.add", "pos.order.item.remove", "pos.order.send", "pos.payment.record"];
 
 const OPEN_ORDER: POSOrder = {
   id: "order-1",
@@ -311,12 +311,8 @@ function receiptFor(order: POSOrder): POSReceipt {
       orderNumber: order.orderNumber,
       businessDate: SHIFT.businessDate,
       propertyName: "Mama Rose",
-      outletId: "outlet-1",
       outletName: "Main restaurant",
-      terminalId: "terminal-1",
-      initiatedById: "staff-1",
       initiatedByName: "Amina Hassan",
-      operatorId: "staff-2",
       operatorName: "Grace Mushi",
       serviceType: order.serviceType,
       tableLabel: order.tableLabel,
@@ -455,6 +451,35 @@ describe("Orders", () => {
     expect(await screen.findByTestId("order-row-order-0")).toHaveTextContent("Paid");
     expect(screen.getByTestId("order-row-order-9")).toBeInTheDocument();
     expect(spies.listOrderPage).toHaveBeenCalledWith({ view: "paid", businessDate: SHIFT.businessDate });
+  });
+
+  // The owner, 2026-10-27: a waiter sees only their own orders; Yetu lists only those.
+  it("a waiter's Paid tab says it lists the orders they took; a cashier's keeps its words", async () => {
+    signIn(["pos.order.read", "pos.order.create", "pos.order.send"]);
+    ordersStore.set("order-0", PAID_ORDER);
+    ordersStore.set("order-1", OPEN_ORDER);
+    const waiter = renderOrders();
+    await screen.findByTestId("order-row-order-1");
+    await userEvent.click(screen.getByRole("tab", { name: /Your paid today/ }));
+    expect(await screen.findByTestId("orders-caption")).toHaveTextContent("The orders you took, latest paid first");
+    expect(screen.getByRole("region", { name: "Your paid orders today" })).toBeInTheDocument();
+    waiter.unmount();
+
+    signIn(EVERYTHING);
+    renderOrders();
+    await screen.findByTestId("order-row-order-1");
+    await userEvent.click(screen.getByRole("tab", { name: /Paid today/ }));
+    expect(await screen.findByTestId("orders-caption")).toHaveTextContent("Latest paid first");
+    expect(screen.getByTestId("orders-caption")).not.toHaveTextContent("you took");
+  });
+
+  it("a waiter with nothing paid yet is told so in their own words", async () => {
+    signIn(["pos.order.read", "pos.order.create", "pos.order.send"]);
+    ordersStore.set("order-1", OPEN_ORDER);
+    renderOrders();
+    await screen.findByTestId("order-row-order-1");
+    await userEvent.click(screen.getByRole("tab", { name: /Your paid today/ }));
+    expect(await screen.findByText("None of your orders are paid yet today")).toBeInTheDocument();
   });
 
   it("an open order's detail: lines, totals, and Send, Pay and Void", async () => {
@@ -952,7 +977,7 @@ describe("Orders: Pay sends what isn't sent first (Toast, Square)", () => {
     ordersStore.set("order-1", ROUND2);
     renderOrders();
     const sheet = await openDetail("order-1");
-    expect(within(sheet).getByTestId("detail-send")).toHaveTextContent("Send round 2");
+    expect(within(sheet).getByTestId("detail-send")).toHaveTextContent(/Print (order|for )/);
     expect(within(sheet).getByTestId("detail-send")).toBeEnabled();
   });
 

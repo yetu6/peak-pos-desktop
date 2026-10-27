@@ -95,14 +95,9 @@ function refundGiven(extra: Partial<POSRefund> = {}): POSRefund {
     orderId: "order-1",
     orderNumber: "0142",
     dailyNumber: 42,
-    outletId: "outlet-1",
-    shiftId: "shift-1",
-    terminalId: "till-1",
     businessDate: "2026-10-18",
     reason: "Cold or not as ordered",
-    initiatedById: "staff-1",
     initiatedByName: "Amina Hassan",
-    authorizedById: "staff-2",
     authorizedByName: "Grace Mushi",
     netMinor: 650_000,
     discountMinor: 0,
@@ -111,7 +106,7 @@ function refundGiven(extra: Partial<POSRefund> = {}): POSRefund {
     currency: "TZS",
     createdAt: new Date(2026, 9, 18, 17, 40).toISOString(),
     lines: [],
-    tenders: [{ id: "t-1", paymentId: "pay-1", paymentMethod: "CASH", amountMinor: 767_000 }],
+    tenders: [{ paymentId: "pay-1", paymentMethod: "CASH", amountMinor: 767_000 }],
     ...extra,
   };
 }
@@ -167,7 +162,7 @@ describe("OrderDetailView: refunds (S7)", () => {
   });
 
   it("an order refunded in full reads Refunded, and a room charge as taken off the bill", () => {
-    const room = refundGiven({ totalMinor: 1_534_000, tenders: [{ id: "t-2", paymentId: "pay-2", paymentMethod: "ROOM_CHARGE", amountMinor: 1_534_000 }] });
+    const room = refundGiven({ totalMinor: 1_534_000, tenders: [{ paymentId: "pay-2", paymentMethod: "ROOM_CHARGE", amountMinor: 1_534_000 }] });
     renderDetail({ order: order(PAID), receipt: RECEIPT, refunds: refundsOf([room]), refundOffer: { offer: false, why: "Everything on this order has been refunded." } });
     expect(screen.getByTestId("order-detail-status")).toHaveTextContent("Refunded");
     expect(screen.getByTestId("order-detail-refunds")).toHaveTextContent("TSh 15,340 taken off the room bill");
@@ -193,15 +188,15 @@ describe("OrderDetailView", () => {
     expect(within(sheet).getByTestId("order-detail-timeline")).toHaveTextContent("Not sent to the kitchen yet");
   });
 
-  it("an open order: Send to kitchen and Void apart, Pay with the amount as the one primary action", async () => {
+  it("an open order: Print for the kitchen (Sell's words) and Cancel apart, Pay with the amount as the one primary action", async () => {
     const handlers = renderDetail();
     const actions = footer();
-    expect(within(actions).getByRole("button", { name: /Send to kitchen/ })).toHaveTextContent("F8");
+    expect(within(actions).getByRole("button", { name: /Print (order|for )/ })).toHaveTextContent("F8");
     // Not sent yet: Pay sends it first.
     const pay = within(actions).getByRole("button", { name: /Send and pay TSh 15,340/ });
     expect(pay).toHaveClass("y-button--pay", "y-button--64");
     expect(pay).toHaveTextContent("F9");
-    await userEvent.click(within(actions).getByRole("button", { name: /Send to kitchen/ }));
+    await userEvent.click(within(actions).getByRole("button", { name: /Print (order|for )/ }));
     await userEvent.click(pay);
     await userEvent.click(within(actions).getByRole("button", { name: "Cancel order" }));
     expect(handlers.onSend).toHaveBeenCalled();
@@ -209,9 +204,32 @@ describe("OrderDetailView", () => {
     expect(handlers.onVoid).toHaveBeenCalled();
   });
 
+  it("with VAT on top the lines add up to the Subtotal under them (Cappuccino 6,500 + Flat white 6,500 = 13,000)", () => {
+    renderDetail();
+    const lines = within(screen.getByTestId("order-detail-lines"));
+    expect(lines.getAllByText("TSh 6,500")).toHaveLength(2);
+    expect(screen.getByTestId("order-detail-totals")).toHaveTextContent("SubtotalTSh 13,000");
+  });
+
+  it("with nothing new to print, the same button says Print again and F8 prints the last papers again, as on Sell", async () => {
+    const onKitchenReprint = vi.fn();
+    const handlers = renderDetail({
+      order: order({ status: "SENT", roundsSent: 1, items: [{ ...line("l1", "Cappuccino", "SENT"), roundNumber: 1 }] }),
+      onKitchenReprint,
+    });
+    const again = within(footer()).getByRole("button", { name: /Print again/ });
+    expect(again).toBeEnabled();
+    expect(again).toHaveTextContent("F8");
+    expect(within(footer()).getAllByRole("button", { name: /Print again/ })).toHaveLength(1);
+    await userEvent.click(again);
+    await userEvent.keyboard("{F8}");
+    expect(onKitchenReprint).toHaveBeenCalledTimes(2);
+    expect(handlers.onSend).not.toHaveBeenCalled();
+  });
+
   it("an order in the kitchen: Pay and Void, no Send", () => {
     renderDetail({ order: order({ status: "PREPARING", items: [line("l1", "Cappuccino", "SENT")] }) });
-    expect(within(footer()).queryByRole("button", { name: /Send to kitchen/ })).toBeNull();
+    expect(within(footer()).queryByRole("button", { name: /Print (order|for |again)/ })).toBeNull();
     expect(within(footer()).getByRole("button", { name: /Pay TSh 15,340/ })).toBeEnabled();
     expect(within(footer()).getByRole("button", { name: "Cancel order" })).toBeEnabled();
   });
@@ -310,7 +328,7 @@ describe("OrderDetailView", () => {
 
   it("holds every action while a request is with Yetu, and the sheet can't be dismissed", async () => {
     const handlers = renderDetail({ pending: "send" });
-    expect(within(footer()).getByRole("button", { name: /Sending…/ })).toBeDisabled();
+    expect(within(footer()).getByRole("button", { name: /Printing…/ })).toBeDisabled();
     expect(within(footer()).getByRole("button", { name: /pay/i })).toBeDisabled();
     expect(within(footer()).getByRole("button", { name: "Cancel order" })).toBeDisabled();
     await userEvent.keyboard("{Escape}");
@@ -324,7 +342,7 @@ describe("OrderDetailView", () => {
 
   it("an open order with nothing on it can't be sent or paid", () => {
     renderDetail({ order: order({ items: [], subtotalMinor: 0, taxMinor: 0, totalMinor: 0, remainingMinor: 0 }) });
-    expect(within(footer()).getByRole("button", { name: /Send to kitchen/ })).toBeDisabled();
+    expect(within(footer()).getByRole("button", { name: /Print order/ })).toBeDisabled();
     expect(within(footer()).getByRole("button", { name: /^Pay/ })).toBeDisabled();
   });
 

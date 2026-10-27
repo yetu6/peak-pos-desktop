@@ -44,7 +44,7 @@ describe("refund refusals in words", () => {
   it("says a refused approval in the till's words, and who chooses approvers", () => {
     expect(refundProblem(new Error(JSON.stringify({ status: 403, code: "FORBIDDEN", detail: "x" })))).toEqual({
       kind: "supervisor",
-      words: "A different person who may approve refunds must enter their PIN. That PIN wasn't accepted, or they can't approve refunds.",
+      words: "A different supervisor must approve the refund. Their PIN wasn't accepted, or they can't approve refunds.",
     });
     expect(refundProblem(new Error(JSON.stringify({ status: 409, code: "NO_APPROVER_SET" })))?.words).toBe(
       "No one is set to approve refunds here yet. The owner chooses who approves in Team rules.",

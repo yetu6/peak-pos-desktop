@@ -75,3 +75,51 @@ for (const [width,height] of [[1366,768],[1920,1080]]) for (const theme of ["lig
    }
  });
 }
+
+// Owner, 2026-10-19: no room for mistakes. Cash is typed on the keypad, so its last row (00, 0, delete) is never
+// left below the fold of the Pay sheet, on any window the till runs in.
+for (const [width, height] of [[1024, 768], [1366, 768], [1920, 1080]]) {
+  for (const fixture of ["pay-cash", "pay-split"]) {
+    test(`the cash keypad is whole on screen: ${fixture} ${width}x${height}`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await page.goto(`/?fixture=${fixture}`);
+      await page.evaluate(() => document.fonts.ready);
+      const keypad = page.locator(".y-keypad").first();
+      await expect(keypad).toBeVisible();
+      const gap = await keypad.evaluate((node) => {
+        const body = node.closest(".y-sheet__body, .y-dialog__body") as HTMLElement;
+        return body.getBoundingClientRect().bottom - node.getBoundingClientRect().bottom;
+      });
+      expect(gap, "the keypad's bottom edge is inside the sheet body").toBeGreaterThanOrEqual(0);
+    });
+  }
+}
+
+// The Print for the kitchen / Print bill / More row: every label has its padding, at every window size.
+for (const [width, height] of [[1024, 768], [1366, 768], [1920, 1080]]) {
+  test(`the ticket's print buttons keep their words inside their padding: ${width}x${height}`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await page.goto("/?fixture=register");
+    await expect(page.getByRole("button", { name: "Print bill", exact: true })).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    const tight = await page.evaluate(() => {
+      const out: string[] = [];
+      // The fixture's first button says "Print order"; "Print for kitchen" is the longest it ever says.
+      const first = document.querySelector<HTMLElement>(".y-actions__row > .y-button");
+      if (!first) return ["the print buttons are not on the screen"];
+      const text = document.createTreeWalker(first, NodeFilter.SHOW_TEXT).nextNode();
+      if (text) text.nodeValue = "Print for kitchen";
+      for (const button of document.querySelectorAll<HTMLElement>(".y-actions__row > .y-button")) {
+        const box = button.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(button);
+        const text = range.getBoundingClientRect();
+        const left = text.left - box.left;
+        const right = box.right - text.right;
+        if (left < 6 || right < 6) out.push(`"${button.textContent?.trim()}" ${Math.round(left)}px left, ${Math.round(right)}px right`);
+      }
+      return out;
+    });
+    expect(tight).toEqual([]);
+  });
+}

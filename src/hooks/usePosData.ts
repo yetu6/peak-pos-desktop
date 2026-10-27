@@ -10,6 +10,7 @@ import { PRINTERS_PLACE } from "../print/printProblems";
 import { loadPrinterSettings } from "../print/printerStore";
 import { useMemo, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { POSCatalog } from "../lib/posContracts";
 import { createPosApi } from "../lib/posApi";
 import { describePosError } from "../lib/posErrors";
 import { READ_AFTER_RECORD_FAILED } from "../lib/problemWords";
@@ -17,7 +18,7 @@ import { devIdentityFromEnv } from "../lib/env";
 import { useRealtimeEvents } from "../realtime/RealtimeProvider";
 import { isOrderEvent } from "../realtime/subscriptions";
 import { getOperationalSession } from "../lib/operationalSession";
-import { listEveryPage } from "../orders/orderPages";
+import { listWholeList } from "../orders/orderPages";
 import { OPEN_MOST_PAGES } from "../orders/ordersSettings";
 import type {
   CashMoneyType,
@@ -58,6 +59,26 @@ export function usePropertyCapabilities(): string[] {
 
 export function usePosPermissions(): string[] {
   return getOperationalSession()?.permissions ?? [];
+}
+
+/**
+ * Whether this till sees only the orders its holder took. Yetu says so itself
+ * in the catalog (ownOrdersOnly: no pos.order.read_all, and the outlet's
+ * "Waiters see only the orders they take" switch still on). Until the catalog
+ * has loaded, or against an older Yetu, the permission decides: a role without
+ * pos.order.read_all is a waiter.
+ */
+export function ownOrdersOnlyFor(permissions: readonly string[], catalogSays: boolean | undefined): boolean {
+  return typeof catalogSays === "boolean" ? catalogSays : !permissions.includes("pos.order.read_all");
+}
+
+export function useOwnOrdersOnly(): boolean {
+  const permissions = usePosPermissions();
+  const propertyId = usePropertyId();
+  const outletId = useOutletId();
+  // Reads the catalog the till already loaded; never fetches it.
+  const catalog = useQuery<POSCatalog>({ queryKey: ["pos", "catalog", propertyId, outletId], enabled: false });
+  return ownOrdersOnlyFor(permissions, catalog.data?.ownOrdersOnly);
 }
 
 export function useHasCapability(code: string): boolean {
@@ -320,11 +341,11 @@ export function useActiveOrders() {
     queryKey: ["pos", "orders", "active", outletId],
     queryFn: async () => {
       const api = createPosApi();
-      const { orders } = await listEveryPage(
+      // Every page, or an error: never part of the open orders as if all (2026-10-27).
+      return listWholeList(
         (cursor) => unwrap(api.listOrderPage({ view: "open", ...(cursor ? { cursor } : {}) })),
         OPEN_MOST_PAGES,
       );
-      return orders;
     },
     retry: false,
   });

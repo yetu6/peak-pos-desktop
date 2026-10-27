@@ -429,6 +429,12 @@
   gap: var(--target-gap);
 }
 
+/* Four amounts share one row on a 1024-wide window; a second row would push the keypad's last row out of the sheet. */
+@media (max-width: 1279px) {
+  .y-quick-cash { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+  .y-quick-cash > .y-button { padding-inline: var(--space-2); }
+}
+
 .y-quick-cash__exact {
   flex-direction: column;
   gap: 0;

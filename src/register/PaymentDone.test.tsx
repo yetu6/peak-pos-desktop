@@ -46,6 +46,13 @@ describe("PaymentDone", () => {
     expect(screen.getByTestId("done-change")).toHaveTextContent("Change to give TSh 7,500");
   });
 
+  it("a room charge says the same thing to the eye and to a screen reader: on the guest's room account", () => {
+    renderDone({ paid: { order: ORDER, method: "ROOM_CHARGE", changeMinor: 0, roomNumber: "204" } });
+    const done = screen.getByRole("dialog", { name: "Charged to room 204" });
+    expect(done).toHaveAccessibleDescription("Order 42 is on the guest's room account.");
+    expect(done).toHaveTextContent("Order 42 is on the guest's room account.");
+  });
+
   it("says Split payment when more than one tender paid it", () => {
     renderDone({ paid: { order: ORDER, method: "EXTERNAL_CARD", changeMinor: 0, split: true } });
     expect(screen.getByRole("dialog", { name: "Paid" })).toHaveTextContent("Split payment · Order 42");

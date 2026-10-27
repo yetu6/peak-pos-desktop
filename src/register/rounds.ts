@@ -67,12 +67,6 @@ export function printWords(order: OrderState | null): string {
   return stations?.length === 1 ? stationPrintWords(stations[0]) : "Print order";
 }
 
-/** What the send button says: the first send, then each round by its number. */
-export function sendWords(order: OrderState | null): string {
-  const sent = order?.roundsSent ?? 0;
-  return sent > 0 ? `Send round ${sent + 1}` : "Send to kitchen";
-}
-
 /** Why the order can't be paid just now, as Yetu says it (UNSENT_LINES); null when it can. */
 export function payWaitsWords(order: OrderState | null): string | null {
   if (!order || (order.roundsSent ?? 0) === 0 || unsentLines(order) === 0) return null;

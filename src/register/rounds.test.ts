@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { POSOrderItem } from "../lib/posContracts";
-import { directOnlyUnsent, payWaitsWords, printWords, roundWords, sendWords, stationPrintWords, takesMore, unsentLines, unsentStations } from "./rounds";
+import { directOnlyUnsent, payWaitsWords, printWords, roundWords, stationPrintWords, takesMore, unsentLines, unsentStations } from "./rounds";
 
 const line = (status: POSOrderItem["status"], roundNumber?: number) => ({ status, roundNumber }) as POSOrderItem;
 
@@ -12,12 +12,6 @@ describe("rounds on the till (S17a)", () => {
     expect(takesMore({ status: "SENT", items: [line("SENT")] })).toBe(false);
     expect(takesMore({ status: "CLOSED", items: [], roundsSent: 2 })).toBe(false);
     expect(takesMore({ status: "VOIDED", items: [], roundsSent: 1 })).toBe(false);
-  });
-
-  it("the send button says the next round once one was sent", () => {
-    expect(sendWords(null)).toBe("Send to kitchen");
-    expect(sendWords({ status: "OPEN", items: [line("ADDED")], roundsSent: 0 })).toBe("Send to kitchen");
-    expect(sendWords({ status: "SERVED", items: [line("SENT", 1), line("ADDED")], roundsSent: 1 })).toBe("Send round 2");
   });
 
   it("paying waits for what isn't sent, once the order has had a round; a quick sale pays first", () => {

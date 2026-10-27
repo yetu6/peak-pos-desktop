@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { idleLockHeld } from "../lib/idleLock";
 import { ReceiptView } from "./ReceiptView";
@@ -31,12 +31,8 @@ const RECEIPT: POSReceipt = {
     orderNumber: "POS-1",
     businessDate: "2026-09-04",
     propertyName: "Mama Rose Hotel",
-    outletId: "outlet-1",
     outletName: "Main restaurant",
-    terminalId: "terminal-1",
-    initiatedById: "staff-1",
     initiatedByName: "Amina Hassan",
-    operatorId: "staff-1",
     operatorName: "Amina Hassan",
     serviceType: "DINE_IN",
     items: [{ name: "Cappuccino", quantity: 2, unitPriceMinor: 6_500, taxMinor: 1_170, totalMinor: 14_170 }],
@@ -71,6 +67,17 @@ describe("ReceiptView", () => {
     expect(footer.querySelector("br")).not.toBeNull();
     expect(sheet).not.toHaveTextContent(/invoice/i);
     expect(screen.queryByTestId("receipt-error")).not.toBeInTheDocument();
+  });
+
+  it("a bill with VAT on top shows each line without its VAT, so the lines add up to the Subtotal", () => {
+    receiptRef.data = RECEIPT;
+    receiptRef.isLoading = false;
+    receiptRef.isError = false;
+    render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+    const doc = screen.getByTestId("receipt-document");
+    expect(within(doc).getByText("2 × Cappuccino").parentElement).toHaveTextContent("TSh 130");
+    expect(doc).toHaveTextContent("SubtotalTSh 130");
+    expect(doc).not.toHaveTextContent("TSh 141.70TSh");
   });
 
   // F-229: a TSh 22,000 biryani at a hotel whose prices include VAT.
@@ -116,7 +123,7 @@ describe("ReceiptView", () => {
   it("says where the order went and who took the payment, when someone else did", () => {
     receiptRef.data = {
       ...RECEIPT,
-      document: { ...RECEIPT.document, tableLabel: "12", operatorId: "staff-2", operatorName: "Grace Mushi" },
+      document: { ...RECEIPT.document, tableLabel: "12", operatorName: "Grace Mushi" },
     };
     render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
     expect(screen.getByTestId("receipt-document")).toHaveTextContent("Order POS-1 · Dine in · Table 12");
@@ -127,6 +134,14 @@ describe("ReceiptView", () => {
     receiptRef.data = { ...RECEIPT, document: { ...RECEIPT.document, tenderMethod: "SPLIT" } };
     render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
     expect(screen.getByTestId("receipt-document")).toHaveTextContent("Paid by Split payment");
+  });
+
+  it("says Print bill again, as the order sheet does (Print again is Sell's kitchen button)", () => {
+    receiptRef.data = RECEIPT;
+    receiptRef.isLoading = false;
+    receiptRef.isError = false;
+    render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
+    expect(screen.getByTestId("reprint-receipt")).toHaveTextContent("Print bill again");
   });
 
   it("disables reprint until the real settled document has loaded", () => {
@@ -180,7 +195,7 @@ describe("ReceiptView", () => {
     receiptRef.isError = true;
     render(<ReceiptView orderId="order-1" onClose={vi.fn()} />);
 
-    expect(screen.getByTestId("receipt-error")).toHaveTextContent("The receipt couldn't be loaded. Check the connection, then try again.");
+    expect(screen.getByTestId("receipt-error")).toHaveTextContent("The bill couldn't be loaded. Check the connection, then try again.");
     expect(screen.getByTestId("reprint-receipt")).toBeDisabled();
   });
 });

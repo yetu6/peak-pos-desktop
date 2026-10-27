@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { vatFigures } from "./vatWords";
+import { lineAmountMinor, vatFigures } from "./vatWords";
 
 // Bahari QA Hotel writes its prices with VAT inside them (18%).
 describe("vatFigures (F-229)", () => {
@@ -35,5 +35,16 @@ describe("vatFigures (F-229)", () => {
     const order = { subtotalMinor: 1_000_000, discountMinor: 100_000, taxMinor: 162_000, totalMinor: 1_062_000, items: [{ totalMinor: 1_180_000 }] };
     expect(vatFigures(order)).toEqual({ itemsLabel: "Subtotal", itemsMinor: 1_000_000, discountMinor: 100_000, vatLabel: "VAT", taxMinor: 162_000, totalMinor: 1_062_000 });
     expect(vatFigures({ ...order, pricesIncludeTax: false }).vatLabel).toBe("VAT");
+  });
+});
+
+describe("lineAmountMinor: a line reads so the lines add up to the figure under them", () => {
+  const chips = { totalMinor: 590_000, taxMinor: 90_000 };
+  it("with VAT on top the line leaves its VAT out, as the Subtotal does", () => {
+    expect(lineAmountMinor(false, chips)).toBe(500_000);
+    expect(lineAmountMinor(undefined, chips)).toBe(500_000);
+  });
+  it("with VAT inside the prices the line is its menu price", () => {
+    expect(lineAmountMinor(true, chips)).toBe(590_000);
   });
 });

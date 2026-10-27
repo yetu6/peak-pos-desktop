@@ -155,3 +155,18 @@ export async function openShift(page: Page, floatMinor: number, tap: (target: Lo
   await expect(page.getByTestId("shell-state")).toHaveText("OPERATIONAL");
   return shift;
 }
+
+/**
+ * Print order shows its papers before it prints (owner, 2026-10-21): this taps the sheet's Print, as a cashier does.
+ * `tap(send-order)` or Pay on an order with new items (Pay sends them first, showing the same papers) opens that sheet.
+ */
+export async function printShownPapers(page: Page, tap: (target: Locator) => Promise<void>): Promise<void> {
+  await tap(page.getByTestId("paper-print"));
+}
+
+/** Pay on an order that may still have new items: when the papers are shown first, Print them; the payment follows. */
+export async function payAfterPapers(page: Page, tap: (target: Locator) => Promise<void>, pay: Locator): Promise<void> {
+  await tap(pay);
+  const papers = page.getByTestId("paper-print");
+  if (await papers.isVisible({ timeout: 1_500 }).catch(() => false)) await tap(papers);
+}

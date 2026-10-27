@@ -4,11 +4,8 @@ import {
   SessionExpiredError,
   type OperationalSession,
 } from "./operationalSession";
-import type {
-  AuthorizationStageResult,
-  SignedAuthorizationBundle,
-} from "./offlineAuthorization";
-import type { CatalogActivationResult, SignedCatalogSnapshot } from "./localPosCore";
+import type { AuthorizationStageResult } from "./offlineAuthorization";
+import type { CatalogActivationResult } from "./localPosCore";
 import { yetuFetch } from "./yetuFetch";
 
 export class PostLoginBootstrapError extends Error {
@@ -24,9 +21,15 @@ export interface BootstrapCatalog {
   products: unknown[];
 }
 
+/**
+ * What sign-in reads before the till opens: the outlet's catalogue, and the
+ * offline start-up when the native store is there. The open orders are not
+ * read here: the orders list reads every page of them itself
+ * (useActiveOrders). This read once asked for ?active=true, a list Yetu
+ * bounds without a next page, and threw the answer away (2026-10-27).
+ */
 export interface PostLoginBootstrap {
   catalog: BootstrapCatalog;
-  activeOrders: unknown[];
   offlineAuthorization?: AuthorizationStageResult | {
     state: "BACKEND_GAP" | "UNAVAILABLE" | "INVALID";
   };
@@ -44,12 +47,14 @@ export interface OfflineStartOptions {
   installTrustKeyset?: () => Promise<unknown>;
 }
 
-export interface PostLoginBootstrapOptions extends OfflineStartOptions {
-  stageOfflineAuthorization?: (
-    envelope: SignedAuthorizationBundle,
-  ) => Promise<AuthorizationStageResult>;
-  installCatalogSnapshot?: (envelope: SignedCatalogSnapshot) => Promise<CatalogActivationResult>;
-}
+/**
+ * The offline start-up comes from POST /pos/offline/bootstrap only
+ * (prepareOfflineStart). The till once also asked
+ * /pos/terminals/{id}/offline-leases and /pos/catalog/snapshots/{version}
+ * when the native store was missing: Yetu has neither route, so each sign-in
+ * there made two requests that could only answer 404 (2026-10-27).
+ */
+export type PostLoginBootstrapOptions = OfflineStartOptions;
 
 async function getJSON(baseUrl: string, path: string, token: string): Promise<unknown> {
   let response: Response;
@@ -95,45 +100,16 @@ export async function bootstrapOperationalSession(
     );
   }
 
-  const rawOrders = await getJSON(
-    baseUrl,
-    "/api/v1/pos/orders?active=true",
-    session.token,
-  );
-  if (!Array.isArray(rawOrders)) {
-    throw new PostLoginBootstrapError("Peak register bootstrap returned invalid active orders");
-  }
   cacheOutletMoney(session.propertyId, session.outletId, catalog);
   cacheOutletOrderSettings(session.propertyId, session.outletId, catalog);
   const result: PostLoginBootstrap = {
     catalog: catalog as BootstrapCatalog,
-    activeOrders: rawOrders,
   };
 
   if (options.installOfflineBootstrap) {
     return { ...result, ...(await prepareOfflineStart(baseUrl, session, options)) };
   }
 
-  if (options.stageOfflineAuthorization) {
-    result.offlineAuthorization = await bootstrapOfflineAuthorization(
-      baseUrl,
-      session,
-      options.stageOfflineAuthorization,
-    );
-    if (
-      result.offlineAuthorization?.state === "STAGED" &&
-      result.offlineAuthorization.prerequisite === "CATALOG_REQUIRED" &&
-      options.installCatalogSnapshot
-    ) {
-      result.certifiedCatalog = await bootstrapCertifiedCatalog(
-        baseUrl,
-        session,
-        result.offlineAuthorization.catalogVersion,
-        result.offlineAuthorization.catalogDigest,
-        options.installCatalogSnapshot,
-      );
-    }
-  }
   return result;
 }
 
@@ -166,84 +142,3 @@ export async function prepareOfflineStart(
   }catch{return {offlineAuthorization:{state:"INVALID"}}}
 }
 
-async function bootstrapCertifiedCatalog(
-  baseUrl: string,
-  session: OperationalSession,
-  version: string,
-  expectedDigest: string,
-  install: (envelope: SignedCatalogSnapshot) => Promise<CatalogActivationResult>,
-): Promise<PostLoginBootstrap["certifiedCatalog"]> {
-  let response: Response;
-  try {
-    response = await yetuFetch(`${baseUrl.replace(/\/$/, "")}/api/v1/pos/catalog/snapshots/${encodeURIComponent(version)}`, {
-      headers: { Authorization: `Bearer ${session.token}` },
-    });
-  } catch { return { state: "UNAVAILABLE" }; }
-  if (response.status === 401) throw new SessionExpiredError();
-  if (response.status === 404 || response.status === 501) return { state: "BACKEND_GAP" };
-  if (!response.ok) return { state: "UNAVAILABLE" };
-  let raw: unknown;
-  try { raw = await response.json(); } catch { return { state: "INVALID" }; }
-  if (!isSignedCatalogSnapshot(raw) || raw.digest !== expectedDigest) return { state: "INVALID" };
-  try { return await install(raw); } catch { return { state: "INVALID" }; }
-}
-
-async function bootstrapOfflineAuthorization(
-  baseUrl: string,
-  session: OperationalSession,
-  stage: (envelope: SignedAuthorizationBundle) => Promise<AuthorizationStageResult>,
-): Promise<PostLoginBootstrap["offlineAuthorization"]> {
-  let response: Response;
-  try {
-    response = await yetuFetch(
-      `${baseUrl.replace(/\/$/, "")}/api/v1/pos/terminals/${encodeURIComponent(session.terminalId)}/offline-leases`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${session.token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ staffId: session.staffId }),
-      },
-    );
-  } catch {
-    return { state: "UNAVAILABLE" };
-  }
-
-  if (response.status === 401) throw new SessionExpiredError();
-  if (response.status === 404 || response.status === 501) {
-    return { state: "BACKEND_GAP" };
-  }
-  if (!response.ok) return { state: "UNAVAILABLE" };
-
-  let raw: unknown;
-  try {
-    raw = await response.json();
-  } catch {
-    return { state: "UNAVAILABLE" };
-  }
-  if (!isSignedAuthorizationBundle(raw)) return { state: "UNAVAILABLE" };
-  try {
-    return await stage(raw);
-  } catch {
-    return { state: "INVALID" };
-  }
-}
-
-function isSignedAuthorizationBundle(value: unknown): value is SignedAuthorizationBundle {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<SignedAuthorizationBundle>;
-  return (
-    typeof (candidate.kid??(candidate as unknown as {keyId?:string}).keyId) === "string" &&
-    typeof candidate.payloadB64 === "string" &&
-    candidate.payloadB64.length > 0 &&
-    typeof candidate.signatureB64 === "string" &&
-    candidate.signatureB64.length > 0
-  );
-}
-
-function isSignedCatalogSnapshot(value: unknown): value is SignedCatalogSnapshot {
-  if (!value || typeof value !== "object") return false;
-  const candidate=value as Partial<SignedCatalogSnapshot>;
-  return typeof (candidate.kid??(candidate as unknown as {keyId?:string}).keyId)==="string"&&typeof candidate.digest==="string"&&candidate.digest.length===64&&typeof candidate.payloadB64==="string"&&candidate.payloadB64.length>0&&typeof candidate.signatureB64==="string"&&candidate.signatureB64.length>0;
-}

@@ -1,3 +1,4 @@
+import { amountRow } from "../print/billColumns";
 import { printBrandFooter } from "../print/printBrand";
 import { formatMoney } from "./money";
 import { orderName, orderReference } from "./orderNumber";
@@ -80,18 +81,18 @@ export function formatRefundReceipt(refund: RefundReceiptCopy): string {
     .join("\n");
 
   const lines = refund.lines
-    .map((line) => `${(line.quantity.trim() || "1").padStart(3, " ")}  ${line.name}${line.total ? `  ${line.total}` : ""}`)
+    .map((line) => { const row = `${(line.quantity.trim() || "1").padStart(3, " ")}  ${line.name}`; return line.total ? amountRow(row, line.total) : row; })
     .join("\n");
 
   const totals = [
-    refund.discount ? `Less the order's discount  ${refund.discount}` : null,
-    refund.total ? `Given back  ${refund.total}` : null,
-    refund.tax ? `VAT included  ${refund.tax}` : null,
+    refund.discount ? amountRow("Less the order's discount", refund.discount) : null,
+    refund.total ? amountRow("Given back", refund.total) : null,
+    refund.tax ? amountRow("VAT included", refund.tax) : null,
   ]
     .filter(Boolean)
     .join("\n");
 
-  const how = refund.tenders.map((tender) => `${tender.words}  ${tender.amount}`).join("\n");
+  const how = refund.tenders.map((tender) => amountRow(tender.words, tender.amount)).join("\n");
 
   const who = [
     refund.reason ? `Reason: ${refund.reason}` : null,

@@ -248,7 +248,7 @@ export function CashView({
                   />
                 ) : (
                   movements.map((entry) => {
-                    const who = nameOf(entry.recordedBy);
+                    const who = entry.recordedByName?.trim() || nameOf(entry.recordedBy);
                     const when = entry.createdAt ? clockTime(entry.createdAt) : "";
                     return (
                       <ListRow

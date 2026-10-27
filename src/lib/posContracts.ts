@@ -229,6 +229,8 @@ export interface POSCategory {
 }
 
 export interface POSCatalog {
+  /** This session sees only the orders it took (no read_all, and the outlet's switch is on). */
+  ownOrdersOnly?: boolean;
   askForTable?: boolean;
   captureGuestCount?: boolean;
   standardFloat?: number;
@@ -273,12 +275,16 @@ export interface POSCashMovement {
   amountMinor: number;
   reason: string;
   recordedBy: string;
+  /** Who recorded it, by name (fbc-peak F-272). */
+  recordedByName?: string;
+  /** Who approved a cash out, by name; never their id (2026-10-27). */
+  authorizedByName?: string;
   createdAt: string;
 }
 
+/** A room an order can be charged to: never the room's own id or the guest's bill (2026-10-27). */
 export interface POSRoomChargeCandidate {
   stayId: string;
-  roomId: string;
   roomNumber: string;
   guestDisplayName: string;
   postingEligible: boolean;
@@ -302,12 +308,9 @@ export interface POSReceiptDocument {
   dailyNumber?: number;
   businessDate: string;
   propertyName: string;
-  outletId: string;
   outletName: string;
-  terminalId: string;
-  initiatedById: string;
+  /** People come by name only; the till and outlet ids are not on it (2026-10-27). */
   initiatedByName: string;
-  operatorId: string;
   operatorName?: string;
   serviceType: ServiceType;
   tableLabel?: string;
@@ -379,7 +382,6 @@ export interface POSKitchenReprint {
 export type RefundMethod = PaymentMethod | "ROOM_CHARGE";
 
 export interface POSRefundLine {
-  id: string;
   orderItemId: string;
   name: string;
   quantity: number;
@@ -394,12 +396,9 @@ export interface POSRefundLine {
 }
 
 export interface POSRefundTender {
-  id: string;
   paymentId: string;
   paymentMethod: RefundMethod;
   amountMinor: number;
-  /** ROOM_CHARGE only: the reversal line posted on the guest's bill. */
-  folioItemId?: string;
 }
 
 /** POSRefund: one refund as given. */
@@ -408,15 +407,11 @@ export interface POSRefund {
   orderId: string;
   orderNumber: string;
   dailyNumber: number;
-  outletId: string;
-  shiftId: string;
-  terminalId: string;
   /** The refunding shift's business date: reports count the refund on this day. */
   businessDate: string;
   reason: string;
-  initiatedById: string;
+  /** Who asked and who approved, by name; never their ids, the till, shift or outlet (2026-10-27). */
   initiatedByName: string;
-  authorizedById: string;
   authorizedByName: string;
   netMinor: number;
   discountMinor: number;
@@ -426,8 +421,6 @@ export interface POSRefund {
   createdAt: string;
   lines: POSRefundLine[];
   tenders: POSRefundTender[];
-  /** The REFUND_RECEIPT print job; on the response that gave the refund. */
-  receiptJobId?: string;
 }
 
 /** listPOSOrderRefunds: what was given back on an order, and what is left to give. */

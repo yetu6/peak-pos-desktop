@@ -6,6 +6,7 @@ import { DeviceSessionProvider, useDeviceSession } from "../auth/DeviceSessionPr
 import { generateDeviceKeyPair } from "../lib/deviceCrypto";
 import type { SecretStore } from "../lib/deviceIdentity";
 import type { OfflineAuthority } from "../lib/offlineAuthorization";
+import type { LocalPosCore } from "../lib/localPosCore";
 import { clearOperationalSession } from "../lib/operationalSession";
 import { PinUnlock } from "./PinUnlock";
 
@@ -55,7 +56,6 @@ function fakeYetu(people: Person[]) {
         staff: people.map((person) => ({
           id: person.id,
           displayName: person.displayName,
-          staffSuffix: person.id.slice(-3),
           needsSetup: Boolean(person.setupCode),
         })),
       });
@@ -69,9 +69,9 @@ function fakeYetu(people: Person[]) {
     }
     if (url.endsWith("/pos/device/roster/events")) return answer(503, { code: "REALTIME_UNAVAILABLE" });
     if (url.endsWith("/pos/catalog")) return answer(200, { outletId: "o1", outletName: "Restaurant", products: [] });
-    if (url.endsWith("/pos/orders?active=true")) return answer(200, []);
-    // The signed offline permission for the person signing in, which the till keeps sealed.
-    if (url.endsWith("/offline-leases")) return answer(201, { keyId: "key-1", payloadB64: "bGVhc2U", signatureB64: "c2ln" });
+    // The offline start-up for the person signing in, which the till keeps sealed (POST /pos/offline/bootstrap).
+    if (url.endsWith("/pos/offline/bootstrap")) return answer(201, { keyset: {}, catalog: {}, authorization: {} });
+    if (url.endsWith("/pos/offline/catalog-acknowledge")) return answer(204, null);
     if (url.includes("/heartbeat")) return answer(204, null);
     throw new Error(`unexpected fetch: ${url}`);
   });
@@ -127,7 +127,7 @@ function Probe() {
   );
 }
 
-async function openTill(people: Person[], offlineAuthority?: OfflineAuthority) {
+async function openTill(people: Person[], offlineAuthority?: OfflineAuthority, localPosCore?: LocalPosCore) {
   const yetu = fakeYetu(people);
   vi.stubGlobal("fetch", yetu.send);
   const keys = await generateDeviceKeyPair();
@@ -136,7 +136,7 @@ async function openTill(people: Person[], offlineAuthority?: OfflineAuthority) {
   );
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <DeviceSessionProvider store={store} baseUrl="https://api.yetu.test" applyOpsToken={async () => undefined} offlineAuthority={offlineAuthority}>
+      <DeviceSessionProvider store={store} baseUrl="https://api.yetu.test" applyOpsToken={async () => undefined} offlineAuthority={offlineAuthority} localPosCore={localPosCore}>
         <Probe />
         <PinUnlock />
       </DeviceSessionProvider>
@@ -271,7 +271,15 @@ describe("a new person at the till", () => {
       authenticateStaff,
       eligibilityStatus: vi.fn(async () => ({ state: "ELIGIBLE" as const })),
     };
-    await openTill([{ ...NEEMA }], offline);
+    // The native store installs the start-up Yetu sends and stages the person's offline permission.
+    const core = {
+      retrySync: vi.fn(async () => undefined),
+      installBootstrap: vi.fn(async () => ({
+        authorization: { state: "STAGED" as const, hardExpiresAt: Date.now() + 3_600_000, staffCount: 1, catalogVersion: "v1", catalogDigest: "a".repeat(64), prerequisite: null },
+        catalog: { state: "ACTIVE" as const, snapshotId: "snapshot-1", version: "v1", digest: "a".repeat(64), productCount: 0 },
+      })),
+    } as unknown as LocalPosCore;
+    await openTill([{ ...NEEMA }], offline, core);
     await userEvent.click(screen.getByTestId("roster-entry-staff-neema-002"));
     await tapDigits("246810");
     await eventually(() => expect(heading()).toHaveTextContent("Choose your own six-digit PIN"));

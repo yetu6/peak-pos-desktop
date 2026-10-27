@@ -234,9 +234,9 @@ export function RefundItemsSheet({
   const title = stage === "done" ? "Refund given" : `Refund items · ${orderName(order)}`;
   const description =
     stage === "build"
-      ? "Choose what goes back. Yetu works out the money; a different person approves it."
+      ? "Choose what goes back. Yetu works out the money; a different supervisor approves it."
       : stage === "approve"
-        ? "A different person who may approve refunds enters their PIN."
+        ? "A different supervisor approves with their PIN."
         : undefined;
 
   const footer =

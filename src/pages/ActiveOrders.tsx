@@ -7,6 +7,7 @@ import {
   useCatalogCurrency,
   useHasPermission,
   useOrder,
+  useOwnOrdersOnly,
   usePosShift,
   useStationTickets,
 } from "../hooks/usePosData";
@@ -52,6 +53,7 @@ export function ActiveOrders({
   const tickets = useStationTickets(true);
   const canSend = useHasPermission("pos.order.send");
   const canPay = useHasPermission("pos.payment.record");
+  const ownOnly = useOwnOrdersOnly();
   const [tab, setTab] = useState<OrdersTab>("open");
   const [query, setQuery] = useState("");
   const [overlay, setOverlay] = useState<Overlay>(null);
@@ -154,6 +156,7 @@ export function ActiveOrders({
         openState={{ loading: orders.isLoading, failed: orders.isError, onRetry: () => void orders.refetch() }}
         paidState={{ loading: paid.isLoading, failed: paid.isError, onRetry: paid.refetch }}
         notice={notice}
+        ownOnly={ownOnly}
       />
 
       {overlay?.kind === "detail" && current ? (

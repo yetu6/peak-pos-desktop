@@ -3,7 +3,7 @@ import { printBrandFooter } from "../print/printBrand";
 import { guestCountWords } from "./words";
 import { kitchenTicketTitle, productionGroups, type Fulfilment } from "../print/kitchenTicket";
 import { orderName } from "./orderNumber";
-import { dateTimeWords, placeWords, serviceTypeWords } from "./words";
+import { clockTime, dateTimeWords, placeWords, serviceTypeWords } from "./words";
 import { stationWords } from "../kitchen/kitchenWords";
 import type { ServiceType } from "./posContracts";
 export interface KitchenTicketLine {
@@ -34,6 +34,8 @@ export interface KitchenTicketCopy {
   station?: string;
   notes?: string;
   waiterName?: string;
+  /** Who sent it, when that is not the person who took the order. */
+  sentByName?: string;
   sentAt?: string;
   status?: string;
   lines: KitchenTicketLine[];
@@ -44,6 +46,12 @@ export interface PrintResult {
   error?: string;
   /** Which paper: a void reports its own slips, not an older ticket waiting on the same order. */
   jobType?: string;
+}
+
+/** "14:05" for a moment, or a time already written that way; nothing for anything else. */
+function sentTime(value: string | undefined): string {
+  if (!value) return "";
+  return clockTime(value) || (/^\d{1,2}:\d{2}$/.test(value.trim()) ? value.trim() : "");
 }
 
 export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
@@ -67,10 +75,11 @@ export function formatKitchenTicket(ticket: KitchenTicketCopy): string {
       .filter(Boolean)
       .join("  "),
     ticket.guestCount ? guestCountWords(ticket.guestCount) : null,
-    ticket.waiterName ? `Waiter ${ticket.waiterName}` : null,
-    ticket.sentAt ? `Sent ${ticket.sentAt}` : null,
+    // As on the thermal paper: who took the order, who sent it, and when, as a clock time (never the API's timestamp).
+    ticket.waiterName ? `Taken by ${ticket.waiterName}` : null,
+    ticket.sentByName && ticket.sentByName !== ticket.waiterName ? `Sent by ${ticket.sentByName}` : null,
+    sentTime(ticket.sentAt) ? `Sent ${sentTime(ticket.sentAt)}` : null,
     ticket.notes?.trim() ? `Notes ${ticket.notes.trim()}` : null,
-    ticket.status ? `Status ${ticket.status}` : null,
   ]
     .filter((line) => line && line.length > 0)
     .join("\n");

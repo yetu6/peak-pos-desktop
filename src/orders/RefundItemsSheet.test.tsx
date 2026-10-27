@@ -148,14 +148,9 @@ function given(refund: Partial<POSRefund> = {}): POSRefund {
     orderId: "order-7",
     orderNumber: "POS-a3f90c14",
     dailyNumber: 7,
-    outletId: "outlet-1",
-    shiftId: "shift-1",
-    terminalId: "till-1",
     businessDate: "2026-10-18",
     reason: "Cold or not as ordered",
-    initiatedById: "staff-amina",
     initiatedByName: "Amina Hassan",
-    authorizedById: "staff-grace",
     authorizedByName: "Grace Mushi",
     netMinor: 500_000,
     discountMinor: 0,
@@ -164,7 +159,7 @@ function given(refund: Partial<POSRefund> = {}): POSRefund {
     currency: "TZS",
     createdAt: "2026-10-18T15:40:00Z",
     lines: [],
-    tenders: [{ id: "t-1", paymentId: "pay-cash", paymentMethod: "CASH", amountMinor: 590_000 }],
+    tenders: [{ paymentId: "pay-cash", paymentMethod: "CASH", amountMinor: 590_000 }],
     ...refund,
   };
 }
@@ -412,7 +407,7 @@ describe("Refund items: a supervisor approves", () => {
     await chooseChipsAndReason();
     await approveAsGrace();
     await userEvent.click(screen.getByTestId("refund-give"));
-    expect(screen.getByTestId("refund-error")).toHaveTextContent("That PIN wasn't accepted, or they can't approve refunds.");
+    expect(screen.getByTestId("refund-error")).toHaveTextContent("Their PIN wasn't accepted, or they can't approve refunds.");
     expect(screen.getByTestId("refund-give")).toBeDisabled();
     for (const digit of "654321") await userEvent.click(screen.getByTestId(`refund-pin-key-${digit}`));
     await userEvent.click(screen.getByTestId("refund-give"));

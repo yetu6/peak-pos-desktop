@@ -15,3 +15,9 @@ export function billItemColumns(lines: readonly { name: string; quantity: string
   }
   return rows;
 }
+
+/** A total's row as the thermal paper has it: the words at the left, the money at the right edge of the same width as the item rows above. */
+export function amountRow(label: string, amount: string, width: PaperWidth = 48): string {
+  const gap = width - label.length - amount.length;
+  return gap >= 2 ? `${label}${" ".repeat(gap)}${amount}` : `${label}  ${amount}`;
+}

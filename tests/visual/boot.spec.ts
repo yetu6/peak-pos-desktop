@@ -28,10 +28,24 @@ for (const { name, storage, theme, background } of CASES) {
     const painted = await page.evaluate(() => ({
       classes: [...document.body.classList].sort(),
       background: getComputedStyle(document.documentElement).backgroundColor,
-      appRan: (document.getElementById("root")?.childElementCount ?? 0) > 0,
+      appRan: document.getElementById("yetu-start") === null,
+      startText: document.getElementById("yetu-start")?.textContent ?? "",
+      startColour: getComputedStyle(document.getElementById("yetu-start")!).backgroundColor,
+      markShown: (document.querySelector<HTMLImageElement>("#yetu-start img")?.getBoundingClientRect().width ?? 0) > 0,
     }));
     expect(painted.appRan).toBe(false);
     expect(painted.classes).toEqual(theme === "dark" ? ["dark", "dark-theme"] : ["light-theme"]);
     expect(painted.background).toBe(background);
+    // The start screen itself is painted in the theme's canvas, never white, with the mark and the words.
+    expect(painted.startColour).toBe(background);
+    expect(painted.startText).toContain("Starting Yetu");
+    expect(painted.markShown).toBe(true);
+    await page.screenshot({ path: `visual-output/start-screen-${theme}-${name.replace(/\W+/g, "-")}.png` });
   });
 }
+
+test("React replaces the start screen when it mounts", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => document.getElementById("yetu-start") === null, undefined, { timeout: 30_000 });
+  expect(await page.evaluate(() => (document.getElementById("root")?.childElementCount ?? 0) > 0)).toBe(true);
+});

@@ -328,6 +328,7 @@ describe("NewOrder", () => {
       permissions: [
         "pos.shift.open",
         "pos.shift.close",
+        "pos.order.read_all",
         "pos.order.create",
         "pos.order.item.add",
         "pos.order.send",
@@ -1110,6 +1111,24 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
     // The second waited for the first, and was sent on the order as the first left it.
     const versions = addItemSpy.mock.calls.map((call) => (call as unknown[]).find((arg) => typeof arg === "object" && arg !== null && "version" in arg));
     expect(versions.map((body) => (body as { version: number }).version)).toEqual([1, 2]);
+  });
+
+  it("a tap on a dish with choices, while the last add is still with Yetu, opens its choices when that add is done: never lost", async () => {
+    let answer = () => {};
+    const held = new Promise<void>((resolve) => (answer = resolve));
+    addItemSpy.mockImplementation(async () => {
+      await held;
+      return { data: { ...OPEN_ORDER, version: 2, items: [{ ...OPEN_ORDER.items[0], id: "item-2", name: "Tusker Lager" }] }, error: null } as never;
+    });
+    renderNewOrder();
+    const beer = await screen.findByTestId("menu-Tusker Lager");
+    await waitFor(() => expect(beer).toBeEnabled());
+    fireEvent.click(beer);
+    await waitFor(() => expect(addItemSpy).toHaveBeenCalledTimes(1));
+    // The next tap comes before Yetu has answered the first: a burger asks how it is cooked.
+    fireEvent.click(await screen.findByTestId("menu-House burger"));
+    answer();
+    expect(await screen.findByTestId("modifier-dialog")).toBeInTheDocument();
   });
 
   // F-247: on Bahari's till a tap showed nothing on the ticket for one or two

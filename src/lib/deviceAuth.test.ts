@@ -21,10 +21,10 @@ describe("Go POS device authentication", () => {
 
   it("sends the device credential and exposes only the minimal roster, with who is new", async () => {
     const fetchMock = vi.fn(async () => response({ challengeId: "c1", nonce, expiresAt: "2026-08-25T13:00:00Z", staff: [
-      { id: "s1", displayName: "Amina", staffSuffix: "001", needsSetup: false },
-      { id: "s2", displayName: "Neema", staffSuffix: "002", needsSetup: true },
+      { id: "s1", displayName: "Amina", needsSetup: false },
+      { id: "s2", displayName: "Neema", needsSetup: true },
       // An older Yetu sends no needsSetup at all.
-      { id: "s3", displayName: "Baraka", staffSuffix: "003" },
+      { id: "s3", displayName: "Baraka" },
     ] }, 201));
     vi.stubGlobal("fetch", fetchMock);
     expect(await fetchStaffRoster("https://api.peak.localhost", "terminal-1", "secret")).toEqual([

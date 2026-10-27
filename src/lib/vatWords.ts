@@ -47,3 +47,12 @@ export function vatFigures(order: PricedOrder): VatFigures {
     totalMinor: order.totalMinor,
   };
 }
+
+/**
+ * One line's price as the guest reads it, so the lines add up to the figure under them: with VAT inside the
+ * prices, the line at its menu price (which holds its VAT); with VAT on top, the line without it, because the
+ * Subtotal under them leaves VAT out and the VAT row adds it. Yetu's line total always holds the line's VAT.
+ */
+export function lineAmountMinor(pricesIncludeTax: boolean | undefined, line: { totalMinor: number; taxMinor?: number }): number {
+  return pricesIncludeTax ? line.totalMinor : line.totalMinor - (line.taxMinor ?? 0);
+}

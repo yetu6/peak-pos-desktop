@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { ticketCopyFromPrintDocument } from "./printJobs";
 import {
   formatKitchenTicket,
   printKitchenTicket,
@@ -7,6 +8,25 @@ import {
 } from "./kitchenTicketPrint";
 
 describe("kitchen ticket print", () => {
+  it("says who took the order and when it was sent as the thermal paper does: a clock time, never a timestamp or a code", () => {
+    // 14:05 on the till's own clock (CI runs in UTC, the till formats in local time).
+    const sentAt = new Date(2026, 9, 27, 14, 5).toISOString();
+    const text = formatKitchenTicket(
+      ticketCopyFromPrintDocument({
+        station: "KITCHEN",
+        dailyNumber: 6,
+        waiterName: "Amina Hassan",
+        sentByName: "Baraka Mushi",
+        sentAt,
+        items: [{ name: "Pilau", quantity: 1 }],
+      }),
+    );
+    expect(text).toContain("Taken by Amina Hassan");
+    expect(text).toContain("Sent by Baraka Mushi");
+    expect(text).toContain("Sent 14:05");
+    expect(text).not.toMatch(/Waiter|T\d\d:\d\d|\+00:00|Status/);
+  });
+
   it("formats Peak ticket lines without computing prices or tax", () => {
     const text = formatKitchenTicket({
       ticketNumber: "KT-12",

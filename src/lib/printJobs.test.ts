@@ -90,10 +90,13 @@ const YETU_RECEIPT: POSPrintJob = {
 describe("printJobs: Yetu's receipt as a guest reads it", () => {
   it("prints money as money, never the minor units Yetu sends", () => {
     const { text } = formatPrintDocument(YETU_RECEIPT);
-    expect(text).toContain("TSh 11,800");
-    expect(text).toContain("Subtotal  TSh 11,500");
-    expect(text).toContain("VAT  TSh 2,070");
-    expect(text).toContain("TOTAL  TSh 13,570");
+    // VAT on top: each line without its VAT, so the lines (10,000 + 1,500) add up to the Subtotal under them.
+    expect(text).toContain("TSh 10,000");
+    expect(text).toContain("TSh 1,500");
+    expect(text).not.toContain("TSh 11,800");
+    expect(text).toMatch(/^Subtotal {2,}TSh 11,500$/m);
+    expect(text).toMatch(/^VAT {2,}TSh 2,070$/m);
+    expect(text).toMatch(/^TOTAL {2,}TSh 13,570$/m);
     expect(text).not.toMatch(/1180000|1357000|207000/);
   });
 
@@ -150,10 +153,10 @@ describe("printJobs: a refund receipt", () => {
 
   it("says what was given back, how, why, and who asked and approved", () => {
     const { text } = formatPrintDocument(YETU_REFUND_RECEIPT);
-    expect(text).toMatch(/1 {2}Chips {2}TSh 5,900/);
-    expect(text).toContain("Given back  TSh 5,900");
-    expect(text).toContain("VAT included  TSh 900");
-    expect(text).toContain("Cash  TSh 5,900");
+    expect(text).toMatch(/^ {2}1 {2}Chips {2,}TSh 5,900$/m);
+    expect(text).toMatch(/^Given back {2,}TSh 5,900$/m);
+    expect(text).toMatch(/^VAT included {2,}TSh 900$/m);
+    expect(text).toMatch(/^Cash {2,}TSh 5,900$/m);
     expect(text).toContain("Reason: Cold when served");
     expect(text).toContain("Asked by Amina Juma");
     expect(text).toContain("Approved by Baraka Mushi");
@@ -166,7 +169,7 @@ describe("printJobs: a refund receipt", () => {
       ...YETU_REFUND_RECEIPT,
       document: { ...YETU_REFUND_RECEIPT.document, tenders: [{ paymentMethod: "ROOM_CHARGE", amountMinor: 590_000 }] },
     });
-    expect(text).toContain("Taken off the room bill  TSh 5,900");
+    expect(text).toMatch(/^Taken off the room bill {2,}TSh 5,900$/m);
   });
 
   it("shows the discount share when the order had a discount", () => {
@@ -174,7 +177,7 @@ describe("printJobs: a refund receipt", () => {
       ...YETU_REFUND_RECEIPT,
       document: { ...YETU_REFUND_RECEIPT.document, discountMinor: 50_000, netMinor: 450_000, taxMinor: 81_000, totalMinor: 531_000 },
     });
-    expect(text).toContain("Less the order's discount  TSh 500");
+    expect(text).toMatch(/^Less the order's discount {2,}TSh 500$/m);
   });
 });
 
@@ -206,12 +209,12 @@ describe("printJobs", () => {
     });
     expect(formatted.title).toBe("yetu-bill");
     // A paid order's bill, printed again on request (2026-10-20); nothing about TRA on it (the owner).
-    expect(formatted.text).toContain("BILL · PAID");
+    expect(formatted.text).toContain("BILL - PAID");
     expect(formatted.text).not.toContain("INVOICE");
     expect(formatted.text).not.toMatch(/TRA|tax receipt/);
     expect(formatted.text).toContain("POS-1");
-    expect(formatted.text).toContain("TOTAL  23.60");
-    expect(formatted.text).toContain("VAT  3.60");
+    expect(formatted.text).toMatch(/^TOTAL {2,}23\.60$/m);
+    expect(formatted.text).toMatch(/^VAT {2,}3\.60$/m);
   });
 
   it("falls back to the generic ticket formatter for an unrecognized job type instead of dropping it", () => {
@@ -472,7 +475,7 @@ describe("printJobs: receipts on a thermal printer, the cash drawer (S8b)", () =
     const plain = await printed(job("BILL", BILL_DOCUMENT), true, null);
     expect(plain.raw).toEqual([]);
     expect(plain.text[0]).toContain("BILL\nOrder 7");
-    expect(plain.text[0]).toContain("TO PAY  TSh 5,820");
+    expect(plain.text[0]).toMatch(/^TO PAY {2,}TSh 5,820$/m);
   });
 
   it("a card sale opens no drawer; a split with a cash part does", async () => {
@@ -496,7 +499,7 @@ describe("printJobs: receipts on a thermal printer, the cash drawer (S8b)", () =
   it("with no receipt printer chosen, receipts print as text on this computer's printer, as before", async () => {
     const { raw, text } = await printed(job("RECEIPT", SALE), true, null);
     expect(raw).toEqual([]);
-    expect(text[0]).toContain("Discount (Regular guest)  -TSh");
+    expect(text[0]).toMatch(/Discount \(Regular guest\) {2,}-TSh/);
   });
 });
 

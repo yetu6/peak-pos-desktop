@@ -636,12 +636,6 @@ export function DeviceSessionProvider({
           installOfflineBootstrap: localPosCoreRef.current
             ? (terminalId, propertyId, outletId, bootstrap) => localPosCoreRef.current!.installBootstrap(terminalId, propertyId, outletId, bootstrap)
             : undefined,
-          stageOfflineAuthorization: offlineAuthorityRef.current
-            ? (envelope) => offlineAuthorityRef.current!.stageAuthorization(envelope)
-            : undefined,
-          installCatalogSnapshot: localPosCoreRef.current
-            ? (envelope) => localPosCoreRef.current!.installCatalog(envelope)
-            : undefined,
         });
         // A terminal can be fully, legitimately ONLINE-only — no shift open
         // yet, a momentary hiccup fetching the lease, or a property that has

@@ -127,6 +127,7 @@ export function ticketCopyFromPrintDocument(document: Record<string, unknown>): 
     station: typeof document.station === "string" ? document.station : undefined,
     notes: typeof document.notes === "string" ? document.notes : undefined,
     waiterName: typeof document.waiterName === "string" ? document.waiterName : undefined,
+    sentByName: typeof document.sentByName === "string" ? document.sentByName : undefined,
     sentAt: typeof document.sentAt === "string" ? document.sentAt : undefined,
     roundNumber: typeof document.roundNumber === "number" ? document.roundNumber : undefined,
     copy: document.copy === true,

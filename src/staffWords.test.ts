@@ -74,6 +74,31 @@ it("never says void in anything staff can read on screen", () => {
   expect(failures).toEqual([]);
 });
 
+/**
+ * Owner, 2026-10-20: Yetu prints a BILL, never a receipt (the restaurant's own EFD gives the tax receipt). Staff read
+ * "bill" on every screen; the only receipt they are told of is the EFD's.
+ */
+it("never calls Yetu's paper a receipt in anything staff can read on screen", () => {
+  const failures = files("src").flatMap((path) =>
+    readableStrings(path)
+      .filter((text) => /\breceipts?\b/i.test(text) && !codeName(text) && !/\b(?:RECEIPT|REFUND_RECEIPT)\b/.test(text) && !/\bEFD\b/.test(text))
+      .map((text) => `${path}: ${text}`),
+  );
+  expect(failures).toEqual([]);
+});
+
+/** Whoever the till asks to approve is a supervisor, and every refusal of their PIN reads the same way. */
+it("words a refused supervisor approval one way everywhere: a different supervisor must approve, their PIN wasn't accepted", () => {
+  const refusals = files("src").flatMap((path) =>
+    readableStrings(path)
+      .filter((text) => /\bapprove\b/.test(text) && /PIN wasn't accepted/.test(text))
+      .map((text) => `${path}: ${text}`),
+  );
+  expect(refusals.length, "the approval refusals are found").toBeGreaterThan(3);
+  for (const refusal of refusals) expect(refusal).toMatch(/Their PIN wasn't accepted, or they can't approve /);
+  expect(refusals.filter((refusal) => /person who may/.test(refusal))).toEqual([]);
+});
+
 // What fbc-peak writes for each paper (createVoidPrintJobs 00125, kitchen rounds, bills, refunds).
 const SLIP = {
   orderNumber: "POS-MAIN-261021-1", dailyNumber: 1, station: "BAR", voidedAt: "2026-10-21T08:30:00Z", tableLabel: "7",

@@ -1,9 +1,9 @@
-import { billItemColumns } from "../print/billColumns";
+import { amountRow, billItemColumns } from "../print/billColumns";
 import { PAPER_WORDS } from "../print/paperWords";
 import { printBrandFooter } from "../print/printBrand";
 import { guestCountWords } from "./words";
 import { formatMoney } from "./money";
-import { vatFigures } from "./vatWords";
+import { lineAmountMinor, vatFigures } from "./vatWords";
 import { orderName, orderReference } from "./orderNumber";
 import { dateTimeWords, paymentMethodWords, placeWords, type SettlementMethod } from "./words";
 /**
@@ -107,7 +107,11 @@ export function receiptCopyFromPrintDocument(document: Record<string, unknown>, 
             {
               name: row.name,
               quantity: String(row.quantity ?? "1"),
-              total: amountWords(row.total, row.totalMinor, currency),
+              // As on screen: the line adds up to the Subtotal under it (lineAmountMinor).
+              total:
+                typeof row.total !== "string" && typeof row.totalMinor === "number"
+                  ? formatMoney(lineAmountMinor(document.pricesIncludeTax === true, { totalMinor: row.totalMinor, taxMinor: typeof row.taxMinor === "number" ? row.taxMinor : 0 }), currency)
+                  : amountWords(row.total, row.totalMinor, currency),
             },
           ];
         })
@@ -228,7 +232,7 @@ export function formatReceipt(receipt: ReceiptCopy): string {
     receipt.copy ? "*** COPY ***" : null,
     receipt.copy && receipt.printedAgainAt ? `Printed again ${receipt.printedAgainAt}` : null,
     receipt.copy && receipt.printedAgainByName ? `by ${receipt.printedAgainByName}` : null,
-    receipt.beforePayment ? BILL_HEADING : `${BILL_HEADING} · PAID`,
+    receipt.beforePayment ? BILL_HEADING : `${BILL_HEADING} - PAID`,
     receipt.dailyNumber || receipt.orderNumber ? orderName(receipt) : "order",
     orderReference(receipt) ? `Ref ${orderReference(receipt)}` : null,
     [
@@ -251,12 +255,12 @@ export function formatReceipt(receipt: ReceiptCopy): string {
   const lines = billItemColumns(receipt.lines, 48).join("\n");
 
   const totals = [
-    receipt.subtotal ? `${receipt.vatIncluded ? "Items" : "Subtotal"}  ${receipt.subtotal}` : null,
-    receipt.discount ? `${receipt.discountReason ? `Discount (${receipt.discountReason})` : "Discount"}  -${receipt.discount}` : null,
-    receipt.taxAmount ? `${receipt.vatIncluded ? "VAT included" : "VAT"}  ${receipt.taxAmount}` : null,
-    receipt.totalAmount ? `TOTAL  ${receipt.totalAmount}` : null,
-    receipt.paidAlready ? `Paid already  ${receipt.paidAlready}` : null,
-    receipt.toPay ? `TO PAY  ${receipt.toPay}` : null,
+    receipt.subtotal ? amountRow(receipt.vatIncluded ? "Items" : "Subtotal", receipt.subtotal) : null,
+    receipt.discount ? amountRow(receipt.discountReason ? `Discount (${receipt.discountReason})` : "Discount", `-${receipt.discount}`) : null,
+    receipt.taxAmount ? amountRow(receipt.vatIncluded ? "VAT included" : "VAT", receipt.taxAmount) : null,
+    receipt.totalAmount ? amountRow("TOTAL", receipt.totalAmount) : null,
+    receipt.paidAlready ? amountRow("Paid already", receipt.paidAlready) : null,
+    receipt.toPay ? amountRow("TO PAY", receipt.toPay) : null,
   ]
     .filter(Boolean)
     .join("\n");

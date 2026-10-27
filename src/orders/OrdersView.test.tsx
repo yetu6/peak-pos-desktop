@@ -240,3 +240,39 @@ describe("OrdersView: refunds on the paid list (S10a)", () => {
     expect(screen.getByTestId("order-state-0139")).not.toHaveTextContent(/refunded/i);
   });
 });
+
+describe("OrdersView: a waiter sees only their own orders (owner, 2026-10-27)", () => {
+  it("names the lists as the person's own, and keeps the others' words for a cashier", () => {
+    const { unmount } = render(<Harness ownOnly />);
+    expect(screen.getByRole("tab", { name: /Your open/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Your paid today/ })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Your open orders" })).toBeInTheDocument();
+    unmount();
+
+    render(<Harness />);
+    expect(screen.getByRole("tab", { name: /^Open/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^Paid today/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Your/)).not.toBeInTheDocument();
+  });
+
+  it("says on the Paid tab that it lists the orders they took", () => {
+    render(<Harness ownOnly tab="paid" />);
+    expect(screen.getByRole("region", { name: "Your paid orders today" })).toBeInTheDocument();
+    expect(screen.getByTestId("orders-caption")).toHaveTextContent("The orders you took, latest paid first · 1 shown");
+  });
+
+  it("has an empty state that fits each list", () => {
+    const { unmount } = render(<Harness ownOnly openOrders={[]} />);
+    expect(screen.getByText("You have no open orders")).toBeInTheDocument();
+    expect(screen.getByText("Orders you start on Sell appear here.")).toBeInTheDocument();
+    unmount();
+
+    const paid = render(<Harness ownOnly tab="paid" paidOrders={[]} />);
+    expect(screen.getByText("None of your orders are paid yet today")).toBeInTheDocument();
+    expect(screen.getByText("The orders you took appear here once they're paid.")).toBeInTheDocument();
+    paid.unmount();
+
+    render(<Harness tab="paid" paidOrders={[]} />);
+    expect(screen.getByText("No paid orders today yet")).toBeInTheDocument();
+  });
+});

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { POSOrder, POSOrderPage } from "../lib/posContracts";
 import { ORDER } from "../visual/registerData";
-import { listEveryPage } from "./orderPages";
+import { IncompleteOrdersError, listEveryPage, listWholeList } from "./orderPages";
 
 /**
  * Yetu's orders list pages by a cursor (fbc-peak orders_list.go): each page gives `nextCursor`, null on the last.
@@ -57,5 +57,17 @@ describe("listEveryPage", () => {
     yetu.fetchPage.mockImplementationOnce(async () => ({ items: yetu.orders.slice(0, 50), nextCursor: "after-50" }));
     yetu.fetchPage.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     await expect(listEveryPage(yetu.fetchPage, 10)).rejects.toThrow("Failed to fetch");
+  });
+});
+
+describe("listWholeList", () => {
+  it("gives every open order when the pages end", async () => {
+    const yetu = yetuPages(120, 50);
+    await expect(listWholeList(yetu.fetchPage, 3)).resolves.toHaveLength(120);
+  });
+
+  it("refuses a list cut at the ceiling rather than show part of it as all", async () => {
+    const yetu = yetuPages(160, 50);
+    await expect(listWholeList(yetu.fetchPage, 3)).rejects.toBeInstanceOf(IncompleteOrdersError);
   });
 });
