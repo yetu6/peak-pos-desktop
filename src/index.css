@@ -79,6 +79,9 @@
 .brand-lockup { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .brand-lockup img { display: block; height: auto; }
 .brand-lockup .brand-lockup__on-dark { display: none; }
+/* The Yetu wordmark is always the blue one; on dark it sits on a light badge. */
+body.dark-theme .brand-lockup .brand-lockup__wordmark,
+.brand-lockup.brand-lockup--on-dark .brand-lockup__wordmark { background: #fff; border-radius: 6px; padding: 3px 8px; box-sizing: content-box; }
 body.dark-theme .brand-lockup .brand-lockup__on-light { display: none; }
 body.dark-theme .brand-lockup .brand-lockup__on-dark { display: block; }
 /* On the brand surface (the sign-in hotel pane) the on-dark set, whatever the theme. */

@@ -4,10 +4,34 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Yetu</title>
+    <style>
+      /* Start screen: painted from the HTML itself, before any script, so the
+         first frame is Yetu's and never white. React replaces it on mount. */
+      html { background: #eef1f6; }
+      #yetu-start { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+        background: #eef1f6; color: #10417c; font: 500 18px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      #yetu-start img { width: 96px; height: 96px; border-radius: 22px; display: block; }
+      #yetu-start p { margin: 0; }
+      #yetu-start .hint { font-size: 14px; font-weight: 400; opacity: .7; }
+      #yetu-start .bar { width: 120px; height: 3px; border-radius: 2px; background: rgba(16,65,124,.18); overflow: hidden; }
+      #yetu-start .bar::after { content: ""; display: block; width: 40%; height: 100%; background: #10417c; animation: yetu-start-bar 1.4s ease-in-out infinite; }
+      @keyframes yetu-start-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+      body.dark-theme #yetu-start { background: #0a1626; color: #e6edf7; }
+      body.dark-theme #yetu-start .bar { background: rgba(230,237,247,.2); }
+      body.dark-theme #yetu-start .bar::after { background: #e6edf7; }
+      @media (prefers-reduced-motion: reduce) { #yetu-start .bar::after { animation: none; width: 100%; opacity: .5; } }
+    </style>
   </head>
   <body>
     <script src="/theme-boot.js"></script>
-    <div id="root"></div>
+    <div id="root">
+      <div id="yetu-start" role="status">
+        <img src="/yetu-mark.png" alt="" width="96" height="96" />
+        <p>Starting Yetu…</p>
+        <div class="bar" aria-hidden="true"></div>
+        <p class="hint">Getting your till ready</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
