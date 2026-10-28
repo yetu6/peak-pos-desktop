@@ -29,6 +29,8 @@ export interface VoidSlipPaper {
   voidedAt?: string;
   /** The whole order was voided, not one item. */
   wholeOrder?: boolean;
+  /** A test business: the paper says TEST, top and bottom. */
+  testBusiness?: boolean;
   lines: { quantity: number; name: string; options: string[] }[];
 }
 
@@ -47,7 +49,7 @@ export function voidSlipWho(slip: Pick<VoidSlipPaper, "askedByName" | "approvedB
 }
 
 export function voidSlipBytes(slip: VoidSlipPaper, width: PaperWidth): Uint8Array {
-  const out = new EscPos(width).align("center").bold(true).line(voidSlipTitle(slip.station)).size(2, 2);
+  const out = new EscPos(width, slip.testBusiness === true).align("center").bold(true).line(voidSlipTitle(slip.station)).size(2, 2);
   const number = slip.dailyNumber ?? slip.orderNumber;
   out.line(number !== undefined ? `ORDER ${number}` : "ORDER");
   out.size(1, 2).line(slip.wholeOrder ? "WHOLE ORDER - DO NOT MAKE" : "DO NOT MAKE").size(1, 1);

@@ -1,6 +1,7 @@
 import { prepareBillBranding } from "../print/billBranding";
 import { rememberPreviewToken, previewTokenFor } from "../print/preparedPreview";
 import { cacheOutletOrderSettings } from "../lib/outletOrderSettings";
+import { cacheTestBusiness } from "../lib/testBusiness";
 import { cacheOutletMoney, cachedOutletMoney, moneySettingsFrom } from "../lib/outletMoneySettings";
 import type { FnbTillMenu } from "../fnb/fnbContracts";
 import type { PrintResult } from "../lib/kitchenTicketPrint";
@@ -135,6 +136,7 @@ export function useCatalog() {
       const catalog = await unwrap(createPosApi().getCatalog());
       cacheOutletMoney(propertyId ?? null, outletId ?? null, catalog);
       cacheOutletOrderSettings(propertyId ?? null, outletId ?? null, catalog);
+      cacheTestBusiness(propertyId ?? null, outletId ?? null, catalog?.testBusiness);
       return catalog;
     },
     retry: false,

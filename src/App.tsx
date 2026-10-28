@@ -4,6 +4,7 @@ import { DeviceSessionProvider, useDeviceSession } from "./auth/DeviceSessionPro
 import { AccessFrame } from "./access/AccessLayout";
 import { IdleLockOverlay } from "./components/IdleLockOverlay";
 import { KeyStorageBanner } from "./components/KeyStorageBanner";
+import { TestBusinessBanner } from "./components/TestBusinessBanner";
 import { UpdaterBanner } from "./components/UpdaterBanner";
 import { ActiveOrders } from "./pages/ActiveOrders";
 import { Kitchen } from "./pages/Kitchen";
@@ -54,6 +55,7 @@ function useClock(): string {
 function ShellBanners({ offlineCash = false, sync = null }: { offlineCash?: boolean; sync?: ReactNode }) {
   return (
     <>
+      <TestBusinessBanner />
       {sync}
       {offlineCash ? (
         <Banner tone="warning" data-testid="offline-banner">
@@ -269,6 +271,7 @@ function AuthGate() {
     <AccessFrame
       banners={
         <>
+          <TestBusinessBanner />
           <UpdaterBanner />
           <KeyStorageBanner />
         </>

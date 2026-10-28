@@ -17,6 +17,8 @@ import { paperFromPrintDocument, type KitchenPrintRoutes } from "../print/kitche
 import { stationCopiesFor, printerFor, stationPrintsNoPaper, type PrinterChoice, type PrinterTarget } from "../print/printerSettings";
 import { hotelHere, receiptPaperFor } from "../print/receiptRouting";
 import { cachedBillLogo } from "../print/billLogo";
+import { testBusinessNow } from "./testBusiness";
+import { markText } from "../print/testMark";
 import { preparedPaper } from "../print/preparedPreview";
 import { inspectNativePrint, nativePrintOnce, usesNativePrintJournal } from "../print/nativePrintJournal";
 import { yetuFetch } from "./yetuFetch";
@@ -262,16 +264,18 @@ export function paperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): TillPap
 export function buildPaperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): TillPaper {
   const route = paperRoute(job, routes);
   if (route.kind === "none") return route;
+  // Known once, from the catalogue this till last heard (kept for offline): a test business's papers say so.
+  const testBusiness = testBusinessNow();
   if (route.kind === "kitchen") {
     // A thermal printer of the kitchen's: the ticket in large type, with a cut (S8a).
     const { target, width } = route.printer;
     const bytes = job.jobType === KITCHEN_VOID
-      ? voidSlipBytes(voidSlipFromPrintDocument(job.document), width)
-      : kitchenTicketBytes(paperFromPrintDocument(job.document, routes?.tagsOf), width, routes?.settings);
+      ? voidSlipBytes({ ...voidSlipFromPrintDocument(job.document), testBusiness }, width)
+      : kitchenTicketBytes({ ...paperFromPrintDocument(job.document, routes?.tagsOf), testBusiness }, width, routes?.settings);
     const count = job.jobType === KITCHEN_TICKET && routes ? stationCopiesFor(routes.settings, typeof job.document.station === "string" ? job.document.station : undefined) : 1;
     if (count > 1 && bytes.length > 0) {
       const extra = Array.from({ length: count - 1 }, (_, n) =>
-        kitchenTicketBytes({ ...paperFromPrintDocument(job.document, routes?.tagsOf), extraCopy: { index: n + 2, of: count } }, width, routes?.settings));
+        kitchenTicketBytes({ ...paperFromPrintDocument(job.document, routes?.tagsOf), testBusiness, extraCopy: { index: n + 2, of: count } }, width, routes?.settings));
       const combined = new Uint8Array(bytes.length + extra.reduce((sum, page) => sum + page.length, 0));
       combined.set(bytes);
       let offset = bytes.length;
@@ -284,17 +288,17 @@ export function buildPaperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): Ti
   if (route.kind === "receipt") {
     // The thermal receipt printer: columns, a cut, and the cash drawer for cash on an original (S8b).
     const { target, width } = route.printer;
-    return { kind: "thermal", target, width, bytes: receiptPaperFor(copyDocument(job), width, routes?.settings.cashDrawer ?? false, formatted.text, route.printer.billLogo ? cachedBillLogo(routes?.settings.billLogoUrl, width) : undefined) };
+    return { kind: "thermal", target, width, bytes: receiptPaperFor(copyDocument(job), width, routes?.settings.cashDrawer ?? false, formatted.text, route.printer.billLogo ? cachedBillLogo(routes?.settings.billLogoUrl, width) : undefined, testBusiness) };
   }
   if (job.jobType === KITCHEN_TICKET && routes) {
     const count = stationCopiesFor(routes.settings, typeof job.document.station === "string" ? job.document.station : undefined);
     if (count > 1) {
       const extra = Array.from({ length: count - 1 }, (_, n) =>
         formatKitchenTicket({ ...ticketCopyFromPrintDocument(copyDocument(job).document), extraCopy: { index: n + 2, of: count } }));
-      return { kind: "system", title: formatted.title, text: [formatted.text, ...extra].join("\n\f\n") };
+      return { kind: "system", title: formatted.title, text: [formatted.text, ...extra].map((page) => markText(page, testBusiness)).join("\n\f\n") };
     }
   }
-  return { kind: "system", title: formatted.title, text: formatted.text };
+  return { kind: "system", title: formatted.title, text: markText(formatted.text, testBusiness) };
 }
 
 export async function processPrintJob(

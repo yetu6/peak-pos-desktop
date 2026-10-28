@@ -231,6 +231,8 @@ export interface POSCategory {
 export interface POSCatalog {
   /** This session sees only the orders it took (no read_all, and the outlet's switch is on). */
   ownOrdersOnly?: boolean;
+  /** A test business: its sales are not real (fbc-peak #320). Absent from an older Yetu. */
+  testBusiness?: boolean;
   askForTable?: boolean;
   captureGuestCount?: boolean;
   standardFloat?: number;
