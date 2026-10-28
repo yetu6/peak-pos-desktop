@@ -2,6 +2,7 @@ import { prepareBillBranding } from "../print/billBranding";
 import { rememberPreviewToken, previewTokenFor } from "../print/preparedPreview";
 import { cacheOutletOrderSettings } from "../lib/outletOrderSettings";
 import { cacheTestBusiness } from "../lib/testBusiness";
+import { rememberSampleFacts } from "../print/samplePapers";
 import { cacheOutletMoney, cachedOutletMoney, moneySettingsFrom } from "../lib/outletMoneySettings";
 import type { FnbTillMenu } from "../fnb/fnbContracts";
 import type { PrintResult } from "../lib/kitchenTicketPrint";
@@ -137,6 +138,9 @@ export function useCatalog() {
       cacheOutletMoney(propertyId ?? null, outletId ?? null, catalog);
       cacheOutletOrderSettings(propertyId ?? null, outletId ?? null, catalog);
       cacheTestBusiness(propertyId ?? null, outletId ?? null, catalog?.testBusiness);
+      // What Print sample papers shows the business: its money and its VAT rate, kept for offline.
+      const taxed = catalog?.products?.find((product) => product.taxRateBp > 0) ?? catalog?.products?.[0];
+      rememberSampleFacts(propertyId ?? null, outletId ?? null, { currency: taxed?.currency, vatRateBp: taxed?.taxRateBp });
       return catalog;
     },
     retry: false,
@@ -400,7 +404,13 @@ export function useFetchOrder() {
 export function useOrder(orderId: string | undefined) {
   return useQuery({
     queryKey: ["pos", "order", orderId],
-    queryFn: () => unwrap(createPosApi().getOrder(orderId!)),
+    queryFn: async () => {
+      const order = await unwrap(createPosApi().getOrder(orderId!));
+      // Whether this business's prices hold their VAT: Print sample papers shows it the same way.
+      const session = getOperationalSession();
+      rememberSampleFacts(session?.propertyId, session?.outletId, { pricesIncludeTax: order?.pricesIncludeTax === true });
+      return order;
+    },
     enabled: Boolean(orderId),
   });
 }

@@ -24,6 +24,7 @@ import { useRealtime } from "../realtime/RealtimeProvider";
 import { useHasPermission } from "../hooks/usePosData";
 import { PrintQueueCard } from "../print/PrintQueueCard";
 import { PrintersCard } from "../print/PrintersCard";
+import { SAMPLE_KINDS, printSamplesFromTill, type SampleKind, type SampleResult } from "../print/samplePapers";
 
 /** The updater's last outcome, in words. */
 function updateWords(note: UpdateNote | null): string {
@@ -216,6 +217,8 @@ export function Diagnostics() {
   const [checking, setChecking] = useState(false);
   const [testPrint, setTestPrint] = useState<{ ok: boolean; detail: string | null } | null>(null);
   const [testPrintBusy, setTestPrintBusy] = useState(false);
+  const [samples, setSamples] = useState<SampleReport | null>(null);
+  const [samplesBusy, setSamplesBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     setChecking(true);
@@ -247,8 +250,23 @@ export function Diagnostics() {
     setTestPrintBusy(false);
   }
 
+  async function runSamples(kinds: readonly SampleKind[]) {
+    setSamplesBusy(true);
+    setSamples(null);
+    try {
+      const done = await printSamplesFromTill(kinds);
+      setSamples(done.available ? { results: done.results } : { unavailable: done.words });
+    } catch (error) {
+      setSamples({ unavailable: `The sample papers didn't print (${error instanceof Error ? error.message : String(error)}).` });
+    }
+    setSamplesBusy(false);
+  }
+
   return (
     <StatusView
+      samples={samples}
+      samplesBusy={samplesBusy}
+      onPrintSamples={(kinds) => void runSamples(kinds)}
       checks={statusChecks({ online, peak, realtime: state.phase, printer, native, keyStorage })}
       canPrintTestPage={native && printer?.available === true}
       checking={checking}
@@ -265,7 +283,55 @@ export function Diagnostics() {
   );
 }
 
+/** What Print sample papers answered: a line for each paper, or why none could print. */
+export type SampleReport = { results: SampleResult[] } | { unavailable: string };
+
+/** Print sample papers: pick the papers (all ticked), print them on this till's real printers, read one line each. */
+function SamplePapers({ report, busy, onPrint }: { report: SampleReport | null; busy: boolean; onPrint: (kinds: readonly SampleKind[]) => void }) {
+  const [chosen, setChosen] = useState<readonly SampleKind[]>(SAMPLE_KINDS.map((entry) => entry.kind));
+  const toggle = (kind: SampleKind) => setChosen((now) => (now.includes(kind) ? now.filter((k) => k !== kind) : [...now, kind]));
+  return (
+    <section className="y-status__samples" aria-labelledby="diag-samples-title" data-testid="diag-samples">
+      <h2 id="diag-samples-title" className="y-status__name">
+        Sample papers
+      </h2>
+      <p className="y-status__fix">Prints each paper with made-up items, marked SAMPLE. Nothing is sold or saved, so the books stay clean.</p>
+      <ul className="y-status__sample-list" aria-label="Papers to print">
+        {SAMPLE_KINDS.map((entry) => (
+          <li key={entry.kind}>
+            <label className="y-status__sample-pick">
+              <input type="checkbox" checked={chosen.includes(entry.kind)} onChange={() => toggle(entry.kind)} data-testid={`diag-sample-${entry.kind}`} />
+              <span>{entry.label}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div className="y-status__print">
+        <Button icon={<Printer />} disabled={busy || chosen.length === 0} onClick={() => onPrint(chosen)}>
+          {busy ? "Sending…" : "Print sample papers"}
+        </Button>
+      </div>
+      {report && "unavailable" in report ? (
+        <p className="y-status__result" role="alert" data-testid="diag-samples-result">
+          {report.unavailable}
+        </p>
+      ) : report ? (
+        <ul className="y-status__sample-results" data-testid="diag-samples-result" aria-label="Sample paper results">
+          {report.results.map((result) => (
+            <li key={result.kind} className="y-status__result" role={result.ok ? "status" : "alert"} data-ok={result.ok}>
+              {result.label}: {result.words}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 export interface StatusViewProps {
+  samples?: SampleReport | null;
+  samplesBusy?: boolean;
+  onPrintSamples?: (kinds: readonly SampleKind[]) => void;
   checks: readonly Check[];
   /** The till app has a print path and a printer to send to (print_test_page). */
   canPrintTestPage: boolean;
@@ -284,6 +350,9 @@ export interface StatusViewProps {
 
 /** The Status screen itself, from what the container found out. */
 export function StatusView({
+  samples = null,
+  samplesBusy = false,
+  onPrintSamples,
   checks,
   canPrintTestPage,
   checking,
@@ -329,6 +398,8 @@ export function StatusView({
           ) : null}
         </div>
       ) : null}
+
+      {onPrintSamples ? <SamplePapers report={samples} busy={samplesBusy} onPrint={onPrintSamples} /> : null}
 
       {printers ? <div className="y-status__panel">{printers}</div> : null}
 

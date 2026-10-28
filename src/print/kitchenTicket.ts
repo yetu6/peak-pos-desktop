@@ -1,3 +1,4 @@
+import type { PaperMark } from "./testMark";
 import { PAPER_WORDS, extraCopyWords, roundWords, productionEndWords, type ExtraCopy } from "./paperWords";
 import { guestCountWords } from "../lib/words";
 import { stationWords } from "../kitchen/kitchenWords";
@@ -32,7 +33,7 @@ export interface KitchenTicketPaper {
   /** Printed again: says COPY, so nobody makes it twice. */
   copy?: boolean;
   /** A test business: the paper says TEST, top and bottom. */
-  testBusiness?: boolean;
+  testBusiness?: PaperMark;
   /** One of the station's extra copies (printer settings), numbered. */
   extraCopy?: ExtraCopy;
   /** Who printed it again. */
@@ -59,7 +60,7 @@ export function productionGroups<T extends { fulfilment?: Fulfilment }>(lines: T
 export function kitchenTicketBytes(ticket: KitchenTicketPaper, width: PaperWidth, settings: QuantitySettings = {}): Uint8Array {
   const groups = productionGroups(ticket.lines);
   if (!groups.length) return new Uint8Array();
-  const out = new EscPos(width, ticket.testBusiness === true).align("center").bold(true).size(1, 2).line(kitchenTicketTitle(ticket.station)).size(1, 1);
+  const out = new EscPos(width, ticket.testBusiness).align("center").bold(true).size(1, 2).line(kitchenTicketTitle(ticket.station)).size(1, 1);
   const number = ticket.dailyNumber ?? ticket.orderNumber;
   out.wrapped(`${number !== undefined ? `ORDER ${number}` : "ORDER"}${roundWords(ticket.roundNumber)}`);
   if (ticket.extraCopy) out.line(extraCopyWords(ticket.extraCopy));

@@ -18,7 +18,7 @@ import { stationCopiesFor, printerFor, stationPrintsNoPaper, type PrinterChoice,
 import { hotelHere, receiptPaperFor } from "../print/receiptRouting";
 import { cachedBillLogo } from "../print/billLogo";
 import { testBusinessNow } from "./testBusiness";
-import { markText } from "../print/testMark";
+import { markText, type PaperMark } from "../print/testMark";
 import { preparedPaper } from "../print/preparedPreview";
 import { inspectNativePrint, nativePrintOnce, usesNativePrintJournal } from "../print/nativePrintJournal";
 import { yetuFetch } from "./yetuFetch";
@@ -261,11 +261,12 @@ export function paperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): TillPap
   return preparedPaper(job) ?? buildPaperFor(job, routes);
 }
 
-export function buildPaperFor(job: POSPrintJob, routes?: KitchenPrintRoutes): TillPaper {
+export function buildPaperFor(job: POSPrintJob, routes?: KitchenPrintRoutes, mark?: PaperMark): TillPaper {
   const route = paperRoute(job, routes);
   if (route.kind === "none") return route;
   // Known once, from the catalogue this till last heard (kept for offline): a test business's papers say so.
-  const testBusiness = testBusinessNow();
+  // A sample paper (Status, Print sample papers) is marked SAMPLE instead.
+  const testBusiness: PaperMark = mark ?? testBusinessNow();
   if (route.kind === "kitchen") {
     // A thermal printer of the kitchen's: the ticket in large type, with a cut (S8a).
     const { target, width } = route.printer;

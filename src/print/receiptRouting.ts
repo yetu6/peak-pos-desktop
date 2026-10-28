@@ -1,3 +1,4 @@
+import type { PaperMark } from "./testMark";
 import type { MonochromeRaster } from "./billLogo";
 import type { POSPrintJob } from "../lib/posContracts";
 import { receiptCopyFromPrintDocument } from "../lib/receiptPrint";
@@ -22,7 +23,7 @@ export function cashMoved(job: POSPrintJob): boolean {
  * drawer opens for an original only, never for a copy printed again, and
  * never for a bill: nothing is paid when it prints (2026-10-20).
  */
-export function receiptPaperFor(job: POSPrintJob, width: PaperWidth, cashDrawer: boolean, formattedText: string, logo?: MonochromeRaster, testBusiness = false): Uint8Array {
+export function receiptPaperFor(job: POSPrintJob, width: PaperWidth, cashDrawer: boolean, formattedText: string, logo?: MonochromeRaster, testBusiness: PaperMark = false): Uint8Array {
   const copy = Boolean(job.reprintedFromId) || job.document.copy === true;
   const drawer = cashDrawer && !copy && cashMoved(job);
   if (job.jobType === "RECEIPT" || job.jobType === "BILL") return receiptBytes(receiptCopyFromPrintDocument(job.document, { hotel: hotelHere() }), width, { drawer, copy, logo, testBusiness });
