@@ -22,11 +22,11 @@ export function cashMoved(job: POSPrintJob): boolean {
  * drawer opens for an original only, never for a copy printed again, and
  * never for a bill: nothing is paid when it prints (2026-10-20).
  */
-export function receiptPaperFor(job: POSPrintJob, width: PaperWidth, cashDrawer: boolean, formattedText: string, logo?: MonochromeRaster): Uint8Array {
+export function receiptPaperFor(job: POSPrintJob, width: PaperWidth, cashDrawer: boolean, formattedText: string, logo?: MonochromeRaster, testBusiness = false): Uint8Array {
   const copy = Boolean(job.reprintedFromId) || job.document.copy === true;
   const drawer = cashDrawer && !copy && cashMoved(job);
-  if (job.jobType === "RECEIPT" || job.jobType === "BILL") return receiptBytes(receiptCopyFromPrintDocument(job.document, { hotel: hotelHere() }), width, { drawer, copy, logo });
-  return textPaperBytes(formattedText, width, { drawer, copy });
+  if (job.jobType === "RECEIPT" || job.jobType === "BILL") return receiptBytes(receiptCopyFromPrintDocument(job.document, { hotel: hotelHere() }), width, { drawer, copy, logo, testBusiness });
+  return textPaperBytes(formattedText, width, { drawer, copy, testBusiness });
 }
 
 /** This till's property has rooms (LODGING, from the signed-in session): its bills carry the room-charge lines. */

@@ -1,5 +1,6 @@
 import { PRINT_BRAND, PRINT_BRAND_ADDRESS } from "./printBrand";
 import type { MonochromeRaster } from "./billLogo";
+import { TEST_MARK } from "./testMark";
 /**
  * ESC/POS for the till's thermal printers (S8a): the commands every 58 mm
  * and 80 mm receipt printer takes -- start, bold, large type, centring, a
@@ -67,7 +68,14 @@ export function wrap(text: string, width: number): string[] {
 export class EscPos {
   private bytes: number[] = [ESC, 0x40]; // ESC @: start clean
 
-  constructor(readonly width: PaperWidth) {}
+  /** A test business's paper: the marker opens it here and closes it at the cut. */
+  constructor(readonly width: PaperWidth, readonly testBusiness = false) {
+    if (testBusiness) this.testMark().align("left");
+  }
+
+  private testMark(): this {
+    return this.size(1, 1).align("center").bold(true).size(1, 2).line(TEST_MARK).size(1, 1).bold(false);
+  }
 
   bold(on: boolean): this {
     this.bytes.push(ESC, 0x45, on ? 1 : 0);
@@ -109,6 +117,7 @@ export class EscPos {
 
   /** Feed past the cutter and cut, leaving a hinge (GS V 66 n). */
   cut(): this {
+    if (this.testBusiness) this.testMark();
     this.size(1, 1).align("center").bold(true).line(PRINT_BRAND).bold(false).line(PRINT_BRAND_ADDRESS).feed(3);
     this.bytes.push(GS, 0x56, 0x42, 3);
     return this;
