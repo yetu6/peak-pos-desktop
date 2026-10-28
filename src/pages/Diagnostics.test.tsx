@@ -336,4 +336,17 @@ describe("Status: this computer's printers, for a manager", () => {
     await screen.findByTestId("diagnostics");
     expect(screen.queryByTestId("printers-card")).toBeNull();
   });
+
+  it("Print sample papers: all ticked, and in a browser it says samples print only from the till app", async () => {
+    probePeakServer.mockResolvedValue({ status: "reachable", detail: "HTTP 200", origin: "https://hotel.example" });
+    loadPrinterStatus.mockResolvedValue({ available: true, name: "front-bar" });
+    loadHostDiagnostics.mockResolvedValue({ os: "linux", arch: "x86_64", appVersion: "0.1.0" });
+    loadDeviceKeyStorageStatus.mockResolvedValue({ hardwareBacked: true, backend: "keyring", warning: null });
+    render(<Diagnostics />);
+    for (const kind of ["bill", "receipt", "kitchen", "bar", "refund", "void"]) expect(screen.getByTestId(`diag-sample-${kind}`)).toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Print sample papers" }));
+    expect(await screen.findByTestId("diag-samples-result")).toHaveTextContent("Sample papers can be printed only from the till app.");
+    await userEvent.click(screen.getByTestId("diag-sample-bill"));
+    expect(screen.getByTestId("diag-sample-bill")).not.toBeChecked();
+  });
 });

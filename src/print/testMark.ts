@@ -5,7 +5,20 @@
  */
 export const TEST_MARK = "TEST \u2014 not a real sale";
 
-/** A laid-out text paper, marked top and bottom for a test business; untouched otherwise. */
-export function markText(text: string, testBusiness: boolean | undefined): string {
-  return testBusiness ? `${TEST_MARK}\n\n${text.replace(/\n+$/, "")}\n\n${TEST_MARK}\n` : text;
+/** Owner, 2026-10-28: a sample paper (Status, Print sample papers) says so, top and bottom, and is never a sale. */
+export const SAMPLE_MARK = "SAMPLE \u2014 not a real sale";
+
+/** What a paper is marked with: nothing, the test-business words (true), or other words (a sample). */
+export type PaperMark = boolean | string | undefined;
+
+/** The words that open and close a paper, or null for an unmarked one. */
+export function markWords(mark: PaperMark): string | null {
+  if (typeof mark === "string") return mark.trim() ? mark : null;
+  return mark === true ? TEST_MARK : null;
+}
+
+/** A laid-out text paper, marked top and bottom for a test business or a sample; untouched otherwise. */
+export function markText(text: string, mark: PaperMark): string {
+  const words = markWords(mark);
+  return words ? `${words}\n\n${text.replace(/\n+$/, "")}\n\n${words}\n` : text;
 }

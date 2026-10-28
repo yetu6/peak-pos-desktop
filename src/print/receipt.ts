@@ -1,3 +1,4 @@
+import type { PaperMark } from "./testMark";
 import { billItemColumns } from "./billColumns";
 import { PAPER_WORDS } from "./paperWords";
 import { isPrintBrandLine } from "./printBrand";
@@ -21,7 +22,7 @@ export interface ReceiptPaperOptions {
   /** A copy printed again: says COPY. */
   copy?: boolean;
   /** A test business: the paper says TEST, top and bottom. */
-  testBusiness?: boolean;
+  testBusiness?: PaperMark;
 }
 
 /** Words at the left, wrapping; an amount at the right edge of their last line. */
@@ -35,7 +36,7 @@ function columns(out: EscPos, left: string, right: string, width: number): void 
 }
 
 export function receiptBytes(receipt: ReceiptCopy, width: PaperWidth, options: ReceiptPaperOptions = {}): Uint8Array {
-  const out = new EscPos(width, options.testBusiness === true);
+  const out = new EscPos(width, options.testBusiness);
   if (options.drawer && !options.copy && !receipt.copy) out.drawer();
   if (options.logo) out.align("center").raster(options.logo);
   out.align("center").bold(true).size(1, 2).wrapped((receipt.propertyName ?? "Property").toUpperCase()).size(1, 1);
@@ -92,7 +93,7 @@ export function receiptBytes(receipt: ReceiptCopy, width: PaperWidth, options: R
 
 /** A slip Yetu's text formatter already laid out (a refund), wrapped to the paper, with a cut. */
 export function textPaperBytes(text: string, width: PaperWidth, options: ReceiptPaperOptions = {}): Uint8Array {
-  const out = new EscPos(width, options.testBusiness === true);
+  const out = new EscPos(width, options.testBusiness);
   if (options.drawer && !options.copy) out.drawer();
   if (options.copy) out.align("center").bold(true).line("*** COPY ***").bold(false).align("left");
   for (const line of text.replace(/\n+$/, "").split("\n")) {
