@@ -5,6 +5,18 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
 import { useNetworkOnline } from "../access/useNetworkOnline";
 import { Button, SegmentedControl, StatusChip, TechnicalDetails } from "../components/system";
+import {
+  DISPLAY_SCALE_COMPACT,
+  DISPLAY_SCALE_LARGE,
+  DISPLAY_SCALE_STANDARD,
+  biggerDisplay,
+  describeDisplay,
+  resetDisplay,
+  setDisplaySetting,
+  smallerDisplay,
+  useDisplaySetting,
+  type DisplayChoice,
+} from "../lib/displaySize";
 import { setKeyboardMode, useKeyboardMode, type KeyboardMode } from "../lib/onScreenKeyboard";
 import { loadDeviceKeyStorageStatus, type DeviceKeyStorageStatus } from "../lib/deviceIdentity";
 import {
@@ -177,6 +189,51 @@ function OnScreenKeyboardCard() {
         until someone presses a key on a real keyboard.
       </p>
       <SegmentedControl label="On-screen keyboard" value={mode} onChange={setKeyboardMode} options={KEYBOARD_CHOICES} testIdPrefix="keyboard-mode" />
+    </section>
+  );
+}
+
+const DISPLAY_CHOICES: readonly { value: DisplayChoice; label: string }[] = [
+  { value: "auto", label: "Automatic" },
+  { value: "compact", label: "Compact" },
+  { value: "standard", label: "Standard" },
+  { value: "large", label: "Large" },
+];
+
+/** This till's display size: kept on this computer, next to the printers and the keyboard. */
+export function DisplaySizeCard() {
+  const { setting, scale } = useDisplaySetting();
+  const named = typeof setting === "number" ? undefined : setting;
+  return (
+    <section className="y-cash__card" aria-labelledby="display-card-title" data-testid="display-card">
+      <h2 id="display-card-title" className="y-cash__card-title">
+        Display size
+      </h2>
+      <p className="y-cash__muted">
+        Automatic fits the screens to this window. Compact shows more on a small screen ({Math.round(DISPLAY_SCALE_COMPACT * 100)}%),
+        Standard is {Math.round(DISPLAY_SCALE_STANDARD * 100)}%, Large is easier to read ({Math.round(DISPLAY_SCALE_LARGE * 100)}%). On a keyboard, Ctrl and + or - changes it, Ctrl 0 resets it.
+      </p>
+      <SegmentedControl
+        label="Display size"
+        value={named ?? ("" as DisplayChoice)}
+        onChange={(value) => setDisplaySetting(value)}
+        options={DISPLAY_CHOICES}
+        testIdPrefix="display-size"
+      />
+      <p className="y-cash__muted" data-testid="display-size-now">
+        Now: {describeDisplay(setting, scale)}
+      </p>
+      <div className="y-display-steps">
+        <Button variant="secondary" onClick={smallerDisplay} aria-label="Smaller" data-testid="display-smaller">
+          A−
+        </Button>
+        <Button variant="secondary" onClick={biggerDisplay} aria-label="Bigger" data-testid="display-bigger">
+          A+
+        </Button>
+        <Button variant="secondary" onClick={resetDisplay} data-testid="display-reset">
+          Reset
+        </Button>
+      </div>
     </section>
   );
 }
@@ -424,7 +481,7 @@ export function Diagnostics() {
       snapshot={buildTechnicianSnapshot({ identity, session, host, printer, keyStorage, peakOrigin: getApiBaseUrl() })}
       peak={peak}
       realtime={state}
-      printers={<>{isManager ? <PrintersCard /> : null}<PrinterHealthList key={round} /><OnScreenKeyboardCard />{native && canReadOrders ? <PrintQueueCard /> : null}</>}
+      printers={<>{isManager ? <PrintersCard /> : null}<PrinterHealthList key={round} /><OnScreenKeyboardCard /><DisplaySizeCard />{native && canReadOrders ? <PrintQueueCard /> : null}</>}
     />
   );
 }

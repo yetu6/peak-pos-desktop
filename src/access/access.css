@@ -474,3 +474,11 @@
   .y-access__main { padding: var(--space-4) var(--space-6); }
   .y-access__panel { gap: var(--space-3); padding: var(--space-5); }
 }
+
+/* The main action of a long form stays at the foot of the window while the form scrolls above it. */
+.y-pinned-action {
+  position: sticky;
+  z-index: 2;
+  bottom: var(--space-3);
+  box-shadow: 0 0 0 var(--space-3) var(--canvas);
+}

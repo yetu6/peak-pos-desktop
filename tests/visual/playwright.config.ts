@@ -23,9 +23,16 @@ export default defineConfig({
     headless: true,
     deviceScaleFactor: 1,
     contextOptions: { reducedMotion: "reduce" },
+    // The measured layouts are the real size: the till's automatic fitting (src/lib/displaySize.ts)
+    // is switched to Standard unless a spec chooses otherwise (fit.spec.ts).
+    storageState: {
+      cookies: [],
+      origins: [{ origin: `http://127.0.0.1:${HARNESS_PORT}`, localStorage: [{ name: "yetu.displaySize", value: "standard" }] }],
+    },
   },
   projects: [
     { name: "redesign", testMatch: /redesign\.spec\.ts$/ },
+    { name: "fit", testMatch: /fit\.spec\.ts$/ },
     { name: "boot", testMatch: /boot\.spec\.ts$/ },
     { name: "fixtures", testMatch: /fixtures\.spec\.ts$/ },
     { name: "known-debt", testMatch: /known-debt\.spec\.ts$/, dependencies: ["fixtures"] },
