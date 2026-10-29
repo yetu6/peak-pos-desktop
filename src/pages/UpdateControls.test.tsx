@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { packagedAppVersion } from "../lib/diagnostics";
@@ -101,5 +101,15 @@ describe("Status: version and updates", () => {
     render(<Diagnostics />);
     await screen.findByTestId("status-version");
     expect(screen.queryByTestId("diag-restart-update")).toBeNull();
+  });
+
+  it("keeps the on-screen keyboard setting on Status, Automatic to start with", async () => {
+    window.localStorage.clear();
+    render(<Diagnostics />);
+    const card = await screen.findByTestId("keyboard-card");
+    expect(within(card).getByRole("radio", { name: "Automatic" })).toBeChecked();
+    await userEvent.click(within(card).getByRole("radio", { name: "Off" }));
+    expect(window.localStorage.getItem("yetu.onScreenKeyboard")).toBe("off");
+    await userEvent.click(within(card).getByRole("radio", { name: "Automatic" }));
   });
 });

@@ -10,6 +10,7 @@ import { useRateLimitWait } from "../lib/useRateLimitWait";
 import type { DiscountKind, POSOrder } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
 import { discountProblem } from "../register/registerWords";
+import { MoneyKeypad } from "../register/MoneyKeypad";
 import { Banner, Button, Field, MoneyField, ReasonPicker, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
 import { orderNumberWords } from "../lib/orderNumber";
 import { useTillReasons } from "../fnb/useTillReasons";
@@ -164,6 +165,16 @@ export function DiscountDialog({
             data-testid="discount-value"
           />
         )}
+        <MoneyKeypad
+          label={kind === "AMOUNT" ? "Amount off" : "Percent off"}
+          variant={kind === "AMOUNT" ? "money" : "decimal"}
+          value={valueText}
+          onChange={(text) => {
+            setValueText(text);
+            clearApproval();
+          }}
+          testIdPrefix="discount-key"
+        />
         <ReasonPicker
           label="Reason"
           reasons={reasons}

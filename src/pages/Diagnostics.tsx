@@ -4,7 +4,8 @@ import { computerWords, liveUpdatesWords, tillKindWords, yetuAnswersWords } from
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
 import { useNetworkOnline } from "../access/useNetworkOnline";
-import { Button, StatusChip, TechnicalDetails } from "../components/system";
+import { Button, SegmentedControl, StatusChip, TechnicalDetails } from "../components/system";
+import { setKeyboardMode, useKeyboardMode, type KeyboardMode } from "../lib/onScreenKeyboard";
 import { loadDeviceKeyStorageStatus, type DeviceKeyStorageStatus } from "../lib/deviceIdentity";
 import {
   buildTechnicianSnapshot,
@@ -118,6 +119,29 @@ function RestartToUpdateButton() {
         {restarting ? "Restarting…" : "Restart to update now"}
       </Button>
     </div>
+  );
+}
+
+const KEYBOARD_CHOICES: readonly { value: KeyboardMode; label: string }[] = [
+  { value: "auto", label: "Automatic" },
+  { value: "always", label: "Always" },
+  { value: "off", label: "Off" },
+];
+
+/** This till's on-screen keyboard setting: kept on this computer, next to the printers. */
+function OnScreenKeyboardCard() {
+  const mode = useKeyboardMode();
+  return (
+    <section className="y-cash__card" aria-labelledby="keyboard-card-title" data-testid="keyboard-card">
+      <h2 id="keyboard-card-title" className="y-cash__card-title">
+        On-screen keyboard
+      </h2>
+      <p className="y-cash__muted">
+        A keyboard on the screen for typing words, so this till works by touch alone. Automatic shows it on a touch screen
+        until someone presses a key on a real keyboard.
+      </p>
+      <SegmentedControl label="On-screen keyboard" value={mode} onChange={setKeyboardMode} options={KEYBOARD_CHOICES} testIdPrefix="keyboard-mode" />
+    </section>
   );
 }
 
@@ -362,7 +386,7 @@ export function Diagnostics() {
       snapshot={buildTechnicianSnapshot({ identity, session, host, printer, keyStorage, peakOrigin: getApiBaseUrl() })}
       peak={peak}
       realtime={state}
-      printers={<>{isManager ? <PrintersCard /> : null}{native && canReadOrders ? <PrintQueueCard /> : null}</>}
+      printers={<>{isManager ? <PrintersCard /> : null}<OnScreenKeyboardCard />{native && canReadOrders ? <PrintQueueCard /> : null}</>}
     />
   );
 }

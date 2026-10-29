@@ -65,6 +65,10 @@ beforeEach(() => {
   tabs.tabs = [];
 });
 
+async function tapKeys(prefix: string, keys: string) {
+  for (const key of keys) await userEvent.click(screen.getByTestId(`${prefix}-${key}`));
+}
+
 describe("CloseShiftSheet: count first, blind", () => {
   it("never shows the expected figure before the count is entered", () => {
     renderSheet();
@@ -72,6 +76,13 @@ describe("CloseShiftSheet: count first, blind", () => {
     expect(within(sheet).getByTestId("close-step-count")).toBeInTheDocument();
     expect(sheet).not.toHaveTextContent("74,000");
     expect(sheet).not.toHaveTextContent(/expected/i);
+  });
+
+  it("takes the count from the keypad alone", async () => {
+    renderSheet();
+    await tapKeys("counted-key", "125000");
+    expect(screen.getByTestId("counted-cash")).toHaveValue("125,000");
+    expect(screen.getByRole("button", { name: "Check the count" })).toBeEnabled();
   });
 
   it("moves to the check only once a count is entered", async () => {

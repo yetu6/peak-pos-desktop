@@ -43,6 +43,9 @@ export function keyedOver(text: string, key: string, filled: boolean): string {
   const from = filled ? "" : text;
   if (key === "delete") return from.slice(0, -1);
   if (key === "clear") return "";
+  // A decimal point once, as "0." on an empty amount; never more than two decimals (money, percent).
+  if (key === ".") return from.includes(".") ? from : (from === "" ? "0" : from) + ".";
+  if (from.includes(".") && from.split(".")[1].length >= 2) return from;
   // No leading zeros: "0" or "00" on an empty amount adds nothing.
   return from === "" && /^0+$/.test(key) ? from : from + key;
 }

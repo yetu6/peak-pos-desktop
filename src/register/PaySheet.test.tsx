@@ -97,6 +97,10 @@ afterEach(() => {
   refs.tender = { isPending: false, error: null };
 });
 
+async function tapKeys(prefix: string, keys: string) {
+  for (const key of keys) await userEvent.click(screen.getByTestId(`${prefix}-${key}`));
+}
+
 describe("PaySheet", () => {
   it("shows the amount still to pay, large, and only the methods Yetu takes", () => {
     renderPay();
@@ -273,6 +277,13 @@ describe("PaySheet", () => {
     expect(screen.getByTestId("tender-amount")).toHaveValue("32,500");
     expect(screen.getByTestId("tender-reference")).toHaveValue("");
     expect(pay()).toHaveTextContent("Confirm TSh 32,500 received");
+  });
+
+  it("a card amount is keyed on the keypad alone", async () => {
+    renderPay();
+    await userEvent.click(screen.getByRole("radio", { name: "Card (own machine)" }));
+    await tapKeys("tender-key", "10000");
+    expect(screen.getByTestId("tender-amount")).toHaveValue("10,000");
   });
 
   it("card: the amount starts at what is still to pay, and typing less splits it", async () => {

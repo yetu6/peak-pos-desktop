@@ -85,6 +85,10 @@ beforeEach(() => {
   applyState.error = null;
 });
 
+async function tapKeys(prefix: string, keys: string) {
+  for (const key of keys) await userEvent.click(screen.getByTestId(`${prefix}-${key}`));
+}
+
 describe("DiscountDialog", () => {
   it("offers the reasons the outlet's managers keep, when they keep their own", () => {
     tillReasons.kept = { discount: ["Birthday", "Regular guest"] };
@@ -148,6 +152,17 @@ describe("DiscountDialog", () => {
     expect(screen.getByRole("radio", { name: /Grace Mushi/ })).toBeChecked();
     expect(screen.getByTestId("confirm-discount")).toBeDisabled();
     expect(applyMutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes an amount and a percentage from the keypad alone", async () => {
+    render(<DiscountDialog order={ORDER} currency="TZS" onClose={vi.fn()} onApplied={vi.fn()} />);
+    await tapKeys("discount-key", "2000");
+    expect(screen.getByTestId("discount-value")).toHaveValue("2,000");
+    await userEvent.click(screen.getByRole("radio", { name: "Percent" }));
+    await tapKeys("discount-key", "12.5");
+    expect(screen.getByTestId("discount-value")).toHaveValue("12.5");
+    await tapKeys("discount-key", "75");
+    expect(screen.getByTestId("discount-value")).toHaveValue("12.57");
   });
 
   it("sends a percentage as basis points, from 0 up to 100", async () => {

@@ -8,6 +8,7 @@ import { differenceWords, handedOverWords, openShiftProblem } from "../cash/cash
 import { CloseDayCard } from "../cash/CloseDayCard";
 import { forgetClosedShift, useLastClosedShift, type ClosedShift } from "../cash/closedShift";
 import { NoteCounterSheet, denominationsFor, moneyFieldText } from "../cash/NoteCounterSheet";
+import { MoneyKeypad } from "../register/MoneyKeypad";
 import { Avatar, Button, Money, MoneyField, PermissionNotice, type Refusal } from "../components/system";
 import {
   useCatalogCurrency,
@@ -185,6 +186,13 @@ export function OpenShiftView({
                 onValueChange={(text, _minor, edit) => setOpening((previous) => ({ ...previous, text: typedOver(previous.text, text, !previous.edited, edit), edited: true }))}
                 inputTestId="opening-float"
                 autoFocus
+              />
+              <MoneyKeypad
+                label="Opening cash"
+                value={openingFloat}
+                filled={!opening.edited}
+                onChange={(text) => setOpening((previous) => ({ ...previous, text, edited: true }))}
+                testIdPrefix="opening-key"
               />
               {denominationsFor(currency).length > 0 ? (
                 <Button variant="secondary" onClick={() => setNoteCounter(true)}>

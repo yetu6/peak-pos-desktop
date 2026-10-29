@@ -14,6 +14,7 @@ import { useRateLimitWait } from "../lib/useRateLimitWait";
 import type { RosterEntry } from "../lib/deviceAuth";
 import type { CashMoneyType } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
+import { MoneyKeypad } from "../register/MoneyKeypad";
 import { Button, MoneyField, ReasonPicker, RefusalNotice, SegmentedControl, Sheet, SupervisorApproval, type KeypadKey } from "./system";
 
 /** Cash in / Cash out against the open shift. Append-only: there is no edit
@@ -206,6 +207,15 @@ export function CashMovementSheetView({
           }}
           inputTestId="movement-amount"
           autoFocus
+        />
+        <MoneyKeypad
+          label="Amount"
+          value={amount}
+          onChange={(text) => {
+            setAmount(text);
+            clearApproval();
+          }}
+          testIdPrefix="movement-key"
         />
         <ReasonPicker
           key={movementType}

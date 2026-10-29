@@ -3,7 +3,7 @@ import type { KeyboardEvent, Ref } from "react";
 import { formatMoney, quickCashAmounts } from "../../lib/money";
 import { cn } from "../../lib/utils";
 
-export type KeypadKey = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "00" | "clear" | "delete";
+export type KeypadKey = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "00" | "." | "clear" | "delete";
 
 const DIGITS: KeypadKey[] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
@@ -23,7 +23,7 @@ export function Keypad({
 }: {
   label: string;
   onKey: (key: KeypadKey) => void;
-  variant?: "money" | "pin";
+  variant?: "money" | "pin" | "decimal";
   disabled?: boolean;
   /** Each key gets `${testIdPrefix}-${key}` (e.g. pin-key-7, pin-key-delete). */
   testIdPrefix?: string;
@@ -32,11 +32,11 @@ export function Keypad({
   className?: string;
 }) {
   const testId = (key: KeypadKey) => (testIdPrefix ? `${testIdPrefix}-${key}` : undefined);
-  const extra: KeypadKey = variant === "pin" ? "clear" : "00";
+  const extra: KeypadKey = variant === "pin" ? "clear" : variant === "decimal" ? "." : "00";
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (disabled) return;
-    if (/^\d$/.test(event.key)) {
+    if (/^\d$/.test(event.key) || (variant === "decimal" && event.key === ".")) {
       event.preventDefault();
       onKey(event.key as KeypadKey);
     } else if (event.key === "Backspace") {
@@ -61,12 +61,13 @@ export function Keypad({
       ))}
       <button
         type="button"
+        aria-label={extra === "." ? "Decimal point" : undefined}
         className={cn("y-keypad__key", extra === "clear" && "y-keypad__key--word")}
         data-testid={testId(extra)}
         disabled={disabled}
         onClick={() => onKey(extra)}
       >
-        {extra === "clear" ? "Clear" : "00"}
+        {extra === "clear" ? "Clear" : extra}
       </button>
       <button type="button" className="y-keypad__key" data-testid={testId("0")} disabled={disabled} onClick={() => onKey("0")}>
         0

@@ -57,6 +57,10 @@ beforeEach(() => {
   sessionRef.value = null;
 });
 
+async function tapKeys(prefix: string, keys: string) {
+  for (const key of keys) await userEvent.click(screen.getByTestId(`${prefix}-${key}`));
+}
+
 describe("CashMovementDialog", () => {
   it("offers the cash reasons the outlet's managers keep, each way", async () => {
     tillReasons.kept = { cashIn: ["Float from the office"], cashOut: ["Gas delivery"] };
@@ -87,6 +91,15 @@ describe("CashMovementDialog", () => {
     await userEvent.click(screen.getByRole("radio", { name: CASH_IN_REASONS[0] }));
     await userEvent.click(screen.getByTestId("confirm-movement"));
     expect(recordMutate).toHaveBeenCalledWith(expect.objectContaining({ movementType: "CASH_IN", reason: CASH_IN_REASONS[0] }), expect.anything());
+  });
+
+  it("takes the amount from the keypad alone", async () => {
+    render(<CashMovementDialog shiftId="shift-1" currency="TZS" onClose={vi.fn()} />);
+    await tapKeys("movement-key", "5000");
+    expect(screen.getByTestId("movement-amount")).toHaveValue("5,000");
+    await giveReason("movement-reason", "Change float top-up");
+    await userEvent.click(screen.getByTestId("confirm-movement"));
+    expect(recordMutate).toHaveBeenCalledWith(expect.objectContaining({ amountMinor: 500_000 }), expect.anything());
   });
 
   it("defaults to cash in and requires a positive amount and a reason", async () => {

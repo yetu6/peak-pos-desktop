@@ -411,6 +411,9 @@
   transition: background-color var(--motion-press), transform var(--motion-press);
 }
 
+/* Inside a sheet beside a field: shorter keys (still 56px, above the 44px touch minimum). */
+.y-keypad--compact { --keypad-key: 56px; max-width: 360px; }
+
 .y-keypad__key--word { font-size: var(--type-body); }
 .y-keypad__key svg { width: 28px; height: 28px; }
 .y-keypad__key:hover:not(:disabled) { background: var(--surface-hover); }
@@ -1173,3 +1176,49 @@ button.y-ticket-line:hover { background: var(--surface-hover); }
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* ------------------------------------------------------ On-screen keyboard */
+/* Docked at the bottom; the sheet or page holding the focused box lifts to stay clear of it. */
+.y-touch-keyboard {
+  position: fixed;
+  z-index: 200;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  gap: var(--target-gap, 6px);
+  /* A sheet's modal layer switches the page's pointer events off; the keyboard stays tappable. */
+  pointer-events: auto;
+  border-top: 1px solid var(--line-control);
+  background: var(--surface-hover);
+  padding: 8px 12px 10px;
+}
+
+.y-touch-keyboard__row {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.y-touch-keyboard__key {
+  display: inline-flex;
+  min-width: 56px;
+  min-height: 48px;
+  flex: 0 1 72px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: var(--type-heading);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.y-touch-keyboard__key:active { transform: translateY(1px); }
+.y-touch-keyboard__key[aria-pressed="true"] { background: var(--brand-surface); color: var(--on-brand); }
+.y-touch-keyboard__key--wide { flex-basis: 104px; }
+.y-touch-keyboard__key--space { flex: 1 1 280px; }
+.y-touch-keyboard__key--done { flex-basis: 120px; background: var(--brand-surface); color: var(--on-brand); }
+.y-touch-keyboard__key svg { width: 26px; height: 26px; }

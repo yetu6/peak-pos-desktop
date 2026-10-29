@@ -35,7 +35,7 @@ import { applyModeDefaultTheme } from "./lib/theme";
 import { clockTime, shiftChipWords } from "./lib/words";
 import { defaultWorkspacePage, isDisplayMode, workspaceNav, type WorkspacePage } from "./lib/workspace";
 import { TillShell } from "./shell/TillShell";
-import { Banner } from "./components/system";
+import { Banner, TouchKeyboardProvider } from "./components/system";
 import { OFFLINE_BANNER } from "./register/offlineWords";
 import { placeOf } from "./lib/tillPlace";
 import { useApprovers } from "./approvals/supervisors";
@@ -290,7 +290,9 @@ export function App() {
   return (
     <DeviceSessionProvider>
       <UpdaterProvider>
-        <AuthGate />
+        <TouchKeyboardProvider>
+          <AuthGate />
+        </TouchKeyboardProvider>
       </UpdaterProvider>
     </DeviceSessionProvider>
   );
