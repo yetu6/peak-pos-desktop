@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useShiftSafeUpdater } from "./useShiftSafeUpdater";
+import { check } from "@tauri-apps/plugin-updater";
+import { useUpdaterEngine as useShiftSafeUpdater } from "./useShiftSafeUpdater";
 
 // The till's updater: one release found, downloaded, then installed only when allowed.
 const updater = vi.hoisted(() => ({ download: vi.fn(), install: vi.fn() }));
@@ -69,5 +70,59 @@ describe("useShiftSafeUpdater (owner, 23 Oct: the new version takes over at midn
     act(() => void vi.advanceTimersByTime(5 * 60_000));
     expect(updater.install).not.toHaveBeenCalled();
     expect(result.current.canInstall).toBe(false);
+  });
+
+  it("Check for updates now: the latest version, a found update, and a failure with its reason", async () => {
+    vi.setSystemTime(at(13, 0));
+    device.phase = "ready";
+    const { result } = renderHook(() => useShiftSafeUpdater());
+    await settle();
+    // Nothing newer: the answer is "latest" (and the background check already found 0.1.5 ready, so start fresh).
+    vi.mocked(check).mockResolvedValueOnce(null as never);
+    const fresh = renderHook(() => useShiftSafeUpdater());
+    await settle();
+    expect(fresh.result.current.status.kind).toBe("idle");
+    vi.mocked(check).mockResolvedValueOnce(null as never);
+    await act(async () => void (await fresh.result.current.checkNow()));
+    expect(fresh.result.current.status.kind).toBe("latest");
+
+    // Found: it downloads and is ready, on the same updater.
+    let finish: () => void = () => {};
+    updater.download.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+    vi.mocked(check).mockResolvedValueOnce({ version: "0.1.8", download: updater.download, install: updater.install } as never);
+    await act(async () => {
+      void fresh.result.current.checkNow();
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+    expect(fresh.result.current.status).toEqual({ kind: "downloading", version: "0.1.8" });
+    await act(async () => {
+      finish();
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+    expect(fresh.result.current.status).toEqual({ kind: "ready", version: "0.1.8" });
+    expect(result.current.status.kind).toBe("ready");
+  });
+
+  it("Check for updates now shows the reason when the check fails, even a network one", async () => {
+    vi.setSystemTime(at(13, 0));
+    device.phase = "ready";
+    vi.mocked(check).mockResolvedValueOnce(null as never);
+    const { result } = renderHook(() => useShiftSafeUpdater());
+    await settle();
+    vi.mocked(check).mockRejectedValueOnce(new Error("failed to fetch the release file"));
+    await act(async () => void (await result.current.checkNow()));
+    expect(result.current.status).toEqual({ kind: "error", message: "failed to fetch the release file" });
+  });
+
+  it("a manual restart is refused over an open shift and goes ahead without one", async () => {
+    vi.setSystemTime(at(13, 0));
+    device.phase = "ready";
+    const { result } = renderHook(() => useShiftSafeUpdater());
+    await settle();
+    expect(result.current.status.kind).toBe("ready");
+    await act(async () => void (await result.current.restartNow(true)));
+    expect(updater.install).not.toHaveBeenCalled();
+    await act(async () => void (await result.current.restartNow(false)));
+    expect(updater.install).toHaveBeenCalledTimes(1);
   });
 });

@@ -6,6 +6,7 @@ import { IdleLockOverlay } from "./components/IdleLockOverlay";
 import { KeyStorageBanner } from "./components/KeyStorageBanner";
 import { TestBusinessBanner } from "./components/TestBusinessBanner";
 import { UpdaterBanner } from "./components/UpdaterBanner";
+import { UpdaterProvider } from "./components/UpdaterProvider";
 import { ActiveOrders } from "./pages/ActiveOrders";
 import { Kitchen } from "./pages/Kitchen";
 import { Manager } from "./pages/Manager";
@@ -288,7 +289,9 @@ function AuthGate() {
 export function App() {
   return (
     <DeviceSessionProvider>
-      <AuthGate />
+      <UpdaterProvider>
+        <AuthGate />
+      </UpdaterProvider>
     </DeviceSessionProvider>
   );
 }

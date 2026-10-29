@@ -80,3 +80,20 @@ export function updaterBlockedReason(
   if (phase === "locked" || phase === "unpaired") return updateWhenWords(window);
   return "Wait until the till is locked or unpaired before installing an update.";
 }
+
+/**
+ * A person restarting the till to update by hand counts as a till just started
+ * (the same rule as above), but never over an open shift: sales in progress
+ * would be cut off. Only a signed-in till can have an open shift.
+ */
+export function canRestartForUpdate(phase: DevicePhase, hasOpenShift: boolean): boolean {
+  if (phase === "ready") return !hasOpenShift;
+  return canApplyUpdater(phase, new Date(), true);
+}
+
+/** Why Restart to update can't be used now, in the till's words; null when it can. */
+export function restartBlockedReason(phase: DevicePhase, hasOpenShift: boolean): string | null {
+  if (canRestartForUpdate(phase, hasOpenShift)) return null;
+  if (phase === "ready") return "Close the shift first, then restart to update.";
+  return "Finish setting up the till first, then restart to update.";
+}

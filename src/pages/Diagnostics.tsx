@@ -1,4 +1,4 @@
-import { ChefHat, CircleAlert, CircleCheck, CircleHelp, Cloud, KeyRound, Printer, RadioTower, ReceiptText, RefreshCw, Wifi } from "lucide-react";
+import { ChefHat, CircleAlert, CircleCheck, CircleHelp, Cloud, KeyRound, Printer, RadioTower, ReceiptText, RefreshCw, RotateCw, Wifi } from "lucide-react";
 import { requestTimesWords } from "../lib/requestTimes";
 import { computerWords, liveUpdatesWords, tillKindWords, yetuAnswersWords } from "../lib/supportWords";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
@@ -21,7 +21,9 @@ import { getApiBaseUrl } from "../lib/peakConfig";
 import { useLastUpdateNote, type UpdateNote } from "../lib/updateNotes";
 import { clockTime } from "../lib/words";
 import { useRealtime } from "../realtime/RealtimeProvider";
-import { useHasPermission } from "../hooks/usePosData";
+import { useHasPermission, usePosShift } from "../hooks/usePosData";
+import { useShiftSafeUpdater, type UpdaterStatus } from "../hooks/useShiftSafeUpdater";
+import { restartBlockedReason, updateWhenWords } from "../lib/updaterGate";
 import { PrintQueueCard } from "../print/PrintQueueCard";
 import { PrintersCard } from "../print/PrintersCard";
 import { SAMPLE_KINDS, printSamplesFromTill, type SampleKind, type SampleResult } from "../print/samplePapers";
@@ -35,6 +37,88 @@ function updateWords(note: UpdateNote | null): string {
     return `An update didn't install at ${clockTime(note.at)}. The till keeps working; it will try again later.`;
   }
   return `Couldn't check for updates at ${clockTime(note.at)}. The till keeps working.`;
+}
+
+/** What "Check for updates now" answered, in words. */
+export function updateCheckWords(status: UpdaterStatus, version: string): string | null {
+  switch (status.kind) {
+    case "checking":
+      return "Checking for updates…";
+    case "latest":
+      return `You have the latest version (${version}).`;
+    case "available":
+    case "downloading":
+      return `Yetu ${status.version} found. Downloading it now…`;
+    case "ready":
+      return `Yetu ${status.version} is ready. ${updateWhenWords()}`;
+    case "error":
+      return `Couldn't check for updates: ${status.message}`;
+    case "unavailable":
+      return "Updates are checked in the till app, not in a browser.";
+    default:
+      return null;
+  }
+}
+
+/** Check for updates now, and the answer. The one updater does the work (UpdaterProvider). */
+function CheckForUpdates({ version }: { version: string }) {
+  const { status, checkNow } = useShiftSafeUpdater();
+  const working = status.kind === "checking" || status.kind === "available" || status.kind === "downloading";
+  const words = updateCheckWords(status, version);
+  return (
+    <div className="y-status__print">
+      <Button variant="secondary" icon={<RefreshCw />} disabled={working} onClick={() => void checkNow()} data-testid="diag-check-updates">
+        {status.kind === "checking" ? "Checking…" : "Check for updates now"}
+      </Button>
+      {words ? (
+        <p className="y-status__result" role={status.kind === "error" ? "alert" : "status"} data-testid="diag-update-check">
+          {words}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Restart to update now: for a manager, once an update is downloaded, and never
+ * over an open shift (a restart cuts a sale in progress). Blocked, it says why.
+ */
+function RestartToUpdate() {
+  const isManager = useHasPermission("pos.report.manager");
+  const { status } = useShiftSafeUpdater();
+  return status.kind === "ready" && isManager ? <RestartToUpdateButton /> : null;
+}
+
+function RestartToUpdateButton() {
+  const { phase } = useDeviceSession();
+  const { shift, isLoading } = usePosShift();
+  const { restartNow } = useShiftSafeUpdater();
+  const [restarting, setRestarting] = useState(false);
+  // While the shift is still being looked up, assume it is open.
+  const hasOpenShift = isLoading || Boolean(shift);
+  const reason = restartBlockedReason(phase, hasOpenShift);
+  if (reason) {
+    return (
+      <p className="y-status__fix" data-testid="diag-restart-blocked">
+        {reason}
+      </p>
+    );
+  }
+  return (
+    <div className="y-status__print">
+      <Button
+        icon={<RotateCw />}
+        disabled={restarting}
+        onClick={() => {
+          setRestarting(true);
+          void restartNow(hasOpenShift).finally(() => setRestarting(false));
+        }}
+        data-testid="diag-restart-update"
+      >
+        {restarting ? "Restarting…" : "Restart to update now"}
+      </Button>
+    </div>
+  );
 }
 
 type CheckState = "ok" | "problem" | "unknown";
@@ -371,6 +455,9 @@ export function StatusView({
       <header className="y-status__top">
         <div>
           <h1 className="y-status__title">Status</h1>
+          <p className="y-status__version" data-testid="status-version">
+            Yetu {snapshot.appVersion}
+          </p>
           <p className="y-status__lede">How this till is doing, and what to do if something isn't right.</p>
         </div>
         <Button variant="secondary" icon={<RefreshCw />} disabled={checking} onClick={onCheckAgain}>
@@ -408,6 +495,8 @@ export function StatusView({
           Updates
         </h2>
         <p data-testid="diag-updates">{updateWords(updateNote)}</p>
+        <CheckForUpdates version={snapshot.appVersion} />
+        <RestartToUpdate />
       </section>
 
       <TechnicalDetails>

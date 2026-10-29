@@ -83,9 +83,8 @@ describe("UpdaterBanner", () => {
     show({ kind: "ready", version: "0.2.0" }, "Finish the shift or switch staff before installing an update.");
     render(<UpdaterBanner />);
     expect(screen.getByTestId("updater-ready")).toHaveTextContent(
-      "An update is ready. It installs between 00:00 and 05:00 while the till is locked, or when the till is next started.",
+      "Yetu 0.2.0 is ready. It installs between 00:00 and 05:00 while the till is locked, or when the till is next started.",
     );
-    expect(screen.getByTestId("updater-ready")).not.toHaveTextContent("0.2.0");
     expect(lastUpdateNote()?.kind).toBe("ready");
   });
 
@@ -106,5 +105,15 @@ describe("UpdaterBanner", () => {
     expect(banner).toHaveTextContent("The update didn't install. The till keeps working as it is; it will try again later.");
     expect(banner).not.toHaveTextContent("os error");
     expect(lastUpdateNote()).toMatchObject({ kind: "install-failed", detail: "os error 5: access denied" });
+  });
+
+  it("names the new version when it is ready, and falls back to plain words when unknown", () => {
+    show({ kind: "ready", version: "0.1.8" }, "later");
+    const { unmount } = render(<UpdaterBanner />);
+    expect(screen.getByTestId("updater-ready")).toHaveTextContent(/^Yetu 0\.1\.8 is ready\. It installs between 00:00 and 05:00/);
+    unmount();
+    show({ kind: "ready", version: "" }, "later");
+    render(<UpdaterBanner />);
+    expect(screen.getByTestId("updater-ready")).toHaveTextContent(/^An update is ready\./);
   });
 });

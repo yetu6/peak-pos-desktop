@@ -1,13 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { check } from "@tauri-apps/plugin-updater";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
-import { canApplyUpdater, updaterBlockedReason } from "../lib/updaterGate";
+import { canApplyUpdater, canRestartForUpdate, updaterBlockedReason } from "../lib/updaterGate";
 
 /** How often a locked till looks at the clock for the update window. */
 const UPDATE_WINDOW_TICK_MS = 60_000;
 
-type UpdaterStatus =
+export type UpdaterStatus =
   | { kind: "idle" }
+  /** A check someone asked for ("Check for updates now") is running. */
+  | { kind: "checking" }
+  /** That check found nothing newer. */
+  | { kind: "latest" }
+  /** That check can't run here (a browser, not the till app). */
+  | { kind: "unavailable" }
   | { kind: "available"; version: string }
   | { kind: "downloading"; version: string }
   | { kind: "ready"; version: string }
@@ -18,13 +24,35 @@ type UpdaterStatus =
  * when an update exists; installs only when nobody is signed in, inside the
  * update window or on a till just started (lib/updaterGate.ts).
  */
-export function useShiftSafeUpdater(): {
+export interface UpdaterState {
   status: UpdaterStatus;
   installNow: () => Promise<void>;
+  /** Looks for an update now, on the one updater the till has. */
+  checkNow: () => Promise<void>;
+  /** A person's restart to update: refused over an open shift. */
+  restartNow: (hasOpenShift: boolean) => Promise<void>;
   blockedReason: string | null;
   /** Whether a ready update may install now (nobody signed in; the window or a fresh start). */
   canInstall: boolean;
-} {
+}
+
+const QUIET: UpdaterState = {
+  status: { kind: "idle" },
+  installNow: async () => {},
+  checkNow: async () => {},
+  restartNow: async () => {},
+  blockedReason: null,
+  canInstall: false,
+};
+
+/** The one updater, shared by the notice, the navigation badge and Status (UpdaterProvider). */
+export const UpdaterContext = createContext<UpdaterState>(QUIET);
+
+export function useShiftSafeUpdater(): UpdaterState {
+  return useContext(UpdaterContext);
+}
+
+export function useUpdaterEngine(): UpdaterState {
   const { phase } = useDeviceSession();
   const [status, setStatus] = useState<UpdaterStatus>({ kind: "idle" });
   const updateRef = useRef<Awaited<ReturnType<typeof check>>>(null);
@@ -39,40 +67,56 @@ export function useShiftSafeUpdater(): {
     return () => window.clearInterval(id);
   }, []);
 
+  const mounted = useRef(true);
+  const busy = useRef(false);
   useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      try {
-        // No-op outside a Tauri webview (vite / vitest).
-        if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
-          return;
-        }
-        const update = await check();
-        if (cancelled || !update) return;
-        updateRef.current = update;
-        setStatus({ kind: "available", version: update.version });
-        setStatus({ kind: "downloading", version: update.version });
-        await update.download();
-        if (cancelled) return;
-        setStatus({ kind: "ready", version: update.version });
-      } catch (err) {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : String(err);
-        // Missing endpoint / unsigned channel is not a till fault during boot.
-        if (/404|failed to fetch|network/i.test(message)) {
-          setStatus({ kind: "idle" });
-          return;
-        }
-        setStatus({ kind: "error", message });
-      }
-    };
-    void run();
-    const id = window.setInterval(() => void run(), 6 * 60 * 60 * 1000);
+    mounted.current = true;
     return () => {
-      cancelled = true;
-      window.clearInterval(id);
+      mounted.current = false;
     };
   }, []);
+
+  const run = useCallback(async (manual: boolean) => {
+    if (busy.current) return;
+    // No-op outside a Tauri webview (vite / vitest).
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
+      if (manual) setStatus({ kind: "unavailable" });
+      return;
+    }
+    busy.current = true;
+    if (manual) setStatus((now) => (now.kind === "ready" ? now : { kind: "checking" }));
+    try {
+      const update = await check();
+      if (!mounted.current) return;
+      if (!update) {
+        if (manual) setStatus((now) => (now.kind === "ready" ? now : { kind: "latest" }));
+        return;
+      }
+      updateRef.current = update;
+      setStatus({ kind: "available", version: update.version });
+      setStatus({ kind: "downloading", version: update.version });
+      await update.download();
+      if (!mounted.current) return;
+      setStatus({ kind: "ready", version: update.version });
+    } catch (err) {
+      if (!mounted.current) return;
+      const message = err instanceof Error ? err.message : String(err);
+      // Missing endpoint / unsigned channel is not a till fault during boot.
+      if (!manual && /404|failed to fetch|network/i.test(message)) {
+        setStatus({ kind: "idle" });
+        return;
+      }
+      setStatus({ kind: "error", message });
+    } finally {
+      busy.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    void run(false);
+    const id = window.setInterval(() => void run(false), 6 * 60 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [run]);
 
   useEffect(() => {
     if (status.kind !== "ready") return;
@@ -97,9 +141,24 @@ export function useShiftSafeUpdater(): {
     await update.install();
   };
 
+  const restartNow = async (hasOpenShift: boolean) => {
+    if (!canRestartForUpdate(phase, hasOpenShift)) return;
+    const update = updateRef.current;
+    if (!update || status.kind !== "ready") return;
+    try {
+      await update.install();
+    } catch (err) {
+      setStatus({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  const checkNow = useCallback(() => run(true), [run]);
+
   return {
     status,
     installNow,
+    checkNow,
+    restartNow,
     blockedReason: status.kind === "ready" ? updaterBlockedReason(phase, now, freshStart) : null,
     canInstall: canApplyUpdater(phase, now, freshStart),
   };
