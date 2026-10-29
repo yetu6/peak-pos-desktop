@@ -27,7 +27,9 @@ env:
 jobs:
   build:
     strategy:
-      fail-fast: true
+      # Every platform finishes, so one platform's failure shows alongside
+      # the others' results instead of cancelling them.
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-22.04
