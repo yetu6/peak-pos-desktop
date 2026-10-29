@@ -4,6 +4,7 @@ import { DeviceSessionProvider, useDeviceSession } from "./auth/DeviceSessionPro
 import { AccessFrame } from "./access/AccessLayout";
 import { IdleLockOverlay } from "./components/IdleLockOverlay";
 import { KeyStorageBanner } from "./components/KeyStorageBanner";
+import { PrinterProblemBanner } from "./components/PrinterProblemBanner";
 import { TestBusinessBanner } from "./components/TestBusinessBanner";
 import { UpdaterBanner } from "./components/UpdaterBanner";
 import { UpdaterProvider } from "./components/UpdaterProvider";
@@ -63,6 +64,7 @@ function ShellBanners({ offlineCash = false, sync = null }: { offlineCash?: bool
           {OFFLINE_BANNER}
         </Banner>
       ) : null}
+      <PrinterProblemBanner />
       <UpdaterBanner />
       <KeyStorageBanner />
     </>

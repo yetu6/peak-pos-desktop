@@ -332,7 +332,7 @@ describe("NewOrder", () => {
         "pos.order.create",
         "pos.order.item.add",
         "pos.order.send",
-        "pos.payment.record",
+        "pos.payment.record", "pos.cash_drawer.open",
       ],
     });
   });
@@ -614,7 +614,7 @@ describe("NewOrder", () => {
   it("isn't in More for a person who can't send an order", async () => {
     setOperationalSession({
       ...getOperationalSession()!,
-      permissions: ["pos.shift.open", "pos.order.create", "pos.order.item.add", "pos.payment.record"],
+      permissions: ["pos.shift.open", "pos.order.create", "pos.order.item.add", "pos.payment.record", "pos.cash_drawer.open"],
     });
     await startOrder();
     await userEvent.click(screen.getByRole("button", { name: "More" }));
@@ -977,7 +977,7 @@ describe("NewOrder: rounds (S17a)", () => {
       staffId: "staff-1",
       assurance: "RESTRICTED",
       capabilities: ["CORE", "POS"],
-      permissions: ["pos.shift.open", "pos.order.create", "pos.order.item.add", "pos.order.send", "pos.payment.record"],
+      permissions: ["pos.shift.open", "pos.order.create", "pos.order.item.add", "pos.order.send", "pos.payment.record", "pos.cash_drawer.open"],
     });
   });
   afterEach(() => clearOperationalSession());
@@ -1027,7 +1027,7 @@ describe("NewOrder: carrying on with an order (F-236, F-230, F-241, F-243)", () 
       staffId: "staff-1",
       assurance: "RESTRICTED",
       capabilities: ["CORE", "POS"],
-      permissions: ["pos.shift.open", "pos.order.create", "pos.order.item.add", "pos.order.send", "pos.payment.record"],
+      permissions: ["pos.shift.open", "pos.order.create", "pos.order.item.add", "pos.order.send", "pos.payment.record", "pos.cash_drawer.open"],
     });
   });
   afterEach(() => {

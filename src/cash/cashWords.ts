@@ -148,6 +148,40 @@ export function cashMovementProblem(
  * Opening the drawer without a sale (fbc-peak #289), by code. Yetu records it
  * first; the till opens the drawer only once it has.
  */
+/** Receiving a waiter's cash (fbc-peak #327 ReceiveFromWaiter), by code. */
+export function waiterHandoverProblem(error: unknown): CashProblem<"nothing-held" | "too-much" | "no-shift"> | null {
+  const problem = problemOf(error);
+  if (!problem) return null;
+  if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  switch (problem.code) {
+    case "WAITER_HOLDS_NOTHING":
+      return { kind: "nothing-held", words: "This waiter holds no cash from this shift." };
+    case "HANDOVER_MORE_THAN_HELD":
+      return { kind: "too-much", words: "That's more than this waiter holds. Count the notes again." };
+    case "SHIFT_NOT_OPEN":
+      return { kind: "no-shift", words: "No shift is open on this till." };
+    case "FORBIDDEN":
+      return { kind: "permission", words: "Only a cashier or manager can receive a waiter's cash. Ask one to help." };
+  }
+  return { kind: "other", words: otherWords(problem, "That wasn't recorded. Try again.") };
+}
+
+/** Who still holds cash when the shift closes, and what closing does about it (fbc-peak #327). */
+export function waitersHoldWords(
+  holders: readonly { name: string; heldMinor: number }[],
+  currency: string | undefined,
+): string | null {
+  const held = holders.filter((waiter) => waiter.heldMinor > 0);
+  if (held.length === 0) return null;
+  if (held.length === 1) {
+    const [only] = held;
+    return `${only.name} still holds ${formatMoney(only.heldMinor, currency)}. If you close now, it's recorded as owed by ${only.name}.`;
+  }
+  const total = held.reduce((sum, waiter) => sum + waiter.heldMinor, 0);
+  const names = `${held.slice(0, -1).map((waiter) => waiter.name).join(", ")} and ${held[held.length - 1].name}`;
+  return `${names} still hold cash (${formatMoney(total, currency)} in all). If you close now, what each holds is recorded as owed by them.`;
+}
+
 export function drawerOpenProblem(error: unknown): CashProblem<"no-shift"> | null {
   const problem = problemOf(error);
   if (!problem) return null;

@@ -4,9 +4,11 @@
 
 use std::process::Stdio;
 
-/// Named setting: a job that has waited this many minutes in the queue is stuck, not printing.
+/// Named setting: a job that has waited this many seconds in the queue is stuck, not printing.
+/// A receipt printer prints a paper in a second or two (owner, 2026-10-29: out of paper, the
+/// till said nothing; three minutes was far too long to call it).
 #[cfg_attr(not(any(windows, test)), allow(dead_code))]
-pub const STUCK_AFTER_MINUTES: u32 = 3;
+pub const STUCK_AFTER_SECONDS: u32 = 20;
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -15,7 +17,7 @@ pub struct PrinterHealth {
     pub state: String,
     /// What the system called a problem (for example "PaperJam"), when it did.
     pub detail: Option<String>,
-    /// Jobs waiting longer than STUCK_AFTER_MINUTES.
+    /// Jobs waiting longer than STUCK_AFTER_SECONDS.
     pub stuck_jobs: u32,
 }
 
@@ -40,7 +42,21 @@ fn windows_state(status: &str, work_offline: bool) -> (&'static str, Option<Stri
     }
 }
 
-/// Parses what the Windows script printed: {"status":"Normal","workOffline":false,"jobs":2,"oldestSeconds":400}.
+/// Win32_Printer.DetectedErrorState, which some drivers set when PrinterStatus still says
+/// Normal: 4 no paper, 7 door open, 8 jammed, 9 offline. Others say nothing new.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+fn detected_error(code: u64) -> Option<(&'static str, Option<String>)> {
+    match code {
+        4 => Some(("paper-out", None)),
+        7 => Some(("problem", Some("DoorOpen".to_string()))),
+        8 => Some(("problem", Some("PaperJam".to_string()))),
+        9 => Some(("offline", None)),
+        _ => None,
+    }
+}
+
+/// Parses what the Windows script printed:
+/// {"status":"Normal","workOffline":false,"jobs":2,"oldestSeconds":400,"errorState":4}.
 #[cfg_attr(not(any(windows, test)), allow(dead_code))]
 pub fn parse_windows(json: &str) -> PrinterHealth {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(json.trim()) else {
@@ -50,11 +66,18 @@ pub fn parse_windows(json: &str) -> PrinterHealth {
     let work_offline = value.get("workOffline").and_then(|v| v.as_bool()).unwrap_or(false);
     let jobs = value.get("jobs").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
     let oldest_seconds = value.get("oldestSeconds").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-    let stuck = if jobs > 0 && oldest_seconds >= STUCK_AFTER_MINUTES * 60 { jobs } else { 0 };
+    let error_state = value.get("errorState").and_then(|v| v.as_u64()).unwrap_or(0);
+    let stuck = if jobs > 0 && oldest_seconds >= STUCK_AFTER_SECONDS { jobs } else { 0 };
     if status.is_empty() && !work_offline {
         return health("unknown", None, stuck);
     }
     let (state, detail) = windows_state(status, work_offline);
+    // A printer Windows calls ready may still have said what is wrong another way.
+    if state == "ready" {
+        if let Some((state, detail)) = detected_error(error_state) {
+            return health(state, detail, stuck);
+        }
+    }
     health(state, detail, stuck)
 }
 
@@ -76,7 +99,8 @@ pub(crate) const WINDOWS_HEALTH_SCRIPT: &str = "$p = Get-Printer -Name $env:YETU
 $w = $false; if ($p.PSObject.Properties['WorkOffline']) { $w = [bool]$p.WorkOffline }; \
 $j = @(Get-PrintJob -PrinterName $env:YETU_PRINTER_NAME -ErrorAction SilentlyContinue); \
 $age = 0; if ($j.Count -gt 0) { $first = ($j | Measure-Object -Property SubmittedTime -Minimum).Minimum; $age = [int][Math]::Max(0, ((Get-Date) - $first).TotalSeconds) }; \
-[pscustomobject]@{ status = [string]$p.PrinterStatus; workOffline = $w; jobs = $j.Count; oldestSeconds = $age } | ConvertTo-Json -Compress";
+$e = 0; try { $c = Get-CimInstance -ClassName Win32_Printer -ErrorAction Stop | Where-Object { $_.Name -eq $env:YETU_PRINTER_NAME } | Select-Object -First 1; if ($c) { $e = [int]$c.DetectedErrorState } } catch { $e = 0 }; \
+[pscustomobject]@{ status = [string]$p.PrinterStatus; workOffline = $w; jobs = $j.Count; oldestSeconds = $age; errorState = $e } | ConvertTo-Json -Compress";
 
 #[cfg(windows)]
 fn check(name: &str) -> PrinterHealth {
@@ -143,9 +167,27 @@ mod tests {
 
     #[test]
     fn old_jobs_are_stuck_and_a_job_being_printed_now_is_not() {
-        assert_eq!(windows("Normal", false, 3, STUCK_AFTER_MINUTES * 60).stuck_jobs, 3);
-        assert_eq!(windows("Normal", false, 3, STUCK_AFTER_MINUTES * 60 - 1).stuck_jobs, 0);
+        assert_eq!(windows("Normal", false, 3, STUCK_AFTER_SECONDS).stuck_jobs, 3);
+        assert_eq!(windows("Normal", false, 3, STUCK_AFTER_SECONDS - 1).stuck_jobs, 0);
         assert_eq!(windows("Normal", false, 0, 9999).stuck_jobs, 0);
+    }
+
+    #[test]
+    fn a_driver_that_says_normal_but_reports_no_paper_another_way_is_out_of_paper() {
+        let with_error = |code: u32| {
+            parse_windows(&format!(
+                r#"{{"status":"Normal","workOffline":false,"jobs":1,"oldestSeconds":2,"errorState":{code}}}"#
+            ))
+        };
+        assert_eq!(with_error(4).state, "paper-out");
+        assert_eq!(with_error(7), health("problem", Some("DoorOpen".into()), 0));
+        assert_eq!(with_error(9).state, "offline");
+        assert_eq!(with_error(2).state, "ready");
+        // What PrinterStatus already said wins: a jam stays a jam.
+        assert_eq!(
+            parse_windows(r#"{"status":"PaperJam","workOffline":false,"jobs":0,"oldestSeconds":0,"errorState":4}"#).detail,
+            Some("PaperJam".into())
+        );
     }
 
     #[test]

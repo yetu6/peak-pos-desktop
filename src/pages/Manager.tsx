@@ -6,6 +6,8 @@ import { CloseDayCard } from "../cash/CloseDayCard";
 import { CloseShiftSheet } from "../cash/CloseShiftSheet";
 import { OpenDrawerSheet } from "../cash/OpenDrawerSheet";
 import { useExpectedCashVisible } from "../cash/useExpectedCashVisible";
+import { waitersHoldWords } from "../cash/cashWords";
+import { ReceiveFromWaiterSheet, WaiterOwnMoney, WaitersMoneyCard } from "../cash/WaitersMoney";
 import { CashMovementDialog } from "../components/CashMovementDialog";
 import { Banner, Button, EmptyState, ListRow, Money, PermissionNotice } from "../components/system";
 import {
@@ -14,9 +16,11 @@ import {
   useHasCapability,
   useHasPermission,
   usePosShift,
+  useWaitersMoney,
 } from "../hooks/usePosData";
 import type { RosterEntry } from "../lib/deviceAuth";
-import type { CashMoneyType, POSCashMovement, POSShift } from "../lib/posContracts";
+import type { CashMoneyType, POSCashMovement, POSShift, POSWaiterMoney } from "../lib/posContracts";
+import { formatMoney } from "../lib/money";
 import { cashMovementWords, clockTime, shiftChipWords } from "../lib/words";
 import { drawerFitted, openDrawer } from "../print/cashDrawer";
 import { drawerNotOpenedWords } from "../print/printProblems";
@@ -61,6 +65,36 @@ export function Manager() {
   }
   const roster = device?.roster ?? [];
   const requesterId = device?.session?.staffId ?? "";
+  // Waiters collect (fbc-peak #327): whoever holds the drawer sees every
+  // waiter's money and receives it; a waiter sees only what they hold.
+  const holdsDrawer = useHasPermission("pos.shift.open");
+  const waiters = useWaitersMoney(Boolean(shift));
+  const [receiving, setReceiving] = useState<POSWaiterMoney | null>(null);
+  const waiterRows = waiters.data?.waiters ?? [];
+
+  if (!holdsDrawer) {
+    return (
+      <div className="y-cash">
+        <header className="y-cash__header">
+          <h1 className="y-cash__title">Cash</h1>
+          {shift ? <p className="y-cash__muted">{shiftChipWords(shift).full}</p> : null}
+        </header>
+        <div className="y-cash__grid">
+          <div className="y-cash__column">
+            {shift ? (
+              <WaiterOwnMoney
+                money={waiterRows.find((row) => row.staffId === requesterId) ?? null}
+                currency={currency}
+                loading={waiters.isLoading}
+              />
+            ) : (
+              <p className="y-cash__muted">No shift is open on this till.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <CashView
@@ -77,7 +111,21 @@ export function Manager() {
       onCashIn={() => setMovement("CASH_IN")}
       onCashOut={() => setMovement("CASH_OUT")}
       onCloseShift={() => setClosing(true)}
+      waiters={shift ? <WaitersMoneyCard waiters={waiterRows} currency={currency} onReceive={setReceiving} /> : null}
+      closeWarning={waitersHoldWords(waiterRows, currency)}
     >
+      {receiving && shift ? (
+        <ReceiveFromWaiterSheet
+          waiter={receiving}
+          currency={currency}
+          onClose={() => setReceiving(null)}
+          onReceived={(countedMinor) => {
+            const name = receiving.name;
+            setReceiving(null);
+            openTheDrawer(`Received ${formatMoney(countedMinor, currency)} from ${name}. It's in the drawer now.`);
+          }}
+        />
+      ) : null}
       {movement && shift ? (
         <CashMovementDialog
           shiftId={shift.id}
@@ -131,6 +179,10 @@ export interface CashViewProps {
   onCashIn: () => void;
   onCashOut: () => void;
   onCloseShift: () => void;
+  /** Waiters' money (fbc-peak #327): each waiter on this shift, with Receive. */
+  waiters?: ReactNode;
+  /** Who still holds cash, said before the shift is closed. */
+  closeWarning?: string | null;
   /** Open sheets. */
   children?: ReactNode;
 }
@@ -150,6 +202,8 @@ export function CashView({
   onCashIn,
   onCashOut,
   onCloseShift,
+  waiters = null,
+  closeWarning = null,
   children,
 }: CashViewProps) {
   const nameOf = (staffId: string | undefined) => roster.find((entry) => entry.staffNumber === staffId)?.fullName;
@@ -250,10 +304,17 @@ export function CashView({
                   movements.map((entry) => {
                     const who = entry.recordedByName?.trim() || nameOf(entry.recordedBy);
                     const when = entry.createdAt ? clockTime(entry.createdAt) : "";
+                    const waiter = entry.fromStaffName?.trim();
+                    const title =
+                      waiter && entry.movementType === "WAITER_HANDOVER"
+                        ? `Handed in by ${waiter}`
+                        : waiter && entry.movementType === "WAITER_SHORT"
+                          ? `Owed by ${waiter}`
+                          : cashMovementWords(entry.movementType);
                     return (
                       <ListRow
                         key={entry.id}
-                        title={cashMovementWords(entry.movementType)}
+                        title={title}
                         meta={[entry.reason, who, when].filter(Boolean).join(" · ")}
                         trailing={
                           entry.movementType === "DRAWER_OPENED" ? undefined : (
@@ -270,6 +331,7 @@ export function CashView({
         </div>
 
         <div className="y-cash__column">
+          {waiters}
           <section className="y-cash__card" aria-labelledby="close-shift-title">
             <h2 id="close-shift-title" className="y-cash__card-title">
               Close this shift
@@ -277,6 +339,11 @@ export function CashView({
             <p className="y-cash__muted">
               Count the drawer. Yetu then compares your count with its own figure; if they differ, a manager approves.
             </p>
+            {closeWarning ? (
+              <Banner inline tone="warning" data-testid="waiters-hold-warning">
+                {closeWarning}
+              </Banner>
+            ) : null}
             {canCloseShift ? (
               <Button
                 variant="primary"

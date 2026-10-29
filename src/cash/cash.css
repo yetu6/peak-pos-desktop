@@ -287,3 +287,10 @@
 .y-printers__stations summary { min-height: 48px; cursor: pointer; padding-block: var(--space-2); font-weight: 600; }
 .y-printers__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .y-printers__error { margin: 0; color: var(--danger); }
+
+/* Waiters' money (fbc-peak #327): what a waiter holds, beside Receive. */
+.y-cash__receive {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}

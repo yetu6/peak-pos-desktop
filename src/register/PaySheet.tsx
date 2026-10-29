@@ -1,4 +1,4 @@
-import { useOutletMoneySettings } from "../hooks/usePosData";
+import { useHasPermission, useOutletMoneySettings } from "../hooks/usePosData";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { moneyFieldText } from "../cash/NoteCounterSheet";
 import { EXACT_WORDS, ignoreHeldEnter, startAmount, useFilledAmount } from "./moneyEntry";
@@ -103,6 +103,8 @@ export function PaySheet({
   onDrawerProblem?: (words: string) => void;
 }) {
   const moneySettings = useOutletMoneySettings();
+  // A waiter keeps the cash they take until they hand it in (fbc-peak #327): no drawer for them.
+  const holdsDrawer = useHasPermission("pos.cash_drawer.open");
   const [live, setLive] = useState(order);
   const [drawerProblem, setDrawerProblem] = useState<string | null>(null);
   // The last part payment Yetu recorded, said back to the person.
@@ -179,13 +181,16 @@ export function PaySheet({
         setRecorded(request.amountMinor);
         onOrderChange?.(updated);
         // Every cash payment opens the drawer, part or whole (2026-10-21): change comes from the drawer.
+        // A waiter has no drawer: they keep the cash and give change from it (fbc-peak #327).
         setDrawerProblem(null);
-        void openDrawerForCash(request.method).then((result) => {
-          if (result.ok) return;
-          const words = drawerNotOpenedWords(result.error ?? "");
-          setDrawerProblem(words);
-          onDrawerProblem?.(words);
-        });
+        if (holdsDrawer) {
+          void openDrawerForCash(request.method).then((result) => {
+            if (result.ok) return;
+            const words = drawerNotOpenedWords(result.error ?? "");
+            setDrawerProblem(words);
+            onDrawerProblem?.(words);
+          });
+        }
         if ((updated.remainingMinor ?? 0) <= 0 || updated.status === "CLOSED") {
           // Split: paid more than one way (F-269); two cash payments are cash.
           const methods = new Set([...(updated.payments ?? []).map((payment) => payment.paymentMethod), request.method]);

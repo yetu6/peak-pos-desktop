@@ -15,12 +15,10 @@ describe("printer health in words", () => {
   it("never says Ready when Windows can't tell", () => {
     expect(printerHealthWords(h("unknown"))).toEqual({ ok: false, words: "Windows can't tell" });
   });
-  it("names stuck papers and what to do, even on a printer that says it is ready", () => {
-    expect(printerHealthWords(h("ready", { stuckJobs: 3 })).words).toBe("3 papers stuck in Windows' queue — open the printer's queue and cancel them");
-    expect(printerHealthWords(h("ready", { stuckJobs: 1 })).words).toBe("1 paper stuck in Windows' queue — open the printer's queue and cancel it");
-    expect(printerHealthWords(h("offline", { stuckJobs: 2 })).words).toBe(
-      "Switched off or not connected. 2 papers stuck in Windows' queue — open the printer's queue and cancel them",
-    );
+  it("names waiting papers, even on a printer that says it is ready, and never says to cancel them", () => {
+    expect(printerHealthWords(h("ready", { stuckJobs: 3 }))).toEqual({ ok: false, words: "3 papers waiting to print" });
+    expect(printerHealthWords(h("ready", { stuckJobs: 1 })).words).toBe("1 paper waiting to print");
+    expect(printerHealthWords(h("paper-out", { stuckJobs: 2 })).words).toBe("Out of paper. 2 papers waiting to print");
   });
   it("puts a known problem in plain words", () => {
     expect(printerHealthWords(h("problem", { detail: "PaperJam" })).words).toBe("Paper jam");

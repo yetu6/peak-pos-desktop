@@ -149,6 +149,9 @@ export function tenderProblem(error: unknown): RegisterProblem | null {
       return { kind: "paid", words: "This order is closed, so it can't take a payment." };
     case "FORBIDDEN":
       return { kind: "permission", words: "Only a cashier or manager can take payment. Ask one to help." };
+    // fbc-peak #327: a waiter collects for their own tables only.
+    case "PAYMENT_NOT_YOUR_ORDER":
+      return { kind: "permission", words: "You can take payment only for orders you took. Ask the cashier, or the waiter who took it." };
   }
   return { kind: "other", words: otherWords(problem, "The payment wasn't recorded. Try again.") };
 }

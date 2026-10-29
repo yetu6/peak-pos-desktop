@@ -79,6 +79,9 @@ export function refundProblem(error: unknown, ask: RefundAsk = "record"): Refund
   const known = REFUND_CODES[code];
   if (known) return { kind: known.kind, words: problem.detail?.trim() || known.words };
   switch (code) {
+    // fbc-peak #327: the money goes back from the drawer, so its holder gives it.
+    case "REFUND_BY_DRAWER_HOLDER":
+      return { kind: "permission", words: "Only a cashier or manager can give a refund. Ask one to help." };
     case "FORBIDDEN":
       // On the quote it is the cashier's own permission; on the refund, the supervisor's approval.
       return ask === "quote"

@@ -42,6 +42,8 @@ const { recordTenderMutate, chargeToRoomMutate, refs } = vi.hoisted(() => ({
     candidates: [] as POSRoomChargeCandidate[],
     tender: { isPending: false, error: null as unknown },
     refetchOrder: vi.fn(),
+    /** A waiter holds no drawer (fbc-peak #327). */
+    holdsDrawer: true,
   },
 }));
 
@@ -60,6 +62,7 @@ vi.mock("../hooks/usePosData", async (importOriginal) => ({
   useRoomChargeAvailability: () => ({ data: refs.roomAvailable }),
   useRoomChargeCandidates: (query: string) => ({ data: query ? refs.candidates : [], isFetching: false }),
   useOrder: () => ({ data: undefined, refetch: refs.refetchOrder }),
+  useHasPermission: (action: string) => action !== "pos.cash_drawer.open" || refs.holdsDrawer,
 }));
 
 type Paid = (paid: { order: POSOrder; method: string; changeMinor: number }) => void;
@@ -81,6 +84,7 @@ const paidWith = (...methods: POSOrderPayment["paymentMethod"][]): POSOrderPayme
 const pay = () => screen.getByTestId("confirm-settle");
 
 beforeEach(() => {
+  refs.holdsDrawer = true;
   recordTenderMutate.mockImplementation((_vars: unknown, opts?: { onSuccess?: (order: POSOrder) => void }) =>
     opts?.onSuccess?.(CLOSED),
   );
@@ -328,6 +332,16 @@ describe("PaySheet", () => {
     await userEvent.click(pay());
     expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ method: "CASH", split: false, changeMinor: 0 }));
     expect(openDrawerForCash).toHaveBeenCalledTimes(2);
+  });
+
+  // Waiters collect (owner, 2026-10-29; fbc-peak #327): the waiter keeps the cash and gives change from it.
+  it("a waiter's cash payment doesn't open the drawer", async () => {
+    refs.holdsDrawer = false;
+    const { onPaid } = renderPay();
+    await userEvent.type(screen.getByTestId("amount-received"), "50000");
+    await userEvent.click(pay());
+    expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ method: "CASH" }));
+    expect(openDrawerForCash).not.toHaveBeenCalled();
   });
 
   it("cash, then mobile money: told to payment done as a split", async () => {
