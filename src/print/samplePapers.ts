@@ -143,6 +143,13 @@ export const SAMPLES_ONLY_IN_TILL = "Sample papers can be printed only from the 
 
 const ROUTED_BY_STATION: readonly SampleKind[] = ["kitchen", "bar", "void"];
 
+const WHICH_PRINTER: Record<SampleKind, string> = { bill: "bill", receipt: "bill", refund: "bill", kitchen: "kitchen", void: "kitchen", bar: "bar" };
+
+/** What a paper with no saved printer says. */
+export function notSetWords(kind: SampleKind): string {
+  return `Not printed — set the ${WHICH_PRINTER[kind]} printer in Printers and press Save`;
+}
+
 function whereWords(paper: TillPaper, kind: SampleKind): string {
   if (paper.kind === "thermal") return `sent to ${printerWords({ target: paper.target, width: paper.width as 32 | 48 })}`;
   const own = "sent to this computer's own printer";
@@ -176,8 +183,8 @@ export async function printSamplePapers(
         await send.printRaw(paper.target, paper.bytes);
         results.push({ kind, label, ok: true, words: whereWords(paper, kind) });
       } else {
-        await send.printText(paper.title, paper.text);
-        results.push({ kind, label, ok: true, words: whereWords(paper, kind) });
+        // No saved printer for this paper: Windows page printing makes an unreadable strip on a thermal printer.
+        results.push({ kind, label, ok: false, words: notSetWords(kind) });
       }
     } catch (error) {
       results.push({ kind, label, ok: false, words: `didn't print (${error instanceof Error ? error.message : String(error)})` });

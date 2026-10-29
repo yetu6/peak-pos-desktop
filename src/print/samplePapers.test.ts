@@ -76,19 +76,16 @@ describe("Print sample papers", () => {
     });
   });
 
-  it("marks the system-printer text path SAMPLE top and bottom", async () => {
+  it("prints no paper that has no saved printer, and says what to do", async () => {
     const { text, raw, run } = rig(DEFAULT_PRINTER_SETTINGS);
     const results = await run();
+    // Windows page printing makes an unreadable strip on a thermal printer: nothing is sent.
     expect(raw).toHaveLength(0);
-    expect(text).toHaveLength(6);
-    for (const paper of text) {
-      expect(paper.text.startsWith(SAMPLE_MARK)).toBe(true);
-      expect(paper.text.trimEnd().endsWith(SAMPLE_MARK)).toBe(true);
-    }
-    expect(results[0].words).toContain("this computer's own printer");
-    expect(results[0].words).toContain("no bill printer set up");
-    expect(results[2].words).toContain("no kitchen printer set up");
-    expect(results[3].words).toContain("no bar printer set up");
+    expect(text).toHaveLength(0);
+    expect(results.every((result) => !result.ok)).toBe(true);
+    expect(results[0].words).toBe("Not printed — set the bill printer in Printers and press Save");
+    expect(results[2].words).toBe("Not printed — set the kitchen printer in Printers and press Save");
+    expect(results[3].words).toBe("Not printed — set the bar printer in Printers and press Save");
   });
 
   it("sends each paper to the printer its kind normally uses", async () => {
@@ -164,7 +161,8 @@ describe("Print sample papers", () => {
     const { raw, text, run } = rig({ ...DEFAULT_PRINTER_SETTINGS, receipt: net("10.0.0.1") });
     const results = await run();
     expect(results).toHaveLength(6);
-    expect(raw.length + text.length).toBe(6);
+    expect(text).toHaveLength(0);
+    expect(raw.length).toBe(results.filter((result) => result.ok).length);
     expect(calls).toEqual([]);
   });
 

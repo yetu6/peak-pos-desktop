@@ -51,6 +51,20 @@ describe("Status → Printers (S8a)", () => {
     expect(till.saved[0]).toEqual({ ...DEFAULT_PRINTER_SETTINGS, kitchenTickets: true, kitchen: { target: { kind: "network", host: "192.168.1.50", port: 9100 }, width: 32 }, stations: {}, receipt: null, cashDrawer: false });
   });
 
+  it("warns about unsaved changes, says a test used an unsaved printer, and stops warning once saved", async () => {
+    render(<PrintersCard />);
+    expect(screen.queryByTestId("printers-unsaved")).toBeNull();
+    const picker = within(screen.getByTestId("kitchen-printer"));
+    await userEvent.selectOptions(await picker.findByRole("combobox"), "system:EPSON TM-T20");
+    expect(screen.getByTestId("printers-unsaved")).toHaveTextContent("You have unsaved printer changes");
+    await userEvent.click(screen.getByTestId("test-kitchen-printer"));
+    await waitFor(() => expect(screen.getByTestId("printers-words")).toHaveTextContent("EPSON TM-T20 (80 mm) (chosen on screen, not saved yet)"));
+    await userEvent.click(screen.getByTestId("save-printers"));
+    await waitFor(() => expect(screen.queryByTestId("printers-unsaved")).toBeNull());
+    await userEvent.click(screen.getByTestId("test-kitchen-printer"));
+    await waitFor(() => expect(screen.getByTestId("printers-words")).not.toHaveTextContent("not saved yet"));
+  });
+
   it("prints a test ticket to the chosen printer", async () => {
     till.settings = { kitchenTickets: true, kitchen: { target: { kind: "system", name: "EPSON TM-T20" }, width: 48 }, stations: {}, receipt: null, cashDrawer: false };
     render(<PrintersCard />);

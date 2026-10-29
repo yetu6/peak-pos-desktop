@@ -60,9 +60,15 @@ export function PrintersCard({ billLogoUrl }: { billLogoUrl?: string } = {}) {
   const [printers, setPrinters] = useState<string[]>([]);
   const [words, setWords] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // What is saved on this till: the choices on screen only count once saved.
+  const [saved, setSaved] = useState<PrinterSettings>(DEFAULT_PRINTER_SETTINGS);
+  const unsaved = JSON.stringify(settings) !== JSON.stringify(saved);
 
   useEffect(() => {
-    void loadPrinterSettings().then(setSettings);
+    void loadPrinterSettings().then((loaded) => {
+      setSettings(loaded);
+      setSaved(loaded);
+    });
     void listSystemPrinters().then(setPrinters);
   }, []);
 
@@ -71,6 +77,7 @@ export function PrintersCard({ billLogoUrl }: { billLogoUrl?: string } = {}) {
     setWords(null);
     try {
       await savePrinterSettings(settings);
+      setSaved(settings);
       setWords({ ok: true, text: savedWords(settings) });
     } catch (error) {
       setWords({ ok: false, text: error instanceof Error ? error.message : String(error) });
@@ -94,7 +101,10 @@ export function PrintersCard({ billLogoUrl }: { billLogoUrl?: string } = {}) {
           : kitchenTicketBytes(TEST_TICKET, choice.width, settings),
       );
       const sample = what === "receipt" ? "A test bill" : "A test ticket";
-      setWords({ ok: true, text: `${sample} went to ${printerWords(choice)}. If nothing came out, check the printer is on and has paper.` });
+      setWords({
+        ok: true,
+        text: `${sample} went to ${printerWords(choice)}${unsaved ? " (chosen on screen, not saved yet)" : ""}. If nothing came out, check the printer is on and has paper.`,
+      });
     } catch (error) {
       setWords({ ok: false, text: error instanceof Error ? error.message : String(error) });
     } finally {
@@ -205,6 +215,11 @@ export function PrintersCard({ billLogoUrl }: { billLogoUrl?: string } = {}) {
           <span>A cash drawer is plugged into this printer: open it for cash</span>
         </label>
         </>
+      ) : null}
+      {unsaved ? (
+        <p role="alert" className="y-printers__error" data-testid="printers-unsaved">
+          You have unsaved printer changes. Press Save printers, or sample papers and bills keep using the saved printers.
+        </p>
       ) : null}
       <div className="y-printers__actions">
         <Button variant="primary" size={56} disabled={busy} onClick={() => void save()} data-testid="save-printers">
