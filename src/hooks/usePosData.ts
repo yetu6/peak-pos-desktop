@@ -348,10 +348,15 @@ export function useActiveOrders() {
     queryFn: async () => {
       const api = createPosApi();
       // Every page, or an error: never part of the open orders as if all (2026-10-27).
-      return listWholeList(
+      const orders = await listWholeList(
         (cursor) => unwrap(api.listOrderPage({ view: "open", ...(cursor ? { cursor } : {}) })),
         OPEN_MOST_PAGES,
       );
+      // The business's VAT mode, as its orders carry it: Print sample papers shows it the same way.
+      const session = getOperationalSession();
+      const known = orders.find((order) => typeof order.pricesIncludeTax === "boolean");
+      if (known) rememberSampleFacts(session?.propertyId, session?.outletId, { pricesIncludeTax: known.pricesIncludeTax });
+      return orders;
     },
     retry: false,
   });
@@ -453,6 +458,8 @@ export function useCreateOrder() {
       ),
     onSuccess: (order: POSOrder) => {
       keepAnswer(queryClient, order);
+      const session = getOperationalSession();
+      if (typeof order.pricesIncludeTax === "boolean") rememberSampleFacts(session?.propertyId, session?.outletId, { pricesIncludeTax: order.pricesIncludeTax });
     },
   });
 }

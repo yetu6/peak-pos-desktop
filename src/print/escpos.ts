@@ -74,7 +74,10 @@ export class EscPos {
   }
 
   private testMark(): this {
-    return this.size(1, 1).align("center").bold(true).size(1, 2).line(markWords(this.testBusiness) ?? "").size(1, 1).bold(false);
+    // A sample on a test business carries both marks, one line each.
+    this.size(1, 1).align("center").bold(true).size(1, 2);
+    for (const words of (markWords(this.testBusiness) ?? "").split("\n")) this.line(words);
+    return this.size(1, 1).bold(false);
   }
 
   bold(on: boolean): this {

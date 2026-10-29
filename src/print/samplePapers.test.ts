@@ -35,7 +35,11 @@ const markedTopAndBottom = (bytes: Uint8Array) => {
 };
 
 describe("Print sample papers", () => {
-  beforeEach(() => setOperationalSession({ ...session }));
+  // The business's VAT setting as the till last heard it: 18%, on top.
+  beforeEach(() => {
+    setOperationalSession({ ...session });
+    rememberSampleFacts("p1", "o1", { currency: "TZS", vatRateBp: 1800, pricesIncludeTax: false });
+  });
   afterEach(() => { clearOperationalSession(); localStorage.clear(); vi.unstubAllGlobals(); });
 
   describe.each([PAPER_58MM, PAPER_80MM])("on thermal paper %i characters wide", (width) => {
@@ -67,6 +71,26 @@ describe("Print sample papers", () => {
       expect(lines(receiptBytes({ lines: [] }, width, { testBusiness: SAMPLE_MARK }))[0]).toBe(MARK);
     });
 
+    it("uses the business's real VAT mode: on top, then inside, with exact amounts", async () => {
+      const onTop = rig(settings);
+      await onTop.run(["receipt"]);
+      const top = readable(onTop.raw[0].bytes);
+      expect(top).toContain("Subtotal");
+      expect(top).toContain("18,000");
+      expect(top).toContain("3,240");
+      expect(top).toContain("21,240");
+      rememberSampleFacts("p1", "o1", { pricesIncludeTax: true });
+      const inside = rig(settings);
+      await inside.run(["bill", "receipt", "refund"]);
+      for (const paper of inside.raw) {
+        const words = readable(paper.bytes);
+        expect(words).toContain("18,000");
+        expect(words).toContain("2,746");
+        expect(words).not.toContain("21,240");
+        expect(words).not.toContain("3,240");
+      }
+    });
+
     it("never opens the cash drawer, even with a drawer set up", async () => {
       const { raw, run } = rig({ ...settings, cashDrawer: true });
       await run(["receipt", "refund"]);
@@ -74,6 +98,44 @@ describe("Print sample papers", () => {
       // ESC p (open drawer) is never in a sample.
       for (const paper of raw) for (let i = 0; i < paper.bytes.length - 1; i++) expect(!(paper.bytes[i] === 0x1b && paper.bytes[i + 1] === 0x70)).toBe(true);
     });
+  });
+
+  it("prints no money paper while the VAT setting is unknown, and never assumes on top", async () => {
+    localStorage.clear();
+    rememberSampleFacts("p1", "o1", { currency: "TZS", vatRateBp: 1800 }); // rate heard, mode not
+    const printer = net("10.0.0.5");
+    const { raw, run } = rig({ ...DEFAULT_PRINTER_SETTINGS, kitchen: printer, receipt: printer });
+    const results = await run();
+    const byKind = Object.fromEntries(results.map((r) => [r.kind, r]));
+    for (const kind of ["bill", "receipt", "refund"]) {
+      expect(byKind[kind].ok).toBe(false);
+      expect(byKind[kind].words).toContain("VAT setting not loaded yet");
+    }
+    for (const kind of ["kitchen", "bar", "void"]) expect(byKind[kind].ok).toBe(true);
+    expect(raw).toHaveLength(3);
+  });
+
+  it("marks a test business's samples with both SAMPLE and TEST lines, top and bottom", async () => {
+    cacheTestBusiness("p1", "o1", true);
+    const printer = net("10.0.0.5");
+    const { raw, run } = rig({ ...DEFAULT_PRINTER_SETTINGS, kitchen: printer, receipt: printer });
+    await run();
+    expect(raw).toHaveLength(6);
+    for (const paper of raw) {
+      const all = lines(paper.bytes);
+      expect(all.slice(0, 2)).toEqual([MARK, "TEST - not a real sale"]);
+      expect(all.filter((l) => l === MARK)).toHaveLength(2);
+      expect(all.filter((l) => l === "TEST - not a real sale")).toHaveLength(2);
+    }
+  });
+
+  it("calls the general station the Kitchen, as real kitchen tickets do, never Hot kitchen", async () => {
+    const printer = net("10.0.0.5");
+    const { raw, run } = rig({ ...DEFAULT_PRINTER_SETTINGS, kitchen: printer, receipt: printer });
+    await run(["kitchen", "void"]);
+    expect(raw).toHaveLength(2);
+    expect(readable(raw[0].bytes)).toContain("Kitchen");
+    for (const paper of raw) expect(readable(paper.bytes)).not.toContain("Hot kitchen");
   });
 
   it("prints no paper that has no saved printer, and says what to do", async () => {
@@ -134,7 +196,7 @@ describe("Print sample papers", () => {
 
   it("shows VAT the way this business shows it, and keeps its currency", async () => {
     expect(sampleFigures({ pricesIncludeTax: true }).totalMinor).toBe(1_800_000);
-    expect(sampleFigures({ pricesIncludeTax: true }).taxMinor).toBe(274_576);
+    expect(sampleFigures({ pricesIncludeTax: true }).taxMinor).toBe(274_600);
     rememberSampleFacts("p1", "o1", { currency: "TZS", vatRateBp: 1800, pricesIncludeTax: true });
     const { raw, run } = rig({ ...DEFAULT_PRINTER_SETTINGS, receipt: net("10.0.0.1") });
     await run(["receipt"]);

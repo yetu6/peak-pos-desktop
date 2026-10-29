@@ -22,7 +22,9 @@ pub fn command<S: AsRef<OsStr>>(program: S) -> Command {
 }
 
 /// Environment variables the fixed PowerShell scripts read their values from.
+#[allow(dead_code)]
 pub const ENV_PRINTER_NAME: &str = "YETU_PRINTER_NAME";
+#[allow(dead_code)]
 pub const ENV_PRINT_FILE: &str = "YETU_PRINT_FILE";
 
 /// A PowerShell run of a script fixed at compile time. Every value the script
@@ -30,6 +32,7 @@ pub const ENV_PRINT_FILE: &str = "YETU_PRINT_FILE";
 /// script as `$env:NAME`; a value is never written into script text, so no
 /// character in it can end up as PowerShell code. `&'static str` makes a
 /// formatted script a compile error.
+#[allow(dead_code)]
 pub fn powershell_script<S: AsRef<OsStr>>(program: S, script: &'static str, vars: &[(&str, &OsStr)]) -> Command {
     let mut command = command(program);
     command.args(["-NoProfile", "-NonInteractive", "-Command", script]);
@@ -41,7 +44,7 @@ pub fn powershell_script<S: AsRef<OsStr>>(program: S, script: &'static str, vars
 
 /// True when script text has a `{name}` or `{0}` format placeholder in it.
 #[cfg(test)]
-pub fn has_format_placeholder(script: &str) -> bool {
+pub(crate) fn has_format_placeholder(script: &str) -> bool {
     let bytes = script.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -114,9 +117,9 @@ mod tests {
 
     #[test]
     fn the_placeholder_check_catches_interpolation() {
-        assert!(has_format_placeholder("Out-Printer -Name '{printer}'"));
-        assert!(has_format_placeholder("x {0} y"));
-        assert!(!has_format_placeholder("class A { public int x; } $env:YETU_PRINTER_NAME"));
+        assert!(super::has_format_placeholder("Out-Printer -Name '{printer}'"));
+        assert!(super::has_format_placeholder("x {0} y"));
+        assert!(!super::has_format_placeholder("class A { public int x; } $env:YETU_PRINTER_NAME"));
     }
 
     #[test]
