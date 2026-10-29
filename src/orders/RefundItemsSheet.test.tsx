@@ -311,6 +311,10 @@ describe("Refund items: choosing what goes back", () => {
   });
 });
 
+async function tapKeys(prefix: string, keys: string) {
+  for (const key of keys) await userEvent.click(screen.getByTestId(`${prefix}-${key}`));
+}
+
 describe("Refund items: a split payment", () => {
   beforeEach(() => {
     state.refunds = refunds({
@@ -323,6 +327,23 @@ describe("Refund items: a split payment", () => {
       { paymentId: "pay-cash", paymentMethod: "CASH", capMinor: 500_000 },
       { paymentId: "pay-mm", paymentMethod: "MOBILE_MONEY", capMinor: 857_000 },
     ];
+  });
+
+  it("changes the split from the keypad alone, into the amount last touched", async () => {
+    render(<RefundItemsSheet order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    await chooseChipsAndReason();
+    await userEvent.click(screen.getByTestId("refund-change-split"));
+    // The first box takes the keys until another is touched.
+    await tapKeys("refund-split-key", "1000");
+    expect(screen.getByTestId("refund-split-CASH")).toHaveValue("1,000");
+    await userEvent.click(screen.getByTestId("refund-split-MOBILE_MONEY"));
+    await tapKeys("refund-split-key", "4900");
+    expect(screen.getByTestId("refund-split-MOBILE_MONEY")).toHaveValue("4,900");
+    expect(screen.getByTestId("refund-split-CASH")).toHaveValue("1,000");
+    expect(state.quoted.at(-1)?.tenders).toEqual([
+      { paymentId: "pay-cash", amountMinor: 100_000 },
+      { paymentId: "pay-mm", amountMinor: 490_000 },
+    ]);
   });
 
   it("shows Yetu's proposed split, and changes it only to one that adds up", async () => {

@@ -36,13 +36,20 @@ export function UpdaterBanner() {
     previousKind.current = status.kind;
   }, [status, errorKind]);
 
-  if (status.kind === "ready") return <UpdateBannerView state={blockedReason ? "ready" : "installing"} />;
+  if (status.kind === "ready") return <UpdateBannerView state={blockedReason ? "ready" : "installing"} version={status.version} />;
   if (errorKind === "install-failed") return <UpdateBannerView state="install-failed" />;
   return null;
 }
 
 /** What the update notice says, by state. */
-export function UpdateBannerView({ state }: { state: "ready" | "installing" | "install-failed" }) {
+export function UpdateBannerView({
+  state,
+  version,
+}: {
+  state: "ready" | "installing" | "install-failed";
+  /** The new version's number, when the updater told us. */
+  version?: string | null;
+}) {
   if (state === "install-failed") {
     return (
       <Banner tone="warning" data-testid="updater-failed">
@@ -53,7 +60,7 @@ export function UpdateBannerView({ state }: { state: "ready" | "installing" | "i
   return (
     <Banner tone="info" data-testid="updater-ready">
       {state === "ready"
-        ? `An update is ready. ${updateWhenWords()}`
+        ? `${version?.trim() ? `Yetu ${version.trim()} is ready.` : "An update is ready."} ${updateWhenWords()}`
         : "Installing the update. The till restarts by itself."}
     </Banner>
   );

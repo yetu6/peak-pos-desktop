@@ -1,10 +1,11 @@
-import { ChefHat, CircleAlert, CircleCheck, CircleHelp, Cloud, KeyRound, Printer, RadioTower, ReceiptText, RefreshCw, Wifi } from "lucide-react";
+import { ChefHat, CircleAlert, CircleCheck, CircleHelp, Cloud, KeyRound, Printer, RadioTower, ReceiptText, RefreshCw, RotateCw, Wifi } from "lucide-react";
 import { requestTimesWords } from "../lib/requestTimes";
 import { computerWords, liveUpdatesWords, tillKindWords, yetuAnswersWords } from "../lib/supportWords";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useDeviceSession } from "../auth/DeviceSessionProvider";
 import { useNetworkOnline } from "../access/useNetworkOnline";
-import { Button, StatusChip, TechnicalDetails } from "../components/system";
+import { Button, SegmentedControl, StatusChip, TechnicalDetails } from "../components/system";
+import { setKeyboardMode, useKeyboardMode, type KeyboardMode } from "../lib/onScreenKeyboard";
 import { loadDeviceKeyStorageStatus, type DeviceKeyStorageStatus } from "../lib/deviceIdentity";
 import {
   buildTechnicianSnapshot,
@@ -21,7 +22,11 @@ import { getApiBaseUrl } from "../lib/peakConfig";
 import { useLastUpdateNote, type UpdateNote } from "../lib/updateNotes";
 import { clockTime } from "../lib/words";
 import { useRealtime } from "../realtime/RealtimeProvider";
-import { useHasPermission } from "../hooks/usePosData";
+import { useHasPermission, usePosShift } from "../hooks/usePosData";
+import { useShiftSafeUpdater, type UpdaterStatus } from "../hooks/useShiftSafeUpdater";
+import { loadPrinterSettings } from "../print/printerStore";
+import { loadPrinterHealth, printerHealthWords, systemPrinterNames, type PrinterHealth } from "../print/printerHealth";
+import { restartBlockedReason, updateWhenWords } from "../lib/updaterGate";
 import { PrintQueueCard } from "../print/PrintQueueCard";
 import { PrintersCard } from "../print/PrintersCard";
 import { SAMPLE_KINDS, printSamplesFromTill, type SampleKind, type SampleResult } from "../print/samplePapers";
@@ -35,6 +40,145 @@ function updateWords(note: UpdateNote | null): string {
     return `An update didn't install at ${clockTime(note.at)}. The till keeps working; it will try again later.`;
   }
   return `Couldn't check for updates at ${clockTime(note.at)}. The till keeps working.`;
+}
+
+/** What "Check for updates now" answered, in words. */
+export function updateCheckWords(status: UpdaterStatus, version: string): string | null {
+  switch (status.kind) {
+    case "checking":
+      return "Checking for updates…";
+    case "latest":
+      return `You have the latest version (${version}).`;
+    case "available":
+    case "downloading":
+      return `Yetu ${status.version} found. Downloading it now…`;
+    case "ready":
+      return `Yetu ${status.version} is ready. ${updateWhenWords()}`;
+    case "error":
+      return `Couldn't check for updates: ${status.message}`;
+    case "unavailable":
+      return "Updates are checked in the till app, not in a browser.";
+    default:
+      return null;
+  }
+}
+
+/** Check for updates now, and the answer. The one updater does the work (UpdaterProvider). */
+function CheckForUpdates({ version }: { version: string }) {
+  const { status, checkNow } = useShiftSafeUpdater();
+  const working = status.kind === "checking" || status.kind === "available" || status.kind === "downloading";
+  const words = updateCheckWords(status, version);
+  return (
+    <div className="y-status__print">
+      <Button variant="secondary" icon={<RefreshCw />} disabled={working} onClick={() => void checkNow()} data-testid="diag-check-updates">
+        {status.kind === "checking" ? "Checking…" : "Check for updates now"}
+      </Button>
+      {words ? (
+        <p className="y-status__result" role={status.kind === "error" ? "alert" : "status"} data-testid="diag-update-check">
+          {words}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Restart to update now: for a manager, once an update is downloaded, and never
+ * over an open shift (a restart cuts a sale in progress). Blocked, it says why.
+ */
+function RestartToUpdate() {
+  const isManager = useHasPermission("pos.report.manager");
+  const { status } = useShiftSafeUpdater();
+  return status.kind === "ready" && isManager ? <RestartToUpdateButton /> : null;
+}
+
+function RestartToUpdateButton() {
+  const { phase } = useDeviceSession();
+  const { shift, isLoading } = usePosShift();
+  const { restartNow } = useShiftSafeUpdater();
+  const [restarting, setRestarting] = useState(false);
+  // While the shift is still being looked up, assume it is open.
+  const hasOpenShift = isLoading || Boolean(shift);
+  const reason = restartBlockedReason(phase, hasOpenShift);
+  if (reason) {
+    return (
+      <p className="y-status__fix" data-testid="diag-restart-blocked">
+        {reason}
+      </p>
+    );
+  }
+  return (
+    <div className="y-status__print">
+      <Button
+        icon={<RotateCw />}
+        disabled={restarting}
+        onClick={() => {
+          setRestarting(true);
+          void restartNow(hasOpenShift).finally(() => setRestarting(false));
+        }}
+        data-testid="diag-restart-update"
+      >
+        {restarting ? "Restarting…" : "Restart to update now"}
+      </Button>
+    </div>
+  );
+}
+
+/** Each system printer's real state: Windows lists a switched-off printer as fine, so this asks it. */
+function PrinterHealthList() {
+  const [rows, setRows] = useState<Array<{ name: string; health: PrinterHealth }> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const names = systemPrinterNames(await loadPrinterSettings());
+      const found = await Promise.all(names.map(async (name) => ({ name, health: await loadPrinterHealth(name) })));
+      if (!cancelled) setRows(found);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (!rows || rows.length === 0) return null;
+  return (
+    <section className="y-cash__card" aria-labelledby="printer-health-title" data-testid="printer-health">
+      <h2 id="printer-health-title" className="y-cash__card-title">
+        Printer state
+      </h2>
+      <ul aria-label="Printer state">
+        {rows.map(({ name, health }) => {
+          const { ok, words } = printerHealthWords(health);
+          return (
+            <li key={name} data-testid={`printer-health-${name}`} data-ok={ok}>
+              <strong>{name}</strong>: {words}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+const KEYBOARD_CHOICES: readonly { value: KeyboardMode; label: string }[] = [
+  { value: "auto", label: "Automatic" },
+  { value: "always", label: "Always" },
+  { value: "off", label: "Off" },
+];
+
+/** This till's on-screen keyboard setting: kept on this computer, next to the printers. */
+function OnScreenKeyboardCard() {
+  const mode = useKeyboardMode();
+  return (
+    <section className="y-cash__card" aria-labelledby="keyboard-card-title" data-testid="keyboard-card">
+      <h2 id="keyboard-card-title" className="y-cash__card-title">
+        On-screen keyboard
+      </h2>
+      <p className="y-cash__muted">
+        A keyboard on the screen for typing words, so this till works by touch alone. Automatic shows it on a touch screen
+        until someone presses a key on a real keyboard.
+      </p>
+      <SegmentedControl label="On-screen keyboard" value={mode} onChange={setKeyboardMode} options={KEYBOARD_CHOICES} testIdPrefix="keyboard-mode" />
+    </section>
+  );
 }
 
 type CheckState = "ok" | "problem" | "unknown";
@@ -220,8 +364,10 @@ export function Diagnostics() {
   const [samples, setSamples] = useState<SampleReport | null>(null);
   const [samplesBusy, setSamplesBusy] = useState(false);
 
+  const [round, setRound] = useState(0);
   const refresh = useCallback(async () => {
     setChecking(true);
+    setRound((n) => n + 1);
     setPeak(null);
     const [nextPeak, nextPrinter, nextHost, nextKeys] = await Promise.all([
       probePeakServer(),
@@ -246,7 +392,7 @@ export function Diagnostics() {
     setTestPrintBusy(true);
     setTestPrint(null);
     const result = await printTestPage();
-    setTestPrint(result.ok ? { ok: true, detail: null } : { ok: false, detail: result.error });
+    setTestPrint(result.ok ? { ok: true, detail: result.words ?? null } : { ok: false, detail: result.error });
     setTestPrintBusy(false);
   }
 
@@ -278,7 +424,7 @@ export function Diagnostics() {
       snapshot={buildTechnicianSnapshot({ identity, session, host, printer, keyStorage, peakOrigin: getApiBaseUrl() })}
       peak={peak}
       realtime={state}
-      printers={<>{isManager ? <PrintersCard /> : null}{native && canReadOrders ? <PrintQueueCard /> : null}</>}
+      printers={<>{isManager ? <PrintersCard /> : null}<PrinterHealthList key={round} /><OnScreenKeyboardCard />{native && canReadOrders ? <PrintQueueCard /> : null}</>}
     />
   );
 }
@@ -371,6 +517,9 @@ export function StatusView({
       <header className="y-status__top">
         <div>
           <h1 className="y-status__title">Status</h1>
+          <p className="y-status__version" data-testid="status-version">
+            Yetu {snapshot.appVersion}
+          </p>
           <p className="y-status__lede">How this till is doing, and what to do if something isn't right.</p>
         </div>
         <Button variant="secondary" icon={<RefreshCw />} disabled={checking} onClick={onCheckAgain}>
@@ -392,7 +541,7 @@ export function StatusView({
           {testPrint ? (
             <p className="y-status__result" role={testPrint.ok ? "status" : "alert"} data-testid="diag-test-print-result">
               {testPrint.ok
-                ? "Test page sent to the printer. Check it came out."
+                ? (testPrint.detail ?? "Test page sent to the printer. Check it came out.")
                 : "The test page didn't print. Check the printer is on, has paper and is this computer's default printer, then try again."}
             </p>
           ) : null}
@@ -408,6 +557,8 @@ export function StatusView({
           Updates
         </h2>
         <p data-testid="diag-updates">{updateWords(updateNote)}</p>
+        <CheckForUpdates version={snapshot.appVersion} />
+        <RestartToUpdate />
       </section>
 
       <TechnicalDetails>

@@ -1,6 +1,7 @@
 import { BACK_WORDS, BACK_ACCESSIBLE_WORDS } from "../../lib/words";
 import { CircleCheck, CircleX, Info, TriangleAlert, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
+import { keepKeyboardTaps } from "./TouchKeyboard";
 import type { ReactNode, RefObject } from "react";
 import { cn } from "../../lib/utils";
 
@@ -57,6 +58,7 @@ function Overlay({
           className={contentClassName}
           data-testid={testId}
           {...(description ? {} : { "aria-describedby": undefined })}
+          onInteractOutside={keepKeyboardTaps}
           onOpenAutoFocus={(event) => {
             if (!initialFocus?.current) return;
             event.preventDefault();

@@ -19,6 +19,17 @@
   overflow-y: auto;
 }
 
+/* The running version, quiet at the foot of every screen before sign-in. */
+.y-access-frame__version {
+  flex: none;
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--type-small);
+  background: var(--canvas);
+}
+
 /* Two columns: the hotel's pane in Yetu Blue, and the step on the canvas
    (owner's look at Bahari, 2026-10-19: the till is the hotel's). */
 .y-access {

@@ -16,6 +16,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useShiftSafeUpdater } from "../hooks/useShiftSafeUpdater";
 import { PlaceMark } from "../components/PlaceMark";
 import { Button, KeyHint, StatusChip } from "../components/system";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -113,6 +114,7 @@ export function TillShell({
   const [reason, setReason] = useState<{ page: WorkspacePage; text: string; top: number } | null>(null);
   const reasonTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { theme } = useTheme();
+  const updateReady = useShiftSafeUpdater().status.kind === "ready";
 
   useEffect(() => () => {
     if (reasonTimer.current) clearTimeout(reasonTimer.current);
@@ -301,6 +303,12 @@ export function TillShell({
                 <Icon className="y-rail__icon" aria-hidden="true" />
                 {item.disabledReason ? <Ban className="y-rail__closed" aria-hidden="true" /> : null}
                 <span className="y-rail__label">{item.label}</span>
+                {item.page === "status" && updateReady ? (
+                  <>
+                    <span className="y-rail__badge" aria-hidden="true" data-testid="nav-status-update" />
+                    <span className="sr-only">Update ready</span>
+                  </>
+                ) : null}
                 {keys ? <KeyHint keys={keys} className="y-rail__key" /> : null}
                 {item.disabledReason ? (
                   <span id={`rail-reason-${item.page}`} className="sr-only">

@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { BrandLockup } from "../components/BrandLockup";
+import { useEmbeddedVersion } from "../hooks/useEmbeddedVersion";
 import { PlaceMark } from "../components/PlaceMark";
 import { placeTitle, type TillPlace } from "../lib/tillPlace";
 import { cn } from "../lib/utils";
@@ -85,6 +86,7 @@ export function AccessLayout({
 
 /** The frame the app puts around the access screens: banners first, then the screen. */
 export function AccessFrame({ banners, children }: { banners?: ReactNode; children: ReactNode }) {
+  const version = useEmbeddedVersion();
   return (
     <div className="y-access-frame">
       <div className="y-banners">{banners}</div>
@@ -92,6 +94,9 @@ export function AccessFrame({ banners, children }: { banners?: ReactNode; childr
       <div className="y-access-frame__screen" data-must-fit="">
         {children}
       </div>
+      <p className="y-access-frame__version" data-testid="app-version">
+        Yetu {version}
+      </p>
     </div>
   );
 }

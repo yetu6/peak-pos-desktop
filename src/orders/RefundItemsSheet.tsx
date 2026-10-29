@@ -4,9 +4,11 @@ import { useSupervisors } from "../approvals/supervisors";
 import { useRef, useState } from "react";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
+import { MoneyKeypad } from "../register/MoneyKeypad";
 import { Banner, Button, MoneyField, ReasonPicker, RefusalNotice, Sheet, Skeleton, Stepper, SupervisorApproval, type KeypadKey } from "../components/system";
 import { useOrderRefunds, usePropertyId, useRecordRefund, useRefundQuote } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
+import { toMinor } from "../lib/posMoney";
 import { orderName } from "../lib/orderNumber";
 import type {
   POSOrder,
@@ -90,6 +92,9 @@ export function RefundItemsSheet({
   const [reason, setReason] = useState("");
   const [editingSplit, setEditingSplit] = useState(false);
   const [split, setSplit] = useState<Record<string, { text: string; minor: number | null }>>({});
+  // The split amount the on-screen keypad types into (the one last touched), and the ones already changed by hand.
+  const [splitTarget, setSplitTarget] = useState<string | null>(null);
+  const [splitEdited, setSplitEdited] = useState<Record<string, boolean>>({});
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const [done, setDone] = useState<{ refund: POSRefund; print: PrintState } | null>(null);
@@ -158,6 +163,8 @@ export function RefundItemsSheet({
   }
 
   function startSplit() {
+    setSplitEdited({});
+    setSplitTarget(null);
     if (!base) return;
     setSplit(Object.fromEntries(base.tenders.map((tender) => [tender.paymentId, { text: majorText(tender.amountMinor), minor: tender.amountMinor }])));
     setEditingSplit(true);
@@ -400,16 +407,36 @@ export function RefundItemsSheet({
                 editingSplit ? (
                   <div className="y-refund__split" data-testid="refund-split">
                     {base.tenders.map((tender) => (
-                      <MoneyField
-                        key={tender.paymentId}
-                        label={paymentMethodWords(tender.paymentMethod as SettlementMethod)}
-                        currency={currency}
-                        hint={`Up to ${formatMoney(tender.capMinor, currency)}`}
-                        value={split[tender.paymentId]?.text ?? ""}
-                        onValueChange={(text, minor) => setSplit((current) => ({ ...current, [tender.paymentId]: { text, minor } }))}
-                        inputTestId={`refund-split-${tender.paymentMethod}`}
-                      />
+                      <div key={tender.paymentId} onFocus={() => setSplitTarget(tender.paymentId)}>
+                        <MoneyField
+                          label={paymentMethodWords(tender.paymentMethod as SettlementMethod)}
+                          currency={currency}
+                          hint={`Up to ${formatMoney(tender.capMinor, currency)}`}
+                          value={split[tender.paymentId]?.text ?? ""}
+                          onValueChange={(text, minor) => {
+                            setSplit((current) => ({ ...current, [tender.paymentId]: { text, minor } }));
+                            setSplitEdited((current) => ({ ...current, [tender.paymentId]: true }));
+                          }}
+                          inputTestId={`refund-split-${tender.paymentMethod}`}
+                        />
+                      </div>
                     ))}
+                    {(() => {
+                      const target = base.tenders.find((tender) => tender.paymentId === splitTarget) ?? base.tenders[0];
+                      if (!target) return null;
+                      return (
+                        <MoneyKeypad
+                          label={`Amount for ${paymentMethodWords(target.paymentMethod as SettlementMethod)}`}
+                          value={split[target.paymentId]?.text ?? ""}
+                          filled={!splitEdited[target.paymentId]}
+                          onChange={(text) => {
+                            setSplit((current) => ({ ...current, [target.paymentId]: { text, minor: toMinor(text) } }));
+                            setSplitEdited((current) => ({ ...current, [target.paymentId]: true }));
+                          }}
+                          testIdPrefix="refund-split-key"
+                        />
+                      );
+                    })()}
                     {typedTotal !== null && !typedAddsUp ? (
                       <p className="y-field__error" data-testid="refund-split-total">
                         Adds up to {formatMoney(typedTotal, currency)} of {formatMoney(base.totalMinor, currency)}.

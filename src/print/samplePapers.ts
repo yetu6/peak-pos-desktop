@@ -6,7 +6,8 @@ import type { KitchenPrintRoutes } from "./kitchenRouting";
 import { prepareBillBranding } from "./billBranding";
 import { loadPrinterSettings, printRawToPrinter } from "./printerStore";
 import { printerWords, type PrinterSettings, type PrinterTarget } from "./printerSettings";
-import { SAMPLE_MARK } from "./testMark";
+import { testBusinessNow } from "../lib/testBusiness";
+import { SAMPLE_MARK, TEST_MARK } from "./testMark";
 
 /**
  * Print sample papers (owner, 2026-10-28): the installer sees every kind of
@@ -33,7 +34,7 @@ export const SAMPLE_DEFAULTS = { currency: "TZS", vatRateBp: 1800, pricesInclude
 /** Named setting: the sample order, in major units of the currency. */
 export const SAMPLE_ITEMS = [
   { name: "Sample drink", quantity: 2, unitMajor: 3_000, station: "BAR" },
-  { name: "Sample dish", quantity: 1, unitMajor: 12_000, station: "HOT" },
+  { name: "Sample dish", quantity: 1, unitMajor: 12_000, station: "GENERAL" },
 ] as const;
 
 const FACTS_KEY = "yetu-sample-facts";
@@ -66,12 +67,16 @@ export function sampleFigures(facts: Facts = {}) {
   const inside = facts.pricesIncludeTax ?? SAMPLE_DEFAULTS.pricesIncludeTax;
   const lines = SAMPLE_ITEMS.map((item) => {
     const amount = item.quantity * item.unitMajor * MINOR_PER_MAJOR;
-    const tax = inside ? Math.round((amount * rate) / (10_000 + rate)) : Math.round((amount * rate) / 10_000);
+    // VAT in whole units of the currency, as a real bill shows it.
+    const major = item.quantity * item.unitMajor;
+    const tax = (inside ? Math.round((major * rate) / (10_000 + rate)) : Math.round((major * rate) / 10_000)) * MINOR_PER_MAJOR;
     return { name: item.name, quantity: item.quantity, station: item.station, totalMinor: inside ? amount : amount + tax, taxMinor: tax, netMinor: inside ? amount - tax : amount };
   });
   const taxMinor = lines.reduce((sum, line) => sum + line.taxMinor, 0);
   const totalMinor = lines.reduce((sum, line) => sum + line.totalMinor, 0);
-  return { currency, inside, lines, taxMinor, totalMinor, subtotalMinor: totalMinor - taxMinor };
+  // Known only when this till has heard both the business's VAT rate and whether its prices hold the VAT.
+  const known = typeof facts.vatRateBp === "number" && typeof facts.pricesIncludeTax === "boolean";
+  return { currency, inside, known, lines, taxMinor, totalMinor, subtotalMinor: totalMinor - taxMinor };
 }
 
 function sampleJobs(facts: Facts, names: { property: string; outlet: string }, now: Date): Record<SampleKind, POSPrintJob> {
@@ -109,7 +114,7 @@ function sampleJobs(facts: Facts, names: { property: string; outlet: string }, n
   return {
     bill: job("BILL", { ...base, ...money, kind: "BILL", items, paidMinor: 0, remainingMinor: figures.totalMinor, printedByName: "Sample", printedAt: at }),
     receipt: job("RECEIPT", { ...base, ...money, items, tenderMethod: "CASH", operatorName: "Sample", settledAt: at }),
-    kitchen: job("KITCHEN_TICKET", station("HOT", "HOT")),
+    kitchen: job("KITCHEN_TICKET", station("GENERAL", "GENERAL")),
     bar: job("KITCHEN_TICKET", station("BAR", "BAR")),
     refund: job("REFUND_RECEIPT", {
       ...base,
@@ -122,7 +127,7 @@ function sampleJobs(facts: Facts, names: { property: string; outlet: string }, n
       initiatedByName: "Sample",
       authorizedByName: "Sample",
     }),
-    void: job("KITCHEN_VOID", { ...station("HOT", "HOT"), reason: "Sample", askedByName: "Sample", approvedByName: "Sample", voidedAt: at }),
+    void: job("KITCHEN_VOID", { ...station("GENERAL", "GENERAL"), reason: "Sample", askedByName: "Sample", approvedByName: "Sample", voidedAt: at }),
   };
 }
 
@@ -141,7 +146,17 @@ export interface SampleSend {
 
 export const SAMPLES_ONLY_IN_TILL = "Sample papers can be printed only from the till app.";
 
+const MONEY_PAPERS: readonly SampleKind[] = ["bill", "receipt", "refund"];
+export const VAT_NOT_LOADED = "Not printed — VAT setting not loaded yet. Open any order once so this till learns it, then print again";
+
 const ROUTED_BY_STATION: readonly SampleKind[] = ["kitchen", "bar", "void"];
+
+const WHICH_PRINTER: Record<SampleKind, string> = { bill: "bill", receipt: "bill", refund: "bill", kitchen: "kitchen", void: "kitchen", bar: "bar" };
+
+/** What a paper with no saved printer says. */
+export function notSetWords(kind: SampleKind): string {
+  return `Not printed — set the ${WHICH_PRINTER[kind]} printer in Printers and press Save`;
+}
 
 function whereWords(paper: TillPaper, kind: SampleKind): string {
   if (paper.kind === "thermal") return `sent to ${printerWords({ target: paper.target, width: paper.width as 32 | 48 })}`;
@@ -164,20 +179,28 @@ export async function printSamplePapers(
   const facts = recalled(session?.propertyId, session?.outletId);
   const names = { property: session?.propertyName?.trim() || "Your business", outlet: session?.outletName?.trim() || "Your outlet" };
   const jobs = sampleJobs(facts, names, now);
+  const vatKnown = sampleFigures(facts).known;
   // A sample never opens the cash drawer: no cash moved.
+  // A test business's sample carries both marks (SAMPLE, then TEST).
+  const mark = testBusinessNow() ? `${SAMPLE_MARK}\n${TEST_MARK}` : SAMPLE_MARK;
   const routes: KitchenPrintRoutes = { settings: { ...settings, cashDrawer: false }, printRaw: send.printRaw };
   const results: SampleResult[] = [];
   for (const { kind, label } of SAMPLE_KINDS.filter((entry) => kinds.includes(entry.kind))) {
     try {
-      const paper = buildPaperFor(jobs[kind], routes, SAMPLE_MARK);
+      // Money papers need the business's real VAT setting: never guess VAT on top.
+      if (MONEY_PAPERS.includes(kind) && !vatKnown) {
+        results.push({ kind, label, ok: false, words: VAT_NOT_LOADED });
+        continue;
+      }
+      const paper = buildPaperFor(jobs[kind], routes, mark);
       if (paper.kind === "none") {
         results.push({ kind, label, ok: false, words: paper.why === "kitchen-off" ? "not printed — paper kitchen tickets are off on this till (turn them on in Printers)" : `not printed — this till prints no paper for ${kind === "bar" ? "the bar" : "this station"} (set a printer in Printers)` });
       } else if (paper.kind === "thermal") {
         await send.printRaw(paper.target, paper.bytes);
         results.push({ kind, label, ok: true, words: whereWords(paper, kind) });
       } else {
-        await send.printText(paper.title, paper.text);
-        results.push({ kind, label, ok: true, words: whereWords(paper, kind) });
+        // No saved printer for this paper: Windows page printing makes an unreadable strip on a thermal printer.
+        results.push({ kind, label, ok: false, words: notSetWords(kind) });
       }
     } catch (error) {
       results.push({ kind, label, ok: false, words: `didn't print (${error instanceof Error ? error.message : String(error)})` });

@@ -4,6 +4,8 @@ mod identity;
 mod linux_webview;
 pub mod local_store;
 mod printer;
+mod printer_health;
+mod quiet;
 mod raw_print;
 mod socket;
 mod start_with_computer;
@@ -46,6 +48,7 @@ pub fn run() {
             printer::print_job_once,
             printer::resolve_print_not_printed,
             printer::list_printers,
+            printer_health::printer_health,
             printer::load_printer_settings,
             printer::save_printer_settings,
             diagnostics::host_diagnostics,

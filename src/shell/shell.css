@@ -252,6 +252,17 @@
   color: var(--fbc-warning-night);
 }
 
+/* A small dot: an update is downloaded and waiting (bright amber, 5.6:1 on the blue rail). */
+.y-rail__badge {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--fbc-warning-night);
+}
+
 .y-rail__icon { width: 24px; height: 24px; margin-bottom: 2px; }
 
 .y-rail__key {

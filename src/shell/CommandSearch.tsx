@@ -1,5 +1,6 @@
 import { Search } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
+import { keepKeyboardTaps } from "../components/system/TouchKeyboard";
 import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { KeyHint } from "../components/system";
 import { isComposing } from "../lib/keyboard";
@@ -41,7 +42,7 @@ export function CommandSearch({
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="y-scrim" />
-        <DialogPrimitive.Content className="y-command" data-command-search="" aria-describedby={undefined}>
+        <DialogPrimitive.Content className="y-command" data-command-search="" onInteractOutside={keepKeyboardTaps} aria-describedby={undefined}>
           {open ? <CommandSearchBody commands={commands} onDone={() => onOpenChange(false)} /> : null}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

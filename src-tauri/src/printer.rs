@@ -1,6 +1,6 @@
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 #[derive(serde::Deserialize)]
 pub struct PrintDocument {
@@ -103,7 +103,7 @@ fn send_unix_lp(title: &str, body: &str) -> Result<(), String> {
     let lp = which("lp").ok_or_else(|| "No printer is set up on this till".to_string())?;
     let printer = configured_printer_name();
 
-    let mut command = Command::new(lp);
+    let mut command = crate::quiet::command(lp);
     command.arg("-t").arg(title);
     if let Some(name) = printer {
         command.arg("-d").arg(name);
@@ -141,6 +141,13 @@ fn send_unix_lp(title: &str, body: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Fixed script text: the printer's name and the file arrive as environment variables.
+#[allow(dead_code)]
+pub(crate) const OUT_PRINTER_NAMED_SCRIPT: &str =
+    "Get-Content -LiteralPath $env:YETU_PRINT_FILE | Out-Printer -Name $env:YETU_PRINTER_NAME";
+#[allow(dead_code)]
+pub(crate) const OUT_PRINTER_DEFAULT_SCRIPT: &str = "Get-Content -LiteralPath $env:YETU_PRINT_FILE | Out-Printer";
+
 #[cfg(windows)]
 fn send_windows(title: &str, body: &str) -> Result<(), String> {
     let dir = std::env::temp_dir();
@@ -155,26 +162,33 @@ fn send_windows(title: &str, body: &str) -> Result<(), String> {
     std::fs::write(&path, format!("{body}\n"))
         .map_err(|err| format!("Printer write failed: {err}"))?;
 
-    let path_display = path.display().to_string().replace('\'', "''");
     let printer = configured_printer_name();
-    let script = if let Some(name) = printer {
-        let printer_name = name.replace('\'', "''");
-        format!("Get-Content -LiteralPath '{path_display}' | Out-Printer -Name '{printer_name}'")
-    } else {
-        format!("Get-Content -LiteralPath '{path_display}' | Out-Printer")
-    };
+    if let Some(name) = &printer {
+        if let Err(refused) = crate::raw_print::require_known_printer(name) {
+            let _ = std::fs::remove_file(&path);
+            return Err(refused);
+        }
+    }
+    let script = if printer.is_some() { OUT_PRINTER_NAMED_SCRIPT } else { OUT_PRINTER_DEFAULT_SCRIPT };
 
     let powershell = which("powershell")
         .or_else(|| which("powershell.exe"))
         .ok_or_else(|| "No printer is set up on this till".to_string())?;
 
-    let output = Command::new(powershell)
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|_| "No printer is set up on this till".to_string())?;
+    let name_value = std::ffi::OsString::from(printer.unwrap_or_default());
+    let output = crate::quiet::powershell_script(
+        powershell,
+        script,
+        &[
+            (crate::quiet::ENV_PRINTER_NAME, name_value.as_os_str()),
+            (crate::quiet::ENV_PRINT_FILE, path.as_os_str()),
+        ],
+    )
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .output()
+    .map_err(|_| "No printer is set up on this till".to_string())?;
 
     let _ = std::fs::remove_file(&path);
 
@@ -976,4 +990,23 @@ fn send_journal_network(host: &str, port: u16, bytes: &[u8]) -> Result<(), Trans
     Err(not_sent(
         "The printer did not answer. Check its power and network.".into(),
     ))
+}
+
+#[cfg(test)]
+mod script_tests {
+    #[test]
+    fn every_powershell_script_is_fixed_text_with_no_placeholder() {
+        for (name, script) in [
+            ("OUT_PRINTER_NAMED_SCRIPT", super::OUT_PRINTER_NAMED_SCRIPT),
+            ("OUT_PRINTER_DEFAULT_SCRIPT", super::OUT_PRINTER_DEFAULT_SCRIPT),
+            ("RAW_SEND_SCRIPT", crate::raw_print::RAW_SEND_SCRIPT),
+            ("LIST_PRINTERS_SCRIPT", crate::raw_print::LIST_PRINTERS_SCRIPT),
+            ("WINDOWS_HEALTH_SCRIPT", crate::printer_health::WINDOWS_HEALTH_SCRIPT),
+        ] {
+            assert!(!crate::quiet::has_format_placeholder(script), "{name} has a placeholder");
+        }
+        for script in [super::OUT_PRINTER_NAMED_SCRIPT, crate::raw_print::RAW_SEND_SCRIPT, crate::printer_health::WINDOWS_HEALTH_SCRIPT] {
+            assert!(script.contains("$env:YETU_PRINTER_NAME"));
+        }
+    }
 }

@@ -683,6 +683,7 @@ export function PaySheetView({
                 inputTestId="tender-amount"
                 error={over ? `That's more than the ${formatMoney(due, currency)} still to pay.` : undefined}
               />
+              <Keypad label="Amount" variant="money" onKey={(key) => other.keyed(key)} testIdPrefix="tender-key" />
               <Field
                 label="Reference (optional)"
                 hint="A transaction number or a phone number, if there is one."

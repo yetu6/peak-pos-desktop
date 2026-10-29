@@ -4,6 +4,7 @@ import { supervisorChoice, useApprovers } from "../approvals/supervisors";
 import type { POSApprover } from "../lib/posContracts";
 import { useEffect, useRef, useState } from "react";
 import { PIN_LENGTH } from "../access/accessSettings";
+import { MoneyKeypad } from "../register/MoneyKeypad";
 import { Banner, Button, Money, MoneyField, PermissionNotice, Sheet, SupervisorApproval, type KeypadKey } from "../components/system";
 import { useIdempotencyKey, useOpenTabsOf, usePosShift, type OpenTabs } from "../hooks/usePosData";
 import { orderName } from "../lib/orderNumber";
@@ -264,6 +265,7 @@ export function CloseShiftSheetView({
                 inputTestId="counted-cash"
                 autoFocus
               />
+              <MoneyKeypad label="Cash counted" value={counted} onChange={setCounted} testIdPrefix="counted-key" />
               {denominationsFor(currency).length > 0 ? (
                 <Button variant="secondary" onClick={() => setNoteCounter(true)}>
                   Count note by note

@@ -6,6 +6,7 @@ import { IdleLockOverlay } from "./components/IdleLockOverlay";
 import { KeyStorageBanner } from "./components/KeyStorageBanner";
 import { TestBusinessBanner } from "./components/TestBusinessBanner";
 import { UpdaterBanner } from "./components/UpdaterBanner";
+import { UpdaterProvider } from "./components/UpdaterProvider";
 import { ActiveOrders } from "./pages/ActiveOrders";
 import { Kitchen } from "./pages/Kitchen";
 import { Manager } from "./pages/Manager";
@@ -34,7 +35,7 @@ import { applyModeDefaultTheme } from "./lib/theme";
 import { clockTime, shiftChipWords } from "./lib/words";
 import { defaultWorkspacePage, isDisplayMode, workspaceNav, type WorkspacePage } from "./lib/workspace";
 import { TillShell } from "./shell/TillShell";
-import { Banner } from "./components/system";
+import { Banner, TouchKeyboardProvider } from "./components/system";
 import { OFFLINE_BANNER } from "./register/offlineWords";
 import { placeOf } from "./lib/tillPlace";
 import { useApprovers } from "./approvals/supervisors";
@@ -288,7 +289,11 @@ function AuthGate() {
 export function App() {
   return (
     <DeviceSessionProvider>
-      <AuthGate />
+      <UpdaterProvider>
+        <TouchKeyboardProvider>
+          <AuthGate />
+        </TouchKeyboardProvider>
+      </UpdaterProvider>
     </DeviceSessionProvider>
   );
 }

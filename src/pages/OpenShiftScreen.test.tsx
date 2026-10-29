@@ -55,12 +55,27 @@ afterEach(() => {
   forgetClosedShift();
 });
 
+async function tapKeys(prefix: string, keys: string) {
+  for (const key of keys) await userEvent.click(screen.getByTestId(`${prefix}-${key}`));
+}
+
 describe("OpenShiftScreen", () => {
   it("lets a staff member with pos.shift.open key in a float and open the shift", async () => {
     render(<OpenShiftScreen />);
     expect(screen.getByTestId("shift-staff-name")).toHaveTextContent("00007");
     expect(screen.queryByTestId("open-shift-unavailable")).not.toBeInTheDocument();
     await userEvent.type(screen.getByTestId("opening-float"), "50000");
+    await userEvent.click(screen.getByTestId("open-shift"));
+    expect(openMutate).toHaveBeenCalledWith({ openingCashMinor: 5_000_000, idempotencyKey: "key-1" });
+  });
+
+  it("opens the shift with the opening cash keyed on the screen's keypad alone", async () => {
+    render(<OpenShiftScreen />);
+    // The usual float is filled in; the first key replaces it.
+    await tapKeys("opening-key", "50000");
+    expect(screen.getByTestId("opening-float")).toHaveValue("50,000");
+    await userEvent.click(screen.getByTestId("opening-key-delete"));
+    await userEvent.click(screen.getByTestId("opening-key-0"));
     await userEvent.click(screen.getByTestId("open-shift"));
     expect(openMutate).toHaveBeenCalledWith({ openingCashMinor: 5_000_000, idempotencyKey: "key-1" });
   });

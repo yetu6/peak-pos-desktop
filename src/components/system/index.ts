@@ -6,6 +6,7 @@ export { Button, IconButton, KeyHint, type ButtonProps, type ButtonSize, type Bu
 export { SegmentedControl, Stepper, Tabs, type Choice, type TabItem } from "./choices";
 export { Field, MoneyField, SearchField } from "./fields";
 export { ReasonPicker } from "./ReasonPicker";
+export { TouchKeyboardProvider, keepKeyboardTaps } from "./TouchKeyboard";
 export { Keypad, QuickCash, type KeypadKey } from "./Keypad";
 export { Avatar, avatarTone, EmptyState, ListRow, Money, Skeleton, StatusChip, TicketLine, Tile, type MoneySize } from "./display";
 export { Banner, Dialog, Sheet, Toast, ToastRegion } from "./containers";
