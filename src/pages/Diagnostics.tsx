@@ -24,6 +24,8 @@ import { clockTime } from "../lib/words";
 import { useRealtime } from "../realtime/RealtimeProvider";
 import { useHasPermission, usePosShift } from "../hooks/usePosData";
 import { useShiftSafeUpdater, type UpdaterStatus } from "../hooks/useShiftSafeUpdater";
+import { loadPrinterSettings } from "../print/printerStore";
+import { loadPrinterHealth, printerHealthWords, systemPrinterNames, type PrinterHealth } from "../print/printerHealth";
 import { restartBlockedReason, updateWhenWords } from "../lib/updaterGate";
 import { PrintQueueCard } from "../print/PrintQueueCard";
 import { PrintersCard } from "../print/PrintersCard";
@@ -119,6 +121,40 @@ function RestartToUpdateButton() {
         {restarting ? "Restarting…" : "Restart to update now"}
       </Button>
     </div>
+  );
+}
+
+/** Each system printer's real state: Windows lists a switched-off printer as fine, so this asks it. */
+function PrinterHealthList() {
+  const [rows, setRows] = useState<Array<{ name: string; health: PrinterHealth }> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const names = systemPrinterNames(await loadPrinterSettings());
+      const found = await Promise.all(names.map(async (name) => ({ name, health: await loadPrinterHealth(name) })));
+      if (!cancelled) setRows(found);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (!rows || rows.length === 0) return null;
+  return (
+    <section className="y-cash__card" aria-labelledby="printer-health-title" data-testid="printer-health">
+      <h2 id="printer-health-title" className="y-cash__card-title">
+        Printer state
+      </h2>
+      <ul aria-label="Printer state">
+        {rows.map(({ name, health }) => {
+          const { ok, words } = printerHealthWords(health);
+          return (
+            <li key={name} data-testid={`printer-health-${name}`} data-ok={ok}>
+              <strong>{name}</strong>: {words}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -328,8 +364,10 @@ export function Diagnostics() {
   const [samples, setSamples] = useState<SampleReport | null>(null);
   const [samplesBusy, setSamplesBusy] = useState(false);
 
+  const [round, setRound] = useState(0);
   const refresh = useCallback(async () => {
     setChecking(true);
+    setRound((n) => n + 1);
     setPeak(null);
     const [nextPeak, nextPrinter, nextHost, nextKeys] = await Promise.all([
       probePeakServer(),
@@ -386,7 +424,7 @@ export function Diagnostics() {
       snapshot={buildTechnicianSnapshot({ identity, session, host, printer, keyStorage, peakOrigin: getApiBaseUrl() })}
       peak={peak}
       realtime={state}
-      printers={<>{isManager ? <PrintersCard /> : null}<OnScreenKeyboardCard />{native && canReadOrders ? <PrintQueueCard /> : null}</>}
+      printers={<>{isManager ? <PrintersCard /> : null}<PrinterHealthList key={round} /><OnScreenKeyboardCard />{native && canReadOrders ? <PrintQueueCard /> : null}</>}
     />
   );
 }
