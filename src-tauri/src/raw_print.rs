@@ -134,23 +134,17 @@ fn print_network(host: &str, port: u16, bytes: &[u8], local_only: bool) -> Resul
     Err(unreachable())
 }
 
-#[cfg(windows)]
-fn print_system(name: &str, bytes: &[u8]) -> Result<(), String> {
-    // The spooler in RAW mode (winspool.drv: OpenPrinter, StartDocPrinter with
-    // "RAW", WritePrinter), through PowerShell as the till's text printing
-    // already is: the bytes reach the printer exactly as made.
-    let dir = std::env::temp_dir();
-    let path = dir.join(format!("yetu-raw-{}-{}.bin", std::process::id(), nanos()));
-    std::fs::write(&path, bytes)
-        .map_err(|err| format!("The ticket couldn't be prepared for the printer: {err}"))?;
-    let path_display = path.display().to_string().replace('\'', "''");
-    let printer = name.replace('\'', "''");
-    let script = format!(
-        r#"$ErrorActionPreference = 'Stop'
+#[allow(dead_code)]
+pub(crate) const LIST_PRINTERS_SCRIPT: &str = "Get-Printer | Select-Object -ExpandProperty Name";
+
+/// The raw-mode send, as fixed script text: the printer and the file arrive
+/// as environment variables, never inside the text.
+#[allow(dead_code)]
+pub(crate) const RAW_SEND_SCRIPT: &str = r#"$ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
 using System; using System.Runtime.InteropServices;
-public static class YetuRaw {{
-  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] public class DOCINFO {{ public string pDocName; public string pOutputFile; public string pDataType; }}
+public static class YetuRaw {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] public class DOCINFO { public string pDocName; public string pOutputFile; public string pDataType; }
   [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool OpenPrinter(string name, out IntPtr h, IntPtr d);
   [DllImport("winspool.drv", SetLastError = true)] public static extern bool ClosePrinter(IntPtr h);
   [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)] public static extern int StartDocPrinter(IntPtr h, int level, DOCINFO di);
@@ -158,25 +152,55 @@ public static class YetuRaw {{
   [DllImport("winspool.drv", SetLastError = true)] public static extern bool StartPagePrinter(IntPtr h);
   [DllImport("winspool.drv", SetLastError = true)] public static extern bool EndPagePrinter(IntPtr h);
   [DllImport("winspool.drv", SetLastError = true)] public static extern bool WritePrinter(IntPtr h, byte[] b, int n, out int w);
-  public static void Send(string printer, byte[] bytes) {{
+  public static void Send(string printer, byte[] bytes) {
     IntPtr h; if (!OpenPrinter(printer, out h, IntPtr.Zero)) throw new Exception("printer not found");
-    try {{
-      var di = new DOCINFO {{ pDocName = "Yetu ticket", pDataType = "RAW" }};
+    try {
+      var di = new DOCINFO { pDocName = "Yetu ticket", pDataType = "RAW" };
       if (StartDocPrinter(h, 1, di) == 0) throw new Exception("printer refused the job");
-      try {{ StartPagePrinter(h); int w; if (!WritePrinter(h, bytes, bytes.Length, out w) || w != bytes.Length) throw new Exception("printer took only part of the job"); EndPagePrinter(h); }}
-      finally {{ EndDocPrinter(h); }}
-    }} finally {{ ClosePrinter(h); }}
-  }}
-}}
+      try { StartPagePrinter(h); int w; if (!WritePrinter(h, bytes, bytes.Length, out w) || w != bytes.Length) throw new Exception("printer took only part of the job"); EndPagePrinter(h); }
+      finally { EndDocPrinter(h); }
+    } finally { ClosePrinter(h); }
+  }
+}
 '@
-[YetuRaw]::Send('{printer}', [System.IO.File]::ReadAllBytes('{path_display}'))"#
-    );
-    let result = crate::quiet::command("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output();
+[YetuRaw]::Send($env:YETU_PRINTER_NAME, [System.IO.File]::ReadAllBytes($env:YETU_PRINT_FILE))"#;
+
+/// A name is accepted only when it is exactly one of the printers this computer lists.
+pub fn require_known_printer_in(name: &str, known: &[String]) -> Result<(), String> {
+    if known.iter().any(|candidate| candidate == name) {
+        Ok(())
+    } else {
+        Err("That isn't one of the printers set up on this computer. Choose the printer again in Printers.".to_string())
+    }
+}
+
+/// The same, asking this computer for its printers now.
+pub fn require_known_printer(name: &str) -> Result<(), String> {
+    require_known_printer_in(name, &list_system_printers())
+}
+
+#[cfg(windows)]
+fn print_system(name: &str, bytes: &[u8]) -> Result<(), String> {
+    // The spooler in RAW mode (winspool.drv: OpenPrinter, StartDocPrinter with
+    // "RAW", WritePrinter), through PowerShell as the till's text printing
+    // already is: the bytes reach the printer exactly as made.
+    require_known_printer(name)?;
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!("yetu-raw-{}-{}.bin", std::process::id(), nanos()));
+    std::fs::write(&path, bytes)
+        .map_err(|err| format!("The ticket couldn't be prepared for the printer: {err}"))?;
+    let result = crate::quiet::powershell_script(
+        "powershell",
+        RAW_SEND_SCRIPT,
+        &[
+            (crate::quiet::ENV_PRINTER_NAME, std::ffi::OsStr::new(name)),
+            (crate::quiet::ENV_PRINT_FILE, path.as_os_str()),
+        ],
+    )
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .output();
     let _ = std::fs::remove_file(&path);
     let output = result
         .map_err(|_| format!("The printer {name} couldn't be reached from this computer."))?;
@@ -222,13 +246,7 @@ fn print_system(name: &str, bytes: &[u8]) -> Result<(), String> {
 /// The printers this computer knows, by name, as staff choose them.
 pub fn list_system_printers() -> Vec<String> {
     #[cfg(windows)]
-    let output = crate::quiet::command("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "Get-Printer | Select-Object -ExpandProperty Name",
-        ])
+    let output = crate::quiet::powershell_script("powershell", LIST_PRINTERS_SCRIPT, &[])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output();
@@ -384,5 +402,14 @@ mod tests {
             .unwrap_err(),
             "There was nothing to print."
         );
+    }
+
+    #[test]
+    fn a_printer_name_must_be_exactly_one_this_computer_lists() {
+        let known = vec!["EPSON TM-T20III".to_string(), "Kitchen".to_string()];
+        assert!(require_known_printer_in("Kitchen", &known).is_ok());
+        for bad in ["kitchen", "Kitchen ", "Kitchen'; calc", "Kitchen\u{2019}", "", "Other"] {
+            assert!(require_known_printer_in(bad, &known).unwrap_err().contains("isn't one of the printers"), "{bad:?}");
+        }
     }
 }

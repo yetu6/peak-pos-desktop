@@ -67,21 +67,24 @@ pub fn parse_lpstat(text: &str) -> PrinterHealth {
     }
 }
 
+/// Fixed script text: the printer's name arrives as $env:YETU_PRINTER_NAME.
+#[allow(dead_code)]
+pub(crate) const WINDOWS_HEALTH_SCRIPT: &str = "$p = Get-Printer -Name $env:YETU_PRINTER_NAME -ErrorAction Stop; \
+$w = $false; if ($p.PSObject.Properties['WorkOffline']) { $w = [bool]$p.WorkOffline }; \
+$j = @(Get-PrintJob -PrinterName $env:YETU_PRINTER_NAME -ErrorAction SilentlyContinue); \
+$age = 0; if ($j.Count -gt 0) { $first = ($j | Measure-Object -Property SubmittedTime -Minimum).Minimum; $age = [int][Math]::Max(0, ((Get-Date) - $first).TotalSeconds) }; \
+[pscustomobject]@{ status = [string]$p.PrinterStatus; workOffline = $w; jobs = $j.Count; oldestSeconds = $age } | ConvertTo-Json -Compress";
+
 #[cfg(windows)]
 fn check(name: &str) -> PrinterHealth {
-    let quoted = name.replace('\'', "''");
-    let script = format!(
-        "$p = Get-Printer -Name '{quoted}' -ErrorAction Stop; \
-         $w = $false; if ($p.PSObject.Properties['WorkOffline']) {{ $w = [bool]$p.WorkOffline }}; \
-         $j = @(Get-PrintJob -PrinterName '{quoted}' -ErrorAction SilentlyContinue); \
-         $age = 0; if ($j.Count -gt 0) {{ $first = ($j | Measure-Object -Property SubmittedTime -Minimum).Minimum; $age = [int][Math]::Max(0, ((Get-Date) - $first).TotalSeconds) }}; \
-         [pscustomobject]@{{ status = [string]$p.PrinterStatus; workOffline = $w; jobs = $j.Count; oldestSeconds = $age }} | ConvertTo-Json -Compress"
-    );
-    let output = crate::quiet::command("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output();
+    let output = crate::quiet::powershell_script(
+        "powershell",
+        WINDOWS_HEALTH_SCRIPT,
+        &[(crate::quiet::ENV_PRINTER_NAME, std::ffi::OsStr::new(name))],
+    )
+    .stdin(Stdio::null())
+    .stderr(Stdio::null())
+    .output();
     match output {
         Ok(out) if out.status.success() => parse_windows(&String::from_utf8_lossy(&out.stdout)),
         _ => health("unknown", None, 0),
@@ -103,8 +106,9 @@ fn check(name: &str) -> PrinterHealth {
 
 /// How a system printer is doing right now. Never prints; never an unsend.
 #[tauri::command]
-pub fn printer_health(name: String) -> PrinterHealth {
-    check(&name)
+pub fn printer_health(name: String) -> Result<PrinterHealth, String> {
+    crate::raw_print::require_known_printer(&name)?;
+    Ok(check(&name))
 }
 
 #[cfg(test)]
