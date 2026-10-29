@@ -19,10 +19,14 @@ jobs:
             platform: linux
           # Windows runs on every PR because the encrypted local store once
           # crashed only there (SQLCipher cipher_memory_security recursion,
-          # issue #8), first caught at release-tag time. macOS stays
-          # release-only.
+          # issue #8), first caught at release-tag time. macOS runs on every
+          # PR too since v0.1.8: a printer test failed only there (an accepted
+          # socket inherits non-blocking mode on macOS), first caught at
+          # release-tag time. The repo is public, so macOS runners are free.
           - os: windows-latest
             platform: windows
+          - os: macos-latest
+            platform: macos
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
