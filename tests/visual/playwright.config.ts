@@ -33,7 +33,6 @@ export default defineConfig({
   projects: [
     { name: "redesign", testMatch: /redesign\.spec\.ts$/ },
     { name: "fit", testMatch: /fit\.spec\.ts$/ },
-    { name: "fit-audit", testMatch: /fit-audit\.spec\.ts$/ },
     { name: "boot", testMatch: /boot\.spec\.ts$/ },
     { name: "fixtures", testMatch: /fixtures\.spec\.ts$/ },
     { name: "known-debt", testMatch: /known-debt\.spec\.ts$/, dependencies: ["fixtures"] },

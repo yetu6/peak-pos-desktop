@@ -201,7 +201,7 @@ const DISPLAY_CHOICES: readonly { value: DisplayChoice; label: string }[] = [
 ];
 
 /** This till's display size: kept on this computer, next to the printers and the keyboard. */
-function DisplaySizeCard() {
+export function DisplaySizeCard() {
   const { setting, scale } = useDisplaySetting();
   const named = typeof setting === "number" ? undefined : setting;
   return (

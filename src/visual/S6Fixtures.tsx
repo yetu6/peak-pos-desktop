@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { Banner } from "../components/system";
 import { buildTechnicianSnapshot } from "../lib/diagnostics";
 import type { LocalOrderView, SyncState } from "../lib/localPosCore";
-import { StatusView, statusChecks } from "../pages/Diagnostics";
+import { DisplaySizeCard, StatusView, statusChecks } from "../pages/Diagnostics";
 import { ALL_CATEGORIES, MenuPanel } from "../register/MenuPanel";
 import { OfflineCashSheet } from "../register/OfflineCashSheet";
 import { OfflineSaleSaved } from "../register/OfflineSaleSaved";
@@ -244,7 +244,7 @@ export function StatusFixture() {
 
 /** Status for a manager (S8a/S8b): this computer's printers, set up beside the printer's check. */
 export function StatusPrintersFixture() {
-  return <Status printed={{ ok: true, detail: null }} printers={<PrintersCard />} />;
+  return <Status printed={{ ok: true, detail: null }} printers={<><PrintersCard /><DisplaySizeCard /></>} />;
 }
 
 /** Status with problems: each says what to do. */
