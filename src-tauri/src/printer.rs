@@ -503,6 +503,10 @@ mod durable_tests {
         // acceptance. The restart must retain UNKNOWN and send no second copy.
         assert!(send_journal_paper(paper()).is_ok());
         let (mut delivered, _) = listener.accept().unwrap();
+        // macOS hands an accepted socket the listener's non-blocking mode
+        // (Linux and Windows do not): read it blocking, or a slow sender
+        // reads as WouldBlock there.
+        delivered.set_nonblocking(false).unwrap();
         let mut delivered_bytes = Vec::new();
         delivered.read_to_end(&mut delivered_bytes).unwrap();
         assert_eq!(delivered_bytes, b"KITCHEN ORDER\n2 x Rice\n");

@@ -5,6 +5,7 @@
 use std::process::Stdio;
 
 /// Named setting: a job that has waited this many minutes in the queue is stuck, not printing.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
 pub const STUCK_AFTER_MINUTES: u32 = 3;
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
@@ -23,6 +24,7 @@ fn health(state: &str, detail: Option<String>, stuck_jobs: u32) -> PrinterHealth
 }
 
 /// The printer's state from Windows' PrinterStatus (and WorkOffline), as words the app knows.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
 fn windows_state(status: &str, work_offline: bool) -> (&'static str, Option<String>) {
     if work_offline {
         return ("offline", None);
@@ -39,6 +41,7 @@ fn windows_state(status: &str, work_offline: bool) -> (&'static str, Option<Stri
 }
 
 /// Parses what the Windows script printed: {"status":"Normal","workOffline":false,"jobs":2,"oldestSeconds":400}.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
 pub fn parse_windows(json: &str) -> PrinterHealth {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(json.trim()) else {
         return health("unknown", None, 0);
