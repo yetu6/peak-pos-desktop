@@ -4,6 +4,7 @@ mod identity;
 mod linux_webview;
 pub mod local_store;
 mod printer;
+mod quiet;
 mod raw_print;
 mod socket;
 mod start_with_computer;

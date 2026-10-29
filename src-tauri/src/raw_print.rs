@@ -7,7 +7,7 @@
 
 use std::io::Write;
 use std::net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::Duration;
 
 /// How long a network printer has to answer before the job is said to have failed.
@@ -171,7 +171,7 @@ public static class YetuRaw {{
 '@
 [YetuRaw]::Send('{printer}', [System.IO.File]::ReadAllBytes('{path_display}'))"#
     );
-    let result = Command::new("powershell")
+    let result = crate::quiet::command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -197,7 +197,7 @@ fn nanos() -> u128 {
 #[cfg(not(windows))]
 fn print_system(name: &str, bytes: &[u8]) -> Result<(), String> {
     // CUPS: lp with -o raw passes the bytes to the printer untouched.
-    let mut child = Command::new("lp")
+    let mut child = crate::quiet::command("lp")
         .args(["-d", name, "-o", "raw"])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -222,7 +222,7 @@ fn print_system(name: &str, bytes: &[u8]) -> Result<(), String> {
 /// The printers this computer knows, by name, as staff choose them.
 pub fn list_system_printers() -> Vec<String> {
     #[cfg(windows)]
-    let output = Command::new("powershell")
+    let output = crate::quiet::command("powershell")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -233,7 +233,7 @@ pub fn list_system_printers() -> Vec<String> {
         .stderr(Stdio::null())
         .output();
     #[cfg(not(windows))]
-    let output = Command::new("lpstat")
+    let output = crate::quiet::command("lpstat")
         .arg("-e")
         .stdin(Stdio::null())
         .stderr(Stdio::null())

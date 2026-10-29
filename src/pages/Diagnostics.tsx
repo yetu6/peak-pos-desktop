@@ -354,7 +354,7 @@ export function Diagnostics() {
     setTestPrintBusy(true);
     setTestPrint(null);
     const result = await printTestPage();
-    setTestPrint(result.ok ? { ok: true, detail: null } : { ok: false, detail: result.error });
+    setTestPrint(result.ok ? { ok: true, detail: result.words ?? null } : { ok: false, detail: result.error });
     setTestPrintBusy(false);
   }
 
@@ -503,7 +503,7 @@ export function StatusView({
           {testPrint ? (
             <p className="y-status__result" role={testPrint.ok ? "status" : "alert"} data-testid="diag-test-print-result">
               {testPrint.ok
-                ? "Test page sent to the printer. Check it came out."
+                ? (testPrint.detail ?? "Test page sent to the printer. Check it came out.")
                 : "The test page didn't print. Check the printer is on, has paper and is this computer's default printer, then try again."}
             </p>
           ) : null}

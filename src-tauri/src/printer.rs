@@ -1,6 +1,6 @@
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 #[derive(serde::Deserialize)]
 pub struct PrintDocument {
@@ -103,7 +103,7 @@ fn send_unix_lp(title: &str, body: &str) -> Result<(), String> {
     let lp = which("lp").ok_or_else(|| "No printer is set up on this till".to_string())?;
     let printer = configured_printer_name();
 
-    let mut command = Command::new(lp);
+    let mut command = crate::quiet::command(lp);
     command.arg("-t").arg(title);
     if let Some(name) = printer {
         command.arg("-d").arg(name);
@@ -168,7 +168,7 @@ fn send_windows(title: &str, body: &str) -> Result<(), String> {
         .or_else(|| which("powershell.exe"))
         .ok_or_else(|| "No printer is set up on this till".to_string())?;
 
-    let output = Command::new(powershell)
+    let output = crate::quiet::command(powershell)
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .stdin(Stdio::null())
         .stdout(Stdio::null())

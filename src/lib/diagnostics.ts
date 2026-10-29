@@ -79,14 +79,18 @@ export async function loadPrinterStatus(): Promise<PrinterStatus | null> {
   return invoke<PrinterStatus>("printer_status");
 }
 
-export async function printTestPage(): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function printTestPage(): Promise<{ ok: true; words: string | null } | { ok: false; error: string }> {
   if (!tauriAvailable()) {
     return { ok: false, error: "Test print is only available in the desktop app." };
   }
   try {
     const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("print_test_page");
-    return { ok: true };
+    const { loadPrinterSettings, printRawToPrinter } = await import("../print/printerStore");
+    const { printTestPageVia } = await import("../print/testPage");
+    return await printTestPageVia(await loadPrinterSettings(), {
+      printRaw: printRawToPrinter,
+      printOs: () => invoke("print_test_page"),
+    });
   } catch (error) {
     return {
       ok: false,
