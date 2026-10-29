@@ -215,6 +215,7 @@ export function OpenShiftView({
                 variant="primary"
                 size={64}
                 block
+                className="y-pinned-action"
                 data-testid="open-shift"
                 disabled={pending || openingMinor == null}
               >

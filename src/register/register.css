@@ -194,6 +194,8 @@
   height: 100%;
   min-height: 0;
   flex-direction: column;
+  /* A very short window: the ticket scrolls as a whole and Pay stays pinned at its foot. */
+  overflow-y: auto;
 }
 
 .y-ticket__head {
@@ -229,8 +231,8 @@
 .y-ticket__who { color: var(--text-muted); font-size: var(--type-small); }
 
 .y-ticket__lines {
-  min-height: 0;
-  flex: 1;
+  min-height: 96px;
+  flex: 1 0 96px;
   overflow: auto;
   padding: var(--space-2) var(--space-3);
 }
@@ -294,6 +296,10 @@
 }
 
 .y-ticket__foot {
+  position: sticky;
+  z-index: 2;
+  bottom: 0;
+  background: var(--surface);
   display: grid;
   gap: var(--space-3);
   border-top: 1px solid var(--line);

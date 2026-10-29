@@ -55,6 +55,8 @@ export function SegmentedControl<T extends string>({
     <div role="radiogroup" aria-label={label} className={cn("y-segmented", `y-segmented--${size}`, className)}>
       {options.map((option, index) => {
         const checked = option.value === value;
+        // With nothing chosen (a manual display size) the first option is still reachable by Tab.
+        const tabStop = checked || (index === 0 && !values.includes(value));
         return (
           <button
             key={option.value}
@@ -64,7 +66,7 @@ export function SegmentedControl<T extends string>({
             type="button"
             role="radio"
             aria-checked={checked}
-            tabIndex={checked ? 0 : -1}
+            tabIndex={tabStop ? 0 : -1}
             data-testid={testIdPrefix ? `${testIdPrefix}-${option.value}` : undefined}
             disabled={disabled}
             className="y-segmented__option"

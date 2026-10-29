@@ -3,12 +3,15 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { TooltipProvider } from "./components/ui/tooltip";
+import { startDisplaySize } from "./lib/displaySize";
 import { bootTheme } from "./lib/theme";
 import "./index.css";
 
 // The stored per-device theme (or the before-pairing default) is on screen
 // before the first paint; the paired mode's default follows once it is known.
 bootTheme();
+// The saved display size (or Automatic, fitting the window) before the first screen.
+startDisplaySize();
 
 const queryClient = new QueryClient({
   defaultOptions: {

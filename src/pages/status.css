@@ -168,3 +168,5 @@
 
 .y-status__sample-pick input { width: 20px; height: 20px; }
 .y-status__sample-results [role="status"] { color: var(--text); }
+
+.y-display-steps { display: flex; flex-wrap: wrap; gap: var(--space-2); }
