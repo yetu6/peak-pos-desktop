@@ -13,9 +13,10 @@ export type OrderItemStatus = "ADDED" | "SENT" | "VOIDED";
 export type PaymentMethod = "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER" | "EXTERNAL_CARD" | "OTHER";
 export type ShiftStatus = "OPEN" | "PENDING_VARIANCE_APPROVAL" | "CLOSED";
 /** DRAWER_OPENED (fbc-peak #289): the drawer opened without a sale, with a reason; no money. */
-export type CashMovementType = "CASH_IN" | "CASH_OUT" | "DRAWER_OPENED";
+/** WAITER_HANDOVER: cash a waiter handed in; WAITER_SHORT: cash a waiter had not handed in by the close, owed by them (fbc-peak #327). */
+export type CashMovementType = "CASH_IN" | "CASH_OUT" | "DRAWER_OPENED" | "WAITER_HANDOVER" | "WAITER_SHORT";
 /** Cash put into the drawer or taken out of it: money moves. */
-export type CashMoneyType = Exclude<CashMovementType, "DRAWER_OPENED">;
+export type CashMoneyType = "CASH_IN" | "CASH_OUT";
 /** ON_FILE (fbc-peak #288): a paid order's document, kept and never printed by itself. */
 export type PrintJobStatus = "PENDING" | "CLAIMED" | "PRINTED" | "FAILED" | "ON_FILE";
 
@@ -281,7 +282,33 @@ export interface POSCashMovement {
   recordedByName?: string;
   /** Who approved a cash out, by name; never their id (2026-10-27). */
   authorizedByName?: string;
+  /** The waiter a WAITER_HANDOVER came from, or who owes a WAITER_SHORT. */
+  fromStaffName?: string;
   createdAt: string;
+}
+
+/**
+ * One waiter's money on the till's open shift (fbc-peak #327, owner
+ * 2026-10-29): cashMinor is the cash they took and kept in hand; heldMinor is
+ * what they still hold (cash, less handed in, less owed).
+ */
+export interface POSWaiterMoney {
+  staffId: string;
+  name: string;
+  ordersTaken: number;
+  ordersOpen: number;
+  cashMinor: number;
+  mobileMoneyMinor: number;
+  cardMinor: number;
+  otherMinor: number;
+  handedInMinor: number;
+  owedMinor: number;
+  heldMinor: number;
+}
+
+export interface POSWaitersMoney {
+  shiftId: string;
+  waiters: POSWaiterMoney[];
 }
 
 /** A room an order can be charged to: never the room's own id or the guest's bill (2026-10-27). */

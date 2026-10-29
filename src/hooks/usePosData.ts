@@ -323,6 +323,35 @@ export function useRecordCashMovement(shiftId: string | undefined) {
 }
 
 /** The drawer opened without a sale (fbc-peak #289): Yetu records it, then the till opens the drawer. */
+/**
+ * Each waiter's money on the open shift (fbc-peak #327): everyone's for the
+ * cashier, only their own for a waiter. Read again often: a waiter's payment
+ * or a handover elsewhere changes it.
+ */
+export function useWaitersMoney(enabled: boolean) {
+  return useQuery({
+    queryKey: ["pos", "waiters-money"],
+    queryFn: async () => unwrap(createPosApi().getWaitersMoney()),
+    enabled,
+    refetchInterval: 15_000,
+    retry: false,
+  });
+}
+
+/** Cash a waiter hands in, as the cashier counted it: it goes into the drawer. */
+export function useReceiveFromWaiter() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { staffId: string; countedMinor: number; idempotencyKey: string }) =>
+      unwrap(createPosApi().receiveFromWaiter(args.staffId, args.countedMinor, args.idempotencyKey)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["pos", "waiters-money"] });
+      void queryClient.invalidateQueries({ queryKey: ["pos", "cash-movements"] });
+      void queryClient.invalidateQueries({ queryKey: ["pos", "shift"] });
+    },
+  });
+}
+
 export function useRecordDrawerOpened(shiftId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({

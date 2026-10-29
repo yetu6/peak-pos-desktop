@@ -1,3 +1,4 @@
+import { watchAfterPrint } from "./printerWatch";
 import { DEFAULT_PRINTER_SETTINGS, settingsFrom, type PrinterSettings, type PrinterTarget } from "./printerSettings";
 
 /**
@@ -41,4 +42,6 @@ export async function listSystemPrinters(): Promise<string[]> {
 export async function printRawToPrinter(target: PrinterTarget, bytes: Uint8Array): Promise<void> {
   if (!inTill()) throw new Error("No printer is set up on this till");
   await invoke("print_raw", { target, bytes: Array.from(bytes) });
+  // Windows took the paper; whether it came out is checked a few seconds later.
+  watchAfterPrint(target);
 }

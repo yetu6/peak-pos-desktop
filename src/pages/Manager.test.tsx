@@ -3,11 +3,12 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Manager } from "./Manager";
-import type { POSShift } from "../lib/posContracts";
+import type { POSShift, POSWaitersMoney } from "../lib/posContracts";
 
-const { closeBusinessDayMutate, permissionsRef, capabilitiesRef, shiftRef, currencyRef, movementsRef } = vi.hoisted(() => ({
+const { closeBusinessDayMutate, waitersRef, permissionsRef, capabilitiesRef, shiftRef, currencyRef, movementsRef } = vi.hoisted(() => ({
   closeBusinessDayMutate: vi.fn(),
-  permissionsRef: { permissions: [] as string[] },
+  permissionsRef: { permissions: ["pos.shift.open"] as string[] },
+  waitersRef: { data: undefined as POSWaitersMoney | undefined, isLoading: false },
   capabilitiesRef: { capabilities: [] as string[] },
   shiftRef: { shift: undefined as POSShift | undefined },
   currencyRef: { currency: "TZS" as string | undefined },
@@ -44,6 +45,8 @@ vi.mock("../hooks/usePosData", () => ({
   useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
   useOpenTabsOf: () => ({ count: 0, owedMinor: 0 }),
   useMutationMessage: () => null,
+  useWaitersMoney: () => waitersRef,
+  useReceiveFromWaiter: () => ({ mutate: vi.fn(), isPending: false, error: null }),
 }));
 
 vi.mock("../components/CashMovementDialog", () => ({
@@ -107,16 +110,47 @@ describe("Manager", () => {
   afterEach(() => {
     currencyRef.currency = "TZS";
     movementsRef.data = [];
+    waitersRef.data = undefined;
     till.drawer = true;
     till.raw = [];
     till.fails = false;
+  });
+
+  // Waiters collect (owner, 2026-10-29; fbc-peak #327): a waiter holds no drawer.
+  it("a waiter sees the money they hold, never the drawer", async () => {
+    shiftRef.shift = SHIFT;
+    permissionsRef.permissions = ["pos.order.create", "pos.payment.record"];
+    waitersRef.data = {
+      shiftId: SHIFT.id,
+      waiters: [{ staffId: "staff-amina", name: "Amina Hassan", ordersTaken: 2, ordersOpen: 0, cashMinor: 4_740_000,
+        mobileMoneyMinor: 0, cardMinor: 0, otherMinor: 0, handedInMinor: 0, owedMinor: 0, heldMinor: 4_740_000 }],
+    };
+    renderCash();
+    expect(await screen.findByTestId("waiter-own-money")).toHaveTextContent("TSh 47,400");
+    expect(screen.queryByText("In the drawer")).toBeNull();
+    expect(screen.queryByTestId("open-close-shift")).toBeNull();
+  });
+
+  it("the cashier sees who still holds cash before closing the shift", async () => {
+    shiftRef.shift = SHIFT;
+    permissionsRef.permissions = ["pos.shift.open", "pos.shift.close", "pos.cash_movement.record"];
+    waitersRef.data = {
+      shiftId: SHIFT.id,
+      waiters: [{ staffId: "staff-grace", name: "Grace Mushi", ordersTaken: 1, ordersOpen: 0, cashMinor: 1_780_000,
+        mobileMoneyMinor: 0, cardMinor: 0, otherMinor: 0, handedInMinor: 0, owedMinor: 0, heldMinor: 1_780_000 }],
+    };
+    renderCash();
+    expect(await screen.findByTestId("receive-staff-grace")).toHaveTextContent("Receive");
+    expect(screen.getByTestId("waiters-hold-warning")).toHaveTextContent(
+      "Grace Mushi still holds TSh 17,800. If you close now, it's recorded as owed by Grace Mushi.",
+    );
   });
 
   // The owner, 2026-10-21: anyone who takes money may open the drawer without a sale, on the record.
   it("offers Open drawer only on a till with a drawer, to those who may open it", async () => {
     shiftRef.shift = SHIFT;
     capabilitiesRef.capabilities = [];
-    permissionsRef.permissions = ["pos.cash_movement.record", "pos.cash_drawer.open"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record", "pos.cash_drawer.open"];
     const { unmount } = renderCash();
     expect(await screen.findByTestId("open-drawer")).toHaveTextContent("Open drawer");
     unmount();
@@ -127,7 +161,7 @@ describe("Manager", () => {
     expect(screen.queryByTestId("open-drawer")).toBeNull();
     laptop.unmount();
     till.drawer = true;
-    permissionsRef.permissions = ["pos.cash_movement.record"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record"];
     renderCash();
     await screen.findByTestId("open-cash-movement");
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -137,7 +171,7 @@ describe("Manager", () => {
   it("a role that may open the drawer but not move cash still sees Open drawer", async () => {
     shiftRef.shift = SHIFT;
     capabilitiesRef.capabilities = [];
-    permissionsRef.permissions = ["pos.cash_drawer.open"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_drawer.open"];
     renderCash();
     expect(await screen.findByTestId("open-drawer")).toBeInTheDocument();
     expect(screen.getByTestId("cash-movement-unavailable")).toBeInTheDocument();
@@ -146,7 +180,7 @@ describe("Manager", () => {
   it("opens the drawer once Yetu has recorded why, and says so", async () => {
     shiftRef.shift = SHIFT;
     capabilitiesRef.capabilities = [];
-    permissionsRef.permissions = ["pos.cash_movement.record", "pos.cash_drawer.open"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record", "pos.cash_drawer.open"];
     renderCash();
     await userEvent.click(await screen.findByTestId("open-drawer"));
     expect(till.raw).toHaveLength(0);
@@ -160,7 +194,7 @@ describe("Manager", () => {
     till.fails = true;
     shiftRef.shift = SHIFT;
     capabilitiesRef.capabilities = [];
-    permissionsRef.permissions = ["pos.cash_movement.record", "pos.cash_drawer.open"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record", "pos.cash_drawer.open"];
     renderCash();
     await userEvent.click(await screen.findByTestId("open-drawer"));
     await userEvent.click(screen.getByRole("button", { name: "Yetu recorded the opening" }));
@@ -170,7 +204,7 @@ describe("Manager", () => {
   it("cash in opens the drawer once Yetu has recorded it", async () => {
     shiftRef.shift = SHIFT;
     capabilitiesRef.capabilities = [];
-    permissionsRef.permissions = ["pos.cash_movement.record"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record"];
     renderCash();
     await screen.findByTestId("open-cash-movement");
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -181,7 +215,7 @@ describe("Manager", () => {
   });
 
   it("lists an opening of the drawer with why, who and when, and no money", () => {
-    permissionsRef.permissions = ["pos.cash_movement.record"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
     movementsRef.data = [
@@ -195,7 +229,7 @@ describe("Manager", () => {
   });
 
   it("hides cash movements and day close from a cashier with neither grant", () => {
-    permissionsRef.permissions = [];
+    permissionsRef.permissions = ["pos.shift.open", ];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
     renderCash();
@@ -206,7 +240,7 @@ describe("Manager", () => {
   });
 
   it("offers cash movements to a staff member who holds pos.cash_movement.record", async () => {
-    permissionsRef.permissions = ["pos.cash_movement.record"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
     renderCash();
@@ -218,7 +252,7 @@ describe("Manager", () => {
   });
 
   it("lists a non-TZS outlet's cash movements in its own currency, never a hardcoded TZS", () => {
-    permissionsRef.permissions = ["pos.cash_movement.record"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
     currencyRef.currency = "KES";
@@ -231,7 +265,7 @@ describe("Manager", () => {
   });
 
   it("offers POS day close only with pos.report.manager and no active LODGING capability", () => {
-    permissionsRef.permissions = ["pos.report.manager"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.report.manager"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
     renderCash();
@@ -240,7 +274,7 @@ describe("Manager", () => {
   });
 
   it("hides POS day close outright on a hybrid LODGING property even with pos.report.manager", () => {
-    permissionsRef.permissions = ["pos.report.manager"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.report.manager"];
     capabilitiesRef.capabilities = ["LODGING"];
     shiftRef.shift = SHIFT;
     renderCash();
@@ -249,7 +283,7 @@ describe("Manager", () => {
   });
 
   it("disables cash-movement entry with no open shift instead of a dead dialog", () => {
-    permissionsRef.permissions = ["pos.cash_movement.record"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = undefined;
     renderCash();
@@ -258,7 +292,7 @@ describe("Manager", () => {
   });
 
   it("sums up the drawer for a manager with only the figures Yetu works out, each explained", () => {
-    permissionsRef.permissions = ["pos.cash_movement.record", "pos.shift.close", "pos.report.manager"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record", "pos.shift.close", "pos.report.manager"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
     renderCash();
@@ -272,7 +306,7 @@ describe("Manager", () => {
   });
 
   it("keeps the count blind for a cashier: the float, never the expected figure", () => {
-    permissionsRef.permissions = ["pos.cash_movement.record", "pos.shift.close"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record", "pos.shift.close"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
     renderCash();
@@ -285,7 +319,7 @@ describe("Manager", () => {
   });
 
   it("lists each cash movement with its reason, who and when, never an id", () => {
-    permissionsRef.permissions = ["pos.cash_movement.record"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
     movementsRef.data = [
@@ -301,7 +335,7 @@ describe("Manager", () => {
   });
 
   it("opens Cash out straight onto cash out", async () => {
-    permissionsRef.permissions = ["pos.cash_movement.record"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
     renderCash();
@@ -310,7 +344,7 @@ describe("Manager", () => {
   });
 
   it("starts closing the shift from Cash", async () => {
-    permissionsRef.permissions = ["pos.shift.close"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.shift.close"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
     renderCash();
@@ -319,7 +353,7 @@ describe("Manager", () => {
   });
 
   it("says in words who can close the shift and record cash, instead of hiding it", () => {
-    permissionsRef.permissions = [];
+    permissionsRef.permissions = ["pos.shift.open", ];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
     renderCash();
@@ -332,7 +366,7 @@ describe("Manager", () => {
   });
 
   it("shows Close the day but holds it until this till's shift is closed", () => {
-    permissionsRef.permissions = ["pos.report.manager"];
+    permissionsRef.permissions = ["pos.shift.open", "pos.report.manager"];
     capabilitiesRef.capabilities = [];
     shiftRef.shift = SHIFT;
     renderCash();

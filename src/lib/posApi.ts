@@ -20,6 +20,8 @@ import type { POSPaper, POSPrintJob,
   POSShift,
   POSStationTicket,
   POSTenderResult,
+  POSWaiterMoney,
+  POSWaitersMoney,
   ServiceType,
 } from "./posContracts";
 
@@ -89,6 +91,17 @@ export function createPosApi() {
       return client.GET<{ items: POSCashMovement[] }>(
         `/api/v1/pos/shifts/${encodeURIComponent(shiftId)}/cash-movements`,
       );
+    },
+    /** fbc-peak #327: each waiter's money on the open shift; a waiter gets only their own. */
+    getWaitersMoney(): Promise<ApiResult<POSWaitersMoney>> {
+      return client.GET<POSWaitersMoney>("/api/v1/pos/waiters/money");
+    },
+    /** fbc-peak #327: cash a waiter hands in, as counted; it goes into the drawer. */
+    receiveFromWaiter(staffId: string, countedMinor: number, idempotencyKey: string): Promise<ApiResult<POSWaiterMoney>> {
+      return client.POST<POSWaiterMoney>(`/api/v1/pos/waiters/${encodeURIComponent(staffId)}/handovers`, {
+        headers: idempotent(idempotencyKey),
+        body: { countedMinor },
+      });
     },
     /** fbc-peak #289: the drawer opened without a sale, kept on the shift's cash record. */
     recordDrawerOpened(reason: string, idempotencyKey: string): Promise<ApiResult<POSCashMovement>> {

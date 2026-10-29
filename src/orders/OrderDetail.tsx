@@ -20,6 +20,7 @@ import {
   useReprintReceipt,
   useSendOrder,
   useStationTickets,
+  useHasPermission,
 } from "../hooks/usePosData";
 import { isComposing } from "../lib/keyboard";
 import { formatMoney } from "../lib/money";
@@ -589,11 +590,13 @@ export function OrderDetail({
   const receipt = useReceipt(paid ? order.id : undefined);
   const refunds = useOrderRefunds(paid ? order.id : undefined);
   const { shift } = usePosShift();
+  // A refund goes back from the drawer, so whoever holds it gives it: not a waiter (fbc-peak #327).
+  const holdsDrawer = useHasPermission("pos.shift.open");
   const refundOffer = refunds.data
     ? refundAvailability({
         refunds: refunds.data,
         shiftBusinessDate: shift?.status === "OPEN" ? shift.businessDate : null,
-        canRefund: canPay,
+        canRefund: canPay && holdsDrawer,
       })
     : undefined;
   const sendOrder = useSendOrder();

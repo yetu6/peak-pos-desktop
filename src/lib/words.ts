@@ -50,6 +50,8 @@ const CASH_MOVEMENT: Record<CashMovementType, string> = {
   CASH_IN: "Cash in",
   CASH_OUT: "Cash out",
   DRAWER_OPENED: "Drawer opened",
+  WAITER_HANDOVER: "Handed in by a waiter",
+  WAITER_SHORT: "Not handed in",
 };
 
 const SERVICE_TYPE: Record<ServiceType, string> = {

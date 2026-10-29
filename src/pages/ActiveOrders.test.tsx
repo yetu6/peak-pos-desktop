@@ -258,7 +258,8 @@ function signIn(permissions: string[]) {
   });
 }
 
-const EVERYTHING = ["pos.order.read", "pos.order.read_all", "pos.order.create", "pos.order.item.add", "pos.order.item.remove", "pos.order.send", "pos.payment.record"];
+// The cashier: takes payment, holds the drawer and gives refunds from it (fbc-peak #327).
+const EVERYTHING = ["pos.order.read", "pos.order.read_all", "pos.order.create", "pos.order.item.add", "pos.order.item.remove", "pos.order.send", "pos.payment.record", "pos.shift.open", "pos.cash_drawer.open"];
 
 const OPEN_ORDER: POSOrder = {
   id: "order-1",

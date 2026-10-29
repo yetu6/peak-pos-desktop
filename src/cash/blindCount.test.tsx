@@ -51,6 +51,7 @@ vi.mock("../hooks/usePosData", () => ({
   useMutationMessage: () => null,
   useCloseBusinessDay: () => ({ mutate: vi.fn(), isPending: false, error: null, data: undefined }),
   useOpenTabsOf: () => ({ count: 0, owedMinor: 0 }),
+  useWaitersMoney: () => ({ data: undefined, isLoading: false }),
 }));
 
 vi.mock("../auth/DeviceSessionProvider", () => ({
@@ -74,12 +75,12 @@ function renderTill() {
 const EXPECTED = "74,000";
 
 beforeEach(() => {
-  grants.permissions = ["pos.shift.close", "pos.cash_movement.record"];
+  grants.permissions = ["pos.shift.open", "pos.shift.close", "pos.cash_movement.record"];
 });
 
 describe("the blind count", () => {
   it("a manager sees Yetu's expected figure, so the search below can find it", () => {
-    grants.permissions = ["pos.shift.close", "pos.cash_movement.record", "pos.report.manager"];
+    grants.permissions = ["pos.shift.open", "pos.shift.close", "pos.cash_movement.record", "pos.report.manager"];
     renderTill();
     expect(document.body).toHaveTextContent(EXPECTED);
   });

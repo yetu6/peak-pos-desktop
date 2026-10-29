@@ -21,9 +21,11 @@ const PROBLEM_WORDS: Record<string, string> = {
 
 /** A printer's state in the till's words. Unknown is "Windows can't tell", never a false "Ready". */
 export function printerHealthWords(health: PrinterHealth): { ok: boolean; words: string } {
+  // Waiting papers print once the printer is put right (paper in, lid shut, power on), so the
+  // till never says to cancel them: that would throw away an order the kitchen still needs.
   const stuck =
     health.stuckJobs > 0
-      ? `${health.stuckJobs} ${health.stuckJobs === 1 ? "paper" : "papers"} stuck in Windows' queue — open the printer's queue and cancel ${health.stuckJobs === 1 ? "it" : "them"}`
+      ? `${health.stuckJobs} ${health.stuckJobs === 1 ? "paper" : "papers"} waiting to print`
       : null;
   let state: string | null;
   switch (health.state) {
