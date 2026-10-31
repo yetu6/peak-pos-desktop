@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { POSOrder, POSOrderPayment, POSRoomChargeCandidate } from "../lib/posContracts";
+import type { POSOrder, POSOrderPayment, POSPaymentChannel, POSRoomChargeCandidate } from "../lib/posContracts";
 import { IDLE_LOCK_MAX_DEFERRAL_SECONDS, idleLockHeld, watchIdleActivity } from "../lib/idleLock";
 import { PaySheet } from "./PaySheet";
 import { PAY_CHECK_EVERY_SECONDS } from "./registerSettings";
@@ -38,6 +38,7 @@ const { recordTenderMutate, chargeToRoomMutate, refs } = vi.hoisted(() => ({
   chargeToRoomMutate: vi.fn(),
   refs: {
     quickCashNotes: [1000, 2000, 5000, 10000] as number[],
+    channels: [] as POSPaymentChannel[],
     roomAvailable: false,
     candidates: [] as POSRoomChargeCandidate[],
     tender: { isPending: false, error: null as unknown },
@@ -54,7 +55,7 @@ const { openDrawerForCash } = vi.hoisted(() => ({
 vi.mock("../print/cashDrawer", () => ({ openDrawerForCash }));
 
 vi.mock("../hooks/usePosData", async (importOriginal) => ({
-  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: refs.quickCashNotes }),
+  useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: refs.quickCashNotes, paymentChannels: refs.channels }),
   // The real key generator: a retry must reuse its key, a new request must not.
   useIdempotencyKey: (await importOriginal<typeof import("../hooks/usePosData")>()).useIdempotencyKey,
   useRecordTender: () => ({ mutate: recordTenderMutate, reset: () => undefined, ...refs.tender }),
@@ -96,6 +97,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllMocks();
   refs.quickCashNotes = [1000, 2000, 5000, 10000];
+  refs.channels = [];
   refs.roomAvailable = false;
   refs.candidates = [];
   refs.tender = { isPending: false, error: null };
@@ -104,6 +106,78 @@ afterEach(() => {
 async function tapKeys(prefix: string, keys: string) {
   for (const key of keys) await userEvent.click(screen.getByTestId(`${prefix}-${key}`));
 }
+
+const CHANNELS: POSPaymentChannel[] = [
+  { id: "lipa", name: "Lipa No", paymentMethod: "MOBILE_MONEY", payTo: "123456" },
+  { id: "mixx", name: "Mix by Yas", paymentMethod: "MOBILE_MONEY" },
+  { id: "mpesa", name: "M-Pesa", paymentMethod: "MOBILE_MONEY" },
+  { id: "bank", name: "Bank", paymentMethod: "BANK_TRANSFER" },
+];
+
+// Casanova (owner, 2026-10-31): the person taps how it was paid, by the business's own names.
+describe("PaySheet: the business's own ways of paying", () => {
+  const offered = () => screen.getAllByRole("radio").map((radio) => radio.textContent);
+
+  it("offers them after cash, in the business's order, in place of the plain method they stand for", () => {
+    refs.channels = CHANNELS;
+    renderPay();
+    expect(offered()).toEqual(["Cash", "Lipa No", "Mix by Yas", "M-Pesa", "Bank", "Card (own machine)", "Other"]);
+  });
+
+  it("offers the plain methods while the business has named none", () => {
+    renderPay();
+    expect(offered()).toEqual(["Cash", "Mobile money", "Card (own machine)", "Bank transfer", "Other"]);
+  });
+
+  it("records the one tapped, by its method, and says its name back", async () => {
+    refs.channels = CHANNELS;
+    const { onPaid } = renderPay();
+    await userEvent.click(screen.getByRole("radio", { name: "M-Pesa" }));
+    await userEvent.click(pay());
+    expect(recordTenderMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentMethod: "MOBILE_MONEY", paymentChannelId: "mpesa" }),
+      expect.anything(),
+    );
+    expect(onPaid).toHaveBeenCalledWith(expect.objectContaining({ method: "MOBILE_MONEY", channelName: "M-Pesa" }));
+  });
+
+  it("names no channel for cash, or a plain method", async () => {
+    refs.channels = CHANNELS;
+    renderPay();
+    await userEvent.click(pay());
+    expect(recordTenderMutate).toHaveBeenCalledWith(expect.objectContaining({ paymentMethod: "CASH", paymentChannelId: undefined }), expect.anything());
+  });
+
+  it("says where the money should have reached, and asks to check it", async () => {
+    refs.channels = CHANNELS;
+    renderPay();
+    await userEvent.click(screen.getByRole("radio", { name: "Lipa No" }));
+    expect(screen.getByText("Check the money has reached 123456, then confirm here.")).toBeTruthy();
+    await userEvent.click(screen.getByRole("radio", { name: "M-Pesa" }));
+    expect(screen.getByText("Check the money has reached your M-Pesa number, then confirm here.")).toBeTruthy();
+  });
+
+  it("the arrow keys move through them too", async () => {
+    refs.channels = CHANNELS;
+    renderPay();
+    screen.getByRole("radio", { name: "Cash" }).focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("radio", { name: "Lipa No" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("a different way of paying is a different request, never the same key", async () => {
+    refs.channels = CHANNELS;
+    recordTenderMutate.mockImplementation(() => undefined);
+    renderPay();
+    await userEvent.click(screen.getByRole("radio", { name: "Lipa No" }));
+    await userEvent.click(pay());
+    await userEvent.click(screen.getByRole("radio", { name: "M-Pesa" }));
+    await userEvent.click(pay());
+    const keys = recordTenderMutate.mock.calls.map(([vars]) => (vars as { idempotencyKey: string }).idempotencyKey);
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).not.toBe(keys[1]);
+  });
+});
 
 describe("PaySheet", () => {
   it("shows the amount still to pay, large, and only the methods Yetu takes", () => {

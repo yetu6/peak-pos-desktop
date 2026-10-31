@@ -503,7 +503,7 @@ export function OrderDetailView({
                 {payments.map((payment) => (
                   <li key={payment.id} className="y-detail__payment">
                     <span className="y-detail__line">
-                      {payment.paymentMethod === "ROOM_CHARGE" ? "Charged to the room" : paymentMethodWords(payment.paymentMethod)} ·{" "}
+                      {payment.paymentMethod === "ROOM_CHARGE" ? "Charged to the room" : payment.channelName ?? paymentMethodWords(payment.paymentMethod)} ·{" "}
                       {formatMoney(payment.amountMinor, currency)}
                     </span>
                     <span className="y-detail__line y-detail__muted">{takenWords(payment)}</span>
