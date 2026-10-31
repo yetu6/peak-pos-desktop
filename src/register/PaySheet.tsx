@@ -1,5 +1,5 @@
 import { useHasPermission, useOutletMoneySettings } from "../hooks/usePosData";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { moneyFieldText } from "../cash/NoteCounterSheet";
 import { EXACT_WORDS, ignoreHeldEnter, startAmount, useFilledAmount } from "./moneyEntry";
 import { Banner, Button, Field, Keypad, Money, MoneyField, QuickCash, RefusalNotice, SearchField, Sheet, type KeypadKey, type Refusal } from "../components/system";
@@ -13,7 +13,7 @@ import {
 } from "../hooks/usePosData";
 import { formatMoney } from "../lib/money";
 import { useHoldIdleLock } from "../lib/useHoldIdleLock";
-import type { PaymentMethod, POSOrder, POSRoomChargeCandidate } from "../lib/posContracts";
+import type { PaymentMethod, POSOrder, POSPaymentChannel, POSRoomChargeCandidate } from "../lib/posContracts";
 import { toMinor } from "../lib/posMoney";
 import { orderPlaceWords, paymentMethodWords, serviceTypeWords, type SettlementMethod } from "../lib/words";
 import { afterLostAnswer, firstAnswerLost, lostAnswerRefusalWords, roomChargeProblem, tenderProblem } from "./registerWords";
@@ -40,6 +40,7 @@ type Lost =
 type TenderVars = {
   orderId: string;
   paymentMethod: PaymentMethod;
+  paymentChannelId?: string;
   amountMinor: number;
   reference?: string;
   version: number;
@@ -51,6 +52,41 @@ type RoomChargeVars = { orderId: string; stayId: string; idempotencyKey: string 
 export const TENDER_METHODS: readonly PaymentMethod[] = ["CASH", "MOBILE_MONEY", "EXTERNAL_CARD", "BANK_TRANSFER", "OTHER"];
 
 type Method = PaymentMethod | "ROOM_CHARGE";
+
+/** One button on the sheet: a way of paying, by the business's own name when it has one. */
+export interface TenderOption {
+  key: string;
+  method: Method;
+  channel?: POSPaymentChannel;
+}
+
+/**
+ * What the sheet offers: cash first, then the business's own ways of paying in
+ * its order, then any plain method none of them stands for (a named M-Pesa
+ * replaces plain Mobile money; Card stays until a card channel is named), and
+ * the room last.
+ */
+export function tenderOptions(channels: readonly POSPaymentChannel[], roomAvailable: boolean): TenderOption[] {
+  const covered = new Set<PaymentMethod>(channels.map((channel) => channel.paymentMethod));
+  return [
+    { key: "CASH", method: "CASH" },
+    ...channels.map((channel): TenderOption => ({ key: `channel-${channel.id}`, method: channel.paymentMethod, channel })),
+    ...TENDER_METHODS.filter((method) => method !== "CASH" && !covered.has(method)).map((method): TenderOption => ({ key: method, method })),
+    ...(roomAvailable ? [{ key: "ROOM_CHARGE", method: "ROOM_CHARGE" } as TenderOption] : []),
+  ];
+}
+
+const optionWords = (option: TenderOption) => option.channel?.name ?? paymentMethodWords(option.method);
+
+/** What a recorded way of paying asks the person to check first. */
+function recordedStep(option: TenderOption): string {
+  if (option.method === "CASH" || option.method === "ROOM_CHARGE") return "";
+  if (option.channel) {
+    const where = option.channel.payTo ?? (option.method === "BANK_TRANSFER" ? "the account" : `your ${option.channel.name} number`);
+    return option.method === "EXTERNAL_CARD" ? RECORDED_STEP.EXTERNAL_CARD : `Check the money has reached ${where}, then confirm here.`;
+  }
+  return RECORDED_STEP[option.method];
+}
 
 /** What a recorded (not processed) method asks the person to do first. */
 const RECORDED_STEP: Record<Exclude<PaymentMethod, "CASH">, string> = {
@@ -64,6 +100,8 @@ const RECORDED_STEP: Record<Exclude<PaymentMethod, "CASH">, string> = {
 export interface PaidInfo {
   order: POSOrder;
   method: SettlementMethod;
+  /** The business's own name for the way of paying, when it was one of theirs. */
+  channelName?: string;
   /** Change given for the last cash tender: the cash received less what was owed. */
   changeMinor: number;
   roomNumber?: string;
@@ -73,6 +111,10 @@ export interface PaidInfo {
 
 export interface TenderRequest {
   method: PaymentMethod;
+  /** One of the business's ways of paying, when the person tapped one. */
+  channelId?: string;
+  /** Its name, for what is said back once it is paid. */
+  channelName?: string;
   amountMinor: number;
   reference?: string;
   changeMinor: number;
@@ -194,7 +236,7 @@ export function PaySheet({
         if ((updated.remainingMinor ?? 0) <= 0 || updated.status === "CLOSED") {
           // Split: paid more than one way (F-269); two cash payments are cash.
           const methods = new Set([...(updated.payments ?? []).map((payment) => payment.paymentMethod), request.method]);
-          onPaid({ order: updated, method: request.method, changeMinor: request.changeMinor, split: methods.size > 1 });
+          onPaid({ order: updated, method: request.method, channelName: request.channelName, changeMinor: request.changeMinor, split: methods.size > 1 });
         }
       },
       onError: (error) => {
@@ -279,6 +321,7 @@ export function PaySheet({
       recordedMinor={recorded}
       drawerProblem={drawerProblem}
       quickCashNotes={moneySettings.quickCashNotes}
+        channels={moneySettings.paymentChannels}
       onClose={onClose}
       onTender={(request) => {
         setAnswer(null);
@@ -286,12 +329,13 @@ export function PaySheet({
           {
             orderId: live.id,
             paymentMethod: request.method,
+            paymentChannelId: request.channelId,
             amountMinor: request.amountMinor,
             reference: request.reference,
             version: live.version,
             idempotencyKey: keyFor(
               lastTender,
-              [request.method, request.amountMinor, request.reference ?? "", live.version].join("|"),
+              [request.method, request.channelId ?? "", request.amountMinor, request.reference ?? "", live.version].join("|"),
               tenderKey.next,
             ),
           },
@@ -316,6 +360,8 @@ export function PaySheet({
 
 export interface PaySheetViewProps {
   quickCashNotes?: readonly number[];
+  /** The business's own ways of paying. None: the plain methods. */
+  channels?: readonly POSPaymentChannel[];
   order: POSOrder;
   currency: string;
   roomAvailable: boolean;
@@ -365,11 +411,16 @@ export function PaySheetView({
   onTender,
   onChargeRoom,
   initialMethod = "CASH",
+  channels = [],
   quickCashNotes,
   initialReceived = "",
   initialStayId,
 }: PaySheetViewProps) {
-  const [method, setMethod] = useState<Method>(initialMethod);
+  const [chosenKey, setChosenKey] = useState<string>(initialMethod);
+  const options = useMemo(() => tenderOptions(channels, roomAvailable), [channels, roomAvailable]);
+  // A way of paying retired while the sheet is open falls back to cash.
+  const chosen = options.find((option) => option.key === chosenKey) ?? options[0];
+  const method = chosen.method;
   // While what Yetu recorded is unknown, nothing new is taken and the sheet stays.
   const pending = requestPending || unsure !== null;
   // Where the amount is known it is filled in (owner, 2026-10-21;
@@ -412,7 +463,6 @@ export function PaySheetView({
   const due = order.remainingMinor;
   const nothingDue = due <= 0;
   const partPaid = order.paidMinor > 0;
-  const methods: Method[] = roomAvailable ? [...TENDER_METHODS, "ROOM_CHARGE"] : [...TENDER_METHODS];
   // Yetu charges a room for an order the kitchen has, preparing or after (F-245): all of it, or
   // what is left once part is paid (F-244).
   const roomBlocked = order.status === "OPEN" ? "Charge to room: send it to the kitchen first." : null;
@@ -427,13 +477,13 @@ export function PaySheetView({
   const over = amount != null && amount > due;
   const chosenStay = candidates.find((candidate) => candidate.stayId === stayId) ?? null;
 
-  function chooseMethod(next: Method, pressed: boolean) {
+  function chooseMethod(next: TenderOption, pressed: boolean) {
     focusPane.current = pressed;
-    setMethod(next);
+    setChosenKey(next.key);
     other.fill(due);
     setReference("");
     // Room service already says which room: the search starts there (F-239).
-    if (next === "ROOM_CHARGE" && !roomQuery.trim() && order.serviceType === "ROOM_SERVICE" && order.tableLabel?.trim()) {
+    if (next.method === "ROOM_CHARGE" && !roomQuery.trim() && order.serviceType === "ROOM_SERVICE" && order.tableLabel?.trim()) {
       onRoomQuery(order.tableLabel.trim());
     }
   }
@@ -449,11 +499,11 @@ export function PaySheetView({
     const back = event.key === "ArrowLeft" || event.key === "ArrowUp";
     if (!forward && !back) return;
     event.preventDefault();
-    const open = methods.filter(usable);
-    const index = open.indexOf(method);
+    const open = options.filter((option) => usable(option.method));
+    const index = open.findIndex((option) => option.key === chosen.key);
     const next = open[(index + (forward ? 1 : -1) + open.length) % open.length];
     chooseMethod(next, false);
-    methodRefs.current[methods.indexOf(next)]?.focus();
+    methodRefs.current[options.findIndex((option) => option.key === next.key)]?.focus();
   }
 
   function onCashKey(key: KeypadKey) {
@@ -468,7 +518,7 @@ export function PaySheetView({
 
   function confirmRecorded() {
     if (method === "CASH" || method === "ROOM_CHARGE" || nothingDue || amount == null || amount <= 0 || over || pending || blocked) return;
-    onTender({ method, amountMinor: amount, reference: reference.trim() || undefined, changeMinor: 0 });
+    onTender({ method, channelId: chosen.channel?.id, channelName: chosen.channel?.name, amountMinor: amount, reference: reference.trim() || undefined, changeMinor: 0 });
   }
 
   return (
@@ -556,22 +606,22 @@ export function PaySheetView({
             </div>
           ) : null}
           <div role="radiogroup" aria-label="How the guest pays" className="y-pay__methods" onKeyDown={onMethodKey}>
-            {methods.map((candidate, index) => (
+            {options.map((candidate, index) => (
               <button
-                key={candidate}
+                key={candidate.key}
                 ref={(element) => {
                   methodRefs.current[index] = element;
                 }}
                 type="button"
                 role="radio"
-                aria-checked={method === candidate}
-                tabIndex={method === candidate ? 0 : -1}
-                disabled={!usable(candidate) || pending}
-                data-testid={`method-${candidate}`}
+                aria-checked={chosen.key === candidate.key}
+                tabIndex={chosen.key === candidate.key ? 0 : -1}
+                disabled={!usable(candidate.method) || pending}
+                data-testid={`method-${candidate.key}`}
                 className="y-pay__method"
                 onClick={() => chooseMethod(candidate, true)}
               >
-                {paymentMethodWords(candidate)}
+                {optionWords(candidate)}
               </button>
             ))}
           </div>
@@ -597,7 +647,7 @@ export function PaySheetView({
           ) : null}
         </section>
 
-        <section className="y-pay__right" aria-label={paymentMethodWords(method)}>
+        <section className="y-pay__right" aria-label={optionWords(chosen)}>
           <div ref={paneRef} className="y-pay__pane-wrap">
           {method === "CASH" ? (
             <form
@@ -677,7 +727,7 @@ export function PaySheetView({
                 confirmRecorded();
               }}
             >
-              <p className="y-pay__step">{RECORDED_STEP[method]}</p>
+              <p className="y-pay__step">{recordedStep(chosen)}</p>
               <MoneyField
                 label="Amount"
                 hint="Less than the bill? The rest stays to pay."

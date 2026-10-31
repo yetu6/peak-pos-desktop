@@ -153,7 +153,9 @@ export function receiptCopyFromPrintDocument(document: Record<string, unknown>, 
     settledBy,
     settledAt: typeof document.settledAt === "string" ? dateTimeWords(document.settledAt) || undefined : undefined,
     settlementMethod:
-      typeof document.tenderMethod === "string"
+      typeof document.tenderChannel === "string" && document.tenderChannel.trim()
+        ? document.tenderChannel.trim()
+        : typeof document.tenderMethod === "string"
         ? paymentMethodWords(document.tenderMethod as SettlementMethod)
         : typeof document.settlementMethod === "string"
           ? paymentMethodWords(document.settlementMethod as SettlementMethod)
