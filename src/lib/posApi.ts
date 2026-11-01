@@ -217,7 +217,7 @@ export function createPosApi() {
     },
     recordTender(
       orderId: string,
-      body: { paymentMethod: PaymentMethod; amountMinor: number; reference?: string; version: number },
+      body: { paymentMethod: PaymentMethod; paymentChannelId?: string; amountMinor: number; reference?: string; version: number },
       idempotencyKey: string,
     ): Promise<ApiResult<POSTenderResult>> {
       return client.POST<POSTenderResult>(

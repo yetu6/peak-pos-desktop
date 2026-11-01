@@ -176,7 +176,7 @@ export function ReceiptSheet({
                 <dd>{formatMoney(doc.totalMinor, doc.currency)}</dd>
               </div>
             </dl>
-            <p className="y-receipt__meta">Paid by {settledWords(doc.tenderMethod)}</p>
+            <p className="y-receipt__meta">Paid by {doc.tenderChannel ?? settledWords(doc.tenderMethod)}</p>
             {receipt && receipt.reprintCount > 0 ? (
               <p className="y-receipt__meta">
                 Printed again {receipt.reprintCount} {receipt.reprintCount === 1 ? "time" : "times"}

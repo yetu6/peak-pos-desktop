@@ -58,7 +58,7 @@ export function PaymentDone({
 
   const room = paid.method === "ROOM_CHARGE";
   const title = room ? `Charged to room ${paid.roomNumber ?? ""}`.trim() : "Paid";
-  const how = paid.split ? "Split payment" : paymentMethodWords(paid.method);
+  const how = paid.split ? "Split payment" : paid.channelName ?? paymentMethodWords(paid.method);
   const said = room
     ? `${orderName(paid.order)} is on the guest's room account.`
     : [paid.changeMinor > 0 ? `Change to give ${formatMoney(paid.changeMinor, currency)}.` : "", `${how} · ${orderName(paid.order)}.`]

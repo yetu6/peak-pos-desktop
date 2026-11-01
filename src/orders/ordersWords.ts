@@ -69,7 +69,7 @@ function discountWords(order: POSOrder, currency: string | undefined): string {
 function paymentWords(payment: POSOrderPayment, currency: string | undefined): string {
   const amount = formatMoney(payment.amountMinor, currency);
   if (payment.paymentMethod === "ROOM_CHARGE") return `Charged to the room · ${amount}`;
-  return `Paid ${amount} · ${paymentMethodWords(payment.paymentMethod)}`;
+  return `Paid ${amount} · ${payment.channelName ?? paymentMethodWords(payment.paymentMethod)}`;
 }
 
 /**

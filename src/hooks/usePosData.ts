@@ -652,6 +652,7 @@ export function useRecordTender() {
     mutationFn: async (args: {
       orderId: string;
       paymentMethod: PaymentMethod;
+      paymentChannelId?: string;
       amountMinor: number;
       reference?: string;
       version: number;
@@ -660,7 +661,7 @@ export function useRecordTender() {
       await unwrap(
         createPosApi().recordTender(
           args.orderId,
-          { paymentMethod: args.paymentMethod, amountMinor: args.amountMinor, reference: args.reference, version: args.version },
+          { paymentMethod: args.paymentMethod, ...(args.paymentChannelId ? { paymentChannelId: args.paymentChannelId } : {}), amountMinor: args.amountMinor, reference: args.reference, version: args.version },
           args.idempotencyKey,
         ),
       );

@@ -95,6 +95,8 @@ export interface POSOrderVoid {
 export interface POSOrderPayment {
   id: string;
   paymentMethod: PaymentMethod | "ROOM_CHARGE";
+  /** The business's own name for how it was paid (M-Pesa, Lipa No), as it was when taken (fbc-peak 00155). */
+  channelName?: string;
   amountMinor: number;
   /** When it was recorded. */
   createdAt: string;
@@ -229,6 +231,15 @@ export interface POSCategory {
   isActive: boolean;
 }
 
+/** A way guests pay this business, by the name its people use (fbc-peak 00155). */
+export interface POSPaymentChannel {
+  id: string;
+  name: string;
+  paymentMethod: Exclude<PaymentMethod, "CASH">;
+  /** The number or account the money should reach, to check it arrived. */
+  payTo?: string;
+}
+
 export interface POSCatalog {
   /** This session sees only the orders it took (no read_all, and the outlet's switch is on). */
   ownOrdersOnly?: boolean;
@@ -238,6 +249,8 @@ export interface POSCatalog {
   captureGuestCount?: boolean;
   standardFloat?: number;
   quickCashNotes?: number[];
+  /** What the till offers beside cash, in the business's order. Absent from an older Yetu. */
+  paymentChannels?: POSPaymentChannel[];
   outletId: string;
   outletName: string;
   categories: POSCategory[];
@@ -354,6 +367,8 @@ export interface POSReceiptDocument {
   pricesIncludeTax?: boolean;
   currency: string;
   tenderMethod: string;
+  /** Paid one way through one of the business's channels: its name (fbc-peak 00155). */
+  tenderChannel?: string;
   settledAt: string;
 }
 
