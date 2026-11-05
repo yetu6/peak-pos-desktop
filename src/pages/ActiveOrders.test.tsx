@@ -533,6 +533,23 @@ describe("Orders", () => {
     }
   });
 
+  // Owner, 2026-11-05: the tickets print once Yetu has the round, not after the order is read back.
+  it("prints the tickets once Yetu has the round, before the order is read back", async () => {
+    const read = spies.getOrder.getMockImplementation();
+    try {
+      ordersStore.set("order-1", OPEN_ORDER);
+      renderOrders();
+      const sheet = await openDetail("order-1");
+      spies.getOrder.mockImplementation(() => new Promise<Result>(() => undefined));
+      await userEvent.click(within(sheet).getByTestId("detail-send"));
+      await printInPreview();
+      await waitFor(() => expect(spies.sendOrder).toHaveBeenCalledWith("order-1", 1, expect.any(String), undefined));
+      await waitFor(() => expect(spies.processPendingPrintJobs).toHaveBeenCalledWith("property-1", "order-1", undefined, expect.objectContaining({ settings: expect.any(Object) })));
+    } finally {
+      if (read) spies.getOrder.mockImplementation(read);
+    }
+  });
+
   it("sends it to the kitchen with its version, prints the tickets, says so and moves focus to Pay", async () => {
     ordersStore.set("order-1", OPEN_ORDER);
     spies.sendOrder.mockImplementationOnce(async () => {

@@ -369,24 +369,28 @@ export function NewOrder({
     if (!order || order.items.length === 0) return false;
     setActionError(null);
     lastSendStations.current = stations;
+    const orderId = order.id;
     try {
       const next = await sendOrder.mutateAsync({
-        orderId: order.id,
+        orderId,
         version: order.version,
         stations,
         idempotencyKey: sendRequest.keyFor(["send", order.id, order.version, ...(stations ?? [])].join("|")),
+        // The kitchen ticket prints on its own time, from the moment Yetu has
+        // the round (2026-11-05), and Send and pay opens the payment once the
+        // send is done (F-241), whatever the printer does.
+        afterSent: () => {
+          setPrinting(true);
+          void printAfter(orderId)
+            .then((results) => {
+              const words = printProblemOnce(results, "kitchen ticket");
+              if (words) setNotice(words);
+            })
+            .finally(() => setPrinting(false));
+        },
       });
       adopt(next);
       setSentAt(new Date());
-      // The kitchen ticket prints on its own time: the send is done, and Send
-      // and pay opens the payment now (F-241), whatever the printer does.
-      setPrinting(true);
-      void printAfter(next.id)
-        .then((results) => {
-          const words = printProblemOnce(results, "kitchen ticket");
-          if (words) setNotice(words);
-        })
-        .finally(() => setPrinting(false));
       return true;
     } catch (error) {
       // The words come from sendOrder.error. Yetu refused it: the next press is a new request.

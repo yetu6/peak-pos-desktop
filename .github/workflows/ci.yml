@@ -56,6 +56,20 @@ jobs:
       - name: Unit tests
         run: bun run test
 
+      - name: A test printer that writes to a file (Windows)
+        # The raw printing test sends a ticket to it through the spooler and
+        # reads the file back (src-tauri/src/raw_print.rs).
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          Start-Service Spooler
+          $file = Join-Path $env:RUNNER_TEMP 'yetu-raw-test.prn'
+          Add-PrinterDriver -Name 'Generic / Text Only'
+          Add-PrinterPort -Name $file
+          Add-Printer -Name 'Yetu raw test' -DriverName 'Generic / Text Only' -PortName $file
+          "YETU_TEST_RAW_PRINTER=Yetu raw test" >> $env:GITHUB_ENV
+          "YETU_TEST_RAW_FILE=$file" >> $env:GITHUB_ENV
+
       - name: Cargo test
         working-directory: src-tauri
         run: cargo test -- --test-threads=1

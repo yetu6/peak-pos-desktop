@@ -54,6 +54,8 @@ import {
   type OperationalSession,
 } from "../lib/operationalSession";
 import { bootstrapOperationalSession, prepareOfflineStart } from "../lib/postLoginBootstrap";
+import { keepSignInCatalog } from "../hooks/usePosData";
+import type { POSCatalog } from "../lib/posContracts";
 import {
   loadNativeOfflineAuthority,
   type OfflineAuthority,
@@ -601,6 +603,32 @@ export function DeviceSessionProvider({
     }
   }, [peakUrl]);
 
+  /**
+   * Gets this till ready to sell offline for the person just signed in: its
+   * offline keys, lease and signed menu, then their PIN checked against the
+   * till's own copy. Best effort, behind the open till: a till can be online
+   * only (no shift open yet, a moment's lost connection, or a business that
+   * never needs offline), and nothing here may undo a sign-in Yetu accepted.
+   */
+  const readyForOffline = useCallback(async (next: OperationalSession, ownPin: string) => {
+    const core = localPosCoreRef.current;
+    if (!core) return;
+    try {
+      const start = await prepareOfflineStart(peakUrl, next, {
+        installTrustKeyset: () => core.retrySync(peakUrl, next.token),
+        installOfflineBootstrap: (terminalId, propertyId, outletId, bootstrap) => core.installBootstrap(terminalId, propertyId, outletId, bootstrap),
+      });
+      const authority = offlineAuthorityRef.current;
+      const staged = start.offlineAuthorization?.state === "STAGED" || start.offlineAuthorization?.state === "ACTIVE";
+      // Only for the person still signed in: someone else may have taken the till meanwhile.
+      if (!authority || !staged || getOperationalSession() !== next) return;
+      await authority.authenticateStaff(next.staffId, ownPin);
+      setOfflineEligibility(await authority.eligibilityStatus(next.staffId));
+    } catch {
+      // The online session is already valid; offline readiness stays as it was.
+    }
+  }, [peakUrl]);
+
   const unlock = useCallback(
     async (staffNumber: string, pin: string, newPin?: string): Promise<UnlockOutcome | undefined> => {
       const current = identityRef.current;
@@ -629,40 +657,12 @@ export function DeviceSessionProvider({
           offlineAuthorityRef.current ??= await loadNativeOfflineAuthority();
           localPosCoreRef.current ??= await loadLocalPosCore();
         }
-        const bootstrap = await bootstrapOperationalSession(peakUrl, next, {
-          installTrustKeyset: localPosCoreRef.current
-            ? () => localPosCoreRef.current!.retrySync(peakUrl, next.token)
-            : undefined,
-          installOfflineBootstrap: localPosCoreRef.current
-            ? (terminalId, propertyId, outletId, bootstrap) => localPosCoreRef.current!.installBootstrap(terminalId, propertyId, outletId, bootstrap)
-            : undefined,
-        });
-        // A terminal can be fully, legitimately ONLINE-only — no shift open
-        // yet, a momentary hiccup fetching the lease, or a property that has
-        // never needed offline authority at all. `offlineAuthorityRef.current`
-        // only tells us the native offline-authority module loaded, not that
-        // bootstrap actually staged a real bundle above; gating on it alone
-        // previously meant a real, successful PIN login (`/pos/sessions`
-        // already succeeded) could still be thrown away as "Something went
-        // wrong" whenever this purely-optional local pre-cache step had
-        // nothing to authenticate against. This pre-cache is best-effort:
-        // its own failure must never undo an already-successful online login.
-        const offlineAuthorityReady =
-          offlineAuthorityRef.current &&
-          (bootstrap.offlineAuthorization?.state === "STAGED" ||
-            bootstrap.offlineAuthorization?.state === "ACTIVE");
-        if (offlineAuthorityReady) {
-          try {
-            // Offline the person signs in with their own PIN, never a spent setup code.
-            await offlineAuthorityRef.current!.authenticateStaff(next.staffId, newPin ?? pin);
-            setOfflineEligibility(
-              await offlineAuthorityRef.current!.eligibilityStatus(next.staffId),
-            );
-          } catch {
-            // The online session above is already valid and paid for;
-            // offline readiness simply stays whatever it already was.
-          }
-        }
+        // The till opens once Yetu has signed the person in and the menu is
+        // read (2026-11-05: at Casanova it opened about 11 s after the PIN,
+        // waiting for everything below). Getting ready for offline finishes
+        // behind it, in readyForOffline.
+        const bootstrap = await bootstrapOperationalSession(peakUrl, next);
+        keepSignInCatalog(queryClient, next.propertyId, next.outletId, bootstrap.catalog as unknown as POSCatalog);
         try {
           await applyOpsToken(next.token);
         } catch {
@@ -684,6 +684,8 @@ export function DeviceSessionProvider({
         setPhase("ready");
         // No longer new: the list loses its "New" before anyone comes back to it.
         if (newPin) void refreshRoster();
+        // Offline the person signs in with their own PIN, never a spent setup code.
+        void readyForOffline(next, newPin ?? pin);
         return undefined;
       } catch (err) {
         clearStaffAuthority();
@@ -772,7 +774,7 @@ export function DeviceSessionProvider({
         setError(humanDeviceError(err));
       }
     },
-    [applyOpsToken, armExpiry, clearStaffAuthority, peakUrl, persist, refreshRoster],
+    [applyOpsToken, armExpiry, clearStaffAuthority, peakUrl, persist, queryClient, readyForOffline, refreshRoster],
   );
 
   const value = useMemo<DeviceSessionValue>(

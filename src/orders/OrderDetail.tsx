@@ -662,11 +662,17 @@ export function OrderDetail({
       return;
     }
     begin();
+    const orderId = order.id;
     sendOrder.mutate(
-      { orderId: order.id, version: order.version, idempotencyKey: sendKey.keyFor([order.id, order.version].join("|")) },
       {
-        onSuccess: (updated) => {
-          void printAfter(updated.id);
+        orderId,
+        version: order.version,
+        idempotencyKey: sendKey.keyFor([order.id, order.version].join("|")),
+        // Printed from the moment Yetu has the round (2026-11-05).
+        afterSent: () => void printAfter(orderId),
+      },
+      {
+        onSuccess: () => {
           onPay();
         },
         onError: (error) => {
@@ -683,20 +689,26 @@ export function OrderDetail({
   function send(stations?: string[]) {
     if (pending !== null) return;
     begin();
+    const orderId = order.id;
+    let printing: ReturnType<typeof printAfter> | undefined;
     sendOrder.mutate(
       {
-        orderId: order.id,
+        orderId,
         version: order.version,
         stations,
         idempotencyKey: sendKey.keyFor([order.id, order.version, ...(stations ?? [])].join("|")),
+        // The kitchen tickets Yetu made print from the moment it has the round (2026-11-05).
+        afterSent: () => {
+          printing = printAfter(orderId);
+        },
       },
       {
-        onSuccess: (updated) => {
+        onSuccess: () => {
           focusAfter.current = true;
           const sentWords = directOnlyUnsent(order) ? DIRECT_ORDER_SENT_WORDS : ORDER_SENT_WORDS;
           setResult(sentWords);
-          // The kitchen tickets Yetu made, printed as before; one that didn't print is said (F-233).
-          void printAfter(updated.id).then((results) => {
+          // One that didn't print is said (F-233).
+          void printing?.then((results) => {
             const words = printProblemOnce(results, "kitchen ticket");
             if (words) setResult(`${sentWords} ${words}`);
           });

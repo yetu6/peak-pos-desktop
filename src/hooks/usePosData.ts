@@ -11,7 +11,7 @@ import { printFor, printJobNow } from "../print/printFor";
 import { PRINTERS_PLACE } from "../print/printProblems";
 import { loadPrinterSettings } from "../print/printerStore";
 import { useMemo, useRef, useState } from "react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { POSCatalog } from "../lib/posContracts";
 import { createPosApi } from "../lib/posApi";
 import { describePosError } from "../lib/posErrors";
@@ -128,6 +128,26 @@ export function useMutationMessage(error: unknown): string | null {
 // Catalog
 // ---------------------------------------------------------------------------
 
+/** What the till keeps from the outlet's menu each time Yetu sends it. */
+function rememberCatalog(propertyId: string | null, outletId: string | null, catalog: POSCatalog): void {
+  cacheOutletMoney(propertyId, outletId, catalog);
+  cacheOutletOrderSettings(propertyId, outletId, catalog);
+  cacheTestBusiness(propertyId, outletId, catalog?.testBusiness);
+  // What Print sample papers shows the business: its money and its VAT rate, kept for offline.
+  const taxed = catalog?.products?.find((product) => product.taxRateBp > 0) ?? catalog?.products?.[0];
+  rememberSampleFacts(propertyId, outletId, { currency: taxed?.currency, vatRateBp: taxed?.taxRateBp });
+}
+
+/**
+ * The menu sign-in has just read, kept as the one the till sells from
+ * (2026-11-05: at Casanova it was read twice in a sign-in, each read a trip
+ * to Yetu). The selling screen then reads it again only once it is stale.
+ */
+export function keepSignInCatalog(queryClient: QueryClient, propertyId: string, outletId: string, catalog: POSCatalog): void {
+  rememberCatalog(propertyId, outletId, catalog);
+  queryClient.setQueryData(["pos", "catalog", propertyId, outletId], catalog);
+}
+
 export function useCatalog() {
   const propertyId = usePropertyId();
   const outletId = useOutletId();
@@ -135,12 +155,7 @@ export function useCatalog() {
     queryKey: ["pos", "catalog", propertyId, outletId],
     queryFn: async () => {
       const catalog = await unwrap(createPosApi().getCatalog());
-      cacheOutletMoney(propertyId ?? null, outletId ?? null, catalog);
-      cacheOutletOrderSettings(propertyId ?? null, outletId ?? null, catalog);
-      cacheTestBusiness(propertyId ?? null, outletId ?? null, catalog?.testBusiness);
-      // What Print sample papers shows the business: its money and its VAT rate, kept for offline.
-      const taxed = catalog?.products?.find((product) => product.taxRateBp > 0) ?? catalog?.products?.[0];
-      rememberSampleFacts(propertyId ?? null, outletId ?? null, { currency: taxed?.currency, vatRateBp: taxed?.taxRateBp });
+      rememberCatalog(propertyId ?? null, outletId ?? null, catalog);
       return catalog;
     },
     retry: false,
@@ -561,9 +576,14 @@ export function useSetLineQuantity() {
 export function useSendOrder() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (args: { orderId: string; version: number; idempotencyKey: string; stations?: readonly string[] }) => {
+    mutationFn: async (args: {
+      orderId: string; version: number; idempotencyKey: string; stations?: readonly string[];
+      /** Once Yetu has the round: its tickets exist then, so they print before the order is read back (2026-11-05). */
+      afterSent?: () => void;
+    }) => {
       const token = previewTokenFor(args.orderId, "ROUND");
       await unwrap(createPosApi().sendOrder(args.orderId, args.version, args.idempotencyKey, args.stations, ...(token ? [token] : [])));
+      args.afterSent?.();
       return unwrap(createPosApi().getOrder(args.orderId));
     },
     onSuccess: (order: POSOrder) => {

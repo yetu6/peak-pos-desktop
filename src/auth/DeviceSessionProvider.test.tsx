@@ -12,6 +12,8 @@ import {
 } from "../lib/operationalSession";
 import type { SecretStore } from "../lib/deviceIdentity";
 import type { OfflineAuthority } from "../lib/offlineAuthorization";
+import type { LocalPosCore } from "../lib/localPosCore";
+import { useCatalog } from "../hooks/usePosData";
 import { DeviceSessionProvider, useDeviceSession } from "./DeviceSessionProvider";
 
 function memoryStore(initial?: string): SecretStore {
@@ -714,5 +716,122 @@ describe("DeviceSessionProvider", () => {
     saved = JSON.parse((await store.load()) ?? "{}") as Record<string, unknown>;
     expect(saved.pairing).toBeUndefined();
     expect(saved.deviceCredential).toBeUndefined();
+  });
+});
+
+// Owner, 2026-11-05: at Casanova the till was ready about 11 s after the PIN,
+// because sign-in waited for the offline start-up (keys, lease, the local
+// store, and a second PIN check on this computer) before the till opened, and
+// the menu was read twice. The till opens once Yetu signs the person in and
+// the menu is read; getting ready for offline finishes behind it.
+describe("signing in at the till, quickly", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearOperationalSession();
+    localStorage.clear();
+  });
+
+  // Real answers, with their type: the till's API client reads it.
+  const answer = (body: unknown, status = 200) =>
+    new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+  const SESSION = {
+    token: `ops_live${"x".repeat(40)}`, expiresAt: "2099-01-01T00:00:00Z", assurance: "RESTRICTED",
+    terminalId: "d1", propertyId: "p1", tenantId: "t1", staffId: "u1", outletId: "o1", mode: "cashier", terminalName: "Bar 1",
+  };
+
+  async function pairedStore() {
+    const keys = await generateDeviceKeyPair();
+    return memoryStore(JSON.stringify({ ...keys, deviceCode: "dev_abc", terminalId: "11111111-1111-1111-1111-111111111111",
+      deviceCredential: "device-secret", approved: true, terminalName: "Bar 1" }));
+  }
+
+  function tillAnswers(catalogReads: { count: number }) {
+    return vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/pos/device/challenges")) {
+        return answer({ challengeId: "11111111-1111-1111-1111-111111111111", nonce: btoa("n".repeat(32)), expiresAt: "2099-01-01T00:00:00Z", staff: [] });
+      }
+      if (url.endsWith("/pos/sessions")) return answer(SESSION);
+      if (url.endsWith("/pos/catalog")) {
+        catalogReads.count += 1;
+        return answer({ outletId: "o1", outletName: "Bar 1", products: [] });
+      }
+      if (url.endsWith("/pos/offline/bootstrap")) return answer({});
+      if (url.endsWith("/pos/offline/catalog-acknowledge")) return answer({});
+      if (url.includes("/heartbeat")) return answer({}, 204);
+      if (url.endsWith("/pos/device/roster/events")) return answer({ code: "REALTIME_UNAVAILABLE" }, 503);
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+  }
+
+  function offlineParts(keysArrive: Promise<void>) {
+    const core = {
+      retrySync: vi.fn(() => keysArrive),
+      installBootstrap: vi.fn(async () => ({
+        authorization: { state: "STAGED", hardExpiresAt: Date.now() + 60_000, staffCount: 1, catalogVersion: "v1", catalogDigest: "d", prerequisite: null },
+        catalog: { state: "ACTIVE", snapshotId: "snap-1", version: "v1", digest: "d", productCount: 0 },
+      })),
+    } as unknown as LocalPosCore;
+    const offline: OfflineAuthority = {
+      bindTerminal: vi.fn(), applyLifecycleEvent: vi.fn(), stageAuthorization: vi.fn(),
+      clearStaffSession: vi.fn(async () => undefined),
+      authenticateStaff: vi.fn(async () => ({ state: "NOT_ELIGIBLE" as const })),
+      eligibilityStatus: vi.fn(async () => ({ state: "ELIGIBLE" as const })),
+    };
+    return { core, offline };
+  }
+
+  function SellingScreen() {
+    const { shell } = useDeviceSession();
+    return shell === "OPERATIONAL" ? <MenuProbe /> : null;
+  }
+  function MenuProbe() {
+    const { data } = useCatalog();
+    return <div data-testid="menu">{data?.outletName ?? ""}</div>;
+  }
+
+  function renderTill(store: SecretStore, core: LocalPosCore, offline: OfflineAuthority) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <DeviceSessionProvider store={store} baseUrl="http://peak.test" applyOpsToken={async () => undefined}
+          offlineAuthority={offline} localPosCore={core}>
+          <Probe />
+          <SellingScreen />
+        </DeviceSessionProvider>
+      </QueryClientProvider>,
+    );
+  }
+
+  it("opens the till as soon as Yetu signs the person in; offline readiness finishes behind it", async () => {
+    let keysArrive!: () => void;
+    const { core, offline } = offlineParts(new Promise<void>((resolve) => { keysArrive = resolve; }));
+    vi.stubGlobal("fetch", tillAnswers({ count: 0 }));
+    renderTill(await pairedStore(), core, offline);
+    expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+
+    await userEvent.click(screen.getByTestId("unlock"));
+    // The offline keys haven't come yet, and the till is already open.
+    await waitFor(() => expect(screen.getByTestId("shell")).toHaveTextContent("OPERATIONAL"));
+    expect(offline.authenticateStaff).not.toHaveBeenCalled();
+
+    await act(async () => keysArrive());
+    // Then the till gets ready for offline, with the person's own PIN.
+    await waitFor(() => expect(offline.authenticateStaff).toHaveBeenCalledWith("u1", "418205"));
+    await waitFor(() => expect(screen.getByTestId("offline-eligibility")).toHaveTextContent("ELIGIBLE"));
+  });
+
+  it("the menu read at sign-in is the one the till sells from: Yetu is asked for it once", async () => {
+    const reads = { count: 0 };
+    const { core, offline } = offlineParts(Promise.resolve());
+    vi.stubGlobal("fetch", tillAnswers(reads));
+    renderTill(await pairedStore(), core, offline);
+    expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+
+    await userEvent.click(screen.getByTestId("unlock"));
+    await waitFor(() => expect(screen.getByTestId("menu")).toHaveTextContent("Bar 1"));
+    await waitFor(() => expect(offline.authenticateStaff).toHaveBeenCalled());
+    expect(reads.count).toBe(1);
   });
 });
