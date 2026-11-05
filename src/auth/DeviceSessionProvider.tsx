@@ -623,6 +623,12 @@ export function DeviceSessionProvider({
       // Only for the person still signed in: someone else may have taken the till meanwhile.
       if (!authority || !staged || getOperationalSession() !== next) return;
       await authority.authenticateStaff(next.staffId, ownPin);
+      // Switch may have come while the PIN was being checked: the till's
+      // offline user is then cleared again, never left as the person who left.
+      if (getOperationalSession() !== next) {
+        await authority.clearStaffSession();
+        return;
+      }
       setOfflineEligibility(await authority.eligibilityStatus(next.staffId));
     } catch {
       // The online session is already valid; offline readiness stays as it was.

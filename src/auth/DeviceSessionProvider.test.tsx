@@ -822,6 +822,22 @@ describe("signing in at the till, quickly", () => {
     await waitFor(() => expect(screen.getByTestId("offline-eligibility")).toHaveTextContent("ELIGIBLE"));
   });
 
+  it("Switch while the offline PIN check is still running leaves nobody signed in offline", async () => {
+    const { core, offline } = offlineParts(Promise.resolve());
+    let checked!: () => void;
+    offline.authenticateStaff = vi.fn(() => new Promise((resolve) => { checked = () => resolve({ state: "NOT_ELIGIBLE" as const }); })) as never;
+    vi.stubGlobal("fetch", tillAnswers({ count: 0 }));
+    renderTill(await pairedStore(), core, offline);
+    expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+    await userEvent.click(screen.getByTestId("unlock"));
+    await waitFor(() => expect(offline.authenticateStaff).toHaveBeenCalled());
+    await userEvent.click(screen.getByTestId("switch"));
+    const clearedBySwitch = vi.mocked(offline.clearStaffSession).mock.calls.length;
+    await act(async () => checked());
+    await waitFor(() => expect(vi.mocked(offline.clearStaffSession).mock.calls.length).toBeGreaterThan(clearedBySwitch));
+    expect(offline.eligibilityStatus).not.toHaveBeenCalled();
+  });
+
   it("the menu read at sign-in is the one the till sells from: Yetu is asked for it once", async () => {
     const reads = { count: 0 };
     const { core, offline } = offlineParts(Promise.resolve());
