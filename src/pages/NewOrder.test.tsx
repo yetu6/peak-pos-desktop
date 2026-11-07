@@ -539,6 +539,17 @@ describe("NewOrder", () => {
   });
 
   // A switch waits for the printer's answer, so a paper that didn't print is never lost (review, 2026-10-21).
+  // Owner, 2026-11-05: at Casanova a ticket waited for the till to read the
+  // order back from Yetu before it printed. It prints once Yetu has the round.
+  it("the kitchen ticket starts printing once Yetu has the round, before the order is read back", async () => {
+    renderNewOrder({ resume: OPEN_ORDER });
+    await waitFor(() => expect(screen.getByTestId("send-order")).toBeEnabled());
+    getOrderSpy.mockImplementation(() => new Promise(() => undefined) as never);
+    await sendFromPreview();
+    await waitFor(() => expect(sendOrderSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(printForSpy).toHaveBeenCalledWith("property-1", OPEN_ORDER.id, expect.anything()));
+  });
+
   it("the open-orders bar holds while the order's papers are printing", async () => {
     let printed: (value: unknown[]) => void = () => undefined;
     printForSpy.mockImplementationOnce(() => new Promise((resolve) => (printed = resolve)));

@@ -1,6 +1,6 @@
 [package]
 name = "peak-pos-desktop"
-version = "0.2.1"
+version = "0.2.2"
 description = "Peak POS desktop shell"
 authors = ["Peak"]
 edition = "2021"
@@ -37,6 +37,10 @@ tauri-plugin-updater = "2.12.0"
 # Pinned: 2.5.1 is the newest that runs on our Tauri 2.11 without moving it (2.7 pulls
 # Tauri 2.12, wry and 39 others). Start-with-the-computer (src/start_with_computer.rs).
 tauri-plugin-autostart = "=2.5.1"
+
+# The print spooler, called directly instead of through PowerShell (src/winspool.rs).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing"] }
 
 [dev-dependencies]
 tempfile = "=3.27.0"

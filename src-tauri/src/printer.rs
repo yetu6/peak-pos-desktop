@@ -1003,13 +1003,11 @@ mod script_tests {
         for (name, script) in [
             ("OUT_PRINTER_NAMED_SCRIPT", super::OUT_PRINTER_NAMED_SCRIPT),
             ("OUT_PRINTER_DEFAULT_SCRIPT", super::OUT_PRINTER_DEFAULT_SCRIPT),
-            ("RAW_SEND_SCRIPT", crate::raw_print::RAW_SEND_SCRIPT),
-            ("LIST_PRINTERS_SCRIPT", crate::raw_print::LIST_PRINTERS_SCRIPT),
             ("WINDOWS_HEALTH_SCRIPT", crate::printer_health::WINDOWS_HEALTH_SCRIPT),
         ] {
             assert!(!crate::quiet::has_format_placeholder(script), "{name} has a placeholder");
         }
-        for script in [super::OUT_PRINTER_NAMED_SCRIPT, crate::raw_print::RAW_SEND_SCRIPT, crate::printer_health::WINDOWS_HEALTH_SCRIPT] {
+        for script in [super::OUT_PRINTER_NAMED_SCRIPT, crate::printer_health::WINDOWS_HEALTH_SCRIPT] {
             assert!(script.contains("$env:YETU_PRINTER_NAME"));
         }
     }

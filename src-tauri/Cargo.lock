@@ -2679,7 +2679,7 @@ dependencies = [
 
 [[package]]
 name = "peak-pos-desktop"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "argon2",
  "base64 0.23.1",
@@ -2704,6 +2704,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-tungstenite",
+ "windows-sys 0.61.2",
  "zeroize",
 ]
 

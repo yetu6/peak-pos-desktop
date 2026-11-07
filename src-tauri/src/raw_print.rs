@@ -2,11 +2,12 @@
 //! to a thermal printer as they are -- to a network printer by TCP (port
 //! 9100), or to a printer this computer knows through its spooler in RAW
 //! mode, so the printer's own commands (large type, the cut, the cash drawer)
-//! reach it untouched. Only the standard library: this module is tested on its
-//! own (`rustc --test`), and nothing here talks to Yetu.
+//! reach it untouched. On Windows the spooler is called directly
+//! (src/winspool.rs). Nothing here talks to Yetu.
 
 use std::io::Write;
 use std::net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs};
+#[cfg(not(windows))]
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -134,37 +135,6 @@ fn print_network(host: &str, port: u16, bytes: &[u8], local_only: bool) -> Resul
     Err(unreachable())
 }
 
-#[allow(dead_code)]
-pub(crate) const LIST_PRINTERS_SCRIPT: &str = "Get-Printer | Select-Object -ExpandProperty Name";
-
-/// The raw-mode send, as fixed script text: the printer and the file arrive
-/// as environment variables, never inside the text.
-#[allow(dead_code)]
-pub(crate) const RAW_SEND_SCRIPT: &str = r#"$ErrorActionPreference = 'Stop'
-Add-Type -TypeDefinition @'
-using System; using System.Runtime.InteropServices;
-public static class YetuRaw {
-  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] public class DOCINFO { public string pDocName; public string pOutputFile; public string pDataType; }
-  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool OpenPrinter(string name, out IntPtr h, IntPtr d);
-  [DllImport("winspool.drv", SetLastError = true)] public static extern bool ClosePrinter(IntPtr h);
-  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)] public static extern int StartDocPrinter(IntPtr h, int level, DOCINFO di);
-  [DllImport("winspool.drv", SetLastError = true)] public static extern bool EndDocPrinter(IntPtr h);
-  [DllImport("winspool.drv", SetLastError = true)] public static extern bool StartPagePrinter(IntPtr h);
-  [DllImport("winspool.drv", SetLastError = true)] public static extern bool EndPagePrinter(IntPtr h);
-  [DllImport("winspool.drv", SetLastError = true)] public static extern bool WritePrinter(IntPtr h, byte[] b, int n, out int w);
-  public static void Send(string printer, byte[] bytes) {
-    IntPtr h; if (!OpenPrinter(printer, out h, IntPtr.Zero)) throw new Exception("printer not found");
-    try {
-      var di = new DOCINFO { pDocName = "Yetu ticket", pDataType = "RAW" };
-      if (StartDocPrinter(h, 1, di) == 0) throw new Exception("printer refused the job");
-      try { StartPagePrinter(h); int w; if (!WritePrinter(h, bytes, bytes.Length, out w) || w != bytes.Length) throw new Exception("printer took only part of the job"); EndPagePrinter(h); }
-      finally { EndDocPrinter(h); }
-    } finally { ClosePrinter(h); }
-  }
-}
-'@
-[YetuRaw]::Send($env:YETU_PRINTER_NAME, [System.IO.File]::ReadAllBytes($env:YETU_PRINT_FILE))"#;
-
 /// A name is accepted only when it is exactly one of the printers this computer lists.
 pub fn require_known_printer_in(name: &str, known: &[String]) -> Result<(), String> {
     if known.iter().any(|candidate| candidate == name) {
@@ -181,41 +151,13 @@ pub fn require_known_printer(name: &str) -> Result<(), String> {
 
 #[cfg(windows)]
 fn print_system(name: &str, bytes: &[u8]) -> Result<(), String> {
-    // The spooler in RAW mode (winspool.drv: OpenPrinter, StartDocPrinter with
-    // "RAW", WritePrinter), through PowerShell as the till's text printing
-    // already is: the bytes reach the printer exactly as made.
+    // The spooler in RAW mode (OpenPrinter, StartDocPrinter with "RAW",
+    // WritePrinter), called directly: the bytes reach the printer exactly as
+    // made, without starting PowerShell for each ticket.
     require_known_printer(name)?;
-    let dir = std::env::temp_dir();
-    let path = dir.join(format!("yetu-raw-{}-{}.bin", std::process::id(), nanos()));
-    std::fs::write(&path, bytes)
-        .map_err(|err| format!("The ticket couldn't be prepared for the printer: {err}"))?;
-    let result = crate::quiet::powershell_script(
-        "powershell",
-        RAW_SEND_SCRIPT,
-        &[
-            (crate::quiet::ENV_PRINTER_NAME, std::ffi::OsStr::new(name)),
-            (crate::quiet::ENV_PRINT_FILE, path.as_os_str()),
-        ],
-    )
-    .stdin(Stdio::null())
-    .stdout(Stdio::null())
-    .stderr(Stdio::piped())
-    .output();
-    let _ = std::fs::remove_file(&path);
-    let output = result
-        .map_err(|_| format!("The printer {name} couldn't be reached from this computer."))?;
-    if !output.status.success() {
-        return Err(format!("The printer {name} didn't take the ticket. Check it is on, has paper, and is set up on this computer."));
-    }
-    Ok(())
-}
-
-#[cfg(windows)]
-fn nanos() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0)
+    crate::winspool::send_raw(name, "Yetu ticket", bytes).map_err(|_| {
+        format!("The printer {name} didn't take the ticket. Check it is on, has paper, and is set up on this computer.")
+    })
 }
 
 #[cfg(not(windows))]
@@ -244,13 +186,14 @@ fn print_system(name: &str, bytes: &[u8]) -> Result<(), String> {
 }
 
 /// The printers this computer knows, by name, as staff choose them.
+#[cfg(windows)]
 pub fn list_system_printers() -> Vec<String> {
-    #[cfg(windows)]
-    let output = crate::quiet::powershell_script("powershell", LIST_PRINTERS_SCRIPT, &[])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output();
-    #[cfg(not(windows))]
+    crate::winspool::printer_names()
+}
+
+/// The printers this computer knows, by name, as staff choose them.
+#[cfg(not(windows))]
+pub fn list_system_printers() -> Vec<String> {
     let output = crate::quiet::command("lpstat")
         .arg("-e")
         .stdin(Stdio::null())
@@ -410,6 +353,47 @@ mod tests {
         assert!(require_known_printer_in("Kitchen", &known).is_ok());
         for bad in ["kitchen", "Kitchen ", "Kitchen'; calc", "Kitchen\u{2019}", "", "Other"] {
             assert!(require_known_printer_in(bad, &known).unwrap_err().contains("isn't one of the printers"), "{bad:?}");
+        }
+    }
+
+    /// Windows CI sets up a "Generic / Text Only" printer that writes what it
+    /// is sent to a file (ci.yml, release.yml). The ticket reaches it whole,
+    /// through the same name check and spooler call the till makes, and the
+    /// spooler takes it at once: before 0.2.2 each ticket waited for
+    /// PowerShell, about 4 s a ticket at Casanova.
+    #[cfg(windows)]
+    #[test]
+    fn a_ticket_reaches_a_windows_printer_whole_and_at_once() {
+        let (Ok(name), Ok(file)) = (
+            std::env::var("YETU_TEST_RAW_PRINTER"),
+            std::env::var("YETU_TEST_RAW_FILE"),
+        ) else {
+            // GitHub's Windows jobs always set the printer up, so there this
+            // test always runs; elsewhere a computer may have none.
+            assert!(
+                std::env::var("GITHUB_ACTIONS").is_err(),
+                "the Windows job sets up YETU_TEST_RAW_PRINTER before cargo test"
+            );
+            return;
+        };
+        assert!(list_system_printers().contains(&name), "{name} isn't listed");
+        let _ = std::fs::remove_file(&file);
+        let job = vec![0x1b, 0x40, b'4', b'2', 0x00, 0x0a, 0x1d, 0x56, 0x42, 3];
+        let asked = std::time::Instant::now();
+        print_raw(&RawTarget::System { name }, &job).unwrap();
+        let took = asked.elapsed();
+        assert!(took < Duration::from_millis(1500), "the spooler took {took:?} to take the ticket");
+        // The spooler writes the file when the job leaves its queue.
+        let until = std::time::Instant::now() + Duration::from_secs(20);
+        loop {
+            if let Ok(got) = std::fs::read(&file) {
+                if got.len() >= job.len() {
+                    assert_eq!(got, job);
+                    break;
+                }
+            }
+            assert!(std::time::Instant::now() < until, "the ticket never reached the printer's file");
+            std::thread::sleep(Duration::from_millis(100));
         }
     }
 }

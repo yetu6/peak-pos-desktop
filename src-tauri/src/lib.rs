@@ -7,6 +7,8 @@ mod printer;
 mod printer_health;
 mod quiet;
 mod raw_print;
+#[cfg(windows)]
+mod winspool;
 mod socket;
 mod start_with_computer;
 mod yetu_http;
