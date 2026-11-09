@@ -36,7 +36,8 @@ import { applyModeDefaultTheme } from "./lib/theme";
 import { clockTime, shiftChipWords } from "./lib/words";
 import { defaultWorkspacePage, isDisplayMode, workspaceNav, type WorkspacePage } from "./lib/workspace";
 import { TillShell } from "./shell/TillShell";
-import { Banner, TouchKeyboardProvider } from "./components/system";
+import { ChangePinSheet, PIN_CHANGED_WORDS } from "./shell/ChangePinSheet";
+import { Banner, Toast, ToastRegion, TouchKeyboardProvider } from "./components/system";
 import { OFFLINE_BANNER } from "./register/offlineWords";
 import { placeOf } from "./lib/tillPlace";
 import { useApprovers } from "./approvals/supervisors";
@@ -71,8 +72,29 @@ function ShellBanners({ offlineCash = false, sync = null }: { offlineCash?: bool
   );
 }
 
+/** Named setting: how long a short confirmation stays on the till. */
+export const NOTICE_SECONDS = 6;
+
+/** A short confirmation from the device session ("Your new PIN is set. …"), shown once. */
+function SessionNotice() {
+  const { notice, clearNotice } = useDeviceSession();
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(clearNotice, NOTICE_SECONDS * 1000);
+    return () => window.clearTimeout(timer);
+  }, [notice, clearNotice]);
+  return notice ? (
+    <ToastRegion>
+      <Toast tone="success">
+        <span data-testid="session-notice">{notice}</span>
+      </Toast>
+    </ToastRegion>
+  ) : null;
+}
+
 function PosShell() {
-  const { session, switchStaff, identity, roster } = useDeviceSession();
+  const { session, switchStaff, identity, roster, readyForOfflineWith, showNotice } = useDeviceSession();
+  const [changingPin, setChangingPin] = useState(false);
   const offlineCash = session?.mode === "offline-cash";
   const nav = workspaceNav(offlineCash ? "offline-cash" : identity?.mode);
   const [page, setPage] = useState<Page>(() =>
@@ -108,6 +130,8 @@ function PosShell() {
       banners={<ShellBanners offlineCash={offlineCash} sync={<SyncProblemBanner sync={sync} />} />}
       onSwitchPerson={() => switchStaff()}
       onLock={() => switchStaff()}
+      // A PIN is Yetu's to change: never while the till works offline.
+      onChangePin={offlineCash ? undefined : () => setChangingPin(true)}
       workspaceVariant={page === "new" || page === "orders" || page === "kitchen" ? "full" : "padded"}
     >
       {page === "orders" ? (
@@ -140,6 +164,15 @@ function PosShell() {
         <Diagnostics />
       )}
       <SyncSheet sync={sync} />
+      <ChangePinSheet
+        open={changingPin}
+        onOpenChange={setChangingPin}
+        onChanged={(pin) => {
+          showNotice(PIN_CHANGED_WORDS);
+          void readyForOfflineWith(pin);
+        }}
+      />
+      <SessionNotice />
     </TillShell>
   );
 }

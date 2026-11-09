@@ -48,6 +48,17 @@ export class StaffNewPinRefusedError extends Error {
   }
 }
 
+/**
+ * Yetu refused a new PIN at the lock screen (403: this person approves at the
+ * till, so their new PIN comes from the office). `words` is Yetu's own sentence.
+ */
+export class PinResetRefusedError extends Error {
+  constructor(readonly words: string) {
+    super("The new PIN was not set.");
+    this.name = "PinResetRefusedError";
+  }
+}
+
 /** Named setting: the wait after a 429 that came with no time at all (Yetu's limiter always sends one). */
 export const SIGN_IN_FALLBACK_WAIT_SECONDS = 60;
 
@@ -380,21 +391,20 @@ export async function fetchLockScreen(
   }
 }
 
-export async function createStaffSession(args: {
+/** How the till proves itself to Yetu: its identity, and the key that signs a challenge. */
+export interface DeviceProof {
   baseUrl: string;
   deviceCode?: string;
 	terminalId?: string;
 	deviceCredential?: string;
   privateKeyPkcs8?: string;
   signChallenge?: (nonce: string) => Promise<string>;
-  staffNumber: string;
-  /** The person's PIN, or the setup code a manager gave them. */
-  pin: string;
-  /** With a setup code as `pin`: the PIN the person chose, which they sign in with from now on. */
-  newPin?: string;
   /** True when this till already completed pairing. A 401 challenge is then revocation. */
   previouslyApproved?: boolean;
-}): Promise<OperationalSession> {
+}
+
+/** A fresh challenge from Yetu, signed by this till. */
+async function signedChallenge(args: DeviceProof): Promise<{ challengeId: string; signature: string }> {
 	const terminalId = args.terminalId ?? "";
 	const credential = args.deviceCredential ?? args.deviceCode;
 	const challenge = await issueChallenge(args.baseUrl, terminalId, credential);
@@ -402,7 +412,6 @@ export async function createStaffSession(args: {
     if (args.previouslyApproved) throw new DeviceRevokedError();
     throw new DeviceNotApprovedError();
   }
-
   let signature: string;
   if (args.signChallenge) {
     signature = await args.signChallenge(challenge.nonce);
@@ -411,11 +420,22 @@ export async function createStaffSession(args: {
   } else {
     throw new Error("Device signing authority is unavailable");
   }
+  return { challengeId: challenge.challengeId, signature };
+}
+
+export async function createStaffSession(args: DeviceProof & {
+  staffNumber: string;
+  /** The person's PIN, or the setup code a manager gave them. */
+  pin: string;
+  /** With a setup code as `pin`: the PIN the person chose, which they sign in with from now on. */
+  newPin?: string;
+}): Promise<OperationalSession> {
+  const { challengeId, signature } = await signedChallenge(args);
 	const response = await yetuFetch(`${args.baseUrl}/api/v1/pos/sessions`, {
     method: "POST",
     headers: publicJsonHeaders(),
     body: JSON.stringify({
-			challengeId: challenge.challengeId,
+			challengeId,
 			signature,
 			staffId: args.staffNumber,
       pin: args.pin,
@@ -437,7 +457,48 @@ export async function createStaffSession(args: {
   if (!response.ok) {
     throw new Error(`Staff session failed with HTTP ${response.status}`);
   }
-  const body = (await readJson(response)) as Record<string, unknown>;
+  return sessionFromAnswer((await readJson(response)) as Record<string, unknown>);
+}
+
+/**
+ * Somebody who forgot their PIN chooses a new one at the lock screen, on their
+ * own, and is signed in with it; Yetu tells the owner and General Manager
+ * (owner, 2026-11-07; POST /pos/sessions/pin-reset). The till proves itself as
+ * at sign-in.
+ */
+export async function resetStaffPin(args: DeviceProof & {
+  staffNumber: string;
+  newPin: string;
+}): Promise<OperationalSession> {
+  const { challengeId, signature } = await signedChallenge(args);
+	const response = await yetuFetch(`${args.baseUrl}/api/v1/pos/sessions/pin-reset`, {
+    method: "POST",
+    headers: publicJsonHeaders(),
+    body: JSON.stringify({
+			challengeId,
+			signature,
+			staffId: args.staffNumber,
+      newPin: args.newPin,
+    }),
+  });
+  if (response.status === 401) throw new StaffLoginRejectedError();
+  if (response.status === 429) throw new StaffLoginRateLimitedError(await retryAfterSecondsOf(response));
+  if (response.status === 422) {
+    const { detail } = await readProblem(response);
+    throw new StaffNewPinRefusedError(detail?.trim() || NEW_PIN_REFUSED_WORDS);
+  }
+  if (response.status === 403) {
+    const { detail } = await readProblem(response);
+    throw new PinResetRefusedError(detail?.trim() || "Your new PIN comes from the office: ask the owner or General Manager.");
+  }
+  if (!response.ok) {
+    throw new Error(`New PIN failed with HTTP ${response.status}`);
+  }
+  return sessionFromAnswer((await readJson(response)) as Record<string, unknown>);
+}
+
+/** The session Yetu answered a sign-in with, checked for what the till needs. */
+function sessionFromAnswer(body: Record<string, unknown>): OperationalSession {
 	const expiresAt = requiredId(body.expiresAt);
 	const tenantId = requiredId(body.tenantId);
 	const propertyId = requiredId(body.propertyId);

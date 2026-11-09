@@ -66,6 +66,10 @@ export function createPosApi() {
         body: { openingCashMinor },
       });
     },
+    /** Change my PIN (owner, 2026-11-07): the signed-in person's own, with the one they use now. */
+    changeOwnPin(currentPin: string, newPin: string): Promise<ApiResult<void>> {
+      return client.POST<void>("/api/v1/pos/staff/me/pin", { body: { currentPin, newPin } });
+    },
     /** Who may approve what here (F-249), by the rule Yetu's approval check applies. */
     getApprovers(): Promise<ApiResult<{ approvers: POSApprover[] }>> {
       return client.GET<{ approvers: POSApprover[] }>("/api/v1/pos/approvers");

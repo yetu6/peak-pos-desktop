@@ -6,6 +6,8 @@ import {
   humanDeviceError,
   issueChallenge,
   NEW_PIN_REFUSED_WORDS,
+  PinResetRefusedError,
+  resetStaffPin,
   StaffLoginRateLimitedError,
   StaffLoginRejectedError,
   StaffNewPinRefusedError,
@@ -178,5 +180,49 @@ describe("a new person's setup code (fbc-peak 00134: they choose their own PIN a
     expect(other.result).toBeInstanceOf(Error);
     const noNewPin = await signIn(response({ code: "VALIDATION_FAILED", detail: "Bad body." }, 422), { pin: "246810" });
     expect(noNewPin.result).not.toBeInstanceOf(StaffNewPinRefusedError);
+  });
+});
+
+// Owner, 2026-11-07: somebody who forgot their PIN chooses a new one at the
+// lock screen on their own (fbc-peak 00159, POST /pos/sessions/pin-reset).
+describe("a new PIN at the lock screen", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const session = { token: "x".repeat(48), expiresAt: "2026-08-25T20:00:00Z", tenantId: "org1", propertyId: "p1", outletId: "o1",
+    terminalId: "t1", staffId: "s1", assurance: "RESTRICTED" };
+
+  it("sends who forgot and the chosen PIN with the signed challenge, and signs the person in", async () => {
+    const keys = await generateDeviceKeyPair();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/challenges")
+      ? response({ challengeId: "c1", nonce, expiresAt: "2026-08-25T13:00:00Z", staff: [] }, 201)
+      : response(session, 201));
+    vi.stubGlobal("fetch", fetchMock);
+    const signedIn = await resetStaffPin({ baseUrl: "https://api.peak.localhost", terminalId: "t1", deviceCredential: "secret",
+      privateKeyPkcs8: keys.privateKeyPkcs8, staffNumber: "s1", newPin: "204815" });
+    expect(signedIn.staffId).toBe("s1");
+    const [url, init] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.peak.localhost/api/v1/pos/sessions/pin-reset");
+    expect(JSON.parse(String(init.body))).toEqual({ challengeId: "c1", staffId: "s1", newPin: "204815", signature: expect.any(String) });
+  });
+
+  it("a refusal says so in Yetu's words: an approver goes to the office; a PIN anybody could guess is chosen again", async () => {
+    const keys = await generateDeviceKeyPair();
+    const answers = [
+      response({ status: 403, code: "POS_PIN_RESET_AT_OFFICE", detail: "Your PIN does more than sell at this till, so ask the owner or General Manager for a setup code: Reset PIN on the staff page." }, 403),
+      response({ status: 422, code: "VALIDATION_FAILED", detail: "Choose a new six-digit PIN: not the one you use now." }, 422),
+    ];
+    for (const answer of answers) {
+      vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/challenges")
+        ? response({ challengeId: "c1", nonce, expiresAt: "2026-08-25T13:00:00Z", staff: [] }, 201)
+        : answer));
+      const refused = await resetStaffPin({ baseUrl: "https://api.peak.localhost", terminalId: "t1", deviceCredential: "secret",
+        privateKeyPkcs8: keys.privateKeyPkcs8, staffNumber: "s1", newPin: "204815" }).catch((e: unknown) => e);
+      if (answer.status === 422) {
+        expect(refused).toBeInstanceOf(StaffNewPinRefusedError);
+        expect((refused as StaffNewPinRefusedError).words).toBe("Choose a new six-digit PIN: not the one you use now.");
+      } else {
+        expect(refused).toBeInstanceOf(PinResetRefusedError);
+        expect((refused as PinResetRefusedError).words).toMatch(/owner or General Manager/);
+      }
+    }
   });
 });

@@ -386,6 +386,13 @@
 
 .y-pin__status:empty { display: none; }
 
+/* Change my PIN: the step being typed, inside its sheet. */
+.y-pin__step {
+  margin: 0;
+  font-size: var(--type-title);
+  text-align: center;
+}
+
 .y-pin__message {
   display: flex;
   width: 100%;

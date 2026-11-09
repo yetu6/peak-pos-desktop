@@ -178,6 +178,23 @@ describe("TillShell", () => {
     await userEvent.click(screen.getByTestId("lock-till"));
     expect(onLock).toHaveBeenCalledTimes(1);
   });
+
+  // Owner, 2026-11-07: anyone signed in changes their own PIN, from their name.
+  it("offers Change my PIN first, when the till can change it", async () => {
+    const onChangePin = vi.fn();
+    render(<Harness onChangePin={onChangePin} />);
+    await userEvent.click(screen.getByTestId("person-menu"));
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Change my PIN", "Switch person", "LockCtrl+L"]);
+    expect(screen.getByRole("menuitem", { name: "Change my PIN" })).toHaveFocus();
+    await userEvent.click(screen.getByTestId("change-pin-open"));
+    expect(onChangePin).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Change my PIN out where it can't work (working offline)", async () => {
+    render(<Harness />);
+    await userEvent.click(screen.getByTestId("person-menu"));
+    expect(screen.queryByTestId("change-pin-open")).toBeNull();
+  });
 });
 
 describe("TillShell keyboard", () => {

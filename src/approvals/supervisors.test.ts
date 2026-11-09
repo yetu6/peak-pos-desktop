@@ -19,6 +19,16 @@ describe("who an approval sheet offers", () => {
     expect(supervisorsFor(roster, approvers, "CASH_OUT")).toEqual([]);
   });
 
+  // Owner, 2026-11-07: the General Manager approves at the till, though that
+  // role never signs in at one and so isn't on the till's staff list.
+  it("an approver who isn't on the till's staff list is offered by the name Yetu gives", () => {
+    const withManager = [...approvers, { staffId: "grace", displayName: "Grace Mkuu", approves: ["VOID" as const] }];
+    expect(supervisorsFor(roster, withManager, "VOID")).toEqual([
+      { id: "baraka", name: "Baraka Mushi" },
+      { id: "grace", name: "Grace Mkuu" },
+    ]);
+  });
+
   it("everyone, as before, until Yetu has answered", () => {
     expect(supervisorsFor(roster, null, "VOID").map((p) => p.name)).toEqual(["Baraka Mushi", "Neema Mwakyusa", "Zawadi Said"]);
   });

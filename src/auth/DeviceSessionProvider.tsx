@@ -21,7 +21,9 @@ import {
   getPairingStatus,
   humanDeviceError,
   isDeviceNetworkFailure,
+  PinResetRefusedError,
   requestPairing,
+  resetStaffPin,
   sendHeartbeat,
   StaffLoginRateLimitedError,
   StaffLoginRejectedError,
@@ -92,7 +94,9 @@ export function shellStateOf(phase: DevicePhase): AppShellState {
  */
 export type UnlockOutcome =
   | { next: "choose-pin" }
-  | { next: "choose-again"; words: string };
+  | { next: "choose-again"; words: string }
+  /** A new PIN wasn't set (fbc-peak 00159: an approver's comes from the office): back to the PIN, with Yetu's words. */
+  | { next: "reset-refused"; words: string };
 
 export interface DeviceSessionValue {
   phase: DevicePhase;
@@ -119,6 +123,17 @@ export interface DeviceSessionValue {
   offlineEligibility: OfflineEligibilityStatus | null;
   /** After too many sign-in attempts (429): when Yetu allows the next one (ms since the epoch). */
   signInHeldUntil: number | null;
+  /**
+   * Somebody who forgot their PIN chooses `newPin` on their own (owner,
+   * 2026-11-07) and is signed in with it; Yetu tells the owner and General Manager.
+   */
+  resetPin: (staffNumber: string, newPin: string) => Promise<UnlockOutcome | undefined>;
+  /** After Change my PIN: the till gets ready to sign this person in offline with `pin`. */
+  readyForOfflineWith: (pin: string) => Promise<void>;
+  /** A short confirmation for the till to show once ("Your new PIN is set. …"), then clear. */
+  notice: string | null;
+  showNotice: (words: string) => void;
+  clearNotice: () => void;
 }
 
 const DeviceSessionContext = createContext<DeviceSessionValue | null>(null);
@@ -169,6 +184,7 @@ export function DeviceSessionProvider({
   const [offlineEligibility, setOfflineEligibility] =
     useState<OfflineEligibilityStatus | null>(null);
   const [signInHeldUntil, setSignInHeldUntil] = useState<number | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const identityRef = useRef(identity);
   const authorityRef = useRef<DeviceAuthority | null>(deviceAuthority ?? null);
@@ -635,6 +651,46 @@ export function DeviceSessionProvider({
     }
   }, [peakUrl]);
 
+  /**
+   * Opens the till for the person Yetu has just signed in. The till opens once
+   * the menu is read (2026-11-05: at Casanova it opened about 11 s after the
+   * PIN, waiting for everything else); getting ready for offline with `ownPin`
+   * finishes behind it, in readyForOffline. `chosePin`: they chose their PIN
+   * just now, so the list loses its "New".
+   */
+  const enterTill = useCallback(
+    async (current: DeviceIdentityRecord, next: OperationalSession, ownPin: string, chosePin: boolean) => {
+      if (!store) {
+        offlineAuthorityRef.current ??= await loadNativeOfflineAuthority();
+        localPosCoreRef.current ??= await loadLocalPosCore();
+      }
+      const bootstrap = await bootstrapOperationalSession(peakUrl, next);
+      keepSignInCatalog(queryClient, next.propertyId, next.outletId, bootstrap.catalog as unknown as POSCatalog);
+      try {
+        await applyOpsToken(next.token);
+      } catch {
+        // REST can proceed; the connectivity pill will show if the socket fails.
+      }
+      setOperationalSession(next);
+      setSession(next);
+      await persist({
+        ...current,
+        approved: true,
+        pairing: undefined,
+        mode: next.mode ?? current.mode,
+        prepStations: next.prepStations ?? current.prepStations,
+        terminalName: next.terminalName ?? current.terminalName,
+        propertyName: next.propertyName ?? current.propertyName,
+        outletName: next.outletName ?? current.outletName,
+      });
+      armExpiry(next);
+      setPhase("ready");
+      if (chosePin) void refreshRoster();
+      void readyForOffline(next, ownPin);
+    },
+    [applyOpsToken, armExpiry, peakUrl, persist, queryClient, readyForOffline, refreshRoster, store],
+  );
+
   const unlock = useCallback(
     async (staffNumber: string, pin: string, newPin?: string): Promise<UnlockOutcome | undefined> => {
       const current = identityRef.current;
@@ -659,39 +715,8 @@ export function DeviceSessionProvider({
           newPin,
           previouslyApproved: current.approved === true,
         });
-        if (!store) {
-          offlineAuthorityRef.current ??= await loadNativeOfflineAuthority();
-          localPosCoreRef.current ??= await loadLocalPosCore();
-        }
-        // The till opens once Yetu has signed the person in and the menu is
-        // read (2026-11-05: at Casanova it opened about 11 s after the PIN,
-        // waiting for everything below). Getting ready for offline finishes
-        // behind it, in readyForOffline.
-        const bootstrap = await bootstrapOperationalSession(peakUrl, next);
-        keepSignInCatalog(queryClient, next.propertyId, next.outletId, bootstrap.catalog as unknown as POSCatalog);
-        try {
-          await applyOpsToken(next.token);
-        } catch {
-          // REST can proceed; the connectivity pill will show if the socket fails.
-        }
-        setOperationalSession(next);
-        setSession(next);
-        await persist({
-          ...current,
-          approved: true,
-          pairing: undefined,
-          mode: next.mode ?? current.mode,
-          prepStations: next.prepStations ?? current.prepStations,
-          terminalName: next.terminalName ?? current.terminalName,
-          propertyName: next.propertyName ?? current.propertyName,
-          outletName: next.outletName ?? current.outletName,
-        });
-        armExpiry(next);
-        setPhase("ready");
-        // No longer new: the list loses its "New" before anyone comes back to it.
-        if (newPin) void refreshRoster();
         // Offline the person signs in with their own PIN, never a spent setup code.
-        void readyForOffline(next, newPin ?? pin);
+        await enterTill(current, next, newPin ?? pin, Boolean(newPin));
         return undefined;
       } catch (err) {
         clearStaffAuthority();
@@ -780,8 +805,59 @@ export function DeviceSessionProvider({
         setError(humanDeviceError(err));
       }
     },
-    [applyOpsToken, armExpiry, clearStaffAuthority, peakUrl, persist, queryClient, readyForOffline, refreshRoster],
+    [clearStaffAuthority, enterTill, peakUrl, persist],
   );
+
+  const resetPin = useCallback(
+    async (staffNumber: string, newPin: string): Promise<UnlockOutcome | undefined> => {
+      const current = identityRef.current;
+      if (!current || !(current.terminalId || current.deviceCode) || !(current.deviceCredential || current.deviceCode)) return undefined;
+      clearStaffAuthority();
+      setError(null);
+      try {
+        if (!current.privateKeyPkcs8) {
+          authorityRef.current ??= await loadNativeDeviceAuthority();
+        }
+        const next = await resetStaffPin({
+          baseUrl: peakUrl,
+          deviceCode: current.deviceCode,
+          terminalId: current.terminalId ?? current.deviceCode,
+          deviceCredential: current.deviceCredential ?? current.deviceCode,
+          privateKeyPkcs8: current.privateKeyPkcs8,
+          signChallenge: current.privateKeyPkcs8 ? undefined : authorityRef.current?.signChallenge,
+          previouslyApproved: current.approved === true,
+          staffNumber,
+          newPin,
+        });
+        await enterTill(current, next, newPin, true);
+        setNotice(PIN_RESET_DONE);
+        return undefined;
+      } catch (err) {
+        clearStaffAuthority();
+        if (err instanceof StaffNewPinRefusedError) return { next: "choose-again", words: err.words };
+        if (err instanceof PinResetRefusedError) return { next: "reset-refused", words: err.words };
+        if (err instanceof StaffLoginRateLimitedError) {
+          setSignInHeldUntil(Date.now() + err.retryAfterSeconds * 1000);
+          setError(humanDeviceError(err));
+          return undefined;
+        }
+        // A new PIN is Yetu's to give: never offline.
+        setError(isDeviceNetworkFailure(err) ? PIN_RESET_NEEDS_INTERNET : humanDeviceError(err));
+        return undefined;
+      }
+    },
+    [clearStaffAuthority, enterTill, peakUrl],
+  );
+
+  const readyForOfflineWith = useCallback(
+    async (pin: string) => {
+      const current = getOperationalSession();
+      if (current?.token) await readyForOffline(current, pin);
+    },
+    [readyForOffline],
+  );
+  const showNotice = useCallback((words: string) => setNotice(words), []);
+  const clearNotice = useCallback(() => setNotice(null), []);
 
   const value = useMemo<DeviceSessionValue>(
     () => ({
@@ -802,6 +878,11 @@ export function DeviceSessionProvider({
       prepareOffline,
       offlineEligibility,
       signInHeldUntil,
+      resetPin,
+      readyForOfflineWith,
+      notice,
+      showNotice,
+      clearNotice,
     }),
     [
       phase,
@@ -820,6 +901,11 @@ export function DeviceSessionProvider({
       prepareOffline,
       offlineEligibility,
       signInHeldUntil,
+      resetPin,
+      readyForOfflineWith,
+      notice,
+      showNotice,
+      clearNotice,
     ],
   );
 
@@ -827,6 +913,12 @@ export function DeviceSessionProvider({
     <DeviceSessionContext.Provider value={value}>{children}</DeviceSessionContext.Provider>
   );
 }
+
+/** A new PIN set at the lock screen: said once the till opens. Yetu tells the leaders as it sets it. */
+export const PIN_RESET_DONE = "Your new PIN is set. The owner and General Manager have been told.";
+
+/** A new PIN at the lock screen without internet. */
+export const PIN_RESET_NEEDS_INTERNET = "Setting a new PIN needs the internet. Connect the till, then try again.";
 
 function offlineEligibilityMessage(state: OfflineEligibilityStatus["state"]): string {
   if (state === "CATALOG_REQUIRED") {

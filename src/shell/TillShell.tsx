@@ -74,6 +74,8 @@ export interface TillShellProps {
   banners?: ReactNode;
   onSwitchPerson: () => void;
   onLock: () => void;
+  /** Change my PIN, from the person menu; absent where it can't work. */
+  onChangePin?: () => void;
   /** "full" lets a screen use the whole work area (Sell); "padded" gives it a margin. */
   workspaceVariant?: "padded" | "full";
   children: ReactNode;
@@ -104,6 +106,7 @@ export function TillShell({
   banners,
   onSwitchPerson,
   onLock,
+  onChangePin,
   workspaceVariant = "padded",
   children,
 }: TillShellProps) {
@@ -279,6 +282,7 @@ export function TillShell({
           onOpenChange={setPersonMenuOpen}
           onSwitchPerson={onSwitchPerson}
           onLock={onLock}
+          onChangePin={onChangePin}
         />
       </header>
 

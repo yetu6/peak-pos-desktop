@@ -263,6 +263,8 @@ export type ApprovalKind = "VOID" | "REFUND" | "DISCOUNT" | "CASH_OUT" | "SHIFT_
 /** `GET /pos/approvers` (F-249): someone whose approval can succeed here, and for what. */
 export interface POSApprover {
   staffId: string;
+  /** Their name, so the till can offer someone not on its staff list: a General Manager (2026-11-07). */
+  displayName?: string;
   approves: ApprovalKind[];
 }
 
