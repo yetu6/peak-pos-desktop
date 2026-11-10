@@ -25,14 +25,23 @@ export function noApproverWords(kind: ApprovalKind): string {
 
 /**
  * The people an approval sheet offers (F-249): the till's staff list,
- * narrowed to those Yetu says can approve this kind here. Before Yetu has
+ * narrowed to those Yetu says can approve this kind here, then anyone else
+ * Yetu names who isn't on that list (a General Manager, who approves at the
+ * till though they never sign in at one, 2026-11-07). Before Yetu has
  * answered (offline, or a Yetu from before F-249), everyone, as before.
  */
 export function supervisorsFor(roster: readonly RosterEntry[], approvers: readonly POSApprover[] | null, kind: ApprovalKind): Supervisor[] {
   const everyone = roster.map((entry) => ({ id: entry.staffNumber, name: entry.fullName }));
   if (!approvers) return everyone;
-  const allowed = new Set(approvers.filter((approver) => approver.approves.includes(kind)).map((approver) => approver.staffId));
-  return everyone.filter((person) => allowed.has(person.id));
+  const allowed = approvers.filter((approver) => approver.approves.includes(kind));
+  const ids = new Set(allowed.map((approver) => approver.staffId));
+  const listed = everyone.filter((person) => ids.has(person.id));
+  const onList = new Set(listed.map((person) => person.id));
+  const others = allowed
+    .filter((approver) => !onList.has(approver.staffId) && approver.displayName?.trim())
+    .map((approver) => ({ id: approver.staffId, name: approver.displayName!.trim() }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return [...listed, ...others];
 }
 
 /** Yetu's approvers here, or null until it has answered (or when it can't). */

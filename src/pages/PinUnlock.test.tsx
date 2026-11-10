@@ -388,3 +388,63 @@ describe("too many sign-in attempts (429)", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/^Too many attempts\. Wait until \d\d:\d\d and try again\.$/);
   });
 });
+
+// Owner, 2026-11-07: somebody who forgot their PIN chooses a new one here, on
+// their own; Yetu tells the owner and General Manager.
+describe("Forgot your PIN", () => {
+  const resetPin = vi.fn(async (_staff: string, _newPin: string) => undefined as unknown);
+
+  beforeEach(() => {
+    resetPin.mockReset();
+    resetPin.mockImplementation(async () => undefined);
+  });
+
+  async function forgot() {
+    useDeviceSessionMock.mockReturnValue(baseSession({ roster: TWO, resetPin }));
+    render(<PinUnlock />);
+    await userEvent.click(screen.getByTestId("roster-entry-00001"));
+    await userEvent.click(screen.getByTestId("pin-forgot"));
+  }
+
+  it("the person chooses a new PIN twice, is told the leaders will know, and nothing is sent until then", async () => {
+    await forgot();
+    expect(screen.getByRole("heading", { name: "Amina, choose your own six-digit PIN" })).toBeInTheDocument();
+    expect(screen.getByText("Then type it again. The owner and General Manager will be told.")).toBeInTheDocument();
+    await typePin("204815");
+    expect(screen.getByRole("heading", { name: "Type it again" })).toBeInTheDocument();
+    expect(resetPin).not.toHaveBeenCalled();
+    await typePin("204815");
+    expect(resetPin).toHaveBeenCalledWith("00001", "204815");
+    expect(unlock).not.toHaveBeenCalled();
+  });
+
+  it("two different new PINs start the choice again; a refusal goes back to the PIN with Yetu's words", async () => {
+    resetPin.mockImplementationOnce(async () => ({ next: "reset-refused", words: "Your PIN does more than sell at this till, so ask the owner or General Manager for a setup code: Reset PIN on the staff page." }));
+    await forgot();
+    await typePin("204815");
+    await typePin("204816");
+    expect(screen.getByTestId("pin-error")).toHaveTextContent("The two PINs were different.");
+    expect(screen.getByRole("heading", { name: "Amina, choose your own six-digit PIN" })).toBeInTheDocument();
+    await typePin("204815");
+    await typePin("204815");
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Enter your PIN" })).toBeInTheDocument());
+    expect(screen.getByTestId("pin-error")).toHaveTextContent("ask the owner or General Manager for a setup code");
+  });
+
+  it("Back returns to the PIN without sending anything", async () => {
+    await forgot();
+    await userEvent.click(screen.getByTestId("pin-reset-back"));
+    expect(screen.getByRole("heading", { name: "Enter your PIN" })).toBeInTheDocument();
+    await typePin("418205");
+    expect(unlock).toHaveBeenCalledWith("00001", "418205");
+    expect(resetPin).not.toHaveBeenCalled();
+  });
+
+  it("isn't offered without internet", async () => {
+    setOnline(false);
+    useDeviceSessionMock.mockReturnValue(baseSession({ roster: TWO, resetPin }));
+    render(<PinUnlock />);
+    await userEvent.click(screen.getByTestId("roster-entry-00001"));
+    expect(screen.queryByTestId("pin-forgot")).toBeNull();
+  });
+});

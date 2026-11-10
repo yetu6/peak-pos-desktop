@@ -14,7 +14,7 @@ import type { OfflineEligibilityStatus } from "../lib/offlineAuthorization";
 
 /** The front door of every shift change: who's working, then their PIN. */
 export function PinUnlock() {
-  const { unlock, error, identity, roster, offlineEligibility, signInHeldUntil } = useDeviceSession();
+  const { unlock, resetPin, error, identity, roster, offlineEligibility, signInHeldUntil } = useDeviceSession();
   const online = useNetworkOnline();
   return (
     <PinUnlockView
@@ -24,6 +24,7 @@ export function PinUnlock() {
       error={error}
       online={online}
       onUnlock={unlock}
+      onResetPin={resetPin}
       heldUntil={signInHeldUntil ?? null}
     />
   );
@@ -48,6 +49,8 @@ export interface PinUnlockViewProps {
   onUnlock: (staffNumber: string, pin: string, newPin?: string) => Promise<UnlockOutcome | undefined>;
   /** After too many sign-in attempts: when Yetu allows the next one (ms since the epoch). */
   heldUntil?: number | null;
+  /** Somebody who forgot their PIN chooses a new one, on their own (owner, 2026-11-07). */
+  onResetPin?: (staffNumber: string, newPin: string) => Promise<UnlockOutcome | undefined>;
   /** Fixtures and tests start part-way through. */
   initialStaff?: RosterEntry | null;
   initialManual?: boolean;
@@ -68,6 +71,10 @@ const STEP_TITLE: Record<Exclude<PinStep, "pin">, string> = {
   confirm: "Type it again",
 };
 
+function firstName(fullName: string): string {
+  return fullName.trim().split(/\s+/)[0] ?? fullName;
+}
+
 export function PinUnlockView({
   place,
   roster,
@@ -76,6 +83,7 @@ export function PinUnlockView({
   online,
   onUnlock,
   heldUntil = null,
+  onResetPin,
   initialStaff = null,
   initialManual = false,
   initialFailures = 0,
@@ -113,6 +121,8 @@ export function PinUnlockView({
   // The setup code and the PIN chosen from it, until both go to Yetu. Never shown.
   const setupCodeRef = useRef("");
   const chosenPinRef = useRef("");
+  // Forgot your PIN: the new PIN is chosen here, twice, then goes to Yetu.
+  const resettingRef = useRef(false);
   const keypadRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => Date.now());
   // Read by the keypad and the keyboard at once, like pendingRef.
@@ -140,7 +150,7 @@ export function PinUnlockView({
     }
     // The setup code was refused with the chosen PIN (a new code was issued, or it ran out
     // meanwhile): the chosen PIN goes with it, and the person starts again from the code.
-    if (attempt.finishing && (kind === "pin-rejected" || kind === "setup-code-expired")) {
+    if (attempt.finishing && stepRef.current !== "pin" && (kind === "pin-rejected" || kind === "setup-code-expired")) {
       setupCodeRef.current = "";
       chosenPinRef.current = "";
       setStep("setup-code");
@@ -170,6 +180,22 @@ export function PinUnlockView({
   function forgetSetup() {
     setupCodeRef.current = "";
     chosenPinRef.current = "";
+    resettingRef.current = false;
+  }
+
+  function forgotPin() {
+    setPinValue("");
+    setLocalProblem(null);
+    forgetSetup();
+    resettingRef.current = true;
+    setStep("choose");
+  }
+
+  function backToPin() {
+    forgetSetup();
+    setPinValue("");
+    setLocalProblem(null);
+    setStep("pin");
   }
 
   async function submit(pinValue: string) {
@@ -195,13 +221,16 @@ export function PinUnlockView({
       return;
     }
     const finishing = at === "confirm";
+    const resetting = finishing && resettingRef.current && onResetPin;
     setLocalProblem(null);
     setPending(true);
     let outcome: UnlockOutcome | undefined;
     try {
-      outcome = finishing
-        ? await onUnlock(staff, setupCodeRef.current, chosenPinRef.current)
-        : await onUnlock(staff, pinValue);
+      outcome = resetting
+        ? await onResetPin(staff, chosenPinRef.current)
+        : finishing
+          ? await onUnlock(staff, setupCodeRef.current, chosenPinRef.current)
+          : await onUnlock(staff, pinValue);
     } finally {
       setPinValue("");
       setPending(false);
@@ -215,6 +244,15 @@ export function PinUnlockView({
       chosenPinRef.current = "";
       setLocalProblem(outcome.words);
       setStep("choose");
+    } else if (outcome?.next === "reset-refused") {
+      // Not set here (an approver's comes from the office): back to the PIN, saying why.
+      forgetSetup();
+      setLocalProblem(outcome.words);
+      setStep("pin");
+    } else if (resetting) {
+      // Not set (no internet, say): the screen's message says why, from the PIN step.
+      forgetSetup();
+      setStep("pin");
     }
   }
 
@@ -354,7 +392,19 @@ export function PinUnlockView({
     );
   }
 
-  const title = step === "pin" ? (selected ? "Enter your PIN" : "Sign in with your staff number") : STEP_TITLE[step];
+  const resetting = resettingRef.current && selected !== null;
+  const title =
+    step === "pin"
+      ? selected ? "Enter your PIN" : "Sign in with your staff number"
+      : step === "choose" && resetting
+          ? `${firstName(selected.fullName)}, choose your own six-digit PIN`
+          : STEP_TITLE[step];
+  const lede =
+    step === "choose" && resetting
+      ? <p>Then type it again. The owner and General Manager will be told.</p>
+      : step === "choose"
+          ? <p>Six digits only you know. You will sign in with it from now on.</p>
+          : undefined;
   const checking =
     step === "confirm" ? "Signing you in…" : step === "setup-code" ? "Checking your setup code…" : "Checking your PIN…";
 
@@ -362,7 +412,7 @@ export function PinUnlockView({
     <AccessLayout
       testId="pin-screen"
       title={title}
-      lede={step === "choose" ? <p>Six digits only you know. You will sign in with it from now on.</p> : undefined}
+      lede={lede}
       place={place}
       notice={notices}
     >
@@ -419,6 +469,16 @@ export function PinUnlockView({
           {pending ? checking : ""}
         </p>
         {problemLine}
+        {step === "pin" && selected && !selected.needsSetup && onResetPin && online ? (
+          <Button variant="quiet" data-testid="pin-forgot" onClick={forgotPin}>
+            Forgot your PIN?
+          </Button>
+        ) : null}
+        {resetting && step !== "pin" ? (
+          <Button variant="secondary" data-testid="pin-reset-back" onClick={backToPin}>
+            Back
+          </Button>
+        ) : null}
         {!selected && step === "pin" && sortedRoster.length > 0 ? (
           <Button variant="quiet" data-testid="staff-choose-from-roster" onClick={() => setManual(false)}>
             Choose your name instead

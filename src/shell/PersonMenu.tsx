@@ -1,10 +1,10 @@
-import { ChevronDown, Lock, UsersRound } from "lucide-react";
+import { ChevronDown, KeyRound, Lock, UsersRound } from "lucide-react";
 import { useEffect, useId, useRef, type KeyboardEvent } from "react";
 import { Avatar, KeyHint } from "../components/system";
 import { keyHintForCommand } from "../lib/keyboard";
 
 /**
- * Who is signed in. Pressing the name offers Switch person and Lock. The shell
+ * Who is signed in. Pressing the name offers Change my PIN, Switch person and Lock. The shell
  * holds whether it is open, so a global key or Esc anywhere closes it.
  */
 export function PersonMenu({
@@ -13,12 +13,15 @@ export function PersonMenu({
   onOpenChange: setOpen,
   onSwitchPerson,
   onLock,
+  onChangePin,
 }: {
   person: { name: string; initials: string };
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSwitchPerson: () => void;
   onLock: () => void;
+  /** Change my PIN (owner, 2026-11-07); left out where it can't work (offline). */
+  onChangePin?: () => void;
 }) {
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -81,9 +84,24 @@ export function PersonMenu({
       </button>
       {open ? (
         <div role="menu" id={menuId} aria-label={person.name} className="y-menu" onKeyDown={onMenuKeyDown}>
+          {onChangePin ? (
+            <button
+              ref={(element) => {
+                itemsRef.current[0] = element;
+              }}
+              type="button"
+              role="menuitem"
+              className="y-menu__item"
+              data-testid="change-pin-open"
+              onClick={() => choose(onChangePin)}
+            >
+              <KeyRound aria-hidden="true" />
+              Change my PIN
+            </button>
+          ) : null}
           <button
             ref={(element) => {
-              itemsRef.current[0] = element;
+              itemsRef.current[onChangePin ? 1 : 0] = element;
             }}
             type="button"
             role="menuitem"
@@ -96,7 +114,7 @@ export function PersonMenu({
           </button>
           <button
             ref={(element) => {
-              itemsRef.current[1] = element;
+              itemsRef.current[onChangePin ? 2 : 1] = element;
             }}
             type="button"
             role="menuitem"

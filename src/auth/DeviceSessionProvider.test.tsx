@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { ROSTER_REFRESH_SECONDS } from "../access/accessSettings";
 import userEvent from "@testing-library/user-event";
@@ -849,5 +850,95 @@ describe("signing in at the till, quickly", () => {
     await waitFor(() => expect(screen.getByTestId("menu")).toHaveTextContent("Bar 1"));
     await waitFor(() => expect(offline.authenticateStaff).toHaveBeenCalled());
     expect(reads.count).toBe(1);
+  });
+});
+
+// Owner, 2026-11-07: a new PIN chosen at the lock screen on their own opens the
+// till like any sign-in, and says the owner and General Manager were told.
+describe("a new PIN at the lock screen", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearOperationalSession();
+    localStorage.clear();
+  });
+
+  const answer = (body: unknown, status = 200) =>
+    new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  const SESSION = {
+    token: `ops_live${"x".repeat(40)}`, expiresAt: "2099-01-01T00:00:00Z", assurance: "RESTRICTED",
+    terminalId: "d1", propertyId: "p1", tenantId: "t1", staffId: "u1", outletId: "o1", mode: "cashier", terminalName: "Bar 1",
+  };
+
+  function answers(reset: () => Response) {
+    return vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/pos/device/challenges")) {
+        return answer({ challengeId: "11111111-1111-1111-1111-111111111111", nonce: btoa("n".repeat(32)), expiresAt: "2099-01-01T00:00:00Z",
+          staff: [{ id: "u1", displayName: "Neema Baa" }] });
+      }
+      if (url.endsWith("/pos/sessions/pin-reset")) return reset();
+      if (url.endsWith("/pos/catalog")) return answer({ outletId: "o1", outletName: "Bar 1", products: [] });
+      if (url.includes("/heartbeat")) return answer({}, 204);
+      if (url.endsWith("/pos/device/roster/events")) return answer({ code: "REALTIME_UNAVAILABLE" }, 503);
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+  }
+
+  function ResetProbe() {
+    const { shell, resetPin, notice, error } = useDeviceSession();
+    const [outcome, setOutcome] = useState("");
+    return (
+      <div>
+        <div data-testid="shell">{shell}</div>
+        <div data-testid="notice">{notice ?? ""}</div>
+        <div data-testid="error">{error ?? ""}</div>
+        <div data-testid="outcome">{outcome}</div>
+        <button data-testid="reset" onClick={() => void resetPin("u1", "204815").then((o) => setOutcome(o ? JSON.stringify(o) : "none"))}>
+          Reset
+        </button>
+      </div>
+    );
+  }
+
+  async function render2(fetchMock: ReturnType<typeof vi.fn>) {
+    vi.stubGlobal("fetch", fetchMock);
+    const keys = await generateDeviceKeyPair();
+    const store = memoryStore(JSON.stringify({ ...keys, deviceCode: "dev_abc", terminalId: "11111111-1111-1111-1111-111111111111",
+      deviceCredential: "device-secret", approved: true, terminalName: "Bar 1" }));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <DeviceSessionProvider store={store} baseUrl="http://peak.test" applyOpsToken={async () => undefined}>
+          <ResetProbe />
+        </DeviceSessionProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByTestId("shell")).toHaveTextContent("PAIRED_LOCKED");
+  }
+
+  it("opens the till like any sign-in and says the owner and General Manager were told", async () => {
+    await render2(answers(() => answer(SESSION, 201)));
+    await userEvent.click(screen.getByTestId("reset"));
+    await waitFor(() => expect(screen.getByTestId("shell")).toHaveTextContent("OPERATIONAL"));
+    expect(screen.getByTestId("notice")).toHaveTextContent("Your new PIN is set. The owner and General Manager have been told.");
+    expect(getOperationalSession()?.staffId).toBe("u1");
+  });
+
+  it("somebody who approves at the till is sent to the office in Yetu's words, and nobody is signed in", async () => {
+    await render2(answers(() => answer({ status: 403, code: "POS_PIN_RESET_AT_OFFICE",
+      detail: "Your PIN does more than sell at this till, so ask the owner or General Manager for a setup code: Reset PIN on the staff page." }, 403)));
+    await userEvent.click(screen.getByTestId("reset"));
+    await waitFor(() => expect(screen.getByTestId("outcome")).toHaveTextContent("reset-refused"));
+    expect(screen.getByTestId("outcome")).toHaveTextContent("ask the owner or General Manager for a setup code");
+    expect(getOperationalSession()).toBeNull();
+  });
+
+  it("without internet it says a new PIN needs it, and never tries offline", async () => {
+    await render2(answers(() => {
+      throw new TypeError("Failed to fetch");
+    }));
+    await userEvent.click(screen.getByTestId("reset"));
+    await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent("Setting a new PIN needs the internet."));
+    expect(getOperationalSession()).toBeNull();
   });
 });
