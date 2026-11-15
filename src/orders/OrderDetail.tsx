@@ -1,3 +1,5 @@
+import { REOPENING_SHIFT_WORDS } from "../cash/autoShiftWords";
+import { useShiftReopening } from "../cash/shiftReopening";
 import { BACK_WORDS } from "../lib/words";
 import { BadgePercent, Plus, Printer, ReceiptText, Trash2, Undo2, Wallet } from "lucide-react";
 import { lineAmountMinor, vatFigures } from "../lib/vatWords";
@@ -152,7 +154,9 @@ export function OrderDetailView({
   const voidReasonId = useId();
   const refundReasonId = useId();
   const primaryRef = useRef<HTMLButtonElement>(null);
-  const busy = pending !== null;
+  // Yetu is opening the next shift: what needs a shift waits for it.
+  const reopening = useShiftReopening();
+  const busy = pending !== null || reopening;
   const lines = order.items.filter((line) => line.status !== "VOIDED");
   const paid = order.status === "CLOSED";
   const voided = order.status === "VOIDED";
@@ -211,6 +215,11 @@ export function OrderDetailView({
       initialFocus={primaryRef}
       footer={
         <div className="y-detail__actions" data-testid="order-detail-actions">
+          {reopening ? (
+            <p className="y-detail__why" role="status" data-testid="detail-reopening">
+              {REOPENING_SHIFT_WORDS}
+            </p>
+          ) : null}
           {owing && order.waitingForShift ? (
             // S17b: a tab handed over waits for a shift; nothing else is done to it until one takes it.
             <div className="y-detail__waiting" data-testid="detail-waiting">

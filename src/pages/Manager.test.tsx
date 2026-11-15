@@ -350,6 +350,17 @@ describe("Manager", () => {
     expect(list).toHaveTextContent("02:00");
   });
 
+  it("a movement with neither an id nor a name says Yetu, and nothing breaks", () => {
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record"];
+    capabilitiesRef.capabilities = [];
+    shiftRef.shift = SHIFT;
+    movementsRef.data = [
+      { id: "m4", movementType: "WAITER_SHORT", amountMinor: 300_000, reason: "Short at the shift's close", fromStaffName: "Neema", createdAt: new Date(2026, 8, 4, 2, 0).toISOString() },
+    ];
+    renderCash();
+    expect(screen.getByTestId("cash-movement-list")).toHaveTextContent("Short at the shift's close · Yetu · 02:00");
+  });
+
   it("opens Cash out straight onto cash out", async () => {
     permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record"];
     capabilitiesRef.capabilities = [];

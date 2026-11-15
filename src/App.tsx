@@ -237,7 +237,7 @@ function ReadyGate() {
   const route = terminalRoute(
     "ready",
     offlineCash || !shiftLoading,
-    offlineCash || Boolean(shift),
+    offlineCash || Boolean(shift) || automatic.state === "reopening",
     { shiftRequired: !isDisplayMode(identity?.mode) },
   );
   return (

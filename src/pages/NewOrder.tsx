@@ -1,3 +1,5 @@
+import { REOPENING_SHIFT_WORDS } from "../cash/autoShiftWords";
+import { useShiftReopening } from "../cash/shiftReopening";
 import { cachedOutletOrderSettings } from "../lib/outletOrderSettings";
 import { getOperationalSession } from "../lib/operationalSession";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
@@ -65,6 +67,8 @@ export function NewOrder({
   onSwitch?: (order: POSOrder | null) => void;
 } = {}) {
   const { shift } = usePosShift();
+  // Yetu closed the shift and is opening the next: the ticket stays, what needs a shift waits.
+  const reopening = useShiftReopening();
   const staffId = useDeviceSessionOptional()?.session?.staffId;
   const catalog = useCatalog();
   // The Restaurant & Bar module's menu (groups, sizes, tags); none: sell as before.
@@ -202,7 +206,7 @@ export function NewOrder({
   // Only a send whose answer was lost is offered again as it was -- the same stations, under the same key; the order stays on the ticket.
   const retrySend = sendProblem?.kind === "network" && order ? () => void sendToKitchen(lastSendStations.current) : undefined;
 
-  const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || setLineQuantity.isPending || sendOrder.isPending;
+  const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || setLineQuantity.isPending || sendOrder.isPending || reopening;
   const canMutate = Boolean(shift) && !busy;
   // An order takes more after it was sent, as the next round (S17a); a Yetu
   // before rounds takes nothing once sent, and a paid or voided order never.
@@ -539,7 +543,7 @@ export function NewOrder({
             error={mutationError}
             onRetry={retrySend}
             retrying={sendOrder.isPending}
-            notice={notice}
+            notice={reopening ? REOPENING_SHIFT_WORDS : notice}
             actions={
               <TicketActions
                 order={order}

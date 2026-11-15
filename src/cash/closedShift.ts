@@ -13,16 +13,49 @@ export interface ClosedShift {
 }
 
 let last: ClosedShift | null = null;
+/**
+ * A person is closing the shift on this till: set before Yetu is asked, so
+ * nothing in between (Yetu's own closed event, the shift read again) can look
+ * like Yetu closing it and open a new one under the summary. Ends with the
+ * result remembered, a refusal, or the summary put away.
+ */
+let closing = false;
 const listeners = new Set<() => void>();
+
+function tell(): void {
+  for (const listener of listeners) listener();
+}
+
+export function beginClosingHere(): void {
+  closing = true;
+  tell();
+}
+
+export function endClosingHere(): void {
+  if (!closing) return;
+  closing = false;
+  tell();
+}
+
+/** True while this till is closing the shift, and while its result is on screen. */
+export function closedHereNow(): boolean {
+  return closing || last !== null;
+}
+
+export function useClosedHere(): boolean {
+  return useSyncExternalStore(subscribe, closedHereNow, closedHereNow);
+}
 
 export function rememberClosedShift(closed: ClosedShift): void {
   last = closed;
-  for (const listener of listeners) listener();
+  closing = false;
+  tell();
 }
 
 export function forgetClosedShift(): void {
   last = null;
-  for (const listener of listeners) listener();
+  closing = false;
+  tell();
 }
 
 export function lastClosedShift(): ClosedShift | null {

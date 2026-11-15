@@ -1,4 +1,6 @@
+import * as React from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -17,7 +19,16 @@ const OPEN = { id: "shift-1", status: "OPEN", openingCashMinor: 0, expectedCashM
 const NEXT = { ...OPEN, id: "shift-2", openedAt: "2026-11-16T02:00:00Z", businessDate: "2026-11-16", takenOverTabs: 1 };
 const TAB = { id: "order-1", status: "OPEN", orderNumber: "A-7" };
 
+const NYAMA = { id: "00000000-0000-0000-0000-000000000001", categoryId: "cat-1", code: "NC", name: "Nyama Choma", priceMinor: 1200000, currency: "TZS", taxRateBp: 1800, isAvailable: true };
+const CART = {
+  id: "order-9", orderNumber: "POS-9", dailyNumber: 9, version: 2, shiftId: "shift-1", status: "OPEN", serviceType: "DINE_IN",
+  createdAt: "2026-11-15T20:00:00Z", closedAt: null, payments: [], initiatedById: "staff-1", initiatedByName: "Amina",
+  subtotalMinor: 1016949, discountMinor: 0, discountKind: "NONE", discountInput: 0, taxMinor: 183051, totalMinor: 1200000, paidMinor: 0, remainingMinor: 1200000,
+  items: [{ id: "item-1", productId: NYAMA.id, name: "Nyama Choma", quantity: 1, unitPriceMinor: 1200000, taxMinor: 183051, totalMinor: 1200000, status: "ADDED" }],
+};
+
 const yetu = vi.hoisted(() => ({
+  onClose: null as null | (() => void),
   shift: null as null | Record<string, unknown>,
   flag: true as boolean | undefined,
   orders: [] as Array<{ id: string; orderNumber: string }>,
@@ -31,8 +42,22 @@ vi.mock("./lib/posApi", () => ({
       yetu.shift && yetu.shift.status === "OPEN" ? { data: yetu.shift } : { data: null, error: { status: 404 } },
     getShift: async () => (yetu.shift ? { data: yetu.shift } : { data: null, error: { status: 404 } }),
     getCatalog: async () => ({
-      data: { outletId: "outlet-1", outletName: "Bar", categories: [], products: [], standardFloat: 0, opensShiftAutomatically: yetu.flag },
+      data: {
+        outletId: "outlet-1", outletName: "Bar", standardFloat: 0, opensShiftAutomatically: yetu.flag,
+        categories: [{ id: "cat-1", outletId: "outlet-1", code: "M", name: "Mains", sortOrder: 1, isActive: true }],
+        products: [{ ...NYAMA }],
+      },
     }),
+    createOrder: async () => ({ data: { ...CART, items: [], totalMinor: 0, remainingMinor: 0 } }),
+    addItem: async () => ({ data: CART }),
+    getOrder: async () => ({ data: CART }),
+    closeShift: async () => {
+      yetu.shift = { ...OPEN, status: "CLOSED", countedCashMinor: 0, varianceMinor: 0 };
+      // Yetu's closed event reaches the till before the answer to the close does.
+      yetu.onClose?.();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      return { data: yetu.shift };
+    },
     openShiftAutomatically: (key: string) => yetu.openAuto(key),
     listOrderPage: async () => ({ data: { items: yetu.orders, nextCursor: null } }),
     getApprovers: async () => ({ data: { approvers: [] } }),
@@ -41,6 +66,7 @@ vi.mock("./lib/posApi", () => ({
 
 vi.mock("./auth/DeviceSessionProvider", () => ({
   DeviceSessionProvider: ({ children }: { children: React.ReactNode }) => children,
+  useDeviceSessionOptional: () => ({ session: { staffId: "staff-1" }, roster: [] }),
   useDeviceSession: () => ({
     shell: "OPERATIONAL",
     phase: "ready",
@@ -56,8 +82,14 @@ vi.mock("./realtime/RealtimeProvider", () => ({
   RealtimeProvider: ({ children }: { children: React.ReactNode }) => children,
   useRealtime: () => ({ state: { phase: "connected" } }),
   useRealtimeEvents: (_target: unknown, onEvent: (event: unknown) => void) => {
-    // Held in a ref-less way: the latest handler of every caller is enough here.
-    yetu.listeners.add(onEvent);
+    // Like the real one: the newest handler answers, and the listener goes when its caller does.
+    const latest = React.useRef(onEvent);
+    latest.current = onEvent;
+    React.useEffect(() => {
+      const listener = (event: unknown) => latest.current(event);
+      yetu.listeners.add(listener);
+      return () => void yetu.listeners.delete(listener);
+    }, []);
   },
 }));
 
@@ -88,7 +120,7 @@ function emit(type: string, payload: Record<string, unknown>) {
   act(() => yetu.listeners.forEach((listener) => listener(event)));
 }
 
-const SENDER = ["pos.order.send", "pos.shift.open"];
+const SENDER = ["pos.order.send", "pos.shift.open", "pos.shift.close", "pos.report.manager"];
 
 beforeEach(() => {
   localStorage.clear();
@@ -97,6 +129,7 @@ beforeEach(() => {
   yetu.flag = true;
   yetu.orders = [];
   yetu.listeners.clear();
+  yetu.onClose = null;
   yetu.openAuto.mockReset();
   yetu.openAuto.mockImplementation(async () => {
     yetu.shift = OPEN;
@@ -230,5 +263,87 @@ describe("the shift opens by itself", () => {
     yetu.shift = { ...NEXT, status: "CLOSED" };
     emit("pos.shift.closed", { outletId: "outlet-1", automatic: true, handedOverTabs: 1 });
     await waitFor(() => expect(yetu.openAuto).toHaveBeenCalledTimes(2));
+  });
+  it("a manual close here is never reopened under its own summary, even when Yetu's closed event comes first", async () => {
+    yetu.shift = OPEN;
+    yetu.onClose = () => emit("pos.shift.closed", { outletId: "outlet-1" });
+    renderApp();
+    await waitFor(() => expect(screen.getByTestId("active-orders-screen")).toBeInTheDocument());
+    await userEvent.click(screen.getByTestId("nav-manager"));
+    await userEvent.click(await screen.findByTestId("open-close-shift"));
+    await userEvent.type(await screen.findByTestId("counted-cash"), "0");
+    await userEvent.click(screen.getByRole("button", { name: "Check the count" }));
+    await userEvent.click(await screen.findByTestId("close-shift"));
+    await waitFor(() => expect(screen.getByTestId("closed-shift-summary")).toBeInTheDocument());
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    expect(yetu.openAuto).not.toHaveBeenCalled();
+    expect(screen.getByTestId("open-shift-screen")).toBeInTheDocument();
+    expect(screen.getByTestId("closed-shift-summary")).toBeInTheDocument();
+  });
+
+  it("keeps the order screen, its cart and open sheets while the next shift opens, with Send waiting", async () => {
+    yetu.shift = OPEN;
+    renderApp();
+    await userEvent.click(await screen.findByTestId("nav-new"));
+    await userEvent.click(await screen.findByTestId("menu-Nyama Choma"));
+    await waitFor(() => expect(screen.getByTestId("send-order")).toBeEnabled());
+    expect(screen.getAllByText(/Nyama Choma/).length).toBeGreaterThan(0);
+
+    let answer: (value: unknown) => void = () => undefined;
+    yetu.openAuto.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    yetu.shift = { ...OPEN, status: "CLOSED", handedOverTabs: 1 };
+    emit("pos.shift.closed", { outletId: "outlet-1", automatic: true, handedOverTabs: 1 });
+
+    await waitFor(() => expect(yetu.openAuto).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("One moment: Yetu is opening the next shift.")).toBeInTheDocument();
+    expect(screen.getByTestId("send-order")).toBeDisabled();
+    expect(screen.queryByTestId("open-shift-screen")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("opening-shift-screen")).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Nyama Choma/).length).toBeGreaterThan(0);
+
+    yetu.shift = NEXT;
+    await act(async () => answer({ data: { ...NEXT, openedAutomatically: true } }));
+    await waitFor(() => expect(screen.queryByText("One moment: Yetu is opening the next shift.")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("send-order")).toBeEnabled());
+    expect(screen.getAllByText(/Nyama Choma/).length).toBeGreaterThan(0);
+  });
+
+  it("a reopen Yetu refuses falls back to today's screen", async () => {
+    yetu.shift = OPEN;
+    renderApp();
+    await waitFor(() => expect(screen.getByTestId("active-orders-screen")).toBeInTheDocument());
+    yetu.openAuto.mockResolvedValue(problem("POS_SHIFT_COUNTED_OPEN", "This outlet counts its starting cash: a cashier opens the shift."));
+    yetu.shift = { ...OPEN, status: "CLOSED" };
+    emit("pos.shift.closed", { outletId: "outlet-1", automatic: true, handedOverTabs: 0 });
+    await waitFor(() => expect(screen.getByTestId("open-shift-screen")).toBeInTheDocument());
+    expect(screen.getByTestId("open-shift-error")).toHaveTextContent("a cashier opens the shift");
+  });
+
+  it("a shift that appears before the minute is up cancels the second ask", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    yetu.openAuto.mockResolvedValueOnce(problem("POS_DAY_CATCHING_UP", "Yetu is bringing the business date up to today. Try again in a minute."));
+    renderApp();
+    await waitFor(() => expect(screen.getByTestId("opening-shift-screen")).toHaveTextContent("Yetu is bringing the business date"));
+    // Another till opened it meanwhile.
+    yetu.shift = OPEN;
+    emit("pos.shift.opened", { outletId: "outlet-1" });
+    await waitFor(() => expect(screen.getByTestId("active-orders-screen")).toBeInTheDocument());
+    await act(async () => void (await vi.advanceTimersByTimeAsync(120_000)));
+    expect(yetu.openAuto).toHaveBeenCalledTimes(1);
+  });
+
+  it("listeners go with their screens: one closing event is one handler's one reopen", async () => {
+    yetu.shift = OPEN;
+    renderApp();
+    await waitFor(() => expect(screen.getByTestId("active-orders-screen")).toBeInTheDocument());
+    const before = yetu.listeners.size;
+    expect(before).toBeGreaterThan(0);
+    yetu.shift = { ...OPEN, status: "CLOSED" };
+    emit("pos.shift.closed", { outletId: "outlet-1", automatic: true, handedOverTabs: 0 });
+    await waitFor(() => expect(yetu.openAuto).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("active-orders-screen")).toBeInTheDocument());
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    expect(yetu.openAuto).toHaveBeenCalledTimes(1);
+    expect(yetu.listeners.size).toBe(before);
   });
 });

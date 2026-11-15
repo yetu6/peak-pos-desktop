@@ -11,6 +11,9 @@ export const AUTOMATIC_OPEN_RETRY_MS = 60_000;
 
 export const OPENING_SHIFT_WORDS = "Opening the shift…";
 
+/** On the order screen, while Yetu opens the next shift after closing the last: what needs a shift waits. */
+export const REOPENING_SHIFT_WORDS = "One moment: Yetu is opening the next shift.";
+
 /** Yetu's own sentences for its three answers, used when the answer carries none. */
 const COUNTED_OPEN_WORDS = "This outlet counts its starting cash: a cashier opens the shift.";
 const CATCHING_UP_WORDS = "Yetu is bringing the business date up to today. Try again in a minute.";
