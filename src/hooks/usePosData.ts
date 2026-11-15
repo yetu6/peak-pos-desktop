@@ -344,6 +344,7 @@ export type AutomaticShift =
  */
 export function useAutomaticShift(): AutomaticShift {
   const outletId = useOutletId();
+  const propertyId = usePropertyId();
   const queryClient = useQueryClient();
   const { shift, isLoading, openAutomatically } = usePosShift();
   const catalog = useCatalog();
@@ -437,13 +438,22 @@ export function useAutomaticShift(): AutomaticShift {
 
   useRealtimeEvents({ kind: "outletOrders", outletId }, (event) => {
     if (event.type !== "pos.shift.closed" && event.type !== "pos.shift.opened") return;
-    // Read the shift again at once rather than at the next poll.
-    reread();
-    // Yetu itself closed the shift this till is working on: keep the order screen while the next one opens.
     const current = now.current;
-    if (event.type === "pos.shift.closed" && event.payload?.automatic === true && current.shiftId && current.mayAsk && !current.closedHere) {
-      setReopeningAfter(current.shiftId);
-    }
+    // Which shift closed: the event's own (its aggregate), else the one this till holds.
+    const closedId = event.type === "pos.shift.closed" ? (event.aggregateId ?? (typeof event.payload?.shiftId === "string" ? event.payload.shiftId : null)) : null;
+    // Yetu itself closed the shift this till is working on: keep the order screen while the next one opens.
+    // The close of a shift that is no longer this till's (the next is already read) changes nothing here.
+    const keepScreen =
+      event.type === "pos.shift.closed" && event.payload?.automatic === true && current.shiftId !== null && current.mayAsk && !current.closedHere &&
+      (closedId === null || closedId === current.shiftId);
+    const waitingFor = keepScreen ? (closedId ?? current.shiftId) : null;
+    if (waitingFor) setReopeningAfter(waitingFor);
+    // Read the shift again at once rather than at the next poll; once it settles with another shift open, the wait is over.
+    void reread().then(() => {
+      if (!waitingFor) return;
+      const read = queryClient.getQueryData<POSShift | null>(["pos", "shift", "current", propertyId, outletId]);
+      if (read && read.id !== waitingFor && (read.status === "OPEN" || read.status === "PENDING_VARIANCE_APPROVAL")) setReopeningAfter(null);
+    });
   });
 
   if (offlineCash || !canTakeOrders) return { state: "off" };

@@ -28,6 +28,8 @@ const CART = {
 };
 
 const yetu = vi.hoisted(() => ({
+  sentOrder: false,
+  beforeClose: null as null | (() => Promise<void>),
   onClose: null as null | (() => void),
   shift: null as null | Record<string, unknown>,
   flag: true as boolean | undefined,
@@ -49,9 +51,13 @@ vi.mock("./lib/posApi", () => ({
       },
     }),
     createOrder: async () => ({ data: { ...CART, items: [], totalMinor: 0, remainingMinor: 0 } }),
-    addItem: async () => ({ data: CART }),
+    addItem: async () => ({ data: yetu.sentOrder ? { ...CART, status: "SENT", roundsSent: 1, items: [{ ...CART.items[0], status: "SENT" }] } : CART }),
+    previewPapers: async () => {
+      throw new TypeError("Failed to fetch");
+    },
     getOrder: async () => ({ data: CART }),
     closeShift: async () => {
+      await yetu.beforeClose?.();
       yetu.shift = { ...OPEN, status: "CLOSED", countedCashMinor: 0, varianceMinor: 0 };
       // Yetu's closed event reaches the till before the answer to the close does.
       yetu.onClose?.();
@@ -115,12 +121,12 @@ function problem(code: string, detail: string) {
   return { error: { status: 409, code, detail, title: "Conflict" } };
 }
 
-function emit(type: string, payload: Record<string, unknown>) {
-  const event = { type, outletId: "outlet-1", payload } as unknown as RealtimeEnvelope;
+function emit(type: string, payload: Record<string, unknown>, aggregateId: string | null = null) {
+  const event = { type, outletId: "outlet-1", aggregateId, payload } as unknown as RealtimeEnvelope;
   act(() => yetu.listeners.forEach((listener) => listener(event)));
 }
 
-const SENDER = ["pos.order.send", "pos.shift.open", "pos.shift.close", "pos.report.manager"];
+const SENDER = ["pos.order.send", "pos.payment.record", "pos.shift.open", "pos.shift.close", "pos.report.manager"];
 
 beforeEach(() => {
   localStorage.clear();
@@ -130,6 +136,8 @@ beforeEach(() => {
   yetu.orders = [];
   yetu.listeners.clear();
   yetu.onClose = null;
+  yetu.sentOrder = false;
+  yetu.beforeClose = null;
   yetu.openAuto.mockReset();
   yetu.openAuto.mockImplementation(async () => {
     yetu.shift = OPEN;
@@ -345,5 +353,83 @@ describe("the shift opens by itself", () => {
     await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
     expect(yetu.openAuto).toHaveBeenCalledTimes(1);
     expect(yetu.listeners.size).toBe(before);
+  });
+  it("a closed event for an OLD shift, when the next is already current, keeps nothing waiting", async () => {
+    yetu.shift = NEXT; // the till read the new shift (poll, reconnect) before the old one's event came
+    renderApp();
+    await userEvent.click(await screen.findByTestId("nav-new"));
+    await userEvent.click(await screen.findByTestId("menu-Nyama Choma"));
+    await waitFor(() => expect(screen.getByTestId("send-order")).toBeEnabled());
+    emit("pos.shift.closed", { outletId: "outlet-1", automatic: true, handedOverTabs: 1 }, OPEN.id);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+    expect(screen.queryByText("One moment: Yetu is opening the next shift.")).not.toBeInTheDocument();
+    expect(screen.getByTestId("send-order")).toBeEnabled();
+    expect(yetu.openAuto).not.toHaveBeenCalled();
+  });
+
+  it("an open Pay sheet cannot confirm while the next shift opens, and can after", async () => {
+    yetu.shift = OPEN;
+    yetu.sentOrder = true;
+    renderApp();
+    await userEvent.click(await screen.findByTestId("nav-new"));
+    await userEvent.click(await screen.findByTestId("menu-Nyama Choma"));
+    await userEvent.click(await screen.findByTestId("pay-order"));
+    await waitFor(() => expect(screen.getByTestId("confirm-settle")).toBeEnabled());
+
+    let answer: (value: unknown) => void = () => undefined;
+    yetu.openAuto.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    yetu.shift = { ...OPEN, status: "CLOSED" };
+    emit("pos.shift.closed", { outletId: "outlet-1", automatic: true, handedOverTabs: 1 }, OPEN.id);
+    await waitFor(() => expect(screen.getByTestId("pay-reopening")).toHaveTextContent("One moment: Yetu is opening the next shift."));
+    expect(screen.getByTestId("confirm-settle")).toBeDisabled();
+    await waitFor(() => expect(yetu.openAuto).toHaveBeenCalledTimes(1));
+
+    yetu.shift = NEXT;
+    await act(async () => answer({ data: { ...NEXT, openedAutomatically: true } }));
+    await waitFor(() => expect(screen.queryByTestId("pay-reopening")).not.toBeInTheDocument());
+    expect(screen.getByTestId("confirm-settle")).toBeEnabled();
+  });
+
+  it("an open paper preview cannot print while the next shift opens, and can after", async () => {
+    yetu.shift = OPEN;
+    renderApp();
+    await userEvent.click(await screen.findByTestId("nav-new"));
+    await userEvent.click(await screen.findByTestId("menu-Nyama Choma"));
+    await userEvent.click(await screen.findByTestId("send-order"));
+    await waitFor(() => expect(screen.getByTestId("paper-print")).toBeEnabled());
+
+    let answer: (value: unknown) => void = () => undefined;
+    yetu.openAuto.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    yetu.shift = { ...OPEN, status: "CLOSED" };
+    emit("pos.shift.closed", { outletId: "outlet-1", automatic: true, handedOverTabs: 1 }, OPEN.id);
+    await waitFor(() => expect(screen.getByTestId("paper-reopening")).toBeInTheDocument());
+    expect(screen.getByTestId("paper-print")).toBeDisabled();
+    await waitFor(() => expect(yetu.openAuto).toHaveBeenCalledTimes(1));
+
+    yetu.shift = NEXT;
+    await act(async () => answer({ data: { ...NEXT, openedAutomatically: true } }));
+    await waitFor(() => expect(screen.queryByTestId("paper-reopening")).not.toBeInTheDocument());
+    expect(screen.getByTestId("paper-print")).toBeEnabled();
+  });
+
+  it("a shift read again with a changed shift during a manual close does not end the close's guard", async () => {
+    yetu.shift = OPEN;
+    yetu.onClose = () => emit("pos.shift.closed", { outletId: "outlet-1" });
+    renderApp();
+    await waitFor(() => expect(screen.getByTestId("active-orders-screen")).toBeInTheDocument());
+    // Before the close lands, a poll reads the same shift as a changed object.
+    yetu.beforeClose = async () => {
+      yetu.shift = { ...OPEN, openedAt: "2026-11-15T08:00:01Z" };
+      emit("pos.shift.opened", { outletId: "outlet-1" });
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    };
+    await userEvent.click(screen.getByTestId("nav-manager"));
+    await userEvent.click(await screen.findByTestId("open-close-shift"));
+    await userEvent.type(await screen.findByTestId("counted-cash"), "0");
+    await userEvent.click(screen.getByRole("button", { name: "Check the count" }));
+    await userEvent.click(await screen.findByTestId("close-shift"));
+    await waitFor(() => expect(screen.getByTestId("closed-shift-summary")).toBeInTheDocument());
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    expect(yetu.openAuto).not.toHaveBeenCalled();
   });
 });

@@ -52,9 +52,13 @@ export function rememberClosedShift(closed: ClosedShift): void {
   tell();
 }
 
+/**
+ * Puts the last result away. A close under way is not touched: it ends when it
+ * settles (remembered, refused or not closed), never because a shift read
+ * again happened to change meanwhile.
+ */
 export function forgetClosedShift(): void {
   last = null;
-  closing = false;
   tell();
 }
 
