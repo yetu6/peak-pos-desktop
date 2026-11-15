@@ -66,6 +66,14 @@ export function createPosApi() {
         body: { openingCashMinor },
       });
     },
+    /**
+     * The outlet opens its shifts by itself: Yetu opens this till's shift with no float counted.
+     * 409 POS_SHIFT_COUNTED_OPEN, POS_SHIFT_ALREADY_OPEN, POS_DAY_CATCHING_UP; 403 for a role that
+     * takes no orders (the till never asks for one).
+     */
+    openShiftAutomatically(idempotencyKey: string): Promise<ApiResult<POSShift>> {
+      return client.POST<POSShift>("/api/v1/pos/shifts/automatic", { headers: idempotent(idempotencyKey) });
+    },
     /** Change my PIN (owner, 2026-11-07): the signed-in person's own, with the one they use now. */
     changeOwnPin(currentPin: string, newPin: string): Promise<ApiResult<void>> {
       return client.POST<void>("/api/v1/pos/staff/me/pin", { body: { currentPin, newPin } });

@@ -53,6 +53,7 @@ vi.mock("./hooks/usePosData", async () => {
     useHasPermission: () => true,
     useMutationMessage: () => null,
     useIdempotencyKey: () => ({ current: "key", next: () => crypto.randomUUID() }),
+    useAutomaticShift: () => ({ state: "off" }),
     usePosShift: () => {
       const state = useSyncExternalStore(
         (listener) => {

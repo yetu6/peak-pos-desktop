@@ -27,7 +27,7 @@ import { clockTime } from "../lib/words";
  * a close, the result Yetu returned is shown here (the Done step), and a
  * manager can close the business day.
  */
-export function OpenShiftScreen() {
+export function OpenShiftScreen({ notice }: { notice?: string } = {}) {
   const { session, identity, switchStaff, roster } = useDeviceSession();
   const { open } = usePosShift();
   const currency = useCatalogCurrency();
@@ -46,7 +46,7 @@ export function OpenShiftScreen() {
       currency={currency}
       canOpenShift={canOpenShift}
       pending={open.isPending}
-      error={openError}
+      error={openError ?? notice ?? null}
       closed={closed}
       closeDay={isManager && !hotel ? <CloseDayCard thisTillShiftOpen={false} /> : null}
       onSwitchPerson={() => {

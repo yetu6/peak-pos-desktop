@@ -15,7 +15,9 @@ const { closeBusinessDayMutate, waitersRef, permissionsRef, capabilitiesRef, shi
   movementsRef: {
     data: [] as Array<{
       id: string;
-      movementType: "CASH_IN" | "CASH_OUT" | "DRAWER_OPENED";
+      movementType: "CASH_IN" | "CASH_OUT" | "DRAWER_OPENED" | "WAITER_SHORT";
+      recordedByName?: string;
+      fromStaffName?: string;
       amountMinor: number;
       reason: string;
       recordedBy?: string;
@@ -332,6 +334,20 @@ describe("Manager", () => {
     expect(list).toHaveTextContent("Gas delivery · Grace Mushi · 11:05");
     expect(list).toHaveTextContent("Float top-up · 09:30");
     expect(list).not.toHaveTextContent("unknown-id-123");
+  });
+
+  it("shows Yetu for a movement Yetu recorded itself, which has no person's id", () => {
+    permissionsRef.permissions = ["pos.shift.open", "pos.cash_movement.record"];
+    capabilitiesRef.capabilities = [];
+    shiftRef.shift = SHIFT;
+    movementsRef.data = [
+      { id: "m3", movementType: "WAITER_SHORT", amountMinor: 300_000, reason: "Short at the shift's close", recordedByName: "Yetu", fromStaffName: "Neema", createdAt: new Date(2026, 8, 4, 2, 0).toISOString() },
+    ];
+    renderCash();
+    const list = screen.getByTestId("cash-movement-list");
+    expect(list).toHaveTextContent("Owed by Neema");
+    expect(list).toHaveTextContent("Yetu");
+    expect(list).toHaveTextContent("02:00");
   });
 
   it("opens Cash out straight onto cash out", async () => {
