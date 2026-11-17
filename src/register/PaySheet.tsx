@@ -183,6 +183,15 @@ export function PaySheet({
   }
 
   useEffect(() => setLive(order), [order]);
+  // Yetu has opened the next shift: it handed this order over and took it over, so its version moved on.
+  // The sheet takes Yetu's latest, so the first press of Take cash is on it.
+  const reopening = useShiftReopening();
+  const wasReopening = useRef(reopening);
+  useEffect(() => {
+    if (wasReopening.current && !reopening) void latestOrder.refetch().then((result) => result.status === "success" && adopt(result.data));
+    wasReopening.current = reopening;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reopening]);
   useEffect(() => {
     const wait = setTimeout(() => setNeedle(roomQuery.trim()), ROOM_SEARCH_WAIT_MS);
     return () => clearTimeout(wait);

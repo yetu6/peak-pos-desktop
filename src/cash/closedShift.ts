@@ -14,6 +14,12 @@ export interface ClosedShift {
 
 let last: ClosedShift | null = null;
 /**
+ * Who closed it (their staff id): the summary holds the till back for them
+ * alone. Someone else signing in after the till locked is not looking at
+ * their own close, so the outlet's shift opens for them as usual.
+ */
+let closedBy: string | null = null;
+/**
  * A person is closing the shift on this till: set before Yetu is asked, so
  * nothing in between (Yetu's own closed event, the shift read again) can look
  * like Yetu closing it and open a new one under the summary. Ends with the
@@ -37,17 +43,23 @@ export function endClosingHere(): void {
   tell();
 }
 
-/** True while this till is closing the shift, and while its result is on screen. */
-export function closedHereNow(): boolean {
-  return closing || last !== null;
+/**
+ * True while this till is closing the shift, and while the result of the
+ * close is on screen for the person who made it (`staffId`, who is signed in now).
+ */
+export function closedHereNow(staffId: string | null | undefined): boolean {
+  return closing || (last !== null && closedBy !== null && closedBy === staffId);
 }
 
-export function useClosedHere(): boolean {
-  return useSyncExternalStore(subscribe, closedHereNow, closedHereNow);
+export function useClosedHere(staffId: string | null | undefined): boolean {
+  const read = () => closedHereNow(staffId);
+  return useSyncExternalStore(subscribe, read, read);
 }
 
-export function rememberClosedShift(closed: ClosedShift): void {
+/** The close Yetu answered, and who made it here (the signed-in person's staff id). */
+export function rememberClosedShift(closed: ClosedShift, by: string | null): void {
   last = closed;
+  closedBy = by;
   closing = false;
   tell();
 }
@@ -59,6 +71,7 @@ export function rememberClosedShift(closed: ClosedShift): void {
  */
 export function forgetClosedShift(): void {
   last = null;
+  closedBy = null;
   tell();
 }
 

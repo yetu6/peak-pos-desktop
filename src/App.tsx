@@ -215,8 +215,10 @@ function ReadyGate() {
   const { session, identity, prepareOffline } = useDeviceSession();
   const offlineCash = session?.mode === "offline-cash";
   const { shift, isLoading: shiftLoading } = usePosShift();
+  // A kitchen or bar display takes no cash, so it needs no shift and never asks for one.
+  const display = isDisplayMode(identity?.mode);
   // The outlet may open its shifts by itself: then there is no float screen to show.
-  const automatic = useAutomaticShift();
+  const automatic = useAutomaticShift({ display });
   // Asked at sign-in, so an approval sheet opens offering only the right people (F-249).
   useApprovers();
   // Yetu gives a till its offline start-up only while a shift is open (409
@@ -238,7 +240,7 @@ function ReadyGate() {
     "ready",
     offlineCash || !shiftLoading,
     offlineCash || Boolean(shift) || automatic.state === "reopening",
-    { shiftRequired: !isDisplayMode(identity?.mode) },
+    { shiftRequired: !display },
   );
   return (
     <>
@@ -248,7 +250,7 @@ function ReadyGate() {
       {route === "NO_SHIFT" ? (
         <AccessFrame banners={<ShellBanners />}>
           {automatic.state === "off" ? (
-            <OpenShiftScreen notice={automatic.words} />
+            <OpenShiftScreen notice={automatic.words} onTryAgain={automatic.tryAgain} />
           ) : (
             <OpeningShiftScreen words={automatic.state === "opening" ? automatic.words : undefined} checking={automatic.state === "checking"} />
           )}

@@ -27,7 +27,7 @@ import { clockTime } from "../lib/words";
  * a close, the result Yetu returned is shown here (the Done step), and a
  * manager can close the business day.
  */
-export function OpenShiftScreen({ notice }: { notice?: string } = {}) {
+export function OpenShiftScreen({ notice, onTryAgain }: { notice?: string; onTryAgain?: () => void } = {}) {
   const { session, identity, switchStaff, roster } = useDeviceSession();
   const { open } = usePosShift();
   const currency = useCatalogCurrency();
@@ -49,6 +49,7 @@ export function OpenShiftScreen({ notice }: { notice?: string } = {}) {
       error={openError ?? notice ?? null}
       closed={closed}
       closeDay={isManager && !hotel ? <CloseDayCard thisTillShiftOpen={false} /> : null}
+      onTryAgain={onTryAgain}
       onSwitchPerson={() => {
         // The last shift's result is for the person who closed it.
         forgetClosedShift();
@@ -79,6 +80,8 @@ export interface OpenShiftViewProps {
   closeDay: ReactNode;
   onSwitchPerson: () => void;
   onOpen: (openingCashMinor: number) => void;
+  /** The outlet opens its shifts by itself and Yetu didn't this time: ask it again. */
+  onTryAgain?: () => void;
   /** Fixtures start part-way through. */
   initialNoteCounter?: boolean;
 }
@@ -94,6 +97,7 @@ export function OpenShiftView({
   closeDay,
   onSwitchPerson,
   onOpen,
+  onTryAgain,
   standardFloat = 0,
   initialNoteCounter = false,
 }: OpenShiftViewProps) {
@@ -112,6 +116,19 @@ export function OpenShiftView({
     if (openingMinor == null || pending) return;
     onOpen(openingMinor);
   }
+
+  // Why Yetu didn't open it, for everyone who sees this screen (a waiter too).
+  const problemWords = openError ? (
+    typeof openError !== "string" && openError.kind === "permission" ? (
+      <div data-testid="open-shift-error">
+        <PermissionNotice live words={openError.words} />
+      </div>
+    ) : (
+      <p className="y-pin__message" role="alert" data-testid="open-shift-error">
+        {typeof openError === "string" ? openError : openError.words}
+      </p>
+    )
+  ) : null;
 
   // The last shift's figures: under Open shift when Close the day fills the
   // other column, so the screen fits a 768px-high till without scrolling.
@@ -199,16 +216,11 @@ export function OpenShiftView({
                   Count note by note
                 </Button>
               ) : null}
-              {openError ? (
-                typeof openError !== "string" && openError.kind === "permission" ? (
-                  <div data-testid="open-shift-error">
-                    <PermissionNotice live words={openError.words} />
-                  </div>
-                ) : (
-                  <p className="y-pin__message" role="alert" data-testid="open-shift-error">
-                    {typeof openError === "string" ? openError : openError.words}
-                  </p>
-                )
+              {problemWords}
+              {onTryAgain ? (
+                <Button variant="secondary" data-testid="open-shift-try-again" onClick={onTryAgain}>
+                  Try again
+                </Button>
               ) : null}
               <Button
                 type="submit"
@@ -223,9 +235,18 @@ export function OpenShiftView({
               </Button>
             </form>
           ) : (
-            <div data-testid="open-shift-unavailable">
-              <PermissionNotice who="a cashier or manager" action="open the shift" next="Ask one to open it." />
-            </div>
+            <>
+              {problemWords}
+              {onTryAgain ? (
+                <Button variant="primary" size={64} block className="y-pinned-action" data-testid="open-shift-try-again" onClick={onTryAgain}>
+                  Try again
+                </Button>
+              ) : (
+                <div data-testid="open-shift-unavailable">
+                  <PermissionNotice who="a cashier or manager" action="open the shift" next="Ask one to open it." />
+                </div>
+              )}
+            </>
           )}
           {closeDay ? closedSummary : null}
         </div>
