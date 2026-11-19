@@ -17,6 +17,7 @@ import { toMinor } from "../lib/posMoney";
 import { closeShiftProblem, countOutcome, openTabsWords } from "./cashWords";
 import { useRateLimitWait } from "../lib/useRateLimitWait";
 import { rememberClosedShift } from "./closedShift";
+import { getOperationalSession } from "../lib/operationalSession";
 import { NoteCounterSheet, denominationsFor, moneyFieldText } from "./NoteCounterSheet";
 
 const OUTCOME = {
@@ -184,7 +185,7 @@ export function CloseShiftSheetView({
         ...(withSupervisor ? { supervisorStaffId: supervisor, supervisorPin: pin } : {}),
         ...(handOver ? { handOver: true } : {}),
       });
-      rememberClosedShift({ shift: result, currency, at: new Date() });
+      rememberClosedShift({ shift: result, currency, at: new Date() }, getOperationalSession()?.staffId ?? null);
       onOpenChange(false);
     } catch (error) {
       const refusal = closeShiftProblem(error);

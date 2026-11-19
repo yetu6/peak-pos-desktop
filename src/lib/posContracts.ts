@@ -248,6 +248,8 @@ export interface POSCatalog {
   askForTable?: boolean;
   captureGuestCount?: boolean;
   standardFloat?: number;
+  /** Yetu opens this outlet's shifts by itself, no float counted. Absent from an older Yetu (= off). */
+  opensShiftAutomatically?: boolean;
   quickCashNotes?: number[];
   /** What the till offers beside cash, in the business's order. Absent from an older Yetu. */
   paymentChannels?: POSPaymentChannel[];
@@ -284,6 +286,8 @@ export interface POSShift {
   handedOverOwedMinor?: number;
   /** S17b: on opening, the waiting tabs this shift took over. */
   takenOverTabs?: number;
+  /** On the answer to the automatic open: Yetu opened it, no cashier counted a float. */
+  openedAutomatically?: boolean;
 }
 
 export interface POSCashMovement {
@@ -292,7 +296,8 @@ export interface POSCashMovement {
   movementType: CashMovementType;
   amountMinor: number;
   reason: string;
-  recordedBy: string;
+  /** Absent when Yetu recorded it itself (a waiter's shortfall at a shift's close); then recordedByName is "Yetu". */
+  recordedBy?: string;
   /** Who recorded it, by name (fbc-peak F-272). */
   recordedByName?: string;
   /** Who approved a cash out, by name; never their id (2026-10-27). */

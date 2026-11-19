@@ -10,7 +10,10 @@ import { tagNote } from "../fnb/fnbWords";
 import { printFor, printJobNow } from "../print/printFor";
 import { PRINTERS_PLACE } from "../print/printProblems";
 import { loadPrinterSettings } from "../print/printerStore";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { automaticOpenProblem, AUTOMATIC_OPEN_MAX_WAITS, AUTOMATIC_OPEN_RETRY_MS, SHIFT_NOT_OPENED_WORDS } from "../cash/autoShiftWords";
+import { beginClosingHere, endClosingHere, forgetClosedShift, rememberClosedShift, useClosedHere } from "../cash/closedShift";
+import { setShiftReopening } from "../cash/shiftReopening";
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { POSCatalog } from "../lib/posContracts";
 import { createPosApi } from "../lib/posApi";
@@ -258,7 +261,21 @@ export function usePosShift() {
     },
   });
 
+  // The outlet opens its shifts by itself: no float, one idempotency key per attempt.
+  const openAutomatically = useMutation({
+    mutationFn: async (args: { idempotencyKey: string }) => unwrap(createPosApi().openShiftAutomatically(args.idempotencyKey)),
+    onSuccess: (data: POSShift) => {
+      localStorage.setItem(shiftStorageKey(propertyId, outletId), data.id);
+      queryClient.setQueryData(idKey, data.id);
+      queryClient.setQueryData(["pos", "shift", "current", propertyId, outletId], data);
+      queryClient.invalidateQueries();
+    },
+  });
+
   const close = useMutation({
+    // Before Yetu is asked: from here a closed shift is the person's own, never one for the till to replace.
+    onMutate: () => beginClosingHere(),
+    onError: () => endClosingHere(),
     mutationFn: async (args: {
       countedCashMinor: number;
       supervisorStaffId?: string;
@@ -287,15 +304,213 @@ export function usePosShift() {
     },
     onSuccess: (data: POSShift) => {
       if (data.status === "CLOSED") {
+        // Marked before the shift is cleared below; the sheet remembers it again with the currency it shows.
+        const currency = queryClient.getQueryData<POSCatalog>(["pos", "catalog", propertyId, outletId])?.products[0]?.currency;
+        rememberClosedShift({ shift: data, currency, at: new Date() }, getOperationalSession()?.staffId ?? null);
         localStorage.removeItem(shiftStorageKey(propertyId, outletId));
         queryClient.setQueryData(idKey, null);
         queryClient.setQueryData(["pos", "shift", "current", propertyId, outletId], null);
+      } else {
+        endClosingHere();
       }
       queryClient.invalidateQueries();
     },
   });
 
-  return { shift: shift ?? null, open, close, isLoading: shiftLoading };
+  return { shift: shift ?? null, open, openAutomatically, close, isLoading: shiftLoading };
+}
+
+/** What the shift screen shows while the till opens the shift by itself. */
+export type AutomaticShift =
+  /**
+   * Not this till's business: the setting is off, the role takes no orders, a
+   * display, or the person opens it. `words` is why the till shows Open shift
+   * anyway; `tryAgain` asks Yetu once more (absent when only a cashier can open it).
+   */
+  | { state: "off"; words?: string; tryAgain?: () => void }
+  | { state: "checking" }
+  | { state: "opening"; words?: string }
+  /** Yetu closed this till's shift by itself and the next is being opened: the order screen stays. */
+  | { state: "reopening" };
+
+const isOpenShift = (read: POSShift | null | undefined): read is POSShift =>
+  read != null && (read.status === "OPEN" || read.status === "PENDING_VARIANCE_APPROVAL");
+
+/**
+ * The outlet's "opens its shifts by itself" setting (the catalog's
+ * opensShiftAutomatically): with no shift open, the till asks Yetu to open one
+ * instead of showing Open shift, and again when Yetu closes the shift under a
+ * running till (pos.shift.closed with automatic, or a read that finds it gone).
+ * One ask per absence of a shift; while Yetu is still catching the business
+ * date up, or can't be reached, it asks again every AUTOMATIC_OPEN_RETRY_MS,
+ * at most AUTOMATIC_OPEN_MAX_WAITS times in a row, then stops with the words
+ * and Try again: it never loops. A role that takes no orders (pos.order.send)
+ * never asks: Yetu would refuse it. The person who closed the shift here (or
+ * is looking at its result) opens the next themselves. While the next shift
+ * opens under a running till the state is "reopening", so the order screen is
+ * never taken away from a waiter mid-order. A kitchen or bar display
+ * (`display`) never asks: it takes no cash, and Yetu would move every waiting
+ * bill of the outlet onto its shift.
+ */
+export function useAutomaticShift({ display }: { display: boolean }): AutomaticShift {
+  const outletId = useOutletId();
+  const propertyId = usePropertyId();
+  const queryClient = useQueryClient();
+  const { shift, isLoading, openAutomatically } = usePosShift();
+  const catalog = useCatalog();
+  const canTakeOrders = useHasPermission("pos.order.send");
+  const keys = useIdempotencyKey();
+  // Only the person who closed it here is looking at its result; anyone else signing in gets the next shift.
+  const closedHere = useClosedHere(getOperationalSession()?.staffId);
+  const offlineCash = getOperationalSession()?.mode === "offline-cash";
+  const [stopped, setStopped] = useState<{ words: string; tryAgain: boolean } | null>(null);
+  const [waiting, setWaiting] = useState<string | null>(null);
+  // The id of the shift Yetu closed, while the next one is being opened.
+  const [reopeningAfter, setReopeningAfter] = useState<string | null>(null);
+  const asked = useRef(false);
+  const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Waits in a row since a shift was last open (or Try again): at most AUTOMATIC_OPEN_MAX_WAITS.
+  const waits = useRef(0);
+  // The shift this till last held. Found gone (a read after a missed closed event), the next one is being opened.
+  const held = useRef<string | null>(null);
+  if (shift) held.current = shift.id;
+  const keyOf = useRef(keys.next);
+  keyOf.current = keys.next;
+  const mutateRef = useRef(openAutomatically.mutateAsync);
+  mutateRef.current = openAutomatically.mutateAsync;
+
+  const catalogKnown = catalog.data !== undefined || catalog.isError;
+  const switchedOn = catalog.data?.opensShiftAutomatically === true;
+  const mayAsk = switchedOn && canTakeOrders && !offlineCash && !display;
+  const eligible = mayAsk && !isLoading && !shift && !closedHere;
+  // Decided in this render, not in an effect: one render without it would take the order screen away.
+  const lostShift = eligible && held.current !== null;
+  // What the timers and events below must see now, not as of the render that made them.
+  const now = useRef({ eligible, mayAsk, shiftId: shift?.id ?? null, closedHere });
+  now.current = { eligible, mayAsk, shiftId: shift?.id ?? null, closedHere };
+
+  const shiftKey = ["pos", "shift", "current", propertyId, outletId];
+  const reread = () => queryClient.invalidateQueries({ queryKey: ["pos", "shift", "current"] });
+  const stopRetry = () => {
+    if (retry.current) clearTimeout(retry.current);
+    retry.current = null;
+  };
+
+  /** Yetu won't open it now: the till's screen, with the words, and Try again unless only a cashier can open it. */
+  const stop = (words: string, tryAgain: boolean): void => {
+    stopRetry();
+    held.current = null;
+    setWaiting(null);
+    setReopeningAfter(null);
+    setStopped({ words, tryAgain });
+  };
+
+  /** Wait, then ask again, saying why (`words`); past the cap, stop with them. */
+  const askLater = (words: string | null): void => {
+    stopRetry();
+    if (waits.current >= AUTOMATIC_OPEN_MAX_WAITS) return stop(words ?? SHIFT_NOT_OPENED_WORDS, true);
+    waits.current += 1;
+    setWaiting(words);
+    retry.current = setTimeout(() => {
+      retry.current = null;
+      // Something happened meanwhile (a shift opened, a close was made here): then nothing is left to ask.
+      if (now.current.eligible) ask();
+    }, AUTOMATIC_OPEN_RETRY_MS);
+  };
+
+  const ask = (): void => {
+    mutateRef.current({ idempotencyKey: keyOf.current() }).then(
+      () => {
+        setWaiting(null);
+        setStopped(null);
+      },
+      (error: unknown) => {
+        const problem = automaticOpenProblem(error);
+        if (problem?.kind === "already-open") {
+          setWaiting(null);
+          // Read this till's shift again; a read that brings none (it failed, or the shift closed since) is tried again later.
+          void reread().then(() => {
+            if (!isOpenShift(queryClient.getQueryData<POSShift | null>(shiftKey))) askLater(null);
+          });
+          return;
+        }
+        if (problem?.kind === "catching-up" || problem?.kind === "unreachable") return askLater(problem.words);
+        stop(problem?.words ?? SHIFT_NOT_OPENED_WORDS, problem?.kind !== "counted");
+      },
+    );
+  };
+
+  const tryAgain = (): void => {
+    stopRetry();
+    waits.current = 0;
+    setStopped(null);
+    asked.current = true;
+    ask();
+  };
+
+  useEffect(() => {
+    if (!eligible || asked.current) return;
+    asked.current = true;
+    ask();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eligible]);
+
+  useEffect(() => {
+    if (!shift) return;
+    // A shift is open: the next absence starts afresh. The last closed shift's result is old news.
+    asked.current = false;
+    waits.current = 0;
+    stopRetry();
+    setStopped(null);
+    setWaiting(null);
+    forgetClosedShift();
+    setReopeningAfter((closedId) => (closedId !== null && closedId !== shift.id ? null : closedId));
+  }, [shift]);
+
+  // A close made here, or the setting going away, ends any wait for a second ask.
+  useEffect(() => {
+    if (closedHere || !mayAsk) {
+      stopRetry();
+      setReopeningAfter(null);
+    }
+  }, [closedHere, mayAsk]);
+
+  useEffect(() => stopRetry, []);
+
+  const reopening = mayAsk && stopped === null && (reopeningAfter !== null || lostShift);
+  useEffect(() => {
+    setShiftReopening(reopening);
+    return () => setShiftReopening(false);
+  }, [reopening]);
+
+  useRealtimeEvents({ kind: "outletOrders", outletId }, (event) => {
+    if (event.type !== "pos.shift.closed" && event.type !== "pos.shift.opened") return;
+    const current = now.current;
+    // Which shift closed: the event's own (its aggregate), else the one this till holds.
+    const closedId = event.type === "pos.shift.closed" ? (event.aggregateId ?? (typeof event.payload?.shiftId === "string" ? event.payload.shiftId : null)) : null;
+    // Yetu itself closed the shift this till is working on: keep the order screen while the next one opens.
+    // The close of a shift that is no longer this till's (the next is already read) changes nothing here.
+    const keepScreen =
+      event.type === "pos.shift.closed" && event.payload?.automatic === true && current.shiftId !== null && current.mayAsk && !current.closedHere &&
+      (closedId === null || closedId === current.shiftId);
+    const waitingFor = keepScreen ? (closedId ?? current.shiftId) : null;
+    if (waitingFor) setReopeningAfter(waitingFor);
+    // Read the shift again at once rather than at the next poll; once it settles with another shift open, the wait is over.
+    void reread().then(() => {
+      if (!waitingFor) return;
+      const read = queryClient.getQueryData<POSShift | null>(shiftKey);
+      if (isOpenShift(read) && read.id !== waitingFor) setReopeningAfter(null);
+    });
+  });
+
+  if (offlineCash || !canTakeOrders || display) return { state: "off" };
+  if (reopening) return { state: "reopening" };
+  if (shift || isLoading || closedHere) return { state: "off" };
+  // The setting is not known yet: the screen waits rather than flash Open shift.
+  if (!catalogKnown) return { state: "checking" };
+  if (!switchedOn) return { state: "off" };
+  if (stopped) return stopped.tryAgain ? { state: "off", words: stopped.words, tryAgain } : { state: "off", words: stopped.words };
+  return waiting ? { state: "opening", words: waiting } : { state: "opening" };
 }
 
 export function useCashMovements(shiftId: string | undefined) {
@@ -508,6 +723,16 @@ export function useCreateOrder() {
   });
 }
 
+/**
+ * Yetu's answer to an add: the order with the line on it, or (`stale`) the
+ * order as Yetu has it now, read again because the add was made on an older
+ * version and nothing was added. The caller decides whether to ask again.
+ */
+export interface AddItemAnswer {
+  order: POSOrder;
+  stale: boolean;
+}
+
 export function useAddOrderItem() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -520,9 +745,9 @@ export function useAddOrderItem() {
       modifierOptionIds?: string[];
       version: number;
       idempotencyKey: string;
-    }) => {
+    }): Promise<AddItemAnswer> => {
       try {
-        return await unwrap(
+        const order = await unwrap(
           createPosApi().addItem(
             args.orderId,
             {
@@ -535,16 +760,17 @@ export function useAddOrderItem() {
             args.idempotencyKey,
           ),
         );
+        return { order, stale: false };
       } catch (err) {
-        // STALE_VERSION: refetch once and let the caller retry with the fresh version.
+        // STALE_VERSION: nothing was added. Read the order as it is now, and say so.
         const message = err instanceof Error ? err.message : String(err);
         if (/STALE_VERSION|stale version/i.test(message)) {
-          return unwrap(createPosApi().getOrder(args.orderId));
+          return { order: await unwrap(createPosApi().getOrder(args.orderId)), stale: true };
         }
         throw err;
       }
     },
-    onSuccess: (order: POSOrder) => {
+    onSuccess: ({ order }: AddItemAnswer) => {
       keepAnswer(queryClient, order);
     },
   });

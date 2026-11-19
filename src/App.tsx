@@ -21,7 +21,8 @@ import { Splash } from "./pages/Splash";
 import { Diagnostics } from "./pages/Diagnostics";
 import { RealtimeClient } from "./realtime/RealtimeClient";
 import { RealtimeProvider } from "./realtime/RealtimeProvider";
-import { usePosShift } from "./hooks/usePosData";
+import { useAutomaticShift, usePosShift } from "./hooks/usePosData";
+import { OpeningShiftScreen } from "./pages/OpeningShiftScreen";
 import type { POSOrder } from "./lib/posContracts";
 import { REALTIME_BRIDGE_URL } from "./lib/env";
 import { createRealtimeSocket } from "./lib/peakSocket";
@@ -214,6 +215,10 @@ function ReadyGate() {
   const { session, identity, prepareOffline } = useDeviceSession();
   const offlineCash = session?.mode === "offline-cash";
   const { shift, isLoading: shiftLoading } = usePosShift();
+  // A kitchen or bar display takes no cash, so it needs no shift and never asks for one.
+  const display = isDisplayMode(identity?.mode);
+  // The outlet may open its shifts by itself: then there is no float screen to show.
+  const automatic = useAutomaticShift({ display });
   // Asked at sign-in, so an approval sheet opens offering only the right people (F-249).
   useApprovers();
   // Yetu gives a till its offline start-up only while a shift is open (409
@@ -234,8 +239,8 @@ function ReadyGate() {
   const route = terminalRoute(
     "ready",
     offlineCash || !shiftLoading,
-    offlineCash || Boolean(shift),
-    { shiftRequired: !isDisplayMode(identity?.mode) },
+    offlineCash || Boolean(shift) || automatic.state === "reopening",
+    { shiftRequired: !display },
   );
   return (
     <>
@@ -244,7 +249,11 @@ function ReadyGate() {
       </span>
       {route === "NO_SHIFT" ? (
         <AccessFrame banners={<ShellBanners />}>
-          <OpenShiftScreen />
+          {automatic.state === "off" ? (
+            <OpenShiftScreen notice={automatic.words} onTryAgain={automatic.tryAgain} />
+          ) : (
+            <OpeningShiftScreen words={automatic.state === "opening" ? automatic.words : undefined} checking={automatic.state === "checking"} />
+          )}
         </AccessFrame>
       ) : (
         <PosShell />

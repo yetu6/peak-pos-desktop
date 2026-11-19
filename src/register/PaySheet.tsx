@@ -1,3 +1,5 @@
+import { REOPENING_SHIFT_WORDS } from "../cash/autoShiftWords";
+import { useShiftReopening } from "../cash/shiftReopening";
 import { useHasPermission, useOutletMoneySettings } from "../hooks/usePosData";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { moneyFieldText } from "../cash/NoteCounterSheet";
@@ -181,6 +183,15 @@ export function PaySheet({
   }
 
   useEffect(() => setLive(order), [order]);
+  // Yetu has opened the next shift: it handed this order over and took it over, so its version moved on.
+  // The sheet takes Yetu's latest, so the first press of Take cash is on it.
+  const reopening = useShiftReopening();
+  const wasReopening = useRef(reopening);
+  useEffect(() => {
+    if (wasReopening.current && !reopening) void latestOrder.refetch().then((result) => result.status === "success" && adopt(result.data));
+    wasReopening.current = reopening;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reopening]);
   useEffect(() => {
     const wait = setTimeout(() => setNeedle(roomQuery.trim()), ROOM_SEARCH_WAIT_MS);
     return () => clearTimeout(wait);
@@ -423,6 +434,9 @@ export function PaySheetView({
   const method = chosen.method;
   // While what Yetu recorded is unknown, nothing new is taken and the sheet stays.
   const pending = requestPending || unsure !== null;
+  // Yetu is opening the next shift: nothing is taken until it is open; the sheet stays as it is.
+  const reopening = useShiftReopening();
+  const acting = pending || reopening;
   // Where the amount is known it is filled in (owner, 2026-10-21;
   // register.fillAmountDue): the cash received and a card or mobile amount
   // start at what is owed, so exact money is one tap, and the first key the
@@ -512,12 +526,12 @@ export function PaySheetView({
 
   function takeCash() {
     // Enter in the cash field submits too: nothing new while an answer is lost or Yetu can't tell.
-    if (receivedMinor == null || cashTaken == null || pending || blocked) return;
+    if (receivedMinor == null || cashTaken == null || acting || blocked) return;
     onTender({ method: "CASH", amountMinor: cashTaken, changeMinor: Math.max(0, receivedMinor - due) });
   }
 
   function confirmRecorded() {
-    if (method === "CASH" || method === "ROOM_CHARGE" || nothingDue || amount == null || amount <= 0 || over || pending || blocked) return;
+    if (method === "CASH" || method === "ROOM_CHARGE" || nothingDue || amount == null || amount <= 0 || over || acting || blocked) return;
     onTender({ method, channelId: chosen.channel?.id, channelName: chosen.channel?.name, amountMinor: amount, reference: reference.trim() || undefined, changeMinor: 0 });
   }
 
@@ -535,6 +549,11 @@ export function PaySheetView({
       footer={
         // The action stays in the sheet's footer, on screen at every size; the methods scroll above it.
         <div className="y-pay__footer">
+          {reopening ? (
+            <p className="y-pay__why" role="status" data-testid="pay-reopening">
+              {REOPENING_SHIFT_WORDS}
+            </p>
+          ) : null}
           {/* "Back", not "Cancel": on a till Cancel means taking an order off (owner, 2026-10-21). */}
           <Button variant="quiet" disabled={pending} onClick={onClose}>
             Back
@@ -550,7 +569,7 @@ export function PaySheetView({
               variant="pay"
               size={64}
               data-testid="confirm-settle"
-              disabled={cashTaken == null || pending}
+              disabled={cashTaken == null || acting}
             >
               {pending ? "Recording…" : cashTaken == null ? "Take cash" : `Take ${formatMoney(cashTaken, currency)} cash`}
             </Button>
@@ -559,7 +578,7 @@ export function PaySheetView({
               variant="pay"
               size={64}
               data-testid="confirm-room-charge"
-              disabled={nothingDue || !chosenStay || chosenStay.postingEligible === false || roomBlocked !== null || pending}
+              disabled={nothingDue || !chosenStay || chosenStay.postingEligible === false || roomBlocked !== null || acting}
               onClick={() => chosenStay && onChargeRoom(chosenStay)}
             >
               {pending
@@ -575,7 +594,7 @@ export function PaySheetView({
               variant="pay"
               size={64}
               data-testid="confirm-settle"
-              disabled={nothingDue || amount == null || amount <= 0 || over || pending}
+              disabled={nothingDue || amount == null || amount <= 0 || over || acting}
             >
               {pending ? "Recording…" : amount != null ? `Confirm ${formatMoney(amount, currency)} received` : "Type the amount"}
             </Button>

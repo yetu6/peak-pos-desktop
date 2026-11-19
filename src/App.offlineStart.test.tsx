@@ -34,6 +34,7 @@ vi.mock("./auth/DeviceSessionProvider", () => ({
 
 vi.mock("./hooks/usePosData", () => ({
   useOutletId: () => "outlet-1",
+  useAutomaticShift: () => ({ state: "off" }),
   usePosShift: () => ({
     shift: state.shift,
     open: { mutate: vi.fn(), isPending: false, error: null },

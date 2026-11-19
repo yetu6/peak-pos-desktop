@@ -1,3 +1,5 @@
+import { REOPENING_SHIFT_WORDS } from "../cash/autoShiftWords";
+import { useShiftReopening } from "../cash/shiftReopening";
 import { renderPaperText } from "../print/PaperText";
 import { Printer, Send } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -60,7 +62,8 @@ export function PaperPreviewSheet({
   const loading = papers.isLoading || settings.isLoading;
   const title = kind === "BILL" ? "Print bill" : kind === "AGAIN" ? "Print the kitchen ticket again" : "Print order";
   const sendDirect = directOnly && kind === "ROUND" && !nothingNew && views?.length === 0 && !papers.isError && !settings.isError;
-  const blocked = busy || loading || refused !== null || nothingToDo || (views?.length === 0 && !sendDirect);
+  const reopening = useShiftReopening();
+  const blocked = busy || reopening || loading || refused !== null || nothingToDo || (views?.length === 0 && !sendDirect);
   // New items for more than one station: each paper prints on its own (not before payment), or all together.
   const stationPapers = kind === "ROUND" && !nothingNew && views !== null && views.length > 1 ? views.length : 0;
   const oneStation = stationPapers > 0 && !allOnly && shown?.station ? shown.station : null;
@@ -88,6 +91,11 @@ export function PaperPreviewSheet({
       testId="paper-preview"
       footer={
         <div className="y-paper-preview__footer">
+          {reopening ? (
+            <p role="status" data-testid="paper-reopening">
+              {REOPENING_SHIFT_WORDS}
+            </p>
+          ) : null}
           <Button variant="quiet" disabled={busy} onClick={onBack}>
             Back
           </Button>

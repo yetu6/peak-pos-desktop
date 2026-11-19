@@ -302,7 +302,8 @@ export function CashView({
                   />
                 ) : (
                   movements.map((entry) => {
-                    const who = entry.recordedByName?.trim() || nameOf(entry.recordedBy);
+                    // No id at all: Yetu recorded it itself (a waiter's shortfall at a shift's close).
+                    const who = entry.recordedByName?.trim() || nameOf(entry.recordedBy) || (entry.recordedBy ? undefined : "Yetu");
                     const when = entry.createdAt ? clockTime(entry.createdAt) : "";
                     const waiter = entry.fromStaffName?.trim();
                     const title =

@@ -132,7 +132,7 @@ describe("OpenShiftScreen after a shift closes", () => {
 
   it("keeps the summary when the new shift doesn't open", async () => {
     openMutate.mockRejectedValueOnce(new Error(JSON.stringify({ code: "CONFLICT", detail: "x" })));
-    rememberClosedShift({ shift: CLOSED, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) });
+    rememberClosedShift({ shift: CLOSED, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) }, "staff-1");
     render(<OpenShiftScreen />);
     await userEvent.type(screen.getByTestId("opening-float"), "50000");
     await userEvent.click(screen.getByTestId("open-shift"));
@@ -143,7 +143,7 @@ describe("OpenShiftScreen after a shift closes", () => {
 
   it("forgets the summary once the new shift is open", async () => {
     openMutate.mockResolvedValueOnce({ ...CLOSED, id: "shift-2", status: "OPEN" });
-    rememberClosedShift({ shift: CLOSED, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) });
+    rememberClosedShift({ shift: CLOSED, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) }, "staff-1");
     render(<OpenShiftScreen />);
     await userEvent.type(screen.getByTestId("opening-float"), "50000");
     await userEvent.click(screen.getByTestId("open-shift"));
@@ -151,7 +151,7 @@ describe("OpenShiftScreen after a shift closes", () => {
   });
 
   it("forgets the summary when the person switches", async () => {
-    rememberClosedShift({ shift: CLOSED, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) });
+    rememberClosedShift({ shift: CLOSED, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) }, "staff-1");
     render(<OpenShiftScreen />);
     await userEvent.click(screen.getByTestId("open-shift-switch-staff"));
     expect(switchStaff).toHaveBeenCalled();
@@ -159,7 +159,7 @@ describe("OpenShiftScreen after a shift closes", () => {
   });
 
   it("shows the closed shift as Yetu worked it out", () => {
-    rememberClosedShift({ shift: CLOSED, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) });
+    rememberClosedShift({ shift: CLOSED, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) }, "staff-1");
     render(<OpenShiftScreen />);
     const summary = screen.getByTestId("closed-shift-summary");
     expect(summary).toHaveTextContent("Shift closed at 22:14");
@@ -170,7 +170,7 @@ describe("OpenShiftScreen after a shift closes", () => {
   });
 
   it("says the tabs it handed over to the next shift, and what they owe (S17b)", () => {
-    rememberClosedShift({ shift: { ...CLOSED, handedOverTabs: 3, handedOverOwedMinor: 4_520_000 }, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) });
+    rememberClosedShift({ shift: { ...CLOSED, handedOverTabs: 3, handedOverOwedMinor: 4_520_000 }, currency: "TZS", at: new Date(2026, 9, 12, 22, 14) }, "staff-1");
     render(<OpenShiftScreen />);
     expect(screen.getByTestId("closed-shift-tabs")).toHaveTextContent("3 tabs handed over to the next shift, owing TSh 45,200.");
   });

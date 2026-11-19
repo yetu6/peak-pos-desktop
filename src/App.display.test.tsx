@@ -39,6 +39,7 @@ vi.mock("./hooks/usePosData", () => ({
   useOutletId: () => "outlet-1",
   usePropertyId: () => "property-1",
   useHasPermission: () => true,
+  useAutomaticShift: () => ({ state: "off" }),
   usePosShift: () => ({
     shift: null,
     isLoading: false,

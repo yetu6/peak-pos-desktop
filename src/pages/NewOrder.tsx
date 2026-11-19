@@ -1,3 +1,5 @@
+import { REOPENING_SHIFT_WORDS } from "../cash/autoShiftWords";
+import { useShiftReopening } from "../cash/shiftReopening";
 import { cachedOutletOrderSettings } from "../lib/outletOrderSettings";
 import { getOperationalSession } from "../lib/operationalSession";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
@@ -46,6 +48,9 @@ import type { POSCatalogProduct, POSOrder, POSOrderItem, ServiceType } from "../
 import { orderName } from "../lib/orderNumber";
 import { billProblem, voidedWords, kitchenReprintProblem, kitchenReprintWords } from "../orders/ordersWords";
 
+/** An add refused twice because the order kept changing elsewhere: the ticket has Yetu's order now. */
+const STALE_ADD_WORDS = "This order changed on another till, so the item wasn't added. Check the ticket, then tap it again.";
+
 /**
  * Sell, against the live API: the catalog from GET /pos/catalog and the
  * ticket from the order mutations. The offline register is a separate screen.
@@ -65,6 +70,8 @@ export function NewOrder({
   onSwitch?: (order: POSOrder | null) => void;
 } = {}) {
   const { shift } = usePosShift();
+  // Yetu closed the shift and is opening the next: the ticket stays, what needs a shift waits.
+  const reopening = useShiftReopening();
   const staffId = useDeviceSessionOptional()?.session?.staffId;
   const catalog = useCatalog();
   // The Restaurant & Bar module's menu (groups, sizes, tags); none: sell as before.
@@ -152,6 +159,9 @@ export function NewOrder({
     if (!current) return;
     try {
       const fresh = await fetchOrder(current.id);
+      // Only for the order still on the ticket, and never older than the ticket's (an add's answer may have come first).
+      const now = orderRef.current;
+      if (now?.id !== fresh.id || fresh.version < now.version) return;
       if (fresh.status === "CLOSED" || fresh.status === "VOIDED") {
         clearTicket();
         setNotice(`${orderName(fresh)} is ${fresh.status === "CLOSED" ? "paid" : "cancelled"} already. Start a new sale.`);
@@ -162,6 +172,14 @@ export function NewOrder({
       // The sheet still says what was refused; the next action asks Yetu again.
     }
   }
+
+  // Yetu has opened the next shift: it handed this order over and took it over, so its version moved on. Read it again.
+  const wasReopening = useRef(reopening);
+  useEffect(() => {
+    if (wasReopening.current && !reopening) void reloadOrder();
+    wasReopening.current = reopening;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reopening]);
 
   // The ticket's open order is told to the shell, so it is still here when the person comes back.
   const ticketRef = useRef(onTicket);
@@ -202,11 +220,13 @@ export function NewOrder({
   // Only a send whose answer was lost is offered again as it was -- the same stations, under the same key; the order stays on the ticket.
   const retrySend = sendProblem?.kind === "network" && order ? () => void sendToKitchen(lastSendStations.current) : undefined;
 
-  const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || setLineQuantity.isPending || sendOrder.isPending;
+  const busy = createOrder.isPending || addItem.isPending || removeItem.isPending || setLineQuantity.isPending || sendOrder.isPending || reopening;
   const canMutate = Boolean(shift) && !busy;
   // An order takes more after it was sent, as the next round (S17a); a Yetu
   // before rounds takes nothing once sent, and a paid or voided order never.
-  const addBlocked = !shift
+  const addBlocked = reopening
+    ? REOPENING_SHIFT_WORDS
+    : !shift
     ? "Open a shift before taking orders."
     : order && !takesMore(order)
       ? order.status === "CLOSED" || order.status === "VOIDED"
@@ -292,32 +312,16 @@ export function NewOrder({
     const current = await ensureOrder();
     if (!current || !takesMore(current)) return;
     setActionError(null);
+    const add = (on: POSOrder) =>
+      addItem.mutateAsync({ orderId: on.id, productId: product.id, variantId, quantity, modifierOptionIds, version: on.version, idempotencyKey: addKey.next() });
     try {
-      const next = await addItem.mutateAsync({
-        orderId: current.id,
-        productId: product.id,
-        variantId,
-        quantity,
-        modifierOptionIds,
-        version: current.version,
-        idempotencyKey: addKey.next(),
-      });
-      // If STALE_VERSION returned a fresh order without applying the add, retry once.
-      if (next.version === current.version && next.items.length === current.items.length) {
-        const retried = await addItem.mutateAsync({
-          orderId: next.id,
-          productId: product.id,
-          variantId,
-          quantity,
-          modifierOptionIds,
-          version: next.version,
-          idempotencyKey: addKey.next(),
-        });
-        adopt(retried);
-      } else {
-        adopt(next);
-      }
+      let answer = await add(current);
+      // Made on an older version (another till, the night's hand-over): nothing was added. Once more, on Yetu's latest.
+      if (answer.stale && takesMore(answer.order)) answer = await add(answer.order);
+      adopt(answer.order);
       setConfiguring(null);
+      // Still not added: the ticket shows Yetu's order, and says the tap didn't land.
+      if (answer.stale && takesMore(answer.order)) setActionError(STALE_ADD_WORDS);
     } catch {
       // The words come from addItem.error.
     }
@@ -394,7 +398,10 @@ export function NewOrder({
       return true;
     } catch (error) {
       // The words come from sendOrder.error. Yetu refused it: the next press is a new request.
-      if (sellProblem(error, "send")?.kind !== "network") sendRequest.forget();
+      const refusal = sellProblem(error, "send");
+      if (refusal?.kind !== "network") sendRequest.forget();
+      // Yetu has a newer order than the ticket: read it again, as the words say.
+      if (refusal?.kind === "stale") void reloadOrder();
       return false;
     }
   }
@@ -539,7 +546,7 @@ export function NewOrder({
             error={mutationError}
             onRetry={retrySend}
             retrying={sendOrder.isPending}
-            notice={notice}
+            notice={reopening ? REOPENING_SHIFT_WORDS : notice}
             actions={
               <TicketActions
                 order={order}
