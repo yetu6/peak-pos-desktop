@@ -87,7 +87,10 @@ export interface POSOrderVoid {
   /** A line of a whole-order void, which the order's own status already tells. */
   wholeOrder: boolean;
   askedByName: string;
+  /** Empty when the cancel was done alone (`alone`). */
   approvedByName: string;
+  /** Done by whoever rang up the order, with no approver (fbc-peak 00161). */
+  alone?: boolean;
   createdAt: string;
 }
 
@@ -133,6 +136,8 @@ export interface POSOrder {
   voidApprovedByName?: string;
   /** fbc-peak #288: each bill printed before payment, oldest first, for the history. */
   billPrints?: { printedAt: string; printedByName?: string }[];
+  /** fbc-peak 00161: the staff id of the person who may cancel this order alone right now; absent when nobody may. A hint: the server decides. */
+  cancelAloneBy?: string;
   /** fbc-peak 00125: each item voided after it was sent, and each line of a whole-order void, oldest first. */
   voids?: POSOrderVoid[];
   /** The percent discount is kept to the money off its supervisor approved; more lines would take more off (the owner, 2026-10-20). */

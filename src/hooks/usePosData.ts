@@ -974,8 +974,9 @@ export function useVoidItem() {
       itemId: string;
       quantity: number;
       reason: string;
-      supervisorStaffId: string;
-      supervisorPin: string;
+      /** Both or neither: with neither the cancel is alone (fbc-peak 00161). */
+      supervisorStaffId?: string;
+      supervisorPin?: string;
       version: number;
       idempotencyKey: string;
     }) =>
@@ -986,8 +987,7 @@ export function useVoidItem() {
           {
             quantity: args.quantity,
             reason: args.reason,
-            supervisorStaffId: args.supervisorStaffId,
-            supervisorPin: args.supervisorPin,
+            ...(args.supervisorStaffId && args.supervisorPin ? { supervisorStaffId: args.supervisorStaffId, supervisorPin: args.supervisorPin } : {}),
             version: args.version,
           },
           args.idempotencyKey,
@@ -1004,15 +1004,20 @@ export function useVoidOrder() {
     mutationFn: (args: {
       orderId: string;
       reason: string;
-      supervisorStaffId: string;
-      supervisorPin: string;
+      /** Both or neither: with neither the cancel is alone (fbc-peak 00161). */
+      supervisorStaffId?: string;
+      supervisorPin?: string;
       version: number;
       idempotencyKey: string;
     }) =>
       unwrap(
         createPosApi().voidOrder(
           args.orderId,
-          { reason: args.reason, supervisorStaffId: args.supervisorStaffId, supervisorPin: args.supervisorPin, version: args.version },
+          {
+            reason: args.reason,
+            ...(args.supervisorStaffId && args.supervisorPin ? { supervisorStaffId: args.supervisorStaffId, supervisorPin: args.supervisorPin } : {}),
+            version: args.version,
+          },
           args.idempotencyKey,
         ),
       ),

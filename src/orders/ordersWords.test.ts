@@ -306,6 +306,21 @@ describe("orderTimeline: items voided after they were sent (fbc-peak 00125)", ()
     expect(words.join(" ")).not.toContain("2 × Tusker cancelled");
   });
 
+  it("an item cancelled alone says so, and names no approver", () => {
+    const alone = { ...spilled, approvedByName: "", alone: true };
+    const timeline = orderTimeline({ order: order({ status: "SENT", items: [tusker], voids: [alone] }), tickets: [], currency: "TZS" });
+    expect(timeline).toContainEqual({ time: clockTime(voidedAt), words: "1 × Tusker cancelled: Spilled · Cancelled alone by Baraka Mushi" });
+  });
+
+  it("an order cancelled alone reads as cancelled by its person, never as closed by Yetu or emptied", () => {
+    const whole = { ...spilled, quantity: 2, reason: "Wrong table", wholeOrder: true, approvedByName: "", alone: true };
+    const cancelled = order({ status: "VOIDED", closedAt: voidedAt, items: [{ ...tusker, status: "VOIDED", removedAt: voidedAt }], voids: [whole] });
+    const words = orderTimeline({ order: cancelled, tickets: [], currency: "TZS" }).map((entry) => entry.words);
+    expect(words).toContain("Cancelled: Wrong table · Cancelled alone by Baraka Mushi");
+    expect(words.join(" ")).not.toContain("Closed automatically");
+    expect(orderStateWords(cancelled).words).not.toBe("Nothing on it");
+  });
+
   it("names nobody it wasn't told", () => {
     expect(itemVoidWords({ quantity: 1, name: "Soda", reason: "Spilled", askedByName: "", approvedByName: "Neema Kweka" })).toBe("1 × Soda cancelled: Spilled · approved by Neema Kweka");
   });

@@ -200,3 +200,81 @@ describe("VoidItemDialog (the owner, 2026-10-21)", () => {
     );
   });
 });
+
+describe("VoidItemDialog: cancelling your own order alone (fbc-peak 00161)", () => {
+  const sendAlone = (over: Partial<POSOrder> = {}) => ({ ...ORDER, cancelAloneBy: "staff-baraka", ...over });
+
+  it("skips the approver when the hint names the person signed in now, and sends no supervisor", async () => {
+    const onVoided = vi.fn();
+    render(<VoidItemDialog order={sendAlone()} line={{ ...TUSKER, quantity: 1, totalMinor: 500_000 }} currency="TZS" onClose={vi.fn()} onVoided={onVoided} />);
+    expect(screen.queryByRole("radio", { name: /Neema Kweka/ })).toBeNull();
+    expect(screen.queryByTestId("void-item-pin-key-1")).toBeNull();
+    const submit = screen.getByTestId("confirm-void-item");
+    expect(submit).toHaveTextContent("Cancel 1 × Tusker");
+    expect(submit).toBeDisabled();
+    await giveReason("void-item-reason", "Spilled");
+    expect(submit).toBeEnabled();
+    await userEvent.click(submit);
+    const sent = voidItemMutate.mock.calls[0][0] as Record<string, unknown>;
+    expect(sent).toMatchObject({ orderId: "order-1", itemId: "line-tusker", quantity: 1, reason: "Spilled", version: 5 });
+    expect(sent).not.toHaveProperty("supervisorStaffId");
+    expect(sent).not.toHaveProperty("supervisorPin");
+    expect(onVoided).toHaveBeenCalled();
+  });
+
+  it("still asks how many to cancel when alone", async () => {
+    render(<VoidItemDialog order={sendAlone()} line={TUSKER} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} />);
+    expect(screen.getByTestId("void-item-quantity")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /fewer|less|decrease|minus/i }));
+    expect(screen.getByTestId("confirm-void-item")).toHaveTextContent("Cancel 2 × Tusker");
+  });
+
+  it("asks for an approver when the hint names someone else (a cached order after Switch person)", async () => {
+    render(<VoidItemDialog order={sendAlone({ cancelAloneBy: "staff-neema" })} line={TUSKER} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} />);
+    expect(screen.getByRole("radio", { name: /Neema Kweka/ })).toBeInTheDocument();
+    await giveReason("void-item-reason", "Spilled");
+    expect(screen.getByTestId("confirm-void-item")).toBeDisabled();
+  });
+
+  it("asks for an approver when there is no hint", () => {
+    render(<VoidItemDialog order={ORDER} line={TUSKER} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} />);
+    expect(screen.getByRole("radio", { name: /Neema Kweka/ })).toBeInTheDocument();
+  });
+
+  it("asks for an approver when the computer has no network, never sending an alone cancel", () => {
+    const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    try {
+      render(<VoidItemDialog order={sendAlone()} line={TUSKER} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} />);
+      expect(screen.getByRole("radio", { name: /Neema Kweka/ })).toBeInTheDocument();
+    } finally {
+      online.mockRestore();
+    }
+  });
+
+  it("shows Yetu's words and moves to the approver when the alone cancel is refused, keeping reason and quantity", async () => {
+    const words = "The bill has been printed, so cancelling now needs an approver.";
+    voidItemMutate.mockImplementationOnce((_vars: unknown, opts?: { onError?: (error: Error) => void }) =>
+      opts?.onError?.(new Error(JSON.stringify({ code: "POS_CANCEL_NEEDS_APPROVER", detail: words }))),
+    );
+    const onStale = vi.fn();
+    const view = render(<VoidItemDialog order={sendAlone()} line={TUSKER} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} onStale={onStale} />);
+    await userEvent.click(screen.getByRole("button", { name: /fewer|less|decrease|minus/i }));
+    await giveReason("void-item-reason", "Spilled");
+    await userEvent.click(screen.getByTestId("confirm-void-item"));
+    // The error lives in the mutation's state in the app; mirror it here.
+    voidState.error = new Error(JSON.stringify({ code: "POS_CANCEL_NEEDS_APPROVER", detail: words }));
+    view.rerender(<VoidItemDialog order={sendAlone()} line={TUSKER} currency="TZS" onClose={vi.fn()} onVoided={vi.fn()} onStale={onStale} />);
+    expect(within(screen.getByTestId("void-item-dialog")).getByRole("alert")).toHaveTextContent(words);
+    expect(onStale).not.toHaveBeenCalled();
+    expect(screen.getByRole("radio", { name: /Neema Kweka/ })).toBeInTheDocument();
+    expect(screen.getByTestId("confirm-void-item")).toHaveTextContent("Cancel 2 × Tusker");
+    expect(screen.getByText(/Cancel 2 × Tusker on order 7: Spilled/)).toBeInTheDocument();
+    voidState.error = null;
+    await approve();
+    await userEvent.click(screen.getByTestId("confirm-void-item"));
+    expect(voidItemMutate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ quantity: 2, reason: "Spilled", supervisorStaffId: "staff-neema", supervisorPin: "123456" }),
+      expect.anything(),
+    );
+  });
+});

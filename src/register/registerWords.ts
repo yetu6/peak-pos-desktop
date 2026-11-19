@@ -10,7 +10,7 @@ import { otherWords, problemOf, READ_AFTER_RECORD_FAILED, UNREACHABLE } from "..
 import { stationWords } from "../kitchen/kitchenWords";
 
 export interface RegisterProblem {
-  kind: "supervisor" | "no-approver" | "paid" | "stale" | "network" | "permission" | "other";
+  kind: "supervisor" | "needs-approver" | "no-approver" | "paid" | "stale" | "network" | "permission" | "other";
   words: string;
 }
 
@@ -54,6 +54,9 @@ export function voidProblem(error: unknown): RegisterProblem | null {
         kind: "supervisor",
         words: "A different supervisor must approve this. Their PIN wasn't accepted, or they can't approve cancellations.",
       };
+    // fbc-peak 00161: cancelling alone was refused (the bill was printed, or another reason); Yetu's own words, then the approver step.
+    case "POS_CANCEL_NEEDS_APPROVER":
+      return { kind: "needs-approver", words: problem.detail?.trim() || "Cancelling now needs an approver." };
     case "NO_APPROVER_SET":
       return { kind: "no-approver", words: noApproverWords("cancellations") };
     // Another till changed the order first; the screen asks Yetu for it again (onStale).
@@ -87,6 +90,9 @@ export function voidItemProblem(error: unknown): RegisterProblem | null {
         kind: "supervisor",
         words: "A different supervisor must approve this. Their PIN wasn't accepted, or they can't approve cancellations.",
       };
+    // fbc-peak 00161: cancelling alone was refused (the bill was printed, or another reason); Yetu's own words, then the approver step.
+    case "POS_CANCEL_NEEDS_APPROVER":
+      return { kind: "needs-approver", words: problem.detail?.trim() || "Cancelling now needs an approver." };
     case "NO_APPROVER_SET":
       return { kind: "no-approver", words: noApproverWords("cancellations") };
     // The order changed first, on another till: the screen reloads it.

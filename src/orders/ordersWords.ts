@@ -143,13 +143,15 @@ export function orderTimeline({
     const approved = order.voidApprovedByName?.trim();
     const whole = (order.voids ?? []).find((v) => v.wholeOrder);
     const asked = whole?.askedByName.trim();
-    const who = asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
+    const who = whole?.alone ? aloneWho(asked ?? "") : asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
     // Closed automatically (no supervisor of its own): "every item was cancelled" only
     // when every line went by a void; lines also taken off before they were
     // sent make it "nothing was left on it" (review 2026-10-21).
     const voidedLines = new Set(itemVoids.map((v) => v.itemId));
     const allByVoid = (order.items ?? []).length > 0 && (order.items ?? []).every((line) => voidedLines.has(line.id));
-    const words = emptiedOrder(order)
+    const words = whole?.alone
+      ? `${orderStatusWords("VOIDED")}${whole.reason.trim() ? `: ${whole.reason.trim()}` : ""}${who}`
+      : emptiedOrder(order)
       ? "Closed automatically: nothing was left on it"
       : !approved && itemVoids.length > 0
         ? allByVoid ? "Closed automatically: every item was cancelled" : "Closed automatically: nothing was left on it"
@@ -270,11 +272,16 @@ export function removeProblem(error: unknown): OrderProblem | null {
   return { kind: "other", words: otherWords(problem, "The item wasn't removed. Try again.") };
 }
 
+/** A cancel done alone (fbc-peak 00161), in the order's history: no approver to name. */
+function aloneWho(askedBy: string): string {
+  return askedBy ? ` · Cancelled alone by ${askedBy}` : " · Cancelled alone";
+}
+
 /** One item cancelled in the order's history: "1 × Soda cancelled: Spilled · asked by Baraka Mushi, approved by Neema Kweka". */
-export function itemVoidWords(v: Pick<POSOrderVoid, "quantity" | "name" | "reason" | "askedByName" | "approvedByName">): string {
+export function itemVoidWords(v: Pick<POSOrderVoid, "quantity" | "name" | "reason" | "askedByName" | "approvedByName" | "alone">): string {
   const asked = v.askedByName.trim();
   const approved = v.approvedByName.trim();
-  const who = asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
+  const who = v.alone ? aloneWho(asked) : asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
   return `${v.quantity} × ${v.name} cancelled${v.reason.trim() ? `: ${v.reason.trim()}` : ""}${who}`;
 }
 
@@ -283,10 +290,12 @@ export function itemVoidWords(v: Pick<POSOrderVoid, "quantity" | "name" | "reaso
  * before it was sent: VOIDED, with no supervisor. Every line taken off too,
  * so a void from a Yetu before #286 (none named a supervisor) isn't taken for one.
  */
-export function emptiedOrder(order: Pick<POSOrder, "status" | "voidApprovedByName" | "items">): boolean {
+export function emptiedOrder(order: Pick<POSOrder, "status" | "voidApprovedByName" | "items"> & Partial<Pick<POSOrder, "voids">>): boolean {
   return (
     order.status === "VOIDED" &&
     !order.voidApprovedByName?.trim() &&
+    // Cancelled alone by whoever rang it up (fbc-peak 00161): that is a cancel, never "emptied by Yetu".
+    !(order.voids ?? []).some((v) => v.wholeOrder && v.alone) &&
     order.items.length > 0 &&
     order.items.every((line) => line.status === "VOIDED" && Boolean(line.removedAt))
   );
@@ -301,7 +310,7 @@ export const EMPTIED_WORDS = "Nothing on it";
  * closed it emptied (F-260), else its status.
  */
 export function orderStateWords(
-  order: Pick<POSOrder, "status" | "totalMinor" | "refundedMinor" | "voidApprovedByName" | "items">,
+  order: Pick<POSOrder, "status" | "totalMinor" | "refundedMinor" | "voidApprovedByName" | "items"> & Partial<Pick<POSOrder, "voids">>,
 ): { words: string; tone: Tone } {
   const refunded = order.refundedMinor ?? 0;
   if (refunded > 0) return { words: refunded >= order.totalMinor ? "Refunded" : "Partly refunded", tone: "danger" };
