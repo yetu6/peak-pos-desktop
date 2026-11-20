@@ -5,6 +5,7 @@ CREATE TABLE sign_in_kit (
  singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
  terminal_id TEXT NOT NULL,
  issued_at_ms INTEGER NOT NULL CHECK(issued_at_ms > 0),
+ expires_at_ms INTEGER NOT NULL,
  key_id TEXT NOT NULL,
  terminal_json TEXT NOT NULL,
  installed_at_ms INTEGER NOT NULL
@@ -19,7 +20,21 @@ CREATE TABLE sign_in_kit_staff (
  copy_version TEXT,
  server_locked_until_ms INTEGER,
  max_attempts INTEGER NOT NULL CHECK(max_attempts > 0),
- base_lockout_ms INTEGER NOT NULL CHECK(base_lockout_ms > 0),
- attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
- locked_until_ms INTEGER
+ base_lockout_ms INTEGER NOT NULL CHECK(base_lockout_ms > 0)
+);
+-- The count of wrong PINs lives apart from the kit, keyed by the copy it was
+-- counted against, so clearing and reinstalling a kit never gives fresh tries.
+-- A new PIN is a new copy_version and starts at nothing.
+CREATE TABLE sign_in_kit_attempts (
+ staff_id TEXT NOT NULL,
+ copy_version TEXT NOT NULL,
+ attempts INTEGER NOT NULL CHECK(attempts >= 0),
+ locked_until_ms INTEGER,
+ PRIMARY KEY(staff_id, copy_version)
+);
+-- The highest kit ever installed here. Clearing the kit does not lower it, so an
+-- older signed kit cannot be put back.
+CREATE TABLE sign_in_kit_mark (
+ singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+ high_water_ms INTEGER NOT NULL
 );

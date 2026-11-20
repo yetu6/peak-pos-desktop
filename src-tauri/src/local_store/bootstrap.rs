@@ -223,7 +223,7 @@ impl LocalStore {
         tx.commit().map_err(classify_sql_error)
     }
 
-    fn record_trusted_time(
+    pub(super) fn record_trusted_time(
         &mut self,
         server: i64,
         wall: i64,

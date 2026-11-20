@@ -23,6 +23,8 @@ export interface SignInTerminal {
 export interface KitSummary {
   terminalId: string;
   issuedAtMs: number;
+  /** After this the kit checks nobody and the till signs in with the server. */
+  expiresAtMs: number;
   staffCount: number;
 }
 

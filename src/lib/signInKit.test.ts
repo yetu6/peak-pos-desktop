@@ -23,7 +23,7 @@ describe("the sign-in kit boundary", () => {
   it("sends the kit, the PIN and the clear through the right native commands", async () => {
     const invoke = vi.fn(async (command: string) => {
       if (command === "verify_sign_in_pin") return { state: "WRONG", attemptsLeft: 4 };
-      if (command === "install_sign_in_kit") return { terminalId: "t-1", issuedAtMs: 5, staffCount: 2 };
+      if (command === "install_sign_in_kit") return { terminalId: "t-1", issuedAtMs: 5, expiresAtMs: 99, staffCount: 2 };
       return undefined;
     });
     const store = createNativeSignInKit(invoke);

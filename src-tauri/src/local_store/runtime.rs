@@ -261,7 +261,14 @@ pub fn install_sign_in_kit(
     key_id: String,
 ) -> Result<super::KitSummary, LocalStoreErrorKind> {
     runtime.with_store(|store| {
-        store.install_sign_in_kit(&signed_kit, &signature, &key_id, now_ms())
+        store.install_sign_in_kit_trusted(
+            &signed_kit,
+            &signature,
+            &key_id,
+            now_ms(),
+            monotonic_ms(),
+            &boot_id(),
+        )
     })
 }
 
@@ -271,7 +278,9 @@ pub fn verify_sign_in_pin(
     staff_id: String,
     pin: String,
 ) -> Result<super::SignInCheck, LocalStoreErrorKind> {
-    runtime.with_store(|store| store.verify_sign_in_pin(&staff_id, pin, now_ms()))
+    runtime.with_store(|store| {
+        store.verify_sign_in_pin_trusted(&staff_id, pin, now_ms(), monotonic_ms(), &boot_id())
+    })
 }
 
 #[tauri::command]
