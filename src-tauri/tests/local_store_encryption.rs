@@ -35,7 +35,7 @@ fn first_boot_creates_encrypted_database_and_reopens_with_same_envelope() {
 
     let first = LocalStore::open(&path, &keys).expect("first encrypted open");
     assert_eq!(first.cipher_version(), "4.14.0 community");
-    assert_eq!(first.schema_version(), 6);
+    assert_eq!(first.schema_version(), 7);
     drop(first);
 
     let envelope = keys
@@ -151,7 +151,7 @@ fn key_rotation_rekeys_database_and_rejects_old_envelope() {
     let new_envelope = keys.load().unwrap().unwrap();
     assert_ne!(old_envelope, new_envelope);
     drop(store);
-    assert_eq!(LocalStore::open(&path, &keys).unwrap().schema_version(), 6);
+    assert_eq!(LocalStore::open(&path, &keys).unwrap().schema_version(), 7);
 
     let old_keys = MemoryKeyStore::default();
     old_keys.save(&old_envelope).unwrap();
@@ -202,7 +202,7 @@ fn restart_recovers_rotation_interrupted_after_rekey() {
 
     *keys.fail_on_save.lock().unwrap() = None;
     let recovered = LocalStore::open(&path, &keys).expect("recover prepared rotation");
-    assert_eq!(recovered.schema_version(), 6);
+    assert_eq!(recovered.schema_version(), 7);
     assert!(!path.with_extension("sqlite3.rekey-recovery").exists());
 }
 
@@ -232,7 +232,7 @@ fn encrypted_version_four_upgrades_order_context_and_print_journal_to_six() {
     connection.pragma_update(None, "user_version", 4).unwrap();
     drop(connection);
     let migrated = LocalStore::open(&path, &keys).unwrap();
-    assert_eq!(migrated.schema_version(), 6);
+    assert_eq!(migrated.schema_version(), 7);
     migrated.integrity_check().unwrap();
     drop(migrated);
     let unkeyed = Connection::open(&path).unwrap();
@@ -254,5 +254,5 @@ fn encrypted_version_four_upgrades_order_context_and_print_journal_to_six() {
         .unwrap();
     assert_eq!(journal_rows, 0);
     drop(connection);
-    assert_eq!(LocalStore::open(&path, &keys).unwrap().schema_version(), 6);
+    assert_eq!(LocalStore::open(&path, &keys).unwrap().schema_version(), 7);
 }

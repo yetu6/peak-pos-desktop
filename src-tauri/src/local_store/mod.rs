@@ -19,6 +19,7 @@ mod orders;
 mod pricing;
 pub mod print_journal;
 pub mod runtime;
+mod sign_in_kit;
 mod sync;
 
 pub use authority::{
@@ -42,6 +43,7 @@ pub use orders::{
     AddOrderItemIntent, CreateOrderDraftIntent, LocalOrderLineView, LocalOrderModifierView,
     LocalOrderView, OfflineCashCommitResult, UpdateOrderContextIntent,
 };
+pub use sign_in_kit::{KitSummary, KitTerminal, SignInCheck, SignInStaff};
 pub use sync::{ReconcileResponse, SyncState};
 
 const KEY_BYTES: usize = 32;
