@@ -217,6 +217,15 @@ describe("refusals", () => {
     expect(quantityProblem(new TypeError("Failed to fetch"))?.kind).toBe("network");
   });
 
+  it("a printed bill refuses removing or lowering an unsent item, in the server's words", () => {
+    const refusal = refused({ status: 409, code: "POS_CANCEL_NEEDS_APPROVER", detail: "This item is on the bill the guest has, so it comes off only with an approver: send it and cancel it with one, or cancel the whole order with one." });
+    expect(removeProblem(refusal)).toEqual({ kind: "other", words: "This item is on the bill the guest has, so it comes off only with an approver: send it and cancel it with one, or cancel the whole order with one." });
+    expect(quantityProblem(refusal)).toEqual({ kind: "other", words: "This item is on the bill the guest has, so it comes off only with an approver: send it and cancel it with one, or cancel the whole order with one." });
+    // No detail from the server: still a plain sentence that says what to do.
+    expect(removeProblem(refused({ code: "POS_CANCEL_NEEDS_APPROVER" }))?.words).toMatch(/approver/);
+    expect(quantityProblem(refused({ code: "POS_CANCEL_NEEDS_APPROVER" }))?.words).toMatch(/approver/);
+  });
+
   it("remove an item: an order that has taken money, anything else", () => {
     expect(removeProblem(refused({ code: "INVALID_STATE" }))?.words).toBe(
       "This order has taken payment, so its items can't be removed.",
@@ -309,14 +318,14 @@ describe("orderTimeline: items voided after they were sent (fbc-peak 00125)", ()
   it("an item cancelled alone says so, and names no approver", () => {
     const alone = { ...spilled, approvedByName: "", alone: true };
     const timeline = orderTimeline({ order: order({ status: "SENT", items: [tusker], voids: [alone] }), tickets: [], currency: "TZS" });
-    expect(timeline).toContainEqual({ time: clockTime(voidedAt), words: "1 × Tusker cancelled: Spilled · Cancelled alone by Baraka Mushi" });
+    expect(timeline).toContainEqual({ time: clockTime(voidedAt), words: "1 × Tusker: Spilled · cancelled alone by Baraka Mushi" });
   });
 
   it("an order cancelled alone reads as cancelled by its person, never as closed by Yetu or emptied", () => {
     const whole = { ...spilled, quantity: 2, reason: "Wrong table", wholeOrder: true, approvedByName: "", alone: true };
     const cancelled = order({ status: "VOIDED", closedAt: voidedAt, items: [{ ...tusker, status: "VOIDED", removedAt: voidedAt }], voids: [whole] });
     const words = orderTimeline({ order: cancelled, tickets: [], currency: "TZS" }).map((entry) => entry.words);
-    expect(words).toContain("Cancelled: Wrong table · Cancelled alone by Baraka Mushi");
+    expect(words).toContain("Wrong table · cancelled alone by Baraka Mushi");
     expect(words.join(" ")).not.toContain("Closed automatically");
     expect(orderStateWords(cancelled).words).not.toBe("Nothing on it");
   });

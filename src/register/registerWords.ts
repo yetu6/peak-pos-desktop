@@ -6,7 +6,7 @@
  * about the action come from the till's own (otherWords).
  */
 import { describePosError } from "../lib/posErrors";
-import { otherWords, problemOf, READ_AFTER_RECORD_FAILED, UNREACHABLE } from "../lib/problemWords";
+import { billPrintedWords, otherWords, problemOf, READ_AFTER_RECORD_FAILED, UNREACHABLE } from "../lib/problemWords";
 import { stationWords } from "../kitchen/kitchenWords";
 
 export interface RegisterProblem {
@@ -201,6 +201,10 @@ export function sellProblem(error: unknown, step: keyof typeof SELL_STEPS): Regi
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
   if (problem.code === "FORBIDDEN") {
     return { kind: "permission", words: `Only staff who take orders can ${SELL_STEPS[step]}. Ask one to help.` };
+  }
+  // fbc-peak 00161: Yetu's own words; no approver step here, so they say what to do instead.
+  if (problem.code === "POS_CANCEL_NEEDS_APPROVER" && (step === "remove" || step === "quantity")) {
+    return { kind: "other", words: billPrintedWords(problem.detail) };
   }
   const words = SELL_REFUSALS[step][problem.code ?? ""];
   if (words) return { kind: "other", words };

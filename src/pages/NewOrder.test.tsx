@@ -428,6 +428,30 @@ describe("NewOrder", () => {
     expect(await ticket().findByText("This item can't be changed now. If it hasn't gone to the kitchen, remove it and add it again.")).toBeInTheDocument();
   });
 
+  const BILL_WORDS = "This item is on the bill the guest has, so it comes off only with an approver: send it and cancel it with one, or cancel the whole order with one.";
+  const needsApprover = { data: undefined, error: { status: 409, code: "POS_CANCEL_NEEDS_APPROVER", title: "Needs an approver", detail: BILL_WORDS } } as never;
+
+  it("Remove on a line of a printed bill shows the server's words and keeps the ticket as it was", async () => {
+    removeItemSpy.mockResolvedValueOnce(needsApprover);
+    await userEvent.click(await startOrder());
+    await userEvent.click(ticket().getByRole("button", { name: "Remove" }));
+    expect(await screen.findByText(BILL_WORDS)).toBeInTheDocument();
+    // The line is still there and can be tapped again.
+    expect(ticket().getByRole("button", { name: /^1 × Nyama Choma/ })).toBeInTheDocument();
+    expect(screen.queryByText("The item wasn't removed. Try again.")).toBeNull();
+  });
+
+  it("One fewer on a line of a printed bill shows the server's words and keeps the quantity", async () => {
+    setItemQuantitySpy.mockResolvedValueOnce({ data: { ...OPEN_ORDER, version: 3, items: [{ ...OPEN_ORDER.items[0], quantity: 2 }] }, error: null });
+    await userEvent.click(await startOrder());
+    await userEvent.click(ticket().getByRole("button", { name: "One more Nyama Choma" }));
+    await waitFor(() => expect(ticket().getByRole("button", { name: "One fewer Nyama Choma" })).toBeEnabled());
+    setItemQuantitySpy.mockResolvedValueOnce(needsApprover);
+    await userEvent.click(ticket().getByRole("button", { name: "One fewer Nyama Choma" }));
+    expect(await screen.findByText(BILL_WORDS)).toBeInTheDocument();
+    expect(ticket().getByRole("button", { name: "One fewer Nyama Choma" })).toBeInTheDocument();
+  });
+
   it("Remove takes an unsent line off the order", async () => {
     await userEvent.click(await startOrder());
     await userEvent.click(ticket().getByRole("button", { name: "Remove" }));

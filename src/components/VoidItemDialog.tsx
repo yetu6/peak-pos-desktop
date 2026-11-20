@@ -174,7 +174,7 @@ export function VoidItemDialog({
         />
         {alone ? (
           <p className="y-field__hint" data-testid="void-item-alone">
-            It's your own order and the bill hasn't been printed, so no approver is needed.
+            It's your own order, so no approver is needed.
           </p>
         ) : (
         <SupervisorApproval

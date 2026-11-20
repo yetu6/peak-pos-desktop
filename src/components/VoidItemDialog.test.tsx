@@ -17,7 +17,8 @@ function render(ui: ReactElement) {
   return renderInDom(ui, { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
 }
 
-const { voidItemMutate, voidState, printAfter, answered } = vi.hoisted(() => ({
+const { voidItemMutate, voidState, printAfter, answered, keyCount } = vi.hoisted(() => ({
+  keyCount: { n: 0 },
   answered: { order: null as unknown },
   voidItemMutate: vi.fn(),
   voidState: { error: null as unknown, isPending: false },
@@ -27,7 +28,7 @@ const { voidItemMutate, voidState, printAfter, answered } = vi.hoisted(() => ({
 vi.mock("../hooks/usePosData", () => ({
   useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
   useVoidItem: () => ({ mutate: voidItemMutate, reset: vi.fn(), ...voidState }),
-  useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
+  useIdempotencyKey: () => ({ current: "key-1", next: () => `key-${++keyCount.n}` }),
   usePropertyId: () => "prop-1",
   usePrintAfter: () => printAfter,
 }));
@@ -276,5 +277,10 @@ describe("VoidItemDialog: cancelling your own order alone (fbc-peak 00161)", () 
       expect.objectContaining({ quantity: 2, reason: "Spilled", supervisorStaffId: "staff-neema", supervisorPin: "123456" }),
       expect.anything(),
     );
+    // The send with an approver is a new request: never the key the refused alone cancel used.
+    const keys = voidItemMutate.mock.calls.slice(-2).map((c) => (c[0] as { idempotencyKey: string }).idempotencyKey);
+    const [first, last] = keys;
+    expect(first).toBeTruthy();
+    expect(last).not.toBe(first);
   });
 });

@@ -7,7 +7,7 @@
 import { stationWords } from "../kitchen/kitchenWords";
 import { formatMoney, majorDigits } from "../lib/money";
 import type { POSOrder, POSOrderPayment, POSOrderVoid, POSStationTicket } from "../lib/posContracts";
-import { otherWords, problemOf, stepRefusal, UNREACHABLE } from "../lib/problemWords";
+import { billPrintedWords, otherWords, problemOf, stepRefusal, UNREACHABLE } from "../lib/problemWords";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, ticketStepWords, type Tone } from "../lib/words";
 import { orderName, orderReference } from "../lib/orderNumber";
 import { vatFigures } from "../lib/vatWords";
@@ -143,14 +143,14 @@ export function orderTimeline({
     const approved = order.voidApprovedByName?.trim();
     const whole = (order.voids ?? []).find((v) => v.wholeOrder);
     const asked = whole?.askedByName.trim();
-    const who = whole?.alone ? aloneWho(asked ?? "") : asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
+    const who = asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
     // Closed automatically (no supervisor of its own): "every item was cancelled" only
     // when every line went by a void; lines also taken off before they were
     // sent make it "nothing was left on it" (review 2026-10-21).
     const voidedLines = new Set(itemVoids.map((v) => v.itemId));
     const allByVoid = (order.items ?? []).length > 0 && (order.items ?? []).every((line) => voidedLines.has(line.id));
     const words = whole?.alone
-      ? `${orderStatusWords("VOIDED")}${whole.reason.trim() ? `: ${whole.reason.trim()}` : ""}${who}`
+      ? aloneLine("", whole.reason.trim(), asked ?? "")
       : emptiedOrder(order)
       ? "Closed automatically: nothing was left on it"
       : !approved && itemVoids.length > 0
@@ -244,6 +244,7 @@ export function quantityProblem(error: unknown): OrderProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  if (problem.code === "POS_CANCEL_NEEDS_APPROVER") return { kind: "other", words: billPrintedWords(problem.detail) };
   if (problem.code === "INVALID_STATE") return { kind: "paid", words: "This order has taken payment, so its items can't be changed." };
   // It went to the kitchen meanwhile (sent on another till): reloaded, so the screen shows it as Yetu has it.
   if (problem.code === "ITEM_NOT_CHANGEABLE") {
@@ -260,6 +261,7 @@ export function removeProblem(error: unknown): OrderProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  if (problem.code === "POS_CANCEL_NEEDS_APPROVER") return { kind: "other", words: billPrintedWords(problem.detail) };
   // ErrOrderHasPayment: INVALID_STATE (migration 00090 refuses it in the database too).
   if (problem.code === "INVALID_STATE") return { kind: "paid", words: "This order has taken payment, so its items can't be removed." };
   // It went to the kitchen meanwhile (sent on another till): reloaded, so the screen shows it as Yetu has it.
@@ -274,14 +276,22 @@ export function removeProblem(error: unknown): OrderProblem | null {
 
 /** A cancel done alone (fbc-peak 00161), in the order's history: no approver to name. */
 function aloneWho(askedBy: string): string {
-  return askedBy ? ` · Cancelled alone by ${askedBy}` : " · Cancelled alone";
+  return askedBy ? `cancelled alone by ${askedBy}` : "cancelled alone";
+}
+
+/** "<reason> · cancelled alone by X": the line already says it was cancelled, so no second "Cancelled". */
+function aloneLine(lead: string, reason: string, askedBy: string): string {
+  const who = aloneWho(askedBy);
+  const head = reason ? `${lead ? `${lead}: ` : ""}${reason}` : lead;
+  return head ? `${head} · ${who}` : `${who[0].toUpperCase()}${who.slice(1)}`;
 }
 
 /** One item cancelled in the order's history: "1 × Soda cancelled: Spilled · asked by Baraka Mushi, approved by Neema Kweka". */
 export function itemVoidWords(v: Pick<POSOrderVoid, "quantity" | "name" | "reason" | "askedByName" | "approvedByName" | "alone">): string {
   const asked = v.askedByName.trim();
   const approved = v.approvedByName.trim();
-  const who = v.alone ? aloneWho(asked) : asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
+  if (v.alone) return aloneLine(`${v.quantity} × ${v.name}`, v.reason.trim(), asked);
+  const who = asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
   return `${v.quantity} × ${v.name} cancelled${v.reason.trim() ? `: ${v.reason.trim()}` : ""}${who}`;
 }
 

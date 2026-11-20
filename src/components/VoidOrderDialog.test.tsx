@@ -24,7 +24,8 @@ function render(ui: ReactElement) {
   return renderInDom(ui, { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
 }
 
-const { voidOrderMutate, sessionRef, voidState, voidReset, printAfter } = vi.hoisted(() => ({
+const { voidOrderMutate, sessionRef, voidState, voidReset, printAfter, keyCount } = vi.hoisted(() => ({
+  keyCount: { n: 0 },
   voidReset: vi.fn(),
   // fbc-peak 00125: what Yetu made for the order prints after the void (the kitchen's slips).
   printAfter: vi.fn(async (_orderId: string) => [{ ok: true }] as Array<{ ok: boolean; error?: string }>),
@@ -38,7 +39,7 @@ const { voidOrderMutate, sessionRef, voidState, voidReset, printAfter } = vi.hoi
 vi.mock("../hooks/usePosData", () => ({
   useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
   useVoidOrder: () => ({ mutate: voidOrderMutate, reset: voidReset, ...voidState }),
-  useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
+  useIdempotencyKey: () => ({ current: "key-1", next: () => `key-${++keyCount.n}` }),
   usePropertyId: () => "prop-1",
   usePrintAfter: () => printAfter,
 }));
@@ -355,5 +356,10 @@ describe("VoidOrderDialog: cancelling your own order alone (fbc-peak 00161)", ()
       expect.objectContaining({ reason: "Wrong table", supervisorStaffId: "staff-grace", supervisorPin: "123456" }),
       expect.anything(),
     );
+    // The send with an approver is a new request: never the key the refused alone cancel used.
+    const keys = voidOrderMutate.mock.calls.slice(-2).map((c) => (c[0] as { idempotencyKey: string }).idempotencyKey);
+    const [first, last] = keys;
+    expect(first).toBeTruthy();
+    expect(last).not.toBe(first);
   });
 });
