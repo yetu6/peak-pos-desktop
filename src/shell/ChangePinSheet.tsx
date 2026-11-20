@@ -155,7 +155,7 @@ export function ChangePinSheet({
           {TITLE[step]}
         </h3>
         {step === "choose" ? (
-          <p className="y-pin__hint" data-testid="change-pin-no-bank-pin">
+          <p className="y-field__hint" data-testid="change-pin-no-bank-pin">
             {NO_BANK_PIN_WORDS}
           </p>
         ) : null}
