@@ -329,7 +329,7 @@ impl LocalStore {
                 .execute(
                     "INSERT INTO sign_in_kit_attempts(staff_id,copy_version,attempts,locked_until_ms) VALUES (?1,?2,?3,?4)
                          ON CONFLICT(staff_id,copy_version) DO UPDATE SET attempts=excluded.attempts,locked_until_ms=excluded.locked_until_ms",
-                        params![staff_id, copy_version, attempts, None]
+                        params![staff_id, copy_version, attempts, None::<i64>]
                 )
                 .map_err(classify_sql_error)?;
             transaction.commit().map_err(classify_sql_error)?;
