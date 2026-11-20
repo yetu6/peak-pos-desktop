@@ -30,6 +30,7 @@ describe("the sign-in kit boundary", () => {
     await expect(store.install({ signedKit: "k", signature: "s", keyId: "id" })).resolves.toEqual({
       terminalId: "t-1",
       issuedAtMs: 5,
+      expiresAtMs: 99,
       staffCount: 2,
     });
     await expect(store.verify("staff-1", "0000")).resolves.toEqual({ kind: "wrong", attemptsLeft: 4 });
