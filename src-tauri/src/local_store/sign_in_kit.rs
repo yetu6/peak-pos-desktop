@@ -1,3 +1,414 @@
+//! The sign-in kit: everyone on this till's PIN screen with a till copy of their
+//! PIN, signed by the server, kept in the encrypted store. A PIN is checked here
+//! in hundredths of a second; the server still makes the real session and can
+//! refuse it afterwards (the caller's job).
+//!
+//! The kit is signed over `KIT_DOMAIN || payload bytes` with the offline Ed25519
+//! signer, and checked against the same trust keyset as authorizations and
+//! catalogs.
+
+use std::collections::HashMap;
+
+use argon2::{
+    password_hash::{phc::PasswordHash, PasswordVerifier},
+    Argon2,
+};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use rusqlite::{params, OptionalExtension, TransactionBehavior};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use zeroize::Zeroizing;
+
+use super::authority::{decode_b64, decode_fixed, valid_argon2id};
+use super::{classify_sql_error, LocalStore, LocalStoreError};
+
+const KIT_DOMAIN: &[u8] = b"peak-pos-sign-in-kit-v1\0";
+const MAX_KIT_STAFF: usize = 1000;
+/// Doubling stops growing after this many doublings (as offline_pin.rs caps it).
+const MAX_DOUBLINGS: i64 = 16;
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KitPayload {
+    terminal_id: String,
+    issued_at_ms: i64,
+    staff: Vec<KitStaff>,
+    terminal: KitTerminal,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KitStaff {
+    staff_id: String,
+    display_name: String,
+    #[serde(default)]
+    needs_setup: bool,
+    till_copy_phc: Option<String>,
+    copy_version: Option<String>,
+    locked_until_ms: Option<i64>,
+    max_attempts: i64,
+    base_lockout_ms: i64,
+    role_code: String,
+    #[serde(default)]
+    permissions: Vec<String>,
+}
+
+/// What the till needs to know about itself once someone is in.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KitTerminal {
+    pub mode: String,
+    #[serde(default)]
+    pub prep_stations: Value,
+    pub property_name: String,
+    pub outlet_name: String,
+    pub terminal_name: String,
+    #[serde(default)]
+    pub capabilities: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignInStaff {
+    pub staff_id: String,
+    pub display_name: String,
+    pub role_code: String,
+    pub permissions: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KitSummary {
+    pub terminal_id: String,
+    pub issued_at_ms: i64,
+    pub staff_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(
+    tag = "state",
+    rename_all = "SCREAMING_SNAKE_CASE",
+    rename_all_fields = "camelCase"
+)]
+pub enum SignInCheck {
+    Ok {
+        staff: SignInStaff,
+        terminal: KitTerminal,
+    },
+    Wrong {
+        attempts_left: i64,
+    },
+    Locked {
+        until_ms: i64,
+    },
+    NoCopy,
+    Unknown,
+}
+
+impl LocalStore {
+    /// Verifies and installs a signed kit, replacing the whole kit at once.
+    /// Refused: a bad signature, an untrusted key, a kit for another terminal,
+    /// a copy that is not the agreed Argon2id form, or a kit older than the one
+    /// held. Whatever is refused leaves the old kit exactly as it was.
+    pub fn install_sign_in_kit(
+        &mut self,
+        signed_kit: &str,
+        signature: &str,
+        key_id: &str,
+        now_ms: i64,
+    ) -> Result<KitSummary, LocalStoreError> {
+        let invalid = LocalStoreError::InvalidAuthorization;
+        let payload_bytes = Zeroizing::new(decode_b64(signed_kit)?);
+        let signature = Signature::from_slice(&decode_fixed::<64>(signature)?)
+            .map_err(|_| LocalStoreError::InvalidAuthorization)?;
+        let payload: KitPayload =
+            serde_json::from_slice(&payload_bytes).map_err(|_| LocalStoreError::InvalidAuthorization)?;
+        validate_kit(&payload)?;
+
+        let (terminal_id, trust_key_id, trust_public_key, lifecycle): (String, String, Vec<u8>, String) = self
+            .connection
+            .query_row(
+                "SELECT terminal_id,trust_key_id,trust_public_key,lifecycle_state
+                 FROM terminal_authority WHERE is_current=1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(classify_sql_error)?
+            .ok_or(LocalStoreError::AuthorizationRequired)?;
+        if lifecycle != "PAIRED" || payload.terminal_id != terminal_id {
+            return Err(invalid);
+        }
+
+        let trusted: Option<(Vec<u8>, String, i64, i64)> = self
+            .connection
+            .query_row(
+                "SELECT public_key,state,not_before_ms,not_after_ms FROM trusted_signing_keys WHERE kid=?1",
+                [key_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(classify_sql_error)?;
+        let has_keyset: bool = self
+            .connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM trusted_signing_keys)",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(classify_sql_error)?;
+        let key_bytes = match trusted {
+            Some((key, state, not_before, not_after))
+                if state != "REVOKED"
+                    && payload.issued_at_ms >= not_before
+                    && payload.issued_at_ms < not_after
+                    && now_ms >= not_before
+                    && now_ms < not_after =>
+            {
+                key
+            }
+            Some(_) => return Err(invalid),
+            None if !has_keyset && key_id == trust_key_id => trust_public_key,
+            None => return Err(invalid),
+        };
+        let public_key: [u8; 32] = key_bytes
+            .try_into()
+            .map_err(|_| LocalStoreError::InvalidAuthorization)?;
+        let verifying_key = VerifyingKey::from_bytes(&public_key)
+            .map_err(|_| LocalStoreError::InvalidAuthorization)?;
+        let mut message = Vec::with_capacity(KIT_DOMAIN.len() + payload_bytes.len());
+        message.extend_from_slice(KIT_DOMAIN);
+        message.extend_from_slice(&payload_bytes);
+        verifying_key
+            .verify(&message, &signature)
+            .map_err(|_| LocalStoreError::InvalidAuthorization)?;
+
+        let terminal_json = serde_json::to_string(&payload.terminal)
+            .map_err(|_| LocalStoreError::InvalidAuthorization)?;
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(classify_sql_error)?;
+        let held: Option<i64> = transaction
+            .query_row("SELECT issued_at_ms FROM sign_in_kit WHERE singleton_id=1", [], |row| row.get(0))
+            .optional()
+            .map_err(classify_sql_error)?;
+        if held.is_some_and(|held| payload.issued_at_ms < held) {
+            return Err(invalid);
+        }
+        // A count of wrong PINs follows the same copy into the new kit, so a
+        // refresh is not a way to get fresh tries. A new PIN is a new copy.
+        let mut carried: HashMap<String, (String, i64, Option<i64>)> = HashMap::new();
+        {
+            let mut statement = transaction
+                .prepare("SELECT staff_id,till_copy_phc,attempts,locked_until_ms FROM sign_in_kit_staff WHERE till_copy_phc IS NOT NULL")
+                .map_err(classify_sql_error)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, (row.get::<_, String>(1)?, row.get::<_, i64>(2)?, row.get::<_, Option<i64>>(3)?)))
+                })
+                .map_err(classify_sql_error)?;
+            for row in rows {
+                let (id, value) = row.map_err(classify_sql_error)?;
+                carried.insert(id, value);
+            }
+        }
+        transaction.execute("DELETE FROM sign_in_kit_staff", []).map_err(classify_sql_error)?;
+        transaction.execute("DELETE FROM sign_in_kit", []).map_err(classify_sql_error)?;
+        transaction
+            .execute(
+                "INSERT INTO sign_in_kit(singleton_id,terminal_id,issued_at_ms,key_id,terminal_json,installed_at_ms)
+                 VALUES (1,?1,?2,?3,?4,?5)",
+                params![payload.terminal_id, payload.issued_at_ms, key_id, terminal_json, now_ms],
+            )
+            .map_err(classify_sql_error)?;
+        for person in &payload.staff {
+            let (attempts, locked_until) = match (&person.till_copy_phc, carried.get(&person.staff_id)) {
+                (Some(phc), Some((old_phc, attempts, locked))) if phc == old_phc => (*attempts, *locked),
+                _ => (0, None),
+            };
+            transaction
+                .execute(
+                    "INSERT INTO sign_in_kit_staff(staff_id,display_name,role_code,permissions_json,needs_setup,
+                        till_copy_phc,copy_version,server_locked_until_ms,max_attempts,base_lockout_ms,attempts,locked_until_ms)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+                    params![
+                        person.staff_id,
+                        person.display_name,
+                        person.role_code,
+                        serde_json::to_string(&person.permissions).map_err(|_| LocalStoreError::InvalidAuthorization)?,
+                        i64::from(person.needs_setup),
+                        person.till_copy_phc,
+                        person.copy_version,
+                        person.locked_until_ms,
+                        person.max_attempts,
+                        person.base_lockout_ms,
+                        attempts,
+                        locked_until,
+                    ],
+                )
+                .map_err(classify_sql_error)?;
+        }
+        transaction.commit().map_err(classify_sql_error)?;
+        Ok(KitSummary {
+            terminal_id: payload.terminal_id,
+            issued_at_ms: payload.issued_at_ms,
+            staff_count: payload.staff.len(),
+        })
+    }
+
+    /// Checks a PIN against the kit. Wrong PINs are counted with the kit's own
+    /// `maxAttempts`; the one that reaches it locks for `baseLockoutMs`, and
+    /// each wrong PIN after that doubles the wait. A lock the server set
+    /// (`lockedUntilMs`) also counts as locked.
+    pub fn verify_sign_in_pin(
+        &mut self,
+        staff_id: &str,
+        pin: String,
+        now_ms: i64,
+    ) -> Result<SignInCheck, LocalStoreError> {
+        let pin = Zeroizing::new(pin);
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(classify_sql_error)?;
+        let kit: Option<(String, String)> = transaction
+            .query_row(
+                "SELECT terminal_id,terminal_json FROM sign_in_kit WHERE singleton_id=1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(classify_sql_error)?;
+        let Some((kit_terminal, terminal_json)) = kit else {
+            return Ok(SignInCheck::Unknown);
+        };
+        // A till that is no longer this terminal's, or has been revoked, checks nobody.
+        let still_paired: bool = transaction
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM terminal_authority
+                 WHERE is_current=1 AND terminal_id=?1 AND lifecycle_state='PAIRED')",
+                [&kit_terminal],
+                |row| row.get(0),
+            )
+            .map_err(classify_sql_error)?;
+        if !still_paired {
+            return Ok(SignInCheck::Unknown);
+        }
+        type Row = (String, String, String, bool, Option<String>, Option<i64>, i64, i64, i64, Option<i64>);
+        let person: Option<Row> = transaction
+            .query_row(
+                "SELECT display_name,role_code,permissions_json,needs_setup,till_copy_phc,server_locked_until_ms,
+                        max_attempts,base_lockout_ms,attempts,locked_until_ms
+                 FROM sign_in_kit_staff WHERE staff_id=?1",
+                [staff_id],
+                |row| {
+                    Ok((
+                        row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?,
+                        row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(classify_sql_error)?;
+        let Some((display_name, role_code, permissions_json, needs_setup, phc, server_locked, max_attempts, base_lockout, attempts, locked_until)) = person else {
+            return Ok(SignInCheck::Unknown);
+        };
+        let Some(phc) = phc.filter(|_| !needs_setup) else {
+            return Ok(SignInCheck::NoCopy);
+        };
+        if let Some(until) = server_locked.filter(|until| now_ms < *until) {
+            return Ok(SignInCheck::Locked { until_ms: until });
+        }
+        if let Some(until) = locked_until.filter(|until| now_ms < *until) {
+            return Ok(SignInCheck::Locked { until_ms: until });
+        }
+
+        let parsed = PasswordHash::new(&phc).map_err(|_| LocalStoreError::InvalidAuthorization)?;
+        let correct = Argon2::default()
+            .verify_password(pin.as_bytes(), &parsed)
+            .is_ok();
+        if !correct {
+            let attempts = attempts.saturating_add(1);
+            if attempts >= max_attempts {
+                let doublings = (attempts - max_attempts).min(MAX_DOUBLINGS);
+                let until = now_ms.saturating_add(base_lockout.saturating_mul(2_i64.saturating_pow(u32::try_from(doublings).unwrap_or(16))));
+                transaction
+                    .execute(
+                        "UPDATE sign_in_kit_staff SET attempts=?1,locked_until_ms=?2 WHERE staff_id=?3",
+                        params![attempts, until, staff_id],
+                    )
+                    .map_err(classify_sql_error)?;
+                transaction.commit().map_err(classify_sql_error)?;
+                return Ok(SignInCheck::Locked { until_ms: until });
+            }
+            transaction
+                .execute(
+                    "UPDATE sign_in_kit_staff SET attempts=?1,locked_until_ms=NULL WHERE staff_id=?2",
+                    params![attempts, staff_id],
+                )
+                .map_err(classify_sql_error)?;
+            transaction.commit().map_err(classify_sql_error)?;
+            return Ok(SignInCheck::Wrong { attempts_left: max_attempts - attempts });
+        }
+        if attempts != 0 || locked_until.is_some() {
+            transaction
+                .execute(
+                    "UPDATE sign_in_kit_staff SET attempts=0,locked_until_ms=NULL WHERE staff_id=?1",
+                    [staff_id],
+                )
+                .map_err(classify_sql_error)?;
+        }
+        transaction.commit().map_err(classify_sql_error)?;
+        Ok(SignInCheck::Ok {
+            staff: SignInStaff {
+                staff_id: staff_id.to_string(),
+                display_name,
+                role_code,
+                permissions: serde_json::from_str(&permissions_json)
+                    .map_err(|_| LocalStoreError::InvalidAuthorization)?,
+            },
+            terminal: serde_json::from_str(&terminal_json)
+                .map_err(|_| LocalStoreError::InvalidAuthorization)?,
+        })
+    }
+
+    /// Forgets the kit: every later check is Unknown. Used when the server says
+    /// this till is no longer paired.
+    pub fn clear_sign_in_kit(&mut self) -> Result<(), LocalStoreError> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(classify_sql_error)?;
+        transaction.execute("DELETE FROM sign_in_kit_staff", []).map_err(classify_sql_error)?;
+        transaction.execute("DELETE FROM sign_in_kit", []).map_err(classify_sql_error)?;
+        transaction.commit().map_err(classify_sql_error)
+    }
+}
+
+fn validate_kit(payload: &KitPayload) -> Result<(), LocalStoreError> {
+    let reject = LocalStoreError::InvalidAuthorization;
+    if payload.terminal_id.trim().is_empty()
+        || payload.issued_at_ms <= 0
+        || payload.staff.len() > MAX_KIT_STAFF
+    {
+        return Err(reject);
+    }
+    let mut seen = std::collections::HashSet::new();
+    for person in &payload.staff {
+        if person.staff_id.trim().is_empty()
+            || person.display_name.trim().is_empty()
+            || person.max_attempts <= 0
+            || person.base_lockout_ms <= 0
+            || !seen.insert(person.staff_id.as_str())
+            || person.till_copy_phc.as_deref().is_some_and(|phc| !valid_argon2id(phc))
+        {
+            return Err(LocalStoreError::InvalidAuthorization);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;

@@ -693,7 +693,7 @@ fn validate_payload(payload: &AuthorizationPayload) -> Result<(), LocalStoreErro
     Ok(())
 }
 
-fn valid_argon2id(phc: &str) -> bool {
+pub(super) fn valid_argon2id(phc: &str) -> bool {
     let Ok(hash) = PasswordHash::new(phc) else {
         return false;
     };
@@ -709,7 +709,7 @@ fn valid_argon2id(phc: &str) -> bool {
         && lanes.is_some_and(|p| (1..=ARGON2_MAX_LANES).contains(&p))
 }
 
-fn decode_b64(value: &str) -> Result<Vec<u8>, LocalStoreError> {
+pub(super) fn decode_b64(value: &str) -> Result<Vec<u8>, LocalStoreError> {
     STANDARD_NO_PAD
         .decode(value)
         .or_else(|_| STANDARD.decode(value))
@@ -717,7 +717,7 @@ fn decode_b64(value: &str) -> Result<Vec<u8>, LocalStoreError> {
         .map_err(|_| LocalStoreError::InvalidAuthorization)
 }
 
-fn decode_fixed<const N: usize>(value: &str) -> Result<[u8; N], LocalStoreError> {
+pub(super) fn decode_fixed<const N: usize>(value: &str) -> Result<[u8; N], LocalStoreError> {
     decode_b64(value)?
         .try_into()
         .map_err(|_| LocalStoreError::InvalidAuthorization)

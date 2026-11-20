@@ -254,6 +254,34 @@ pub fn authenticate_offline_staff(
 }
 
 #[tauri::command]
+pub fn install_sign_in_kit(
+    runtime: State<'_, LocalStoreRuntime>,
+    signed_kit: String,
+    signature: String,
+    key_id: String,
+) -> Result<super::KitSummary, LocalStoreErrorKind> {
+    runtime.with_store(|store| {
+        store.install_sign_in_kit(&signed_kit, &signature, &key_id, now_ms())
+    })
+}
+
+#[tauri::command]
+pub fn verify_sign_in_pin(
+    runtime: State<'_, LocalStoreRuntime>,
+    staff_id: String,
+    pin: String,
+) -> Result<super::SignInCheck, LocalStoreErrorKind> {
+    runtime.with_store(|store| store.verify_sign_in_pin(&staff_id, pin, now_ms()))
+}
+
+#[tauri::command]
+pub fn clear_sign_in_kit(
+    runtime: State<'_, LocalStoreRuntime>,
+) -> Result<(), LocalStoreErrorKind> {
+    runtime.with_store(|store| store.clear_sign_in_kit())
+}
+
+#[tauri::command]
 pub fn get_offline_staff_roster(
     runtime: State<'_, LocalStoreRuntime>,
 ) -> Result<Vec<super::OfflineStaffRosterEntry>, LocalStoreErrorKind> {
