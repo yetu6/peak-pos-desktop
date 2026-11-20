@@ -177,6 +177,7 @@ describe("a new person at the till", () => {
     // Yetu says the code is right: now their own PIN, twice.
     await eventually(() => expect(heading()).toHaveTextContent("Choose your own six-digit PIN"));
     expect(yetu.signIns).toEqual([{ pin: "246810", newPin: undefined, status: 409 }]);
+    expect(screen.getByTestId("pin-no-bank-pin")).toHaveTextContent("Don't use your M-Pesa or bank PIN.");
     await tapDigits("583920");
     expect(heading()).toHaveTextContent("Type it again");
     await tapDigits("583921");

@@ -170,6 +170,9 @@ export function accessNotice(message: string | null | undefined): AccessNotice |
  * rules and never count toward it. A new person types the setup code their
  * manager gave them, so a refusal then speaks of that code.
  */
+/** Said wherever a person chooses a new PIN: the till keeps a copy of it so sign-in works without internet (owner, 2026-11-21). */
+export const NO_BANK_PIN_WORDS = "Don't use your M-Pesa or bank PIN.";
+
 export function pinNotice(
   message: string | null | undefined,
   { failures, manual, setup = false }: { failures: number; manual: boolean; setup?: boolean },

@@ -410,6 +410,7 @@ describe("Forgot your PIN", () => {
     await forgot();
     expect(screen.getByRole("heading", { name: "Amina, choose your own six-digit PIN" })).toBeInTheDocument();
     expect(screen.getByText("Then type it again. The owner and General Manager will be told.")).toBeInTheDocument();
+    expect(screen.getByTestId("pin-no-bank-pin")).toHaveTextContent("Don't use your M-Pesa or bank PIN.");
     await typePin("204815");
     expect(screen.getByRole("heading", { name: "Type it again" })).toBeInTheDocument();
     expect(resetPin).not.toHaveBeenCalled();
