@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNetworkOnline } from "../access/useNetworkOnline";
 import { useSupervisors } from "../approvals/supervisors";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
@@ -46,6 +47,7 @@ export function VoidItemDialog({
   const device = useDeviceSessionOptional();
   const { supervisors, emptyWords } = useSupervisors("VOID");
   const requesterId = device?.session?.staffId ?? "";
+  const online = useNetworkOnline();
   const voidItem = useVoidItem();
   const printAfter = usePrintAfter(usePropertyId());
   const reasons = useTillReasons("void");
@@ -54,6 +56,11 @@ export function VoidItemDialog({
   const [reason, setReason] = useState("");
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
   const [pin, setPin] = useState("");
+  // Yetu refused an alone cancel (the bill was printed on another till, say): from here on an approver is asked.
+  const [needsApprover, setNeedsApprover] = useState(false);
+  // The hint only skips a step, and only for the person signed in NOW (the till keeps orders across Switch person);
+  // Yetu decides, and says so when it disagrees. Never offline: it would only be refused.
+  const alone = !needsApprover && online && requesterId !== "" && order.cancelAloneBy === requesterId;
   // An approval is for the order as it was: when it changes (a new version) the supervisor is asked again.
   const [approvedVersion, setApprovedVersion] = useState(order.version);
   if (order.version !== approvedVersion) {
@@ -66,7 +73,8 @@ export function VoidItemDialog({
   const problem = voidItemProblem(voidItem.error);
   useHoldIdleLock(voidItem.isPending);
   const waiting = useRateLimitWait(voidItem.error, voidItem.reset);
-  const ready = reason.trim().length > 0 && supervisorId !== null && pin.length === PIN_LENGTH && !voidItem.isPending && !waiting;
+  const approved = alone || (supervisorId !== null && pin.length === PIN_LENGTH);
+  const ready = reason.trim().length > 0 && approved && !voidItem.isPending && !waiting;
   const all = quantity === line.quantity;
   const what = `${quantity} × ${line.name}`;
 
@@ -82,15 +90,15 @@ export function VoidItemDialog({
   }
 
   function submit() {
-    if (!ready || supervisorId === null) return;
+    if (!ready) return;
     voidItem.mutate(
       {
         orderId: order.id,
         itemId: line.id,
         quantity,
         reason: reason.trim(),
-        supervisorStaffId: supervisorId,
-        supervisorPin: pin,
+        // Alone: no supervisor fields at all.
+        ...(alone || supervisorId === null ? {} : { supervisorStaffId: supervisorId, supervisorPin: pin }),
         version: order.version,
         idempotencyKey: idempotencyKey.next(),
       },
@@ -107,7 +115,10 @@ export function VoidItemDialog({
         // A refused PIN counts toward the supervisor's lockout: never send it again.
         onError: (error) => {
           setPin("");
-          if (voidItemProblem(error)?.kind === "stale") onStale?.();
+          const kind = voidItemProblem(error)?.kind;
+          if (kind === "stale") onStale?.();
+          // Keep the reason and how many; the approver step comes next.
+          if (kind === "needs-approver") setNeedsApprover(true);
         },
       },
     );
@@ -161,6 +172,11 @@ export function VoidItemDialog({
           otherHint="Written in the order's history."
           testIdPrefix="void-item-reason"
         />
+        {alone ? (
+          <p className="y-field__hint" data-testid="void-item-alone">
+            It's your own order, so no approver is needed.
+          </p>
+        ) : (
         <SupervisorApproval
           request={`Cancel ${what} on order ${orderNumberWords(order)}${all && currency ? ` (${formatMoney(line.totalMinor, currency)})` : ""}${reason.trim() ? `: ${reason.trim()}` : ""}`}
           supervisors={supervisors}
@@ -178,6 +194,7 @@ export function VoidItemDialog({
           actions="none"
           keyTestIdPrefix="void-item-pin-key"
         />
+        )}
         {problem ? <Banner inline tone="danger">{problem.words}</Banner> : null}
       </div>
     </Sheet>

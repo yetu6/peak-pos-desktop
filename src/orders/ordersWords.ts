@@ -7,7 +7,7 @@
 import { stationWords } from "../kitchen/kitchenWords";
 import { formatMoney, majorDigits } from "../lib/money";
 import type { POSOrder, POSOrderPayment, POSOrderVoid, POSStationTicket } from "../lib/posContracts";
-import { otherWords, problemOf, stepRefusal, UNREACHABLE } from "../lib/problemWords";
+import { billPrintedWords, otherWords, problemOf, stepRefusal, UNREACHABLE } from "../lib/problemWords";
 import { clockTime, orderPlaceWords, orderStatusTone, orderStatusWords, paymentMethodWords, ticketStepWords, type Tone } from "../lib/words";
 import { orderName, orderReference } from "../lib/orderNumber";
 import { vatFigures } from "../lib/vatWords";
@@ -149,7 +149,9 @@ export function orderTimeline({
     // sent make it "nothing was left on it" (review 2026-10-21).
     const voidedLines = new Set(itemVoids.map((v) => v.itemId));
     const allByVoid = (order.items ?? []).length > 0 && (order.items ?? []).every((line) => voidedLines.has(line.id));
-    const words = emptiedOrder(order)
+    const words = whole?.alone
+      ? aloneLine("", whole.reason.trim(), asked ?? "")
+      : emptiedOrder(order)
       ? "Closed automatically: nothing was left on it"
       : !approved && itemVoids.length > 0
         ? allByVoid ? "Closed automatically: every item was cancelled" : "Closed automatically: nothing was left on it"
@@ -242,6 +244,7 @@ export function quantityProblem(error: unknown): OrderProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  if (problem.code === "POS_CANCEL_NEEDS_APPROVER") return { kind: "other", words: billPrintedWords(problem.detail) };
   if (problem.code === "INVALID_STATE") return { kind: "paid", words: "This order has taken payment, so its items can't be changed." };
   // It went to the kitchen meanwhile (sent on another till): reloaded, so the screen shows it as Yetu has it.
   if (problem.code === "ITEM_NOT_CHANGEABLE") {
@@ -258,6 +261,7 @@ export function removeProblem(error: unknown): OrderProblem | null {
   const problem = problemOf(error);
   if (!problem) return null;
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
+  if (problem.code === "POS_CANCEL_NEEDS_APPROVER") return { kind: "other", words: billPrintedWords(problem.detail) };
   // ErrOrderHasPayment: INVALID_STATE (migration 00090 refuses it in the database too).
   if (problem.code === "INVALID_STATE") return { kind: "paid", words: "This order has taken payment, so its items can't be removed." };
   // It went to the kitchen meanwhile (sent on another till): reloaded, so the screen shows it as Yetu has it.
@@ -270,10 +274,23 @@ export function removeProblem(error: unknown): OrderProblem | null {
   return { kind: "other", words: otherWords(problem, "The item wasn't removed. Try again.") };
 }
 
+/** A cancel done alone (fbc-peak 00161), in the order's history: no approver to name. */
+function aloneWho(askedBy: string): string {
+  return askedBy ? `cancelled alone by ${askedBy}` : "cancelled alone";
+}
+
+/** "<reason> · cancelled alone by X": the line already says it was cancelled, so no second "Cancelled". */
+function aloneLine(lead: string, reason: string, askedBy: string): string {
+  const who = aloneWho(askedBy);
+  const head = reason ? `${lead ? `${lead}: ` : ""}${reason}` : lead;
+  return head ? `${head} · ${who}` : `${who[0].toUpperCase()}${who.slice(1)}`;
+}
+
 /** One item cancelled in the order's history: "1 × Soda cancelled: Spilled · asked by Baraka Mushi, approved by Neema Kweka". */
-export function itemVoidWords(v: Pick<POSOrderVoid, "quantity" | "name" | "reason" | "askedByName" | "approvedByName">): string {
+export function itemVoidWords(v: Pick<POSOrderVoid, "quantity" | "name" | "reason" | "askedByName" | "approvedByName" | "alone">): string {
   const asked = v.askedByName.trim();
   const approved = v.approvedByName.trim();
+  if (v.alone) return aloneLine(`${v.quantity} × ${v.name}`, v.reason.trim(), asked);
   const who = asked && approved ? ` · asked by ${asked}, approved by ${approved}` : approved ? ` · approved by ${approved}` : "";
   return `${v.quantity} × ${v.name} cancelled${v.reason.trim() ? `: ${v.reason.trim()}` : ""}${who}`;
 }
@@ -283,10 +300,12 @@ export function itemVoidWords(v: Pick<POSOrderVoid, "quantity" | "name" | "reaso
  * before it was sent: VOIDED, with no supervisor. Every line taken off too,
  * so a void from a Yetu before #286 (none named a supervisor) isn't taken for one.
  */
-export function emptiedOrder(order: Pick<POSOrder, "status" | "voidApprovedByName" | "items">): boolean {
+export function emptiedOrder(order: Pick<POSOrder, "status" | "voidApprovedByName" | "items"> & Partial<Pick<POSOrder, "voids">>): boolean {
   return (
     order.status === "VOIDED" &&
     !order.voidApprovedByName?.trim() &&
+    // Cancelled alone by whoever rang it up (fbc-peak 00161): that is a cancel, never "emptied by Yetu".
+    !(order.voids ?? []).some((v) => v.wholeOrder && v.alone) &&
     order.items.length > 0 &&
     order.items.every((line) => line.status === "VOIDED" && Boolean(line.removedAt))
   );
@@ -301,7 +320,7 @@ export const EMPTIED_WORDS = "Nothing on it";
  * closed it emptied (F-260), else its status.
  */
 export function orderStateWords(
-  order: Pick<POSOrder, "status" | "totalMinor" | "refundedMinor" | "voidApprovedByName" | "items">,
+  order: Pick<POSOrder, "status" | "totalMinor" | "refundedMinor" | "voidApprovedByName" | "items"> & Partial<Pick<POSOrder, "voids">>,
 ): { words: string; tone: Tone } {
   const refunded = order.refundedMinor ?? 0;
   if (refunded > 0) return { words: refunded >= order.totalMinor ? "Refunded" : "Partly refunded", tone: "danger" };

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNetworkOnline } from "../access/useNetworkOnline";
 import { useSupervisors } from "../approvals/supervisors";
 import { PIN_LENGTH } from "../access/accessSettings";
 import { useDeviceSessionOptional } from "../auth/DeviceSessionProvider";
@@ -44,6 +45,7 @@ export function VoidOrderDialog({
   const device = useDeviceSessionOptional();
   const { supervisors, emptyWords } = useSupervisors("VOID");
   const requesterId = device?.session?.staffId ?? "";
+  const online = useNetworkOnline();
   const voidOrder = useVoidOrder();
   const printAfter = usePrintAfter(usePropertyId());
   const reasons = useTillReasons("void");
@@ -51,6 +53,11 @@ export function VoidOrderDialog({
   const [reason, setReason] = useState("");
   const [supervisorId, setSupervisorId] = useState<string | null>(null);
   const [pin, setPin] = useState("");
+  // Yetu refused an alone cancel (the bill was printed on another till, say): from here on an approver is asked.
+  const [needsApprover, setNeedsApprover] = useState(false);
+  // The hint only skips a step, and only for the person signed in NOW (the till keeps orders across Switch person);
+  // Yetu decides, and says so when it disagrees. Never offline: it would only be refused.
+  const alone = !needsApprover && online && requesterId !== "" && order.cancelAloneBy === requesterId;
   // An approval is for the order as it was: when it changes (a new version) the supervisor is asked again.
   const [approvedVersion, setApprovedVersion] = useState(order.version);
   if (order.version !== approvedVersion) {
@@ -63,7 +70,8 @@ export function VoidOrderDialog({
   useHoldIdleLock(voidOrder.isPending);
   // After "too many attempts" the next one waits for Yetu's Retry-After.
   const waiting = useRateLimitWait(voidOrder.error, voidOrder.reset);
-  const ready = reason.trim().length > 0 && supervisorId !== null && pin.length === PIN_LENGTH && !voidOrder.isPending && !waiting;
+  const approved = alone || (supervisorId !== null && pin.length === PIN_LENGTH);
+  const ready = reason.trim().length > 0 && approved && !voidOrder.isPending && !waiting;
 
   function onPinKey(key: KeypadKey) {
     if (key === "delete") setPin((current) => current.slice(0, -1));
@@ -72,13 +80,13 @@ export function VoidOrderDialog({
   }
 
   function submit() {
-    if (!ready || supervisorId === null) return;
+    if (!ready) return;
     voidOrder.mutate(
       {
         orderId: order.id,
         reason: reason.trim(),
-        supervisorStaffId: supervisorId,
-        supervisorPin: pin,
+        // Alone: no supervisor fields at all.
+        ...(alone || supervisorId === null ? {} : { supervisorStaffId: supervisorId, supervisorPin: pin }),
         version: order.version,
         idempotencyKey: idempotencyKey.next(),
       },
@@ -98,7 +106,10 @@ export function VoidOrderDialog({
         // A refused PIN counts toward the supervisor's lockout: never send it again.
         onError: (error) => {
           setPin("");
-          if (voidProblem(error)?.kind === "stale") onStale?.();
+          const kind = voidProblem(error)?.kind;
+          if (kind === "stale") onStale?.();
+          // Keep the reason; the approver step comes next.
+          if (kind === "needs-approver") setNeedsApprover(true);
         },
       },
     );
@@ -119,7 +130,7 @@ export function VoidOrderDialog({
             Back
           </Button>
           <Button variant="danger" size={56} data-testid="confirm-void-order" disabled={!ready} onClick={submit}>
-            {voidOrder.isPending ? "Cancelling…" : "Cancel order"}
+            {voidOrder.isPending ? "Cancelling…" : alone ? "Cancel this order" : "Cancel order"}
           </Button>
         </div>
       }
@@ -136,6 +147,11 @@ export function VoidOrderDialog({
           otherHint="Written in the order's history."
           testIdPrefix="void-reason"
         />
+        {alone ? (
+          <p className="y-field__hint" data-testid="void-order-alone">
+            It's your own order, so no approver is needed.
+          </p>
+        ) : (
         <SupervisorApproval
           request={
             reason.trim()
@@ -157,6 +173,7 @@ export function VoidOrderDialog({
           actions="none"
           keyTestIdPrefix="void-pin-key"
         />
+        )}
         {problem ? <Banner inline tone="danger">{problem.words}</Banner> : null}
       </div>
     </Sheet>

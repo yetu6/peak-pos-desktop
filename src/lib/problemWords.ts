@@ -78,3 +78,11 @@ export function stepRefusal(problem: ProblemLike | "network"): StepRefusal {
       return "moved";
   }
 }
+
+/**
+ * fbc-peak 00161: an unsent item on a bill the guest already has comes off only with an approver.
+ * There is no approver step on remove or the stepper, so Yetu's own words tell the waiter what to do.
+ */
+export function billPrintedWords(detail: string | undefined): string {
+  return detail?.trim() || "This item is on the bill the guest has, so it comes off only with an approver: send it and cancel it with one, or cancel the whole order with one.";
+}

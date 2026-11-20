@@ -6,11 +6,11 @@
  * about the action come from the till's own (otherWords).
  */
 import { describePosError } from "../lib/posErrors";
-import { otherWords, problemOf, READ_AFTER_RECORD_FAILED, UNREACHABLE } from "../lib/problemWords";
+import { billPrintedWords, otherWords, problemOf, READ_AFTER_RECORD_FAILED, UNREACHABLE } from "../lib/problemWords";
 import { stationWords } from "../kitchen/kitchenWords";
 
 export interface RegisterProblem {
-  kind: "supervisor" | "no-approver" | "paid" | "stale" | "network" | "permission" | "other";
+  kind: "supervisor" | "needs-approver" | "no-approver" | "paid" | "stale" | "network" | "permission" | "other";
   words: string;
 }
 
@@ -54,6 +54,9 @@ export function voidProblem(error: unknown): RegisterProblem | null {
         kind: "supervisor",
         words: "A different supervisor must approve this. Their PIN wasn't accepted, or they can't approve cancellations.",
       };
+    // fbc-peak 00161: cancelling alone was refused (the bill was printed, or another reason); Yetu's own words, then the approver step.
+    case "POS_CANCEL_NEEDS_APPROVER":
+      return { kind: "needs-approver", words: problem.detail?.trim() || "Cancelling now needs an approver." };
     case "NO_APPROVER_SET":
       return { kind: "no-approver", words: noApproverWords("cancellations") };
     // Another till changed the order first; the screen asks Yetu for it again (onStale).
@@ -87,6 +90,9 @@ export function voidItemProblem(error: unknown): RegisterProblem | null {
         kind: "supervisor",
         words: "A different supervisor must approve this. Their PIN wasn't accepted, or they can't approve cancellations.",
       };
+    // fbc-peak 00161: cancelling alone was refused (the bill was printed, or another reason); Yetu's own words, then the approver step.
+    case "POS_CANCEL_NEEDS_APPROVER":
+      return { kind: "needs-approver", words: problem.detail?.trim() || "Cancelling now needs an approver." };
     case "NO_APPROVER_SET":
       return { kind: "no-approver", words: noApproverWords("cancellations") };
     // The order changed first, on another till: the screen reloads it.
@@ -195,6 +201,10 @@ export function sellProblem(error: unknown, step: keyof typeof SELL_STEPS): Regi
   if (problem === "network") return { kind: "network", words: UNREACHABLE };
   if (problem.code === "FORBIDDEN") {
     return { kind: "permission", words: `Only staff who take orders can ${SELL_STEPS[step]}. Ask one to help.` };
+  }
+  // fbc-peak 00161: Yetu's own words; no approver step here, so they say what to do instead.
+  if (problem.code === "POS_CANCEL_NEEDS_APPROVER" && (step === "remove" || step === "quantity")) {
+    return { kind: "other", words: billPrintedWords(problem.detail) };
   }
   const words = SELL_REFUSALS[step][problem.code ?? ""];
   if (words) return { kind: "other", words };

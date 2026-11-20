@@ -272,7 +272,7 @@ export function createPosApi() {
     voidItem(
       orderId: string,
       itemId: string,
-      body: { quantity: number; reason: string; supervisorStaffId: string; supervisorPin: string; version: number },
+      body: { quantity: number; reason: string; supervisorStaffId?: string; supervisorPin?: string; version: number },
       idempotencyKey: string,
     ): Promise<ApiResult<POSOrder>> {
       return client.POST<POSOrder>(
@@ -282,7 +282,7 @@ export function createPosApi() {
     },
     voidOrder(
       orderId: string,
-      body: { reason: string; supervisorStaffId: string; supervisorPin: string; version: number },
+      body: { reason: string; supervisorStaffId?: string; supervisorPin?: string; version: number },
       idempotencyKey: string,
     ): Promise<ApiResult<void>> {
       return client.POST<void>(`/api/v1/pos/orders/${encodeURIComponent(orderId)}/void`, {

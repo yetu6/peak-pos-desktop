@@ -24,7 +24,8 @@ function render(ui: ReactElement) {
   return renderInDom(ui, { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
 }
 
-const { voidOrderMutate, sessionRef, voidState, voidReset, printAfter } = vi.hoisted(() => ({
+const { voidOrderMutate, sessionRef, voidState, voidReset, printAfter, keyCount } = vi.hoisted(() => ({
+  keyCount: { n: 0 },
   voidReset: vi.fn(),
   // fbc-peak 00125: what Yetu made for the order prints after the void (the kitchen's slips).
   printAfter: vi.fn(async (_orderId: string) => [{ ok: true }] as Array<{ ok: boolean; error?: string }>),
@@ -38,7 +39,7 @@ const { voidOrderMutate, sessionRef, voidState, voidReset, printAfter } = vi.hoi
 vi.mock("../hooks/usePosData", () => ({
   useOutletMoneySettings: () => ({ standardFloat: 0, quickCashNotes: [1000,2000,5000,10000] }),
   useVoidOrder: () => ({ mutate: voidOrderMutate, reset: voidReset, ...voidState }),
-  useIdempotencyKey: () => ({ current: "key-1", next: () => "key-1" }),
+  useIdempotencyKey: () => ({ current: "key-1", next: () => `key-${++keyCount.n}` }),
   usePropertyId: () => "prop-1",
   usePrintAfter: () => printAfter,
 }));
@@ -289,5 +290,76 @@ describe("VoidOrderDialog: only those who can approve voids (F-249)", () => {
       clearOperationalSession();
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("VoidOrderDialog: cancelling your own order alone (fbc-peak 00161)", () => {
+  it("skips the approver when the hint names the person signed in now, and sends no supervisor", async () => {
+    render(<VoidOrderDialog order={{ ...ORDER, cancelAloneBy: "staff-amina" }} currency="TZS" onClose={vi.fn()} />);
+    expect(screen.queryByRole("radio", { name: /Grace Mushi/ })).toBeNull();
+    expect(screen.queryByTestId("void-pin-key-1")).toBeNull();
+    const submit = screen.getByTestId("confirm-void-order");
+    expect(submit).toHaveTextContent("Cancel this order");
+    expect(submit).toBeDisabled();
+    await giveReason("void-reason", "Wrong table");
+    await userEvent.click(submit);
+    const sent = voidOrderMutate.mock.calls[0][0] as Record<string, unknown>;
+    expect(sent).toMatchObject({ orderId: "order-1", reason: "Wrong table", version: 4 });
+    expect(sent).not.toHaveProperty("supervisorStaffId");
+    expect(sent).not.toHaveProperty("supervisorPin");
+  });
+
+  it("asks for an approver when the hint names someone else, or nobody", async () => {
+    const view = render(<VoidOrderDialog order={{ ...ORDER, cancelAloneBy: "staff-grace" }} currency="TZS" onClose={vi.fn()} />);
+    expect(screen.getByRole("radio", { name: /Grace Mushi/ })).toBeInTheDocument();
+    view.rerender(<VoidOrderDialog order={ORDER} currency="TZS" onClose={vi.fn()} />);
+    expect(screen.getByRole("radio", { name: /Grace Mushi/ })).toBeInTheDocument();
+    expect(screen.getByTestId("confirm-void-order")).toHaveTextContent("Cancel order");
+  });
+
+  it("follows whoever is signed in now when the person switches under a cached hint", () => {
+    const view = render(<VoidOrderDialog order={{ ...ORDER, cancelAloneBy: "staff-amina" }} currency="TZS" onClose={vi.fn()} />);
+    expect(screen.queryByRole("radio", { name: /Grace Mushi/ })).toBeNull();
+    sessionRef.staffId = "staff-grace";
+    view.rerender(<VoidOrderDialog order={{ ...ORDER, cancelAloneBy: "staff-amina" }} currency="TZS" onClose={vi.fn()} />);
+    expect(screen.getByRole("radio", { name: /Amina Hassan/ })).toBeInTheDocument();
+  });
+
+  it("asks for an approver when the computer has no network", () => {
+    const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    try {
+      render(<VoidOrderDialog order={{ ...ORDER, cancelAloneBy: "staff-amina" }} currency="TZS" onClose={vi.fn()} />);
+      expect(screen.getByRole("radio", { name: /Grace Mushi/ })).toBeInTheDocument();
+    } finally {
+      online.mockRestore();
+    }
+  });
+
+  it("shows Yetu's words and moves to the approver when the alone cancel is refused, keeping the reason", async () => {
+    const words = "The bill has been printed, so cancelling now needs an approver.";
+    voidOrderMutate.mockImplementationOnce((_vars: unknown, opts?: { onError?: (error: Error) => void }) =>
+      opts?.onError?.(new Error(JSON.stringify({ code: "POS_CANCEL_NEEDS_APPROVER", detail: words }))),
+    );
+    const order = { ...ORDER, cancelAloneBy: "staff-amina" };
+    const view = render(<VoidOrderDialog order={order} currency="TZS" onClose={vi.fn()} />);
+    await giveReason("void-reason", "Wrong table");
+    await userEvent.click(screen.getByTestId("confirm-void-order"));
+    voidState.error = new Error(JSON.stringify({ code: "POS_CANCEL_NEEDS_APPROVER", detail: words }));
+    view.rerender(<VoidOrderDialog order={order} currency="TZS" onClose={vi.fn()} />);
+    expect(within(screen.getByTestId("void-order-dialog")).getByRole("alert")).toHaveTextContent(words);
+    expect(screen.getByText("Cancel order 42 (TSh 24,000): Wrong table")).toBeInTheDocument();
+    voidState.error = null;
+    await userEvent.click(screen.getByRole("radio", { name: /Grace Mushi/ }));
+    await typePin("123456");
+    await userEvent.click(screen.getByTestId("confirm-void-order"));
+    expect(voidOrderMutate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ reason: "Wrong table", supervisorStaffId: "staff-grace", supervisorPin: "123456" }),
+      expect.anything(),
+    );
+    // The send with an approver is a new request: never the key the refused alone cancel used.
+    const keys = voidOrderMutate.mock.calls.slice(-2).map((c) => (c[0] as { idempotencyKey: string }).idempotencyKey);
+    const [first, last] = keys;
+    expect(first).toBeTruthy();
+    expect(last).not.toBe(first);
   });
 });
