@@ -74,6 +74,12 @@ jobs:
         working-directory: src-tauri
         run: cargo test -- --test-threads=1
 
+      - name: Sign-in kit timing (printed in this log)
+        # 20 checks of a correct PIN at the till copy's cost; fails if the
+        # median is over 100 ms. The numbers are the SIGN_IN_KIT_TIMING line.
+        working-directory: src-tauri
+        run: cargo test --lib sign_in_kit::tests::timing -- --nocapture --test-threads=1
+
   # Secret scan: the whole git history, with gitleaks, against a reviewed
   # baseline (.gitleaks-baseline.json; every entry reviewed 2026-10-02 and
   # found not to be a secret, values redacted). Any NEW finding fails this
