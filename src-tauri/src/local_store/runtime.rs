@@ -600,8 +600,11 @@ mod tests {
     fn retry_sync_builds_no_client_of_its_own() {
         // It must use the shared native client (no redirects), never a default one.
         let source = include_str!("runtime.rs");
-        assert!(!source.contains(concat!("reqwest::Client", "::new")));
-        assert!(source.contains("crate::yetu_http::native_client()"));
+        let start = source.find("pub async fn retry_sync").unwrap();
+        let body = &source[start..];
+        let body = &body[..body.find("#[tauri::command").unwrap()];
+        assert!(!body.contains(concat!("reqwest::Client", "::new")));
+        assert!(body.contains(concat!("native_client", "()?")));
     }
 
     use std::sync::Mutex;
