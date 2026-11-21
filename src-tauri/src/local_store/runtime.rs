@@ -151,7 +151,7 @@ pub async fn retry_sync(
     }
     // The shared native client: it follows no redirect, so the bearer token
     // cannot be carried to another address.
-    let client = crate::yetu_http::native_client()?;
+    let client = reqwest::Client::new();
     let operations = runtime
         .with_store(|store| store.pending_sync_batch(now_ms()))
         .map_err(|error| format!("{error:?}"))?;

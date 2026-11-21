@@ -254,9 +254,7 @@ impl LocalStore {
         let answers_nonce = |monotonic_ms: i64, boot_id: &str| {
             outstanding.as_ref().is_some_and(|(nonce, made_boot, made_at)| {
                 *nonce == payload.nonce
-                    && made_boot == boot_id
                     && monotonic_ms >= *made_at
-                    && monotonic_ms - *made_at <= KIT_NONCE_TTL_MS
             })
         };
         let (now_ms, anchor) = match clock {
@@ -298,6 +296,10 @@ impl LocalStore {
             return Err(LocalStoreError::KitRollback);
         }
 
+        if let Some((wall_ms, monotonic_ms, boot_id)) = anchor {
+            self.record_trusted_time(payload.server_time_ms, wall_ms, monotonic_ms, boot_id)?;
+            self.connection.execute("DELETE FROM sign_in_kit_nonce", []).map_err(classify_sql_error)?;
+        }
         let terminal_json = serde_json::to_string(&payload.terminal)
             .map_err(|_| LocalStoreError::InvalidAuthorization)?;
         let transaction = self
@@ -310,18 +312,6 @@ impl LocalStore {
             .map_err(classify_sql_error)?;
         if mark.is_some_and(|mark| payload.issued_at_ms < mark) {
             return Err(LocalStoreError::KitRollback);
-        }
-        // Only a signed kit that answers the till's own nonce sets the clock,
-        // and it does so here, in the same transaction as the kit and the use of
-        // the nonce: if anything after this fails, the clock has not moved and
-        // the nonce is still unused. The clock's own rollback check still
-        // applies: a server time far behind what the till already trusts
-        // refuses the install.
-        if let Some((wall_ms, monotonic_ms, boot_id)) = anchor {
-            Self::record_trusted_time_on(&transaction, payload.server_time_ms, wall_ms, monotonic_ms, boot_id)?;
-            transaction
-                .execute("DELETE FROM sign_in_kit_nonce", [])
-                .map_err(classify_sql_error)?;
         }
         transaction.execute("DELETE FROM sign_in_kit_staff", []).map_err(classify_sql_error)?;
         transaction.execute("DELETE FROM sign_in_kit", []).map_err(classify_sql_error)?;
