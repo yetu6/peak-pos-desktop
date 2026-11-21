@@ -203,6 +203,9 @@ impl LocalStore {
         key_id: &str,
         clock: Clock<'_>,
     ) -> Result<KitSummary, LocalStoreError> {
+        if signed_kit.len() > MAX_SIGNED_KIT_BYTES {
+            return Err(LocalStoreError::InvalidAuthorization);
+        }
         let payload_bytes = Zeroizing::new(decode_b64(signed_kit)?);
         let signature = Signature::from_slice(&decode_fixed::<64>(signature)?)
             .map_err(|_| LocalStoreError::InvalidAuthorization)?;
@@ -221,7 +224,9 @@ impl LocalStore {
             .optional()
             .map_err(classify_sql_error)?
             .ok_or(LocalStoreError::AuthorizationRequired)?;
-        if payload.terminal_id != terminal_id
+        if lifecycle != "PAIRED"
+            || payload.terminal_id != terminal_id
+            || payload.identity_epoch != epoch
         {
             return Err(LocalStoreError::InvalidAuthorization);
         }
@@ -242,6 +247,8 @@ impl LocalStore {
             }
         };
         if now_ms >= payload.expires_at_ms
+            || payload.expires_at_ms - payload.issued_at_ms > MAX_KIT_LIFE_MS
+            || payload.issued_at_ms > now_ms.saturating_add(KIT_CLOCK_SKEW_MS)
         {
             return Err(LocalStoreError::InvalidAuthorization);
         }
@@ -266,14 +273,14 @@ impl LocalStore {
             .optional()
             .map_err(classify_sql_error)?;
         if held_mark.is_some_and(|mark| payload.issued_at_ms < mark) {
-            return Err(LocalStoreError::InvalidAuthorization);
+            return Err(LocalStoreError::KitRollback);
         }
 
         // Only a signed kit that answers the till's own nonce gets this far to
         // set the clock, and the clock's own rollback check still applies: a
         // server time far behind what the till already trusts refuses the install.
         if let Some((wall_ms, monotonic_ms, boot_id)) = anchor {
-            let _ = (wall_ms, monotonic_ms, boot_id);  // BREAK A: never anchors
+            self.record_trusted_time(payload.server_time_ms, wall_ms, monotonic_ms, boot_id)?;
         }
 
         let terminal_json = serde_json::to_string(&payload.terminal)
@@ -288,6 +295,11 @@ impl LocalStore {
             .map_err(classify_sql_error)?;
         if mark.is_some_and(|mark| payload.issued_at_ms < mark) {
             return Err(LocalStoreError::KitRollback);
+        }
+        if anchor.is_some() {
+            transaction
+                .execute("DELETE FROM sign_in_kit_nonce", [])
+                .map_err(classify_sql_error)?;
         }
         transaction.execute("DELETE FROM sign_in_kit_staff", []).map_err(classify_sql_error)?;
         transaction.execute("DELETE FROM sign_in_kit", []).map_err(classify_sql_error)?;
@@ -319,7 +331,7 @@ impl LocalStore {
             transaction
                 .execute(
                     "DELETE FROM sign_in_kit_attempts
-                     WHERE staff_id=?1 AND copy_version IS NOT ?2",
+                     WHERE staff_id=?1 AND ?2 IS NOT NULL AND copy_version <> ?2",
                     params![person.staff_id, person.copy_version],
                 )
                 .map_err(classify_sql_error)?;
@@ -393,8 +405,8 @@ impl LocalStore {
         let still_paired: bool = transaction
             .query_row(
                 "SELECT EXISTS(SELECT 1 FROM terminal_authority
-                 WHERE is_current=1 AND terminal_id=?1 AND lifecycle_state='PAIRED')",
-                params![kit_terminal],
+                 WHERE is_current=1 AND terminal_id=?1 AND credential_epoch=?2 AND lifecycle_state='PAIRED')",
+                params![kit_terminal, epoch],
                 |row| row.get(0),
             )
             .map_err(classify_sql_error)?;
@@ -437,6 +449,9 @@ impl LocalStore {
         }
         if let Some(until) = locked_until.filter(|until| now_ms < *until) {
             return Ok(SignInCheck::Locked { until_ms: until });
+        }
+        if pin.is_empty() {
+            return Ok(SignInCheck::Wrong { attempts_left: (max_attempts - attempts).max(0) });
         }
 
         let parsed = PasswordHash::new(&phc).map_err(|_| LocalStoreError::InvalidAuthorization)?;
@@ -525,7 +540,7 @@ impl LocalStore {
                 .execute(
                     "INSERT INTO sign_in_kit_mark(singleton_id,high_water_ms) VALUES (1,?1)
                      ON CONFLICT(singleton_id) DO UPDATE SET high_water_ms=MAX(high_water_ms,excluded.high_water_ms)",
-                    [issued],
+                    [issued.saturating_add(1)],
                 )
                 .map_err(classify_sql_error)?;
         }
@@ -544,6 +559,7 @@ fn validate_kit(payload: &KitPayload) -> Result<(), LocalStoreError> {
         || payload.identity_epoch <= 0
         || payload.nonce.trim().is_empty()
         || payload.nonce.len() > 128
+        || payload.staff.len() > MAX_KIT_STAFF
     {
         return Err(reject);
     }
@@ -553,8 +569,9 @@ fn validate_kit(payload: &KitPayload) -> Result<(), LocalStoreError> {
             || person.display_name.trim().is_empty()
             || person.max_attempts <= 0
             || person.base_lockout_ms <= 0
-            || { let _ = seen.insert(person.staff_id.as_str()); false }
+            || !seen.insert(person.staff_id.as_str())
             || person.till_copy_phc.as_deref().is_some_and(|phc| !valid_argon2id(phc))
+            || (person.till_copy_phc.is_some() && person.copy_version.as_deref().is_none_or(|v| v.trim().is_empty()))
         {
             return Err(LocalStoreError::InvalidAuthorization);
         }
@@ -844,7 +861,11 @@ mod tests {
     fn two_people_with_one_staff_id_refuse_the_kit() {
         let mut store = paired_store();
         let twice = vec![member("staff-1", "Amina", None), member("staff-1", "Amina again", None)];
-        assert!(install(&mut store, t(1_000), twice).is_err());
+        // Refused by the kit's own rule, not by the table's key falling over.
+        assert!(matches!(
+            install(&mut store, t(1_000), twice),
+            Err(LocalStoreError::InvalidAuthorization)
+        ));
     }
 
     #[test]

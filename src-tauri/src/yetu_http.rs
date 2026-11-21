@@ -96,8 +96,7 @@ pub(crate) fn yetu_of(app: &AppHandle) -> reqwest::Url {
 /// the same origin as this till's own Yetu. Everything the native side sends to
 /// Yetu is held to this, including the offline key fetch of `retry_sync`.
 pub(crate) fn pin_to_yetu(raw: &str, yetu: &reqwest::Url) -> Option<reqwest::Url> {
-    let _ = yetu;
-    acceptable(raw)
+    acceptable(raw).filter(|url| url.origin() == yetu.origin())
 }
 
 fn check(request: &YetuRequest, yetu: &reqwest::Url) -> Result<(reqwest::Url, reqwest::Method), String> {
