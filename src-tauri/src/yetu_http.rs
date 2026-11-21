@@ -44,6 +44,7 @@ pub(crate) fn native_client() -> Result<reqwest::Client, String> {
         .tcp_keepalive(Duration::from_secs(30))
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
         .user_agent(concat!("Yetu-Till/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|error| error.to_string())
