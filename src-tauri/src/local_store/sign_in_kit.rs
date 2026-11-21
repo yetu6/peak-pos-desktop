@@ -280,7 +280,7 @@ impl LocalStore {
         // set the clock, and the clock's own rollback check still applies: a
         // server time far behind what the till already trusts refuses the install.
         if let Some((wall_ms, monotonic_ms, boot_id)) = anchor {
-            let _ = self.record_trusted_time(payload.server_time_ms, wall_ms, monotonic_ms, boot_id);
+            self.record_trusted_time(payload.server_time_ms, wall_ms, monotonic_ms, boot_id)?;
         }
 
         let terminal_json = serde_json::to_string(&payload.terminal)
@@ -569,7 +569,7 @@ fn validate_kit(payload: &KitPayload) -> Result<(), LocalStoreError> {
             || person.display_name.trim().is_empty()
             || person.max_attempts <= 0
             || person.base_lockout_ms <= 0
-            || { let _ = seen.insert(person.staff_id.as_str()); false }
+            || !seen.insert(person.staff_id.as_str())
             || person.till_copy_phc.as_deref().is_some_and(|phc| !valid_argon2id(phc))
             || (person.till_copy_phc.is_some() && person.copy_version.as_deref().is_none_or(|v| v.trim().is_empty()))
         {
