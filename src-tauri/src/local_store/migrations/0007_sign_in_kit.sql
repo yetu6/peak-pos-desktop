@@ -6,6 +6,7 @@ CREATE TABLE sign_in_kit (
  terminal_id TEXT NOT NULL,
  issued_at_ms INTEGER NOT NULL CHECK(issued_at_ms > 0),
  expires_at_ms INTEGER NOT NULL,
+ identity_epoch INTEGER NOT NULL,
  key_id TEXT NOT NULL,
  terminal_json TEXT NOT NULL,
  installed_at_ms INTEGER NOT NULL
@@ -37,4 +38,11 @@ CREATE TABLE sign_in_kit_attempts (
 CREATE TABLE sign_in_kit_mark (
  singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
  high_water_ms INTEGER NOT NULL
+);
+
+-- The nonce this till last asked the server to put in a kit: single use, so a
+-- kit answered to it (and only that) may set the till's trusted clock.
+CREATE TABLE sign_in_kit_nonce (
+ singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+ nonce TEXT NOT NULL
 );

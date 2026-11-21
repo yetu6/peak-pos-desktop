@@ -87,14 +87,20 @@ fn resolve_yetu(configured: Option<String>, built_in: Option<&str>) -> reqwest::
         .unwrap_or_else(|| reqwest::Url::parse(DEVELOPMENT_YETU).expect("a valid address"))
 }
 
-fn yetu_of(app: &AppHandle) -> reqwest::Url {
+pub(crate) fn yetu_of(app: &AppHandle) -> reqwest::Url {
     let configured = crate::identity::load_peak_config(app.clone()).ok().flatten();
     resolve_yetu(configured, option_env!("VITE_PEAK_API_URL"))
 }
 
+/// The address, only if it is HTTPS (or this computer while developing) and on
+/// the same origin as this till's own Yetu. Everything the native side sends to
+/// Yetu is held to this, including the offline key fetch of `retry_sync`.
+pub(crate) fn pin_to_yetu(raw: &str, yetu: &reqwest::Url) -> Option<reqwest::Url> {
+    acceptable(raw).filter(|url| url.origin() == yetu.origin())
+}
+
 fn check(request: &YetuRequest, yetu: &reqwest::Url) -> Result<(reqwest::Url, reqwest::Method), String> {
-    let url = acceptable(&request.url)
-        .filter(|url| url.origin() == yetu.origin())
+    let url = pin_to_yetu(&request.url, yetu)
         .ok_or_else(|| format!("refused: {} is not this till's Yetu", request.url))?;
     let method = request.method.to_uppercase();
     if !METHODS.contains(&method.as_str()) {
@@ -141,6 +147,18 @@ pub async fn yetu_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_this_tills_yetu_is_an_address_the_native_side_will_use() {
+        let yetu = reqwest::Url::parse("https://api.yetu.example").unwrap();
+        assert!(pin_to_yetu("https://api.yetu.example", &yetu).is_some());
+        assert!(pin_to_yetu("https://api.yetu.example/api/v1/pos/offline/trust-keyset", &yetu).is_some());
+        assert!(pin_to_yetu("https://evil.example", &yetu).is_none());
+        assert!(pin_to_yetu("https://api.yetu.example.evil.example", &yetu).is_none());
+        assert!(pin_to_yetu("http://api.yetu.example", &yetu).is_none());
+        assert!(pin_to_yetu("https://api.yetu.example:8443", &yetu).is_none());
+    }
+
     use std::io::{BufRead, BufReader, Read, Write};
     use std::net::TcpListener;
     use std::sync::atomic::{AtomicUsize, Ordering};

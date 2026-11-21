@@ -86,6 +86,8 @@ pub enum LocalStoreError {
     InvalidAuthorization,
     #[error("terminal authorization rollback was detected")]
     AuthorizationRollback,
+    #[error("the sign-in kit is older than the one this till has already held")]
+    KitRollback,
     #[error("the catalog snapshot is invalid or not authorized for this terminal")]
     InvalidCatalog,
     #[error("an active certified catalog is required")]
@@ -116,6 +118,7 @@ pub enum LocalStoreErrorKind {
     AuthorizationRequired,
     InvalidAuthorization,
     AuthorizationRollback,
+    KitRollback,
     InvalidCatalog,
     CatalogRequired,
     InvalidOrder,
@@ -143,6 +146,7 @@ impl LocalStoreError {
             Self::AuthorizationRequired => LocalStoreErrorKind::AuthorizationRequired,
             Self::InvalidAuthorization => LocalStoreErrorKind::InvalidAuthorization,
             Self::AuthorizationRollback => LocalStoreErrorKind::AuthorizationRollback,
+            Self::KitRollback => LocalStoreErrorKind::KitRollback,
             Self::InvalidCatalog => LocalStoreErrorKind::InvalidCatalog,
             Self::CatalogRequired => LocalStoreErrorKind::CatalogRequired,
             Self::InvalidOrder => LocalStoreErrorKind::InvalidOrder,

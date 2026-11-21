@@ -51,7 +51,8 @@ fn the_kit_lives_in_the_encrypted_store_and_survives_a_reopen() {
         })
         .unwrap();
     let payload = serde_json::to_vec(&serde_json::json!({
-        "terminalId": "terminal-1", "issuedAtMs": 1000, "expiresAtMs": NOW + 86_400_000,
+        "terminalId": "terminal-1", "issuedAtMs": NOW - 1_000, "expiresAtMs": NOW + 86_400_000,
+        "nonce": "n", "serverTimeMs": NOW, "identityEpoch": 4,
         "staff": [{"staffId": "staff-1", "displayName": "Amina Hassan Zebaki", "needsSetup": false,
                    "tillCopyPhc": phc, "copyVersion": "v1", "maxAttempts": 5,
                    "baseLockoutMs": 60000, "roleCode": "POS_CASHIER", "permissions": []}],

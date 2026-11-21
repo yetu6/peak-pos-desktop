@@ -256,32 +256,13 @@ impl LocalStore {
         {
             return Err(LocalStoreError::InvalidAuthorization);
         }
-        let trusted = self.connection.query_row(
-            "SELECT public_key,state,not_before_ms,not_after_ms FROM trusted_signing_keys WHERE kid=?1",
-            [&envelope.key_id], |row| Ok((row.get::<_,Vec<u8>>(0)?,row.get::<_,String>(1)?,row.get::<_,i64>(2)?,row.get::<_,i64>(3)?)),
-        ).optional().map_err(classify_sql_error)?;
-        let has_keyset: bool = self
-            .connection
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM trusted_signing_keys)",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(classify_sql_error)?;
-        let key_bytes = match trusted {
-            Some((key, state, not_before, not_after))
-                if state != "REVOKED"
-                    && payload.issued_at_ms >= not_before
-                    && payload.issued_at_ms < not_after
-                    && received_at_ms >= not_before
-                    && received_at_ms < not_after =>
-            {
-                key
-            }
-            Some(_) => return Err(LocalStoreError::InvalidAuthorization),
-            None if !has_keyset && envelope.key_id == authority.5 => authority.6,
-            None => return Err(LocalStoreError::InvalidAuthorization),
-        };
+        let key_bytes = resolve_trusted_key(
+            &self.connection,
+            &envelope.key_id,
+            payload.issued_at_ms,
+            received_at_ms,
+        )?
+        .ok_or(LocalStoreError::InvalidAuthorization)?;
         let public_key: [u8; 32] = key_bytes
             .try_into()
             .map_err(|_| LocalStoreError::InvalidAuthorization)?;
@@ -691,6 +672,51 @@ fn validate_payload(payload: &AuthorizationPayload) -> Result<(), LocalStoreErro
         }
     }
     Ok(())
+}
+
+/// The one rule for which key may vouch for something Yetu signed, shared by
+/// authorizations, catalogs and the sign-in kit. Returns the public key, or None
+/// when the till does not trust that key now: absent from the keyset, revoked,
+/// or outside its dates at the time it was signed or received. Only before any
+/// keyset has been installed is the terminal's own key from pairing trusted.
+pub(super) fn resolve_trusted_key(
+    connection: &rusqlite::Connection,
+    key_id: &str,
+    signed_at_ms: i64,
+    now_ms: i64,
+) -> Result<Option<Vec<u8>>, LocalStoreError> {
+    let trusted: Option<(Vec<u8>, String, i64, i64)> = connection
+        .query_row(
+            "SELECT public_key,state,not_before_ms,not_after_ms FROM trusted_signing_keys WHERE kid=?1",
+            [key_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .optional()
+        .map_err(classify_sql_error)?;
+    let has_keyset: bool = connection
+        .query_row("SELECT EXISTS(SELECT 1 FROM trusted_signing_keys)", [], |row| row.get(0))
+        .map_err(classify_sql_error)?;
+    match trusted {
+        Some((key, state, not_before, not_after))
+            if state != "REVOKED"
+                && signed_at_ms >= not_before
+                && signed_at_ms < not_after
+                && now_ms >= not_before
+                && now_ms < not_after =>
+        {
+            Ok(Some(key))
+        }
+        Some(_) => Ok(None),
+        None if !has_keyset => connection
+            .query_row(
+                "SELECT trust_public_key FROM terminal_authority WHERE is_current=1 AND trust_key_id=?1",
+                [key_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(classify_sql_error),
+        None => Ok(None),
+    }
 }
 
 pub(super) fn valid_argon2id(phc: &str) -> bool {

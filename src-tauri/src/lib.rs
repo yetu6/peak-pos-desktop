@@ -68,6 +68,7 @@ pub fn run() {
             local_store::runtime::install_sign_in_kit,
             local_store::runtime::verify_sign_in_pin,
             local_store::runtime::clear_sign_in_kit,
+            local_store::runtime::new_sign_in_kit_nonce,
             local_store::runtime::get_offline_staff_roster,
             local_store::runtime::offline_eligibility_status,
             local_store::runtime::install_catalog_snapshot,

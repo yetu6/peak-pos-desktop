@@ -5,37 +5,65 @@
 //!
 //! The kit is signed over `KIT_DOMAIN || payload bytes` with the offline Ed25519
 //! signer, and checked against the same trust keyset as authorizations and
-//! catalogs.
+//! catalogs (`authority::resolve_trusted_key`).
+//!
+//! What the limits are worth (for the ledger): the lockout and the attempt count
+//! here hold against someone at the PIN pad. Code running in the web view could
+//! read the same store through the same commands, which is as bad as the stolen
+//! PC the owner has already accepted (15 Nov).
+//!
+//! Time: the till does not trust its own clock. A kit answers a nonce the till
+//! made (`new_sign_in_kit_nonce`, single use); a kit that answers it carries the
+//! server's time, and that time (never `issuedAtMs`) sets the trusted clock, so
+//! the first sign-in of the day works before any online sign-in.
 
 use argon2::{
     password_hash::{phc::PasswordHash, PasswordVerifier},
     Argon2,
 };
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zeroize::Zeroizing;
 
-use super::authority::{decode_b64, decode_fixed, valid_argon2id};
+use super::authority::{decode_b64, decode_fixed, resolve_trusted_key, valid_argon2id};
 use super::{classify_sql_error, LocalStore, LocalStoreError};
 
 const KIT_DOMAIN: &[u8] = b"peak-pos-sign-in-kit-v1\0";
 const MAX_KIT_STAFF: usize = 1000;
+/// The most the till reads before decoding: a kit for 1000 people is well under
+/// this, and a bigger one is not one of ours.
+const MAX_SIGNED_KIT_BYTES: usize = 512 * 1024;
+/// The longest a kit may live. The server makes a kit last 24 hours; the till
+/// allows two hours more for a slow refresh, and refuses a longer one so a
+/// server mistake or a stolen signing key cannot make a kit that never ends.
+const MAX_KIT_LIFE_MS: i64 = 26 * 60 * 60 * 1000;
+/// How far ahead of the till's trusted time a kit may say it was issued.
+const KIT_CLOCK_SKEW_MS: i64 = 5 * 60 * 1000;
+const NONCE_BYTES: usize = 32;
 /// Doubling stops growing after this many doublings (as offline_pin.rs caps it).
 const MAX_DOUBLINGS: i64 = 16;
 
-#[derive(Debug, Clone, Deserialize)]
+// No Debug on these two: a copy of someone's PIN must not reach a log by accident.
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct KitPayload {
     terminal_id: String,
     issued_at_ms: i64,
     expires_at_ms: i64,
+    /// The nonce this kit answers (the till's own, single use).
+    nonce: String,
+    /// The server's time when it made the kit; sets the clock only with the right nonce.
+    server_time_ms: i64,
+    /// The pairing this kit is for (the terminal's credential epoch).
+    identity_epoch: i64,
     staff: Vec<KitStaff>,
     terminal: KitTerminal,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct KitStaff {
     staff_id: String,
@@ -105,11 +133,34 @@ pub enum SignInCheck {
     Unknown,
 }
 
+/// Where "now" comes from when installing a kit.
+enum Clock<'a> {
+    /// A time the caller already trusts (tests, and nothing is anchored).
+    Given(i64),
+    /// The till's own clocks: the trusted clock, or the kit's server time when
+    /// the kit answers the till's nonce.
+    Trusted { wall_ms: i64, monotonic_ms: i64, boot_id: &'a str },
+}
+
 impl LocalStore {
-    /// Verifies and installs a signed kit, replacing the whole kit at once.
-    /// Refused: a bad signature, an untrusted key, a kit for another terminal,
-    /// a copy that is not the agreed Argon2id form, or a kit older than the one
-    /// held. Whatever is refused leaves the old kit exactly as it was.
+    /// A fresh single-use nonce for the next kit request, kept (the latest one
+    /// only) until a kit answers it. 32 random bytes, base64url without padding.
+    pub fn new_sign_in_kit_nonce(&mut self) -> Result<String, LocalStoreError> {
+        let mut bytes = [0_u8; NONCE_BYTES];
+        getrandom::fill(&mut bytes).map_err(|_| LocalStoreError::SecureStoreUnavailable)?;
+        let nonce = URL_SAFE_NO_PAD.encode(bytes);
+        self.connection
+            .execute(
+                "INSERT INTO sign_in_kit_nonce(singleton_id,nonce) VALUES (1,?1)
+                 ON CONFLICT(singleton_id) DO UPDATE SET nonce=excluded.nonce",
+                [&nonce],
+            )
+            .map_err(classify_sql_error)?;
+        Ok(nonce)
+    }
+
+    /// Verifies and installs a signed kit at a time the caller vouches for,
+    /// replacing the whole kit at once. It never sets the trusted clock.
     pub fn install_sign_in_kit(
         &mut self,
         signed_kit: &str,
@@ -117,32 +168,91 @@ impl LocalStore {
         key_id: &str,
         now_ms: i64,
     ) -> Result<KitSummary, LocalStoreError> {
-        let invalid = LocalStoreError::InvalidAuthorization;
+        self.install_kit(signed_kit, signature, key_id, Clock::Given(now_ms))
+    }
+
+    /// The install the till uses. A kit that answers the till's outstanding
+    /// nonce is checked at the server's time and sets the trusted clock from it
+    /// (and uses the nonce up); any other kit is checked on the trusted clock
+    /// and never moves it. With no trusted clock and no matching nonce, nothing
+    /// is installed. Refused: a bad signature, an untrusted key, a kit for
+    /// another terminal or pairing, a copy not in the agreed Argon2id form, an
+    /// expired or over-long kit, one issued in the future, or a kit older than
+    /// one already held (`KitRollback`). A refusal leaves the old kit as it was.
+    pub fn install_sign_in_kit_trusted(
+        &mut self,
+        signed_kit: &str,
+        signature: &str,
+        key_id: &str,
+        wall_ms: i64,
+        monotonic_ms: i64,
+        boot_id: &str,
+    ) -> Result<KitSummary, LocalStoreError> {
+        self.install_kit(
+            signed_kit,
+            signature,
+            key_id,
+            Clock::Trusted { wall_ms, monotonic_ms, boot_id },
+        )
+    }
+
+    fn install_kit(
+        &mut self,
+        signed_kit: &str,
+        signature: &str,
+        key_id: &str,
+        clock: Clock<'_>,
+    ) -> Result<KitSummary, LocalStoreError> {
+        if signed_kit.len() > MAX_SIGNED_KIT_BYTES {
+            return Err(LocalStoreError::InvalidAuthorization);
+        }
         let payload_bytes = Zeroizing::new(decode_b64(signed_kit)?);
         let signature = Signature::from_slice(&decode_fixed::<64>(signature)?)
             .map_err(|_| LocalStoreError::InvalidAuthorization)?;
-        let payload: KitPayload =
-            serde_json::from_slice(&payload_bytes).map_err(|_| LocalStoreError::InvalidAuthorization)?;
+        let payload: KitPayload = serde_json::from_slice(&payload_bytes)
+            .map_err(|_| LocalStoreError::InvalidAuthorization)?;
         validate_kit(&payload)?;
 
-        let (terminal_id, lifecycle): (String, String) = self
+        let (terminal_id, lifecycle, epoch): (String, String, i64) = self
             .connection
             .query_row(
-                "SELECT terminal_id,lifecycle_state
+                "SELECT terminal_id,lifecycle_state,credential_epoch
                  FROM terminal_authority WHERE is_current=1",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()
             .map_err(classify_sql_error)?
             .ok_or(LocalStoreError::AuthorizationRequired)?;
-        if lifecycle != "PAIRED" || payload.terminal_id != terminal_id {
-            return Err(invalid);
+        if lifecycle != "PAIRED"
+            || payload.terminal_id != terminal_id
+            || payload.identity_epoch != epoch
+        {
+            return Err(LocalStoreError::InvalidAuthorization);
         }
 
-        if now_ms >= payload.expires_at_ms {
-            return Err(invalid);
+        let outstanding: Option<String> = self
+            .connection
+            .query_row("SELECT nonce FROM sign_in_kit_nonce WHERE singleton_id=1", [], |row| row.get(0))
+            .optional()
+            .map_err(classify_sql_error)?;
+        let answers_nonce = outstanding.is_some_and(|nonce| nonce == payload.nonce);
+        let (now_ms, anchor) = match clock {
+            Clock::Given(now) => (now, None),
+            Clock::Trusted { wall_ms, monotonic_ms, boot_id } if answers_nonce => {
+                (payload.server_time_ms, Some((wall_ms, monotonic_ms, boot_id)))
+            }
+            Clock::Trusted { wall_ms, monotonic_ms, boot_id } => {
+                (self.trusted_now_ms(wall_ms, monotonic_ms, boot_id)?, None)
+            }
+        };
+        if now_ms >= payload.expires_at_ms
+            || payload.expires_at_ms - payload.issued_at_ms > MAX_KIT_LIFE_MS
+            || payload.issued_at_ms > now_ms.saturating_add(KIT_CLOCK_SKEW_MS)
+        {
+            return Err(LocalStoreError::InvalidAuthorization);
         }
+
         let key_bytes = resolve_trusted_key(&self.connection, key_id, payload.issued_at_ms, now_ms)?
             .ok_or(LocalStoreError::InvalidAuthorization)?;
         let public_key: [u8; 32] = key_bytes
@@ -157,6 +267,22 @@ impl LocalStore {
             .verify(&message, &signature)
             .map_err(|_| LocalStoreError::InvalidAuthorization)?;
 
+        let held_mark: Option<i64> = self
+            .connection
+            .query_row("SELECT high_water_ms FROM sign_in_kit_mark WHERE singleton_id=1", [], |row| row.get(0))
+            .optional()
+            .map_err(classify_sql_error)?;
+        if held_mark.is_some_and(|mark| payload.issued_at_ms < mark) {
+            return Err(LocalStoreError::KitRollback);
+        }
+
+        // Only a signed kit that answers the till's own nonce gets this far to
+        // set the clock, and the clock's own rollback check still applies: a
+        // server time far behind what the till already trusts refuses the install.
+        if let Some((wall_ms, monotonic_ms, boot_id)) = anchor {
+            self.record_trusted_time(payload.server_time_ms, wall_ms, monotonic_ms, boot_id)?;
+        }
+
         let terminal_json = serde_json::to_string(&payload.terminal)
             .map_err(|_| LocalStoreError::InvalidAuthorization)?;
         let transaction = self
@@ -168,15 +294,28 @@ impl LocalStore {
             .optional()
             .map_err(classify_sql_error)?;
         if mark.is_some_and(|mark| payload.issued_at_ms < mark) {
-            return Err(invalid);
+            return Err(LocalStoreError::KitRollback);
+        }
+        if anchor.is_some() {
+            transaction
+                .execute("DELETE FROM sign_in_kit_nonce", [])
+                .map_err(classify_sql_error)?;
         }
         transaction.execute("DELETE FROM sign_in_kit_staff", []).map_err(classify_sql_error)?;
         transaction.execute("DELETE FROM sign_in_kit", []).map_err(classify_sql_error)?;
         transaction
             .execute(
-                "INSERT INTO sign_in_kit(singleton_id,terminal_id,issued_at_ms,expires_at_ms,key_id,terminal_json,installed_at_ms)
-                 VALUES (1,?1,?2,?3,?4,?5,?6)",
-                params![payload.terminal_id, payload.issued_at_ms, payload.expires_at_ms, key_id, terminal_json, now_ms],
+                "INSERT INTO sign_in_kit(singleton_id,terminal_id,issued_at_ms,expires_at_ms,identity_epoch,key_id,terminal_json,installed_at_ms)
+                 VALUES (1,?1,?2,?3,?4,?5,?6,?7)",
+                params![
+                    payload.terminal_id,
+                    payload.issued_at_ms,
+                    payload.expires_at_ms,
+                    payload.identity_epoch,
+                    key_id,
+                    terminal_json,
+                    now_ms
+                ],
             )
             .map_err(classify_sql_error)?;
         transaction
@@ -187,10 +326,12 @@ impl LocalStore {
             )
             .map_err(classify_sql_error)?;
         for person in &payload.staff {
-            // Counts kept for an older copy of this person's PIN are of no use now.
+            // Counts kept for an older copy of this person's PIN are of no use
+            // now. A kit that names no version for them deletes nothing.
             transaction
                 .execute(
-                    "DELETE FROM sign_in_kit_attempts WHERE staff_id=?1 AND copy_version IS NOT ?2",
+                    "DELETE FROM sign_in_kit_attempts
+                     WHERE staff_id=?1 AND ?2 IS NOT NULL AND copy_version <> ?2",
                     params![person.staff_id, person.copy_version],
                 )
                 .map_err(classify_sql_error)?;
@@ -203,7 +344,8 @@ impl LocalStore {
                         person.staff_id,
                         person.display_name,
                         person.role_code,
-                        serde_json::to_string(&person.permissions).map_err(|_| LocalStoreError::InvalidAuthorization)?,
+                        serde_json::to_string(&person.permissions)
+                            .map_err(|_| LocalStoreError::InvalidAuthorization)?,
                         i64::from(person.needs_setup),
                         person.till_copy_phc,
                         person.copy_version,
@@ -225,8 +367,9 @@ impl LocalStore {
 
     /// Checks a PIN against the kit. Wrong PINs are counted with the kit's own
     /// `maxAttempts`; the one that reaches it locks for `baseLockoutMs`, and
-    /// each wrong PIN after that doubles the wait. A lock the server set
-    /// (`lockedUntilMs`) also counts as locked.
+    /// each wrong PIN after that doubles the wait (as the server does: no lock
+    /// below the limit). A lock the server set (`lockedUntilMs`) also counts as
+    /// locked. An empty PIN is not a try.
     pub fn verify_sign_in_pin(
         &mut self,
         staff_id: &str,
@@ -238,15 +381,16 @@ impl LocalStore {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(classify_sql_error)?;
-        let kit: Option<(String, String, i64, i64, String)> = transaction
+        let kit: Option<(String, String, i64, i64, i64, String)> = transaction
             .query_row(
-                "SELECT terminal_id,terminal_json,issued_at_ms,expires_at_ms,key_id FROM sign_in_kit WHERE singleton_id=1",
+                "SELECT terminal_id,terminal_json,issued_at_ms,expires_at_ms,identity_epoch,key_id
+                 FROM sign_in_kit WHERE singleton_id=1",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
             )
             .optional()
             .map_err(classify_sql_error)?;
-        let Some((kit_terminal, terminal_json, issued_at, expires_at, kit_key)) = kit else {
+        let Some((kit_terminal, terminal_json, issued_at, expires_at, epoch, kit_key)) = kit else {
             return Ok(SignInCheck::Unknown);
         };
         // An expired kit, or one signed by a key the till no longer trusts,
@@ -256,12 +400,13 @@ impl LocalStore {
         {
             return Ok(SignInCheck::Unknown);
         }
-        // A till that is no longer this terminal's, or has been revoked, checks nobody.
+        // A till that is no longer this terminal's, was paired again (a new
+        // epoch), or has been revoked, checks nobody.
         let still_paired: bool = transaction
             .query_row(
                 "SELECT EXISTS(SELECT 1 FROM terminal_authority
-                 WHERE is_current=1 AND terminal_id=?1 AND lifecycle_state='PAIRED')",
-                [&kit_terminal],
+                 WHERE is_current=1 AND terminal_id=?1 AND credential_epoch=?2 AND lifecycle_state='PAIRED')",
+                params![kit_terminal, epoch],
                 |row| row.get(0),
             )
             .map_err(classify_sql_error)?;
@@ -305,6 +450,9 @@ impl LocalStore {
         if let Some(until) = locked_until.filter(|until| now_ms < *until) {
             return Ok(SignInCheck::Locked { until_ms: until });
         }
+        if pin.is_empty() {
+            return Ok(SignInCheck::Wrong { attempts_left: (max_attempts - attempts).max(0) });
+        }
 
         let parsed = PasswordHash::new(&phc).map_err(|_| LocalStoreError::InvalidAuthorization)?;
         let correct = Argon2::default()
@@ -319,7 +467,7 @@ impl LocalStore {
                     .execute(
                         "INSERT INTO sign_in_kit_attempts(staff_id,copy_version,attempts,locked_until_ms) VALUES (?1,?2,?3,?4)
                          ON CONFLICT(staff_id,copy_version) DO UPDATE SET attempts=excluded.attempts,locked_until_ms=excluded.locked_until_ms",
-                        params![staff_id, copy_version, attempts, until]
+                        params![staff_id, copy_version, attempts, until],
                     )
                     .map_err(classify_sql_error)?;
                 transaction.commit().map_err(classify_sql_error)?;
@@ -328,8 +476,8 @@ impl LocalStore {
             transaction
                 .execute(
                     "INSERT INTO sign_in_kit_attempts(staff_id,copy_version,attempts,locked_until_ms) VALUES (?1,?2,?3,?4)
-                         ON CONFLICT(staff_id,copy_version) DO UPDATE SET attempts=excluded.attempts,locked_until_ms=excluded.locked_until_ms",
-                        params![staff_id, copy_version, attempts, None::<i64>]
+                     ON CONFLICT(staff_id,copy_version) DO UPDATE SET attempts=excluded.attempts,locked_until_ms=excluded.locked_until_ms",
+                    params![staff_id, copy_version, attempts, None::<i64>],
                 )
                 .map_err(classify_sql_error)?;
             transaction.commit().map_err(classify_sql_error)?;
@@ -357,22 +505,6 @@ impl LocalStore {
         })
     }
 
-    /// The same, on the trusted clock: the last server time plus the machine's
-    /// monotonic time. With no anchor, a restart, or a clock set back, nothing
-    /// is installed. Setting the PC clock back is no way round a lockout.
-    pub fn install_sign_in_kit_trusted(
-        &mut self,
-        signed_kit: &str,
-        signature: &str,
-        key_id: &str,
-        wall_ms: i64,
-        monotonic_ms: i64,
-        boot_id: &str,
-    ) -> Result<KitSummary, LocalStoreError> {
-        let now = self.trusted_now_ms(wall_ms, monotonic_ms, boot_id)?;
-        self.install_sign_in_kit(signed_kit, signature, key_id, now)
-    }
-
     /// The same, on the trusted clock; when it cannot be trusted the answer is
     /// Unknown, so the till signs in with the server instead.
     pub fn verify_sign_in_pin_trusted(
@@ -390,60 +522,31 @@ impl LocalStore {
     }
 
     /// Forgets the kit: every later check is Unknown. Used when the server says
-    /// this till is no longer paired. The counts of wrong PINs and the mark of
-    /// the highest kit installed stay: clearing is no way to fresh tries or
-    /// to put an older kit back.
+    /// this till is no longer paired. The counts of wrong PINs stay, and the mark
+    /// of the highest kit installed is raised past the kit cleared, so a cleared
+    /// kit (or any older one) cannot be put back and a clear is no way to fresh
+    /// tries.
     pub fn clear_sign_in_kit(&mut self) -> Result<(), LocalStoreError> {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(classify_sql_error)?;
+        let issued: Option<i64> = transaction
+            .query_row("SELECT issued_at_ms FROM sign_in_kit WHERE singleton_id=1", [], |row| row.get(0))
+            .optional()
+            .map_err(classify_sql_error)?;
+        if let Some(issued) = issued {
+            transaction
+                .execute(
+                    "INSERT INTO sign_in_kit_mark(singleton_id,high_water_ms) VALUES (1,?1)
+                     ON CONFLICT(singleton_id) DO UPDATE SET high_water_ms=MAX(high_water_ms,excluded.high_water_ms)",
+                    [issued.saturating_add(1)],
+                )
+                .map_err(classify_sql_error)?;
+        }
         transaction.execute("DELETE FROM sign_in_kit_staff", []).map_err(classify_sql_error)?;
         transaction.execute("DELETE FROM sign_in_kit", []).map_err(classify_sql_error)?;
         transaction.commit().map_err(classify_sql_error)
-    }
-}
-
-/// The public key to check a kit against, or None when the till does not trust
-/// that key now: absent from the keyset, revoked, or outside its dates. With no
-/// keyset yet, the terminal's own key from pairing is the one trusted.
-fn resolve_trusted_key(
-    connection: &rusqlite::Connection,
-    key_id: &str,
-    issued_at_ms: i64,
-    now_ms: i64,
-) -> Result<Option<Vec<u8>>, LocalStoreError> {
-    let trusted: Option<(Vec<u8>, String, i64, i64)> = connection
-        .query_row(
-            "SELECT public_key,state,not_before_ms,not_after_ms FROM trusted_signing_keys WHERE kid=?1",
-            [key_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-        )
-        .optional()
-        .map_err(classify_sql_error)?;
-    let has_keyset: bool = connection
-        .query_row("SELECT EXISTS(SELECT 1 FROM trusted_signing_keys)", [], |row| row.get(0))
-        .map_err(classify_sql_error)?;
-    match trusted {
-        Some((key, state, not_before, not_after))
-            if state != "REVOKED"
-                && issued_at_ms >= not_before
-                && issued_at_ms < not_after
-                && now_ms >= not_before
-                && now_ms < not_after =>
-        {
-            Ok(Some(key))
-        }
-        Some(_) => Ok(None),
-        None if !has_keyset => connection
-            .query_row(
-                "SELECT trust_public_key FROM terminal_authority WHERE is_current=1 AND trust_key_id=?1",
-                [key_id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(classify_sql_error),
-        None => Ok(None),
     }
 }
 
@@ -452,6 +555,10 @@ fn validate_kit(payload: &KitPayload) -> Result<(), LocalStoreError> {
     if payload.terminal_id.trim().is_empty()
         || payload.issued_at_ms <= 0
         || payload.expires_at_ms <= payload.issued_at_ms
+        || payload.server_time_ms <= 0
+        || payload.identity_epoch <= 0
+        || payload.nonce.trim().is_empty()
+        || payload.nonce.len() > 128
         || payload.staff.len() > MAX_KIT_STAFF
     {
         return Err(reject);
@@ -487,9 +594,16 @@ mod tests {
         LocalStore, LocalStoreError, OfflinePublicKey, OfflinePublicKeyset, SignInCheck,
         TerminalBinding,
     };
+    use super::{MAX_KIT_LIFE_MS, MAX_KIT_STAFF, MAX_SIGNED_KIT_BYTES};
 
     const DOMAIN: &[u8] = b"peak-pos-sign-in-kit-v1\0";
     const NOW: i64 = 1_800_000_000_000;
+    const DAY: i64 = 86_400_000;
+
+    /// A kit issued `n` ms into the run-up to NOW: bigger is newer.
+    fn t(n: i64) -> i64 {
+        NOW - 1_000_000 + n
+    }
 
     fn store() -> LocalStore {
         let mut connection = Connection::open_in_memory().unwrap();
@@ -546,17 +660,43 @@ mod tests {
         value
     }
 
-    fn payload(terminal: &str, issued: i64, staff: Vec<Value>) -> Vec<u8> {
-        payload_expiring(terminal, issued, NOW + 86_400_000, staff)
+    struct Kit<'a> {
+        terminal: &'a str,
+        issued: i64,
+        expires: i64,
+        nonce: &'a str,
+        server_time: i64,
+        epoch: i64,
+        staff: Vec<Value>,
+        padding: usize,
     }
 
-    fn payload_expiring(terminal: &str, issued: i64, expires: i64, staff: Vec<Value>) -> Vec<u8> {
-        serde_json::to_vec(&json!({
-            "terminalId": terminal, "issuedAtMs": issued, "expiresAtMs": expires, "staff": staff,
+    fn kit<'a>(issued: i64, staff: Vec<Value>) -> Kit<'a> {
+        Kit {
+            terminal: "terminal-1",
+            issued,
+            expires: issued + DAY,
+            nonce: "not-the-tills-nonce",
+            server_time: NOW,
+            epoch: 4,
+            staff,
+            padding: 0,
+        }
+    }
+
+    fn payload(kit: &Kit<'_>) -> Vec<u8> {
+        let mut value = json!({
+            "terminalId": kit.terminal, "issuedAtMs": kit.issued, "expiresAtMs": kit.expires,
+            "nonce": kit.nonce, "serverTimeMs": kit.server_time, "identityEpoch": kit.epoch,
+            "staff": kit.staff,
             "terminal": {"mode": "BAR", "prepStations": [], "propertyName": "Casanova",
                          "outletName": "Bar", "terminalName": "Main till", "capabilities": {}},
-        }))
-        .unwrap()
+        });
+        if kit.padding > 0 {
+            // A field the till does not read: the kit still has to fit.
+            value["padding"] = json!("x".repeat(kit.padding));
+        }
+        serde_json::to_vec(&value).unwrap()
     }
 
     fn sign(signer: &SigningKey, payload: &[u8]) -> (String, String) {
@@ -568,100 +708,138 @@ mod tests {
         )
     }
 
-    fn install(store: &mut LocalStore, issued: i64, staff: Vec<Value>) -> Result<(), LocalStoreError> {
-        let (kit, signature) = sign(&key(), &payload("terminal-1", issued, staff));
+    fn signed(kit: &Kit<'_>) -> (String, String) {
+        sign(&key(), &payload(kit))
+    }
+
+    fn install_kit(store: &mut LocalStore, kit: &Kit<'_>) -> Result<(), LocalStoreError> {
+        let (signed_kit, signature) = signed(kit);
         store
-            .install_sign_in_kit(&kit, &signature, "server-key-1", NOW)
+            .install_sign_in_kit(&signed_kit, &signature, "server-key-1", NOW)
             .map(|_| ())
+    }
+
+    fn install(store: &mut LocalStore, issued: i64, staff: Vec<Value>) -> Result<(), LocalStoreError> {
+        install_kit(store, &kit(issued, staff))
     }
 
     fn one_person() -> Vec<Value> {
         vec![member("staff-1", "Amina Hassan", Some("2468"))]
     }
 
+    fn is_ok(check: SignInCheck) -> bool {
+        matches!(check, SignInCheck::Ok { .. })
+    }
+
+    fn verify(store: &mut LocalStore, id: &str, pin: &str, now: i64) -> SignInCheck {
+        store.verify_sign_in_pin(id, pin.into(), now).unwrap()
+    }
+
     #[test]
     fn a_kit_with_a_bad_signature_is_refused_and_the_old_kit_stays() {
         let mut store = paired_store();
-        install(&mut store, 1_000, one_person()).unwrap();
+        install(&mut store, t(1_000), one_person()).unwrap();
 
         let other = SigningKey::from_bytes(&[9_u8; 32]);
-        let (kit, signature) = sign(&other, &payload("terminal-1", 2_000, vec![]));
-        assert!(store
-            .install_sign_in_kit(&kit, &signature, "server-key-1", NOW)
-            .is_err());
+        let (signed_kit, signature) = sign(&other, &payload(&kit(t(2_000), vec![])));
+        let refused = store.install_sign_in_kit(&signed_kit, &signature, "server-key-1", NOW);
+        assert!(matches!(refused, Err(LocalStoreError::InvalidAuthorization)));
 
-        let (kit, signature) = sign(&key(), &payload("terminal-1", 3_000, vec![]));
-        let mut tampered = URL_SAFE_NO_PAD.decode(&kit).unwrap();
+        let (signed_kit, signature) = signed(&kit(t(3_000), vec![]));
+        let mut tampered = URL_SAFE_NO_PAD.decode(&signed_kit).unwrap();
         tampered[10] ^= 1;
         assert!(store
             .install_sign_in_kit(&URL_SAFE_NO_PAD.encode(tampered), &signature, "server-key-1", NOW)
             .is_err());
 
-        assert!(matches!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), NOW).unwrap(),
-            SignInCheck::Ok { .. }
-        ));
+        assert!(is_ok(verify(&mut store, "staff-1", "2468", NOW)));
     }
 
     #[test]
     fn a_kit_for_another_terminal_is_refused() {
         let mut store = paired_store();
-        let (kit, signature) = sign(&key(), &payload("terminal-2", 1_000, one_person()));
-        assert!(store
-            .install_sign_in_kit(&kit, &signature, "server-key-1", NOW)
-            .is_err());
-        assert_eq!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), NOW).unwrap(),
-            SignInCheck::Unknown
-        );
+        let mut other = kit(t(1_000), one_person());
+        other.terminal = "terminal-2";
+        assert!(install_kit(&mut store, &other).is_err());
+        assert_eq!(verify(&mut store, "staff-1", "2468", NOW), SignInCheck::Unknown);
+    }
+
+    #[test]
+    fn a_kit_for_another_pairing_is_refused_and_a_repair_ends_the_old_kit() {
+        let mut store = paired_store();
+        let mut wrong_epoch = kit(t(1_000), one_person());
+        wrong_epoch.epoch = 5;
+        assert!(install_kit(&mut store, &wrong_epoch).is_err());
+
+        install(&mut store, t(1_000), one_person()).unwrap();
+        assert!(is_ok(verify(&mut store, "staff-1", "2468", NOW)));
+        // The same terminal id is paired again: a new credential epoch.
+        store
+            .connection
+            .execute("UPDATE terminal_authority SET credential_epoch=5", [])
+            .unwrap();
+        assert_eq!(verify(&mut store, "staff-1", "2468", NOW), SignInCheck::Unknown);
+    }
+
+    #[test]
+    fn a_till_that_is_not_paired_installs_nothing() {
+        let mut store = paired_store();
+        store
+            .connection
+            .execute("UPDATE terminal_authority SET lifecycle_state='REVOKED'", [])
+            .unwrap();
+        assert!(install(&mut store, t(1_000), one_person()).is_err());
+    }
+
+    fn keyset(first_state: &str) -> OfflinePublicKeyset {
+        let make = |kid: &str, state: &str, public: [u8; 32]| OfflinePublicKey {
+            kid: kid.into(),
+            algorithm: "Ed25519".into(),
+            signature_version: 1,
+            state: state.into(),
+            not_before: "2027-01-01T00:00:00Z".into(),
+            not_after: "2028-01-01T00:00:00Z".into(),
+            public_key_b64: URL_SAFE_NO_PAD.encode(public),
+        };
+        OfflinePublicKeyset {
+            protocol_version: 1,
+            issued_at: "2027-01-15T07:00:00Z".into(),
+            keys: vec![
+                make("server-key-1", first_state, key().verifying_key().to_bytes()),
+                make("server-key-2", "CURRENT", [5_u8; 32]),
+            ],
+        }
     }
 
     #[test]
     fn a_key_the_till_does_not_trust_is_refused() {
         let mut store = paired_store();
-        let keyset = OfflinePublicKeyset {
-            protocol_version: 1,
-            issued_at: "2027-01-15T07:00:00Z".into(),
-            keys: vec![OfflinePublicKey {
-                kid: "server-key-1".into(),
-                algorithm: "Ed25519".into(),
-                signature_version: 1,
-                state: "REVOKED".into(),
-                not_before: "2027-01-01T00:00:00Z".into(),
-                not_after: "2028-01-01T00:00:00Z".into(),
-                public_key_b64: URL_SAFE_NO_PAD.encode(key().verifying_key().to_bytes()),
-            }, OfflinePublicKey {
-                kid: "server-key-2".into(),
-                algorithm: "Ed25519".into(),
-                signature_version: 1,
-                state: "CURRENT".into(),
-                not_before: "2027-01-01T00:00:00Z".into(),
-                not_after: "2028-01-01T00:00:00Z".into(),
-                public_key_b64: URL_SAFE_NO_PAD.encode([5_u8; 32]),
-            }],
-        };
-        store.install_authenticated_keyset(&keyset, NOW).unwrap();
-        assert!(install(&mut store, NOW - 10, one_person()).is_err());
+        store.install_authenticated_keyset(&keyset("REVOKED"), NOW).unwrap();
+        assert!(install(&mut store, t(900_000), one_person()).is_err());
     }
 
     #[test]
-    fn an_older_kit_is_refused_and_a_newer_one_replaces_the_whole_kit() {
+    fn a_kit_signed_by_a_key_since_dropped_or_revoked_checks_nobody() {
         let mut store = paired_store();
-        install(&mut store, 2_000, one_person()).unwrap();
-        assert!(install(&mut store, 1_000, vec![]).is_err());
+        install(&mut store, t(900_000), one_person()).unwrap();
+        store.install_authenticated_keyset(&keyset("PREVIOUS"), NOW).unwrap();
+        assert!(is_ok(verify(&mut store, "staff-1", "2468", NOW)));
+        store.install_authenticated_keyset(&keyset("REVOKED"), NOW).unwrap();
+        assert_eq!(verify(&mut store, "staff-1", "2468", NOW), SignInCheck::Unknown);
+    }
+
+    #[test]
+    fn an_older_kit_is_refused_as_old_and_a_newer_one_replaces_the_whole_kit() {
+        let mut store = paired_store();
+        install(&mut store, t(2_000), one_person()).unwrap();
         assert!(matches!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), NOW).unwrap(),
-            SignInCheck::Ok { .. }
+            install(&mut store, t(1_000), vec![]),
+            Err(LocalStoreError::KitRollback)
         ));
-        install(&mut store, 3_000, vec![member("staff-2", "Juma Said", Some("1357"))]).unwrap();
-        assert_eq!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), NOW).unwrap(),
-            SignInCheck::Unknown
-        );
-        assert!(matches!(
-            store.verify_sign_in_pin("staff-2", "1357".into(), NOW).unwrap(),
-            SignInCheck::Ok { .. }
-        ));
+        assert!(is_ok(verify(&mut store, "staff-1", "2468", NOW)));
+        install(&mut store, t(3_000), vec![member("staff-2", "Juma Said", Some("1357"))]).unwrap();
+        assert_eq!(verify(&mut store, "staff-1", "2468", NOW), SignInCheck::Unknown);
+        assert!(is_ok(verify(&mut store, "staff-2", "1357", NOW)));
     }
 
     #[test]
@@ -669,14 +847,73 @@ mod tests {
         let mut store = paired_store();
         let mut weak = member("staff-1", "Amina Hassan", Some("2468"));
         weak["tillCopyPhc"] = json!("$argon2id$v=19$m=1024,t=1,p=1$c2FsdHNhbHRzYWx0cw$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g");
-        assert!(install(&mut store, 1_000, vec![weak]).is_err());
+        assert!(install(&mut store, t(1_000), vec![weak]).is_err());
+    }
+
+    #[test]
+    fn a_copy_without_a_copy_version_refuses_the_whole_kit() {
+        let mut store = paired_store();
+        let mut person = member("staff-1", "Amina Hassan", Some("2468"));
+        person.as_object_mut().unwrap().remove("copyVersion");
+        assert!(install(&mut store, t(1_000), vec![person]).is_err());
+    }
+
+    #[test]
+    fn two_people_with_one_staff_id_refuse_the_kit() {
+        let mut store = paired_store();
+        let twice = vec![member("staff-1", "Amina", None), member("staff-1", "Amina again", None)];
+        assert!(install(&mut store, t(1_000), twice).is_err());
+    }
+
+    #[test]
+    fn the_kit_holds_at_most_a_thousand_people() {
+        let mut store = paired_store();
+        let phc = copy("2468");
+        let crowd = |count: usize| -> Vec<Value> {
+            (0..count)
+                .map(|n| {
+                    json!({"staffId": format!("staff-{n}"), "displayName": format!("Person {n}"),
+                           "needsSetup": false, "tillCopyPhc": phc, "copyVersion": "v",
+                           "maxAttempts": 5, "baseLockoutMs": 60000, "roleCode": "WAITER", "permissions": []})
+                })
+                .collect()
+        };
+        assert!(install(&mut store, t(1_000), crowd(MAX_KIT_STAFF + 1)).is_err());
+        install(&mut store, t(1_000), crowd(MAX_KIT_STAFF)).unwrap();
+    }
+
+    #[test]
+    fn a_kit_too_big_to_be_ours_is_refused_before_it_is_read() {
+        let mut store = paired_store();
+        let mut big = kit(t(1_000), one_person());
+        big.padding = MAX_SIGNED_KIT_BYTES;
+        assert!(install_kit(&mut store, &big).is_err());
+        // The same kit without the padding is fine.
+        install(&mut store, t(1_000), one_person()).unwrap();
+    }
+
+    #[test]
+    fn a_kit_that_lives_too_long_or_comes_from_the_future_is_refused() {
+        let mut store = paired_store();
+        let mut long = kit(t(1_000), one_person());
+        long.expires = long.issued + MAX_KIT_LIFE_MS + 1;
+        assert!(install_kit(&mut store, &long).is_err());
+        long.expires = long.issued + MAX_KIT_LIFE_MS;
+        install_kit(&mut store, &long).unwrap();
+
+        let mut early = kit(NOW + 5 * 60 * 1000 + 1, one_person());
+        early.expires = early.issued + DAY;
+        assert!(install_kit(&mut store, &early).is_err());
+        let mut just_in_time = kit(NOW + 5 * 60 * 1000, one_person());
+        just_in_time.expires = just_in_time.issued + DAY;
+        install_kit(&mut store, &just_in_time).unwrap();
     }
 
     #[test]
     fn a_correct_pin_gives_ok_with_the_person_and_the_terminal() {
         let mut store = paired_store();
-        install(&mut store, 1_000, one_person()).unwrap();
-        match store.verify_sign_in_pin("staff-1", "2468".into(), NOW).unwrap() {
+        install(&mut store, t(1_000), one_person()).unwrap();
+        match verify(&mut store, "staff-1", "2468", NOW) {
             SignInCheck::Ok { staff, terminal } => {
                 assert_eq!(staff.staff_id, "staff-1");
                 assert_eq!(staff.display_name, "Amina Hassan");
@@ -693,34 +930,31 @@ mod tests {
     #[test]
     fn wrong_pins_count_down_and_the_fifth_locks_then_doubles() {
         let mut store = paired_store();
-        install(&mut store, 1_000, one_person()).unwrap();
+        install(&mut store, t(1_000), one_person()).unwrap();
         for left in [4, 3, 2, 1] {
             assert_eq!(
-                store.verify_sign_in_pin("staff-1", "0000".into(), NOW).unwrap(),
+                verify(&mut store, "staff-1", "0000", NOW),
                 SignInCheck::Wrong { attempts_left: left }
             );
         }
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "0000".into(), NOW).unwrap(),
+            verify(&mut store, "staff-1", "0000", NOW),
             SignInCheck::Locked { until_ms: NOW + 60_000 }
         );
         // Locked means locked: even the right PIN waits.
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), NOW + 59_999).unwrap(),
+            verify(&mut store, "staff-1", "2468", NOW + 59_999),
             SignInCheck::Locked { until_ms: NOW + 60_000 }
         );
         // After the wait one more wrong PIN doubles it.
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "0000".into(), NOW + 60_000).unwrap(),
+            verify(&mut store, "staff-1", "0000", NOW + 60_000),
             SignInCheck::Locked { until_ms: NOW + 60_000 + 120_000 }
         );
         // After that wait the right PIN is let in and the count starts again.
-        assert!(matches!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), NOW + 180_000).unwrap(),
-            SignInCheck::Ok { .. }
-        ));
+        assert!(is_ok(verify(&mut store, "staff-1", "2468", NOW + 180_000)));
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "0000".into(), NOW + 180_001).unwrap(),
+            verify(&mut store, "staff-1", "0000", NOW + 180_001),
             SignInCheck::Wrong { attempts_left: 4 }
         );
     }
@@ -731,25 +965,35 @@ mod tests {
         let mut person = member("staff-1", "Amina Hassan", Some("2468"));
         person["maxAttempts"] = json!(2);
         person["baseLockoutMs"] = json!(1000);
-        install(&mut store, 1_000, vec![person]).unwrap();
+        install(&mut store, t(1_000), vec![person]).unwrap();
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "0000".into(), NOW).unwrap(),
+            verify(&mut store, "staff-1", "0000", NOW),
             SignInCheck::Wrong { attempts_left: 1 }
         );
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "0000".into(), NOW).unwrap(),
+            verify(&mut store, "staff-1", "0000", NOW),
             SignInCheck::Locked { until_ms: NOW + 1_000 }
         );
     }
 
     #[test]
+    fn an_empty_pin_is_not_a_try() {
+        let mut store = paired_store();
+        install(&mut store, t(1_000), one_person()).unwrap();
+        for _ in 0..8 {
+            assert_eq!(
+                verify(&mut store, "staff-1", "", NOW),
+                SignInCheck::Wrong { attempts_left: 5 }
+            );
+        }
+        assert!(is_ok(verify(&mut store, "staff-1", "2468", NOW)));
+    }
+
+    #[test]
     fn a_person_absent_from_the_kit_is_unknown() {
         let mut store = paired_store();
-        install(&mut store, 1_000, one_person()).unwrap();
-        assert_eq!(
-            store.verify_sign_in_pin("staff-9", "2468".into(), NOW).unwrap(),
-            SignInCheck::Unknown
-        );
+        install(&mut store, t(1_000), one_person()).unwrap();
+        assert_eq!(verify(&mut store, "staff-9", "2468", NOW), SignInCheck::Unknown);
     }
 
     #[test]
@@ -757,18 +1001,11 @@ mod tests {
         let mut store = paired_store();
         let mut absent = member("staff-3", "Zawadi", Some("1111"));
         absent.as_object_mut().unwrap().remove("tillCopyPhc");
-        install(
-            &mut store,
-            1_000,
-            vec![member("staff-2", "Juma Said", None), absent],
-        )
-        .unwrap();
+        absent.as_object_mut().unwrap().remove("copyVersion");
+        install(&mut store, t(1_000), vec![member("staff-2", "Juma Said", None), absent]).unwrap();
         for id in ["staff-2", "staff-3"] {
             for _ in 0..7 {
-                assert_eq!(
-                    store.verify_sign_in_pin(id, "1111".into(), NOW).unwrap(),
-                    SignInCheck::NoCopy
-                );
+                assert_eq!(verify(&mut store, id, "1111", NOW), SignInCheck::NoCopy);
             }
         }
     }
@@ -778,127 +1015,136 @@ mod tests {
         let mut store = paired_store();
         let mut person = member("staff-1", "Amina Hassan", Some("2468"));
         person["lockedUntilMs"] = json!(NOW + 5_000);
-        install(&mut store, 1_000, vec![person]).unwrap();
+        install(&mut store, t(1_000), vec![person]).unwrap();
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), NOW).unwrap(),
+            verify(&mut store, "staff-1", "2468", NOW),
             SignInCheck::Locked { until_ms: NOW + 5_000 }
         );
-        assert!(matches!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), NOW + 5_000).unwrap(),
-            SignInCheck::Ok { .. }
-        ));
+        assert!(is_ok(verify(&mut store, "staff-1", "2468", NOW + 5_000)));
     }
 
     #[test]
     fn after_clearing_the_kit_every_check_is_unknown() {
         let mut store = paired_store();
-        install(&mut store, 1_000, one_person()).unwrap();
+        install(&mut store, t(1_000), one_person()).unwrap();
         store.clear_sign_in_kit().unwrap();
-        assert_eq!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), NOW).unwrap(),
-            SignInCheck::Unknown
-        );
+        assert_eq!(verify(&mut store, "staff-1", "2468", NOW), SignInCheck::Unknown);
     }
 
     #[test]
     fn clearing_and_reinstalling_does_not_give_fresh_tries() {
         let mut store = paired_store();
-        install(&mut store, 1_000, one_person()).unwrap();
+        install(&mut store, t(1_000), one_person()).unwrap();
         for _ in 0..3 {
-            store.verify_sign_in_pin("staff-1", "0000".into(), NOW).unwrap();
+            verify(&mut store, "staff-1", "0000", NOW);
         }
         store.clear_sign_in_kit().unwrap();
-        install(&mut store, 1_000, one_person()).unwrap();
+        install(&mut store, t(1_001), one_person()).unwrap();
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "0000".into(), NOW).unwrap(),
+            verify(&mut store, "staff-1", "0000", NOW),
             SignInCheck::Wrong { attempts_left: 1 }
         );
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "0000".into(), NOW).unwrap(),
+            verify(&mut store, "staff-1", "0000", NOW),
             SignInCheck::Locked { until_ms: NOW + 60_000 }
         );
         store.clear_sign_in_kit().unwrap();
-        install(&mut store, 1_000, one_person()).unwrap();
+        install(&mut store, t(1_002), one_person()).unwrap();
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), NOW + 1).unwrap(),
+            verify(&mut store, "staff-1", "2468", NOW + 1),
             SignInCheck::Locked { until_ms: NOW + 60_000 }
         );
     }
 
     #[test]
-    fn an_older_kit_cannot_be_put_back_after_a_clear() {
+    fn a_cleared_kit_cannot_come_back() {
         let mut store = paired_store();
-        install(&mut store, 2_000, one_person()).unwrap();
+        install(&mut store, t(2_000), one_person()).unwrap();
         store.clear_sign_in_kit().unwrap();
-        assert!(install(&mut store, 1_999, one_person()).is_err());
-        // The same kit again is fine.
-        install(&mut store, 2_000, one_person()).unwrap();
+        assert!(matches!(
+            install(&mut store, t(2_000), one_person()),
+            Err(LocalStoreError::KitRollback)
+        ));
+        assert!(matches!(
+            install(&mut store, t(1_999), one_person()),
+            Err(LocalStoreError::KitRollback)
+        ));
+        // A newer kit is fine.
+        install(&mut store, t(2_001), one_person()).unwrap();
     }
 
     #[test]
     fn an_expired_kit_is_refused_and_stops_checking_when_it_runs_out() {
         let mut store = paired_store();
-        let (kit, signature) = sign(&key(), &payload_expiring("terminal-1", 1_000, NOW, one_person()));
-        assert!(store.install_sign_in_kit(&kit, &signature, "server-key-1", NOW).is_err());
+        let mut gone = kit(t(1_000), one_person());
+        gone.expires = NOW;
+        assert!(install_kit(&mut store, &gone).is_err());
 
         let expires = NOW + 5_000;
-        let (kit, signature) = sign(&key(), &payload_expiring("terminal-1", 1_000, expires, one_person()));
-        store.install_sign_in_kit(&kit, &signature, "server-key-1", NOW).unwrap();
-        assert!(matches!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), expires - 1).unwrap(),
-            SignInCheck::Ok { .. }
-        ));
+        let mut live = kit(t(1_000), one_person());
+        live.expires = expires;
+        install_kit(&mut store, &live).unwrap();
+        assert!(is_ok(verify(&mut store, "staff-1", "2468", expires - 1)));
+        assert_eq!(verify(&mut store, "staff-1", "2468", expires), SignInCheck::Unknown);
+    }
+
+    #[test]
+    fn a_revoked_till_checks_nobody() {
+        let mut store = paired_store();
+        install(&mut store, t(1_000), one_person()).unwrap();
+        store
+            .connection
+            .execute("UPDATE terminal_authority SET lifecycle_state='REVOKED'", [])
+            .unwrap();
+        assert_eq!(verify(&mut store, "staff-1", "2468", NOW), SignInCheck::Unknown);
+    }
+
+    #[test]
+    fn a_refresh_keeps_the_count_for_the_same_copy_and_drops_it_for_a_new_one() {
+        let mut store = paired_store();
+        install(&mut store, t(1_000), one_person()).unwrap();
+        for _ in 0..3 {
+            verify(&mut store, "staff-1", "0000", NOW);
+        }
+        let same = store
+            .connection
+            .query_row("SELECT till_copy_phc FROM sign_in_kit_staff", [], |r| r.get::<_, String>(0))
+            .unwrap();
+        let mut person = member("staff-1", "Amina Hassan", Some("2468"));
+        person["tillCopyPhc"] = json!(same);
+        install(&mut store, t(2_000), vec![person]).unwrap();
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), expires).unwrap(),
-            SignInCheck::Unknown
+            verify(&mut store, "staff-1", "0000", NOW),
+            SignInCheck::Wrong { attempts_left: 1 }
+        );
+        // A new PIN is a new copy: the old count does not follow it.
+        install(&mut store, t(3_000), vec![member("staff-1", "Amina Hassan", Some("9999"))]).unwrap();
+        assert_eq!(
+            verify(&mut store, "staff-1", "0000", NOW),
+            SignInCheck::Wrong { attempts_left: 4 }
         );
     }
 
     #[test]
-    fn a_kit_signed_by_a_key_since_dropped_or_revoked_checks_nobody() {
+    fn a_kit_that_names_no_version_for_someone_keeps_their_count() {
         let mut store = paired_store();
-        install(&mut store, NOW - 10, one_person()).unwrap();
-        let keyset = |state: &str| OfflinePublicKeyset {
-            protocol_version: 1,
-            issued_at: "2027-01-15T07:00:00Z".into(),
-            keys: vec![
-                OfflinePublicKey {
-                    kid: "server-key-1".into(),
-                    algorithm: "Ed25519".into(),
-                    signature_version: 1,
-                    state: state.into(),
-                    not_before: "2027-01-01T00:00:00Z".into(),
-                    not_after: "2028-01-01T00:00:00Z".into(),
-                    public_key_b64: URL_SAFE_NO_PAD.encode(key().verifying_key().to_bytes()),
-                },
-                OfflinePublicKey {
-                    kid: "server-key-2".into(),
-                    algorithm: "Ed25519".into(),
-                    signature_version: 1,
-                    state: "CURRENT".into(),
-                    not_before: "2027-01-01T00:00:00Z".into(),
-                    not_after: "2028-01-01T00:00:00Z".into(),
-                    public_key_b64: URL_SAFE_NO_PAD.encode([5_u8; 32]),
-                },
-            ],
-        };
-        // Trusted and current: still checked. NOW is inside the key's dates.
-        store.install_authenticated_keyset(&keyset("PREVIOUS"), NOW).unwrap();
-        assert!(matches!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), NOW).unwrap(),
-            SignInCheck::Ok { .. }
-        ));
-        store.install_authenticated_keyset(&keyset("REVOKED"), NOW).unwrap();
+        install(&mut store, t(1_000), one_person()).unwrap();
+        for _ in 0..3 {
+            verify(&mut store, "staff-1", "0000", NOW);
+        }
+        install(&mut store, t(2_000), vec![member("staff-1", "Amina Hassan", None)]).unwrap();
+        assert_eq!(verify(&mut store, "staff-1", "2468", NOW), SignInCheck::NoCopy);
+        install(&mut store, t(3_000), one_person()).unwrap();
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), NOW).unwrap(),
-            SignInCheck::Unknown
+            verify(&mut store, "staff-1", "0000", NOW),
+            SignInCheck::Wrong { attempts_left: 1 }
         );
     }
 
     #[test]
     fn a_clock_set_back_cannot_escape_a_lockout_or_open_the_till() {
         let mut store = paired_store();
-        install(&mut store, 1_000, one_person()).unwrap();
+        install(&mut store, t(1_000), one_person()).unwrap();
         store.record_trusted_time(NOW, NOW, 20_000, "boot-a").unwrap();
         for _ in 0..5 {
             store
@@ -914,70 +1160,164 @@ mod tests {
         // Someone sets the PC clock back by a day; the monotonic clock keeps going.
         assert_eq!(
             store
-                .verify_sign_in_pin_trusted("staff-1", "2468".into(), NOW - 86_400_000, 23_000, "boot-a")
+                .verify_sign_in_pin_trusted("staff-1", "2468".into(), NOW - DAY, 23_000, "boot-a")
                 .unwrap(),
             SignInCheck::Unknown
         );
         // And nothing new is installed on a clock that cannot be trusted.
-        let (kit, signature) = sign(&key(), &payload("terminal-1", 5_000, one_person()));
+        let (signed_kit, signature) = signed(&kit(t(5_000), one_person()));
         assert!(store
-            .install_sign_in_kit_trusted(&kit, &signature, "server-key-1", NOW - 86_400_000, 24_000, "boot-a")
+            .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW - DAY, 24_000, "boot-a")
             .is_err());
     }
 
     #[test]
-    fn with_no_trusted_clock_nothing_is_installed_or_checked() {
+    fn with_no_trusted_clock_and_no_nonce_nothing_is_installed_or_checked() {
         let mut store = paired_store();
-        install(&mut store, 1_000, one_person()).unwrap();
+        install(&mut store, t(1_000), one_person()).unwrap();
         assert_eq!(
             store
                 .verify_sign_in_pin_trusted("staff-1", "2468".into(), NOW, 21_000, "boot-a")
                 .unwrap(),
             SignInCheck::Unknown
         );
-        let (kit, signature) = sign(&key(), &payload("terminal-1", 5_000, one_person()));
+        let mut guess = kit(t(5_000), one_person());
+        guess.nonce = "a-nonce-the-till-never-made";
+        let (signed_kit, signature) = signed(&guess);
         assert!(store
-            .install_sign_in_kit_trusted(&kit, &signature, "server-key-1", NOW, 21_000, "boot-a")
+            .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW, 21_000, "boot-a")
             .is_err());
     }
 
-    #[test]
-    fn a_revoked_till_checks_nobody() {
-        let mut store = paired_store();
-        install(&mut store, 1_000, one_person()).unwrap();
+    fn server_time_row(store: &LocalStore) -> i64 {
         store
             .connection
-            .execute("UPDATE terminal_authority SET lifecycle_state='REVOKED'", [])
-            .unwrap();
+            .query_row("SELECT server_time_ms FROM trusted_time_state WHERE singleton_id=1", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn a_kit_answering_the_tills_nonce_sets_the_clock_so_the_first_sign_in_works() {
+        let mut store = paired_store();
+        let nonce = store.new_sign_in_kit_nonce().unwrap();
+        assert_eq!(URL_SAFE_NO_PAD.decode(&nonce).unwrap().len(), 32);
+        let mut answer = kit(t(1_000), one_person());
+        answer.nonce = &nonce;
+        let (signed_kit, signature) = signed(&answer);
+
+        // A fresh boot: no anchor, so no check.
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "2468".into(), NOW).unwrap(),
+            store.verify_sign_in_pin_trusted("staff-1", "2468".into(), NOW + 50, 20_000, "boot-a").unwrap(),
+            SignInCheck::Unknown
+        );
+        store
+            .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW + 50, 20_000, "boot-a")
+            .unwrap();
+        assert_eq!(server_time_row(&store), NOW);
+        assert!(is_ok(
+            store.verify_sign_in_pin_trusted("staff-1", "2468".into(), NOW + 1_050, 21_000, "boot-a").unwrap()
+        ));
+    }
+
+    #[test]
+    fn a_nonce_is_used_once_and_a_replayed_kit_never_moves_the_clock() {
+        let mut store = paired_store();
+        let nonce = store.new_sign_in_kit_nonce().unwrap();
+        let mut answer = kit(t(1_000), one_person());
+        answer.nonce = &nonce;
+        let (signed_kit, signature) = signed(&answer);
+        store
+            .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW + 50, 20_000, "boot-a")
+            .unwrap();
+        assert_eq!(server_time_row(&store), NOW);
+
+        // The same nonce again, in a kit that says the server's time is later.
+        let mut replay = kit(t(2_000), one_person());
+        replay.nonce = &nonce;
+        replay.server_time = NOW + 5_000_000;
+        let (signed_kit, signature) = signed(&replay);
+        store
+            .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW + 2_050, 22_000, "boot-a")
+            .unwrap();
+        assert_eq!(server_time_row(&store), NOW, "a used nonce must not move the clock");
+
+        // And a nonce only the latest request holds: an older one is no good.
+        let older = store.new_sign_in_kit_nonce().unwrap();
+        let newer = store.new_sign_in_kit_nonce().unwrap();
+        assert_ne!(older, newer);
+        let mut stale = kit(t(3_000), one_person());
+        stale.nonce = &older;
+        stale.server_time = NOW + 7_000_000;
+        let (signed_kit, signature) = signed(&stale);
+        store
+            .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW + 3_050, 23_000, "boot-a")
+            .unwrap();
+        assert_eq!(server_time_row(&store), NOW);
+    }
+
+    #[test]
+    fn a_kit_cannot_set_the_clock_backwards_past_the_rollback_detector() {
+        let mut store = paired_store();
+        let nonce = store.new_sign_in_kit_nonce().unwrap();
+        let mut first = kit(NOW - 5_000_000, one_person());
+        first.nonce = &nonce;
+        let (signed_kit, signature) = signed(&first);
+        store
+            .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW + 50, 20_000, "boot-a")
+            .unwrap();
+
+        let nonce = store.new_sign_in_kit_nonce().unwrap();
+        let mut back = kit(NOW - 3_650_000, vec![member("staff-2", "Juma Said", Some("1357"))]);
+        back.nonce = &nonce;
+        back.server_time = NOW - 3_600_000;
+        let (signed_kit, signature) = signed(&back);
+        let refused = store.install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW + 3_050, 23_000, "boot-a");
+        assert!(matches!(refused, Err(LocalStoreError::AuthorizationRollback)));
+        assert_eq!(server_time_row(&store), NOW);
+        assert_eq!(
+            store.verify_sign_in_pin_trusted("staff-2", "1357".into(), NOW + 3_050, 23_000, "boot-a").unwrap(),
             SignInCheck::Unknown
         );
     }
 
     #[test]
-    fn a_refresh_keeps_the_count_for_the_same_copy_and_drops_it_for_a_new_one() {
+    fn the_json_the_wrapper_relies_on() {
         let mut store = paired_store();
-        install(&mut store, 1_000, one_person()).unwrap();
-        for _ in 0..3 {
-            store.verify_sign_in_pin("staff-1", "0000".into(), NOW).unwrap();
-        }
-        let same = store
-            .connection
-            .query_row("SELECT till_copy_phc FROM sign_in_kit_staff", [], |r| r.get::<_, String>(0))
-            .unwrap();
-        let mut person = member("staff-1", "Amina Hassan", Some("2468"));
-        person["tillCopyPhc"] = json!(same);
-        install(&mut store, 2_000, vec![person]).unwrap();
+        install(&mut store, t(1_000), vec![member("staff-1", "Amina Hassan", Some("2468")), member("staff-2", "Juma", None)]).unwrap();
+        let terminal = json!({"mode": "BAR", "prepStations": [], "propertyName": "Casanova",
+                              "outletName": "Bar", "terminalName": "Main till", "capabilities": {}});
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "0000".into(), NOW).unwrap(),
-            SignInCheck::Wrong { attempts_left: 1 }
+            serde_json::to_value(verify(&mut store, "staff-1", "2468", NOW)).unwrap(),
+            json!({"state": "OK", "terminal": terminal,
+                   "staff": {"staffId": "staff-1", "displayName": "Amina Hassan",
+                             "roleCode": "POS_CASHIER", "permissions": ["pos.order.create"]}})
         );
-        // A new PIN is a new copy: the old count does not follow it.
-        install(&mut store, 3_000, vec![member("staff-1", "Amina Hassan", Some("9999"))]).unwrap();
         assert_eq!(
-            store.verify_sign_in_pin("staff-1", "0000".into(), NOW).unwrap(),
-            SignInCheck::Wrong { attempts_left: 4 }
+            serde_json::to_value(verify(&mut store, "staff-1", "0000", NOW)).unwrap(),
+            json!({"state": "WRONG", "attemptsLeft": 4})
+        );
+        assert_eq!(
+            serde_json::to_value(SignInCheck::Locked { until_ms: 99 }).unwrap(),
+            json!({"state": "LOCKED", "untilMs": 99})
+        );
+        assert_eq!(
+            serde_json::to_value(verify(&mut store, "staff-2", "1", NOW)).unwrap(),
+            json!({"state": "NO_COPY"})
+        );
+        assert_eq!(
+            serde_json::to_value(verify(&mut store, "staff-9", "1", NOW)).unwrap(),
+            json!({"state": "UNKNOWN"})
+        );
+        let (signed_kit, signature) = signed(&kit(t(2_000), one_person()));
+        let summary = store.install_sign_in_kit(&signed_kit, &signature, "server-key-1", NOW).unwrap();
+        assert_eq!(
+            serde_json::to_value(summary).unwrap(),
+            json!({"terminalId": "terminal-1", "issuedAtMs": t(2_000),
+                   "expiresAtMs": t(2_000) + DAY, "staffCount": 1})
+        );
+        assert_eq!(
+            serde_json::to_value(LocalStoreError::KitRollback.kind()).unwrap(),
+            json!("KIT_ROLLBACK")
         );
     }
 
@@ -986,13 +1326,13 @@ mod tests {
     #[test]
     fn timing_twenty_checks_of_a_correct_pin() {
         let mut store = paired_store();
-        install(&mut store, 1_000, one_person()).unwrap();
+        install(&mut store, t(1_000), one_person()).unwrap();
         let mut millis = Vec::new();
         for _ in 0..20 {
             let started = Instant::now();
-            let check = store.verify_sign_in_pin("staff-1", "2468".into(), NOW).unwrap();
+            let check = verify(&mut store, "staff-1", "2468", NOW);
             millis.push(started.elapsed().as_secs_f64() * 1000.0);
-            assert!(matches!(check, SignInCheck::Ok { .. }));
+            assert!(is_ok(check));
         }
         millis.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let median = (millis[9] + millis[10]) / 2.0;
