@@ -24,6 +24,7 @@ const STORE_WORDS: Record<string, { sentence: string; next: string }> = {
   AUTHORIZATION_REQUIRED: { sentence: "This till's permission to work offline has run out.", next: RECONNECT },
   INVALID_AUTHORIZATION: { sentence: "This till's permission to work offline has run out.", next: RECONNECT },
   AUTHORIZATION_ROLLBACK: { sentence: "Working offline is locked because the till's clock changed.", next: RECONNECT },
+  KIT_ROLLBACK: { sentence: "This till already holds a newer list of people.", next: RECONNECT },
   CATALOG_REQUIRED: { sentence: "This till has no menu saved for working offline.", next: RECONNECT },
   INVALID_CATALOG: { sentence: "The menu saved on this till can't be used.", next: RECONNECT },
   OPERATION_NOT_ALLOWED: { sentence: "That can't be done while working offline.", next: RECONNECT },

@@ -1,6 +1,7 @@
 import { CircleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { PIN_LENGTH } from "../access/accessSettings";
+import { NO_BANK_PIN_WORDS } from "../access/accessWords";
 import { Button, Keypad, Sheet, type KeypadKey } from "../components/system";
 import { createPosApi } from "../lib/posApi";
 
@@ -153,6 +154,11 @@ export function ChangePinSheet({
         <h3 className="y-pin__step" data-testid="change-pin-step">
           {TITLE[step]}
         </h3>
+        {step === "choose" ? (
+          <p className="y-field__hint" data-testid="change-pin-no-bank-pin">
+            {NO_BANK_PIN_WORDS}
+          </p>
+        ) : null}
         <div className="y-pin__dots" data-testid="change-pin-dots" role="img" aria-label={`${pin.length} of ${PIN_LENGTH} digits entered`}>
           {Array.from({ length: PIN_LENGTH }, (_, index) => (
             <span key={index} className={index < pin.length ? "y-pin__dot y-pin__dot--filled" : "y-pin__dot"} />

@@ -47,3 +47,11 @@ tempfile = "=3.27.0"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+
+# The tests run unoptimised; Argon2 at the till copy's cost would take seconds
+# and say nothing about the real build. These two are built optimised in dev and
+# test so the sign-in timing test measures what the till does.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3

@@ -138,11 +138,20 @@ pub fn get_sync_state(
 
 #[tauri::command]
 pub async fn retry_sync(
+    app: AppHandle,
     runtime: State<'_, LocalStoreRuntime>,
     base_url: String,
     bearer_token: String,
 ) -> Result<super::SyncState, String> {
-    let client = reqwest::Client::new();
+    // The offline keys, and the bearer token that fetches them, go only to this
+    // till's own Yetu, never to an address the web view names (the same origin
+    // check every other native request to Yetu is held to).
+    if crate::yetu_http::pin_to_yetu(&base_url, &crate::yetu_http::yetu_of(&app)).is_none() {
+        return Err(format!("refused: {base_url} is not this till's Yetu"));
+    }
+    // The shared native client: it follows no redirect, so the bearer token
+    // cannot be carried to another address.
+    let client = crate::yetu_http::native_client()?;
     let operations = runtime
         .with_store(|store| store.pending_sync_batch(now_ms()))
         .map_err(|error| format!("{error:?}"))?;
@@ -251,6 +260,51 @@ pub fn authenticate_offline_staff(
         let now = trusted_now(store)?;
         store.authenticate_offline_staff(&staff_id, pin, now)
     })
+}
+
+#[tauri::command(async)]
+pub fn install_sign_in_kit(
+    runtime: State<'_, LocalStoreRuntime>,
+    signed_kit: String,
+    signature: String,
+    key_id: String,
+) -> Result<super::KitSummary, LocalStoreErrorKind> {
+    runtime.with_store(|store| {
+        store.install_sign_in_kit_trusted(
+            &signed_kit,
+            &signature,
+            &key_id,
+            now_ms(),
+            monotonic_ms(),
+            &boot_id(),
+        )
+    })
+}
+
+#[tauri::command(async)]
+pub fn verify_sign_in_pin(
+    runtime: State<'_, LocalStoreRuntime>,
+    staff_id: String,
+    pin: String,
+) -> Result<super::SignInCheck, LocalStoreErrorKind> {
+    runtime.with_store(|store| {
+        store.verify_sign_in_pin_trusted(&staff_id, pin, now_ms(), monotonic_ms(), &boot_id())
+    })
+}
+
+/// A fresh single-use nonce for the next kit request. The web view never picks it.
+#[tauri::command(async)]
+pub fn new_sign_in_kit_nonce(
+    runtime: State<'_, LocalStoreRuntime>,
+) -> Result<String, LocalStoreErrorKind> {
+    runtime.with_store(|store| store.new_sign_in_kit_nonce(monotonic_ms(), &boot_id()))
+}
+
+#[tauri::command]
+pub fn clear_sign_in_kit(
+    runtime: State<'_, LocalStoreRuntime>,
+) -> Result<(), LocalStoreErrorKind> {
+    runtime.with_store(|store| store.clear_sign_in_kit())
 }
 
 #[tauri::command]
@@ -542,6 +596,17 @@ fn set_mode(_path: &Path, _mode: u32) -> Result<(), std::io::Error> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn retry_sync_builds_no_client_of_its_own() {
+        // It must use the shared native client (no redirects), never a default one.
+        let source = include_str!("runtime.rs");
+        let start = source.find("pub async fn retry_sync").unwrap();
+        let body = &source[start..];
+        let body = &body[..body.find("#[tauri::command").unwrap()];
+        assert!(!body.contains(concat!("reqwest::Client", "::new")));
+        assert!(body.contains(concat!("native_client", "()?")));
+    }
+
     use std::sync::Mutex;
 
     use super::*;
@@ -588,7 +653,7 @@ mod tests {
         let runtime = LocalStoreRuntime::initialize(temporary.path(), &MemoryKeyStore::default());
         let status = runtime.status();
         assert_eq!(status.state, "READY");
-        assert_eq!(status.schema_version, Some(6));
+        assert_eq!(status.schema_version, Some(7));
         assert_eq!(status.cipher_version.as_deref(), Some("4.14.0 community"));
         assert_eq!(status.issue, None);
         let json = serde_json::to_string(&status).unwrap();

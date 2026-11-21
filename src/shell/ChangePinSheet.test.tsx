@@ -37,6 +37,7 @@ describe("Change my PIN", () => {
     expect(screen.getByTestId("change-pin-step")).toHaveTextContent("Enter your PIN now");
     await type("583920");
     expect(screen.getByTestId("change-pin-step")).toHaveTextContent("Choose a new six-digit PIN");
+    expect(screen.getByTestId("change-pin-no-bank-pin")).toHaveTextContent("Don't use your M-Pesa or bank PIN.");
     await type("204815");
     expect(screen.getByTestId("change-pin-step")).toHaveTextContent("Type it again");
     expect(changeOwnPin).not.toHaveBeenCalled();

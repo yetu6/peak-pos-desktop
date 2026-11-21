@@ -161,6 +161,9 @@ export function accessNotice(message: string | null | undefined): AccessNotice |
   return MESSAGES[message] ?? SOMETHING_WRONG;
 }
 
+/** Said wherever a person chooses a new PIN: the till keeps a copy of it so sign-in works without internet (owner, 2026-11-21). */
+export const NO_BANK_PIN_WORDS = "Don't use your M-Pesa or bank PIN.";
+
 /**
  * The PIN screen's notice: a refused PIN reads differently for a person typed
  * in by number. Once online refusals for that person reach the backend's

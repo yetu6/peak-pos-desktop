@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useDeviceSession, type UnlockOutcome } from "../auth/DeviceSessionProvider";
 import { AccessLayout } from "../access/AccessLayout";
 import { PIN_LENGTH, ROSTER_SEARCH_AFTER } from "../access/accessSettings";
-import { offlineReadinessWords, pinNotice } from "../access/accessWords";
+import { NO_BANK_PIN_WORDS, offlineReadinessWords, pinNotice } from "../access/accessWords";
 import { rateLimitWords } from "../lib/posErrors";
 import { useNetworkOnline } from "../access/useNetworkOnline";
 import { Avatar, Banner, Button, Field, Keypad, SearchField, StatusChip, type KeypadKey } from "../components/system";
@@ -401,9 +401,9 @@ export function PinUnlockView({
           : STEP_TITLE[step];
   const lede =
     step === "choose" && resetting
-      ? <p>Then type it again. The owner and General Manager will be told.</p>
+      ? <><p>Then type it again. The owner and General Manager will be told.</p><p data-testid="pin-no-bank-pin">{NO_BANK_PIN_WORDS}</p></>
       : step === "choose"
-          ? <p>Six digits only you know. You will sign in with it from now on.</p>
+          ? <><p>Six digits only you know. You will sign in with it from now on.</p><p data-testid="pin-no-bank-pin">{NO_BANK_PIN_WORDS}</p></>
           : undefined;
   const checking =
     step === "confirm" ? "Signing you in…" : step === "setup-code" ? "Checking your setup code…" : "Checking your PIN…";

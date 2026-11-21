@@ -35,18 +35,24 @@ const ALLOWED_HEADERS: [&str; 7] = [
 
 pub struct YetuHttp(reqwest::Client);
 
+/// The one client every native request to Yetu is made with: no redirects (a
+/// bearer token must never follow a redirect to another address), timeouts, and
+/// the till's user agent. `retry_sync` uses it too.
+pub(crate) fn native_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .pool_idle_timeout(IDLE_KEPT)
+        .tcp_keepalive(Duration::from_secs(30))
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(REQUEST_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent(concat!("Yetu-Till/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| error.to_string())
+}
+
 impl YetuHttp {
     pub fn new() -> Result<Self, String> {
-        reqwest::Client::builder()
-            .pool_idle_timeout(IDLE_KEPT)
-            .tcp_keepalive(Duration::from_secs(30))
-            .connect_timeout(CONNECT_TIMEOUT)
-            .timeout(REQUEST_TIMEOUT)
-            .redirect(reqwest::redirect::Policy::none())
-            .user_agent(concat!("Yetu-Till/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .map(Self)
-            .map_err(|error| error.to_string())
+        native_client().map(Self)
     }
 }
 
@@ -87,14 +93,20 @@ fn resolve_yetu(configured: Option<String>, built_in: Option<&str>) -> reqwest::
         .unwrap_or_else(|| reqwest::Url::parse(DEVELOPMENT_YETU).expect("a valid address"))
 }
 
-fn yetu_of(app: &AppHandle) -> reqwest::Url {
+pub(crate) fn yetu_of(app: &AppHandle) -> reqwest::Url {
     let configured = crate::identity::load_peak_config(app.clone()).ok().flatten();
     resolve_yetu(configured, option_env!("VITE_PEAK_API_URL"))
 }
 
+/// The address, only if it is HTTPS (or this computer while developing) and on
+/// the same origin as this till's own Yetu. Everything the native side sends to
+/// Yetu is held to this, including the offline key fetch of `retry_sync`.
+pub(crate) fn pin_to_yetu(raw: &str, yetu: &reqwest::Url) -> Option<reqwest::Url> {
+    acceptable(raw).filter(|url| url.origin() == yetu.origin())
+}
+
 fn check(request: &YetuRequest, yetu: &reqwest::Url) -> Result<(reqwest::Url, reqwest::Method), String> {
-    let url = acceptable(&request.url)
-        .filter(|url| url.origin() == yetu.origin())
+    let url = pin_to_yetu(&request.url, yetu)
         .ok_or_else(|| format!("refused: {} is not this till's Yetu", request.url))?;
     let method = request.method.to_uppercase();
     if !METHODS.contains(&method.as_str()) {
@@ -141,6 +153,18 @@ pub async fn yetu_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_this_tills_yetu_is_an_address_the_native_side_will_use() {
+        let yetu = reqwest::Url::parse("https://api.yetu.example").unwrap();
+        assert!(pin_to_yetu("https://api.yetu.example", &yetu).is_some());
+        assert!(pin_to_yetu("https://api.yetu.example/api/v1/pos/offline/trust-keyset", &yetu).is_some());
+        assert!(pin_to_yetu("https://evil.example", &yetu).is_none());
+        assert!(pin_to_yetu("https://api.yetu.example.evil.example", &yetu).is_none());
+        assert!(pin_to_yetu("http://api.yetu.example", &yetu).is_none());
+        assert!(pin_to_yetu("https://api.yetu.example:8443", &yetu).is_none());
+    }
+
     use std::io::{BufRead, BufReader, Read, Write};
     use std::net::TcpListener;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -295,6 +319,15 @@ mod tests {
         let answer =
             tauri::async_runtime::block_on(send(&http, &yetu.yetu(), get(format!("{}/moved", yetu.address)))).unwrap();
         assert_eq!(answer.status, 302);
+        assert_eq!(yetu.seen.lock().unwrap().len(), 1, "the redirect was followed");
+    }
+
+    #[test]
+    fn the_client_retry_sync_uses_does_not_follow_a_redirect() {
+        let yetu = yetu_on_this_computer();
+        let client = native_client().unwrap();
+        let answer = tauri::async_runtime::block_on(async { client.get(format!("{}/moved", yetu.address)).send().await }).unwrap();
+        assert_eq!(answer.status().as_u16(), 302);
         assert_eq!(yetu.seen.lock().unwrap().len(), 1, "the redirect was followed");
     }
 

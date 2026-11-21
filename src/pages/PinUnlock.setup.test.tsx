@@ -172,13 +172,16 @@ describe("a new person at the till", () => {
 
     await userEvent.click(screen.getByTestId("roster-entry-staff-neema-002"));
     expect(heading()).toHaveTextContent("Enter the setup code your manager gave you");
+    expect(screen.queryByTestId("pin-no-bank-pin")).toBeNull();
     await tapDigits("246810");
 
     // Yetu says the code is right: now their own PIN, twice.
     await eventually(() => expect(heading()).toHaveTextContent("Choose your own six-digit PIN"));
     expect(yetu.signIns).toEqual([{ pin: "246810", newPin: undefined, status: 409 }]);
+    expect(screen.getByTestId("pin-no-bank-pin")).toHaveTextContent("Don't use your M-Pesa or bank PIN.");
     await tapDigits("583920");
     expect(heading()).toHaveTextContent("Type it again");
+    expect(screen.queryByTestId("pin-no-bank-pin")).toBeNull();
     await tapDigits("583921");
     expect(screen.getByTestId("pin-error")).toHaveTextContent("The two PINs were different. Choose your PIN again.");
     expect(heading()).toHaveTextContent("Choose your own six-digit PIN");
@@ -318,6 +321,7 @@ describe("a list from before the person was given a setup code", () => {
 
     await userEvent.click(screen.getByTestId("roster-entry-staff-amina-001"));
     expect(heading()).toHaveTextContent("Enter your PIN");
+    expect(screen.queryByTestId("pin-no-bank-pin")).toBeNull();
     await tapDigits("135790");
     await eventually(() => expect(heading()).toHaveTextContent("Choose your own six-digit PIN"));
     expect(screen.queryByTestId("pin-error")).not.toBeInTheDocument();

@@ -216,29 +216,13 @@ impl LocalStore {
         {
             return Err(LocalStoreError::InvalidCatalog);
         }
-        let trusted=self.connection.query_row("SELECT public_key,state,not_before_ms,not_after_ms FROM trusted_signing_keys WHERE kid=?1",[&envelope.key_id],|r|Ok((r.get::<_,Vec<u8>>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?,r.get::<_,i64>(3)?))).optional().map_err(classify_sql_error)?;
-        let has_keyset: bool = self
-            .connection
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM trusted_signing_keys)",
-                [],
-                |r| r.get(0),
-            )
-            .map_err(classify_sql_error)?;
-        let key_bytes = match trusted {
-            Some((key, state, not_before, not_after))
-                if state != "REVOKED"
-                    && payload.published_at_ms >= not_before
-                    && payload.published_at_ms < not_after
-                    && received_at_ms >= not_before
-                    && received_at_ms < not_after =>
-            {
-                key
-            }
-            Some(_) => return Err(LocalStoreError::InvalidCatalog),
-            None if !has_keyset && envelope.key_id == authority.0 => authority.1,
-            None => return Err(LocalStoreError::InvalidCatalog),
-        };
+        let key_bytes = super::authority::resolve_trusted_key(
+            &self.connection,
+            &envelope.key_id,
+            payload.published_at_ms,
+            received_at_ms,
+        )?
+        .ok_or(LocalStoreError::InvalidCatalog)?;
         let public_key: [u8; 32] = key_bytes
             .try_into()
             .map_err(|_| LocalStoreError::InvalidCatalog)?;
