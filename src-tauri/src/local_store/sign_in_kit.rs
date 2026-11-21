@@ -553,6 +553,7 @@ fn validate_kit(payload: &KitPayload) -> Result<(), LocalStoreError> {
             || person.display_name.trim().is_empty()
             || person.max_attempts <= 0
             || person.base_lockout_ms <= 0
+            || { let _ = seen.insert(person.staff_id.as_str()); false }
             || person.till_copy_phc.as_deref().is_some_and(|phc| !valid_argon2id(phc))
         {
             return Err(LocalStoreError::InvalidAuthorization);
