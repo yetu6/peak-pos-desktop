@@ -326,7 +326,7 @@ mod tests {
     fn the_client_retry_sync_uses_does_not_follow_a_redirect() {
         let yetu = yetu_on_this_computer();
         let client = native_client().unwrap();
-        let answer = tauri::async_runtime::block_on(client.get(format!("{}/moved", yetu.address)).send()).unwrap();
+        let answer = tauri::async_runtime::block_on(async { client.get(format!("{}/moved", yetu.address)).send().await }).unwrap();
         assert_eq!(answer.status().as_u16(), 302);
         assert_eq!(yetu.seen.lock().unwrap().len(), 1, "the redirect was followed");
     }
