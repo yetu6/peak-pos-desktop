@@ -626,10 +626,14 @@ mod tests {
 
     fn paired_store() -> LocalStore {
         let mut store = store();
+        store.bind_terminal(binding(4)).unwrap();
         store
-            .bind_terminal(TerminalBinding {
+    }
+
+    fn binding(epoch: i64) -> TerminalBinding {
+        TerminalBinding {
                 terminal_id: "terminal-1".into(),
-                credential_epoch: 4,
+                credential_epoch: epoch,
                 property_id: "property-1".into(),
                 outlet_id: "outlet-1".into(),
                 register_id: "register-1".into(),
@@ -638,9 +642,7 @@ mod tests {
                 configuration_payload_b64: URL_SAFE_NO_PAD.encode(b"configuration-v1"),
                 revocation_generation: 2,
                 paired_at_ms: NOW,
-            })
-            .unwrap();
-        store
+        }
     }
 
     fn copy(pin: &str) -> String {
@@ -774,10 +776,7 @@ mod tests {
         install(&mut store, t(1_000), one_person()).unwrap();
         assert!(is_ok(verify(&mut store, "staff-1", "2468", NOW)));
         // The same terminal id is paired again: a new credential epoch.
-        store
-            .connection
-            .execute("UPDATE terminal_authority SET credential_epoch=5", [])
-            .unwrap();
+        store.bind_terminal(binding(5)).unwrap();
         assert_eq!(verify(&mut store, "staff-1", "2468", NOW), SignInCheck::Unknown);
     }
 
