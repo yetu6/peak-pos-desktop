@@ -43,6 +43,11 @@ const MAX_KIT_LIFE_MS: i64 = 26 * 60 * 60 * 1000;
 /// How far ahead of the till's trusted time a kit may say it was issued.
 const KIT_CLOCK_SKEW_MS: i64 = 5 * 60 * 1000;
 const NONCE_BYTES: usize = 32;
+/// How long a nonce stays good, on the till's own monotonic clock, and only in
+/// the boot that made it. The till's native requests time out after 30 s
+/// (yetu_http::REQUEST_TIMEOUT), so an answer older than that did not come from
+/// this try; a kit that arrives later may still install but never sets the clock.
+const KIT_NONCE_TTL_MS: i64 = 30_000;
 /// Doubling stops growing after this many doublings (as offline_pin.rs caps it).
 const MAX_DOUBLINGS: i64 = 16;
 
@@ -145,15 +150,20 @@ enum Clock<'a> {
 impl LocalStore {
     /// A fresh single-use nonce for the next kit request, kept (the latest one
     /// only) until a kit answers it. 32 random bytes, base64url without padding.
-    pub fn new_sign_in_kit_nonce(&mut self) -> Result<String, LocalStoreError> {
+    pub fn new_sign_in_kit_nonce(
+        &mut self,
+        monotonic_ms: i64,
+        boot_id: &str,
+    ) -> Result<String, LocalStoreError> {
         let mut bytes = [0_u8; NONCE_BYTES];
         getrandom::fill(&mut bytes).map_err(|_| LocalStoreError::SecureStoreUnavailable)?;
         let nonce = URL_SAFE_NO_PAD.encode(bytes);
         self.connection
             .execute(
-                "INSERT INTO sign_in_kit_nonce(singleton_id,nonce) VALUES (1,?1)
-                 ON CONFLICT(singleton_id) DO UPDATE SET nonce=excluded.nonce",
-                [&nonce],
+                "INSERT INTO sign_in_kit_nonce(singleton_id,nonce,boot_id,made_at_monotonic_ms) VALUES (1,?1,?2,?3)
+                 ON CONFLICT(singleton_id) DO UPDATE SET nonce=excluded.nonce,boot_id=excluded.boot_id,
+                   made_at_monotonic_ms=excluded.made_at_monotonic_ms",
+                params![nonce, boot_id, monotonic_ms],
             )
             .map_err(classify_sql_error)?;
         Ok(nonce)
@@ -231,15 +241,27 @@ impl LocalStore {
             return Err(LocalStoreError::InvalidAuthorization);
         }
 
-        let outstanding: Option<String> = self
+        let outstanding: Option<(String, String, i64)> = self
             .connection
-            .query_row("SELECT nonce FROM sign_in_kit_nonce WHERE singleton_id=1", [], |row| row.get(0))
+            .query_row(
+                "SELECT nonce,boot_id,made_at_monotonic_ms FROM sign_in_kit_nonce WHERE singleton_id=1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
             .optional()
             .map_err(classify_sql_error)?;
-        let answers_nonce = outstanding.is_some_and(|nonce| nonce == payload.nonce);
+        // The nonce counts only for this boot and only for KIT_NONCE_TTL_MS.
+        let answers_nonce = |monotonic_ms: i64, boot_id: &str| {
+            outstanding.as_ref().is_some_and(|(nonce, made_boot, made_at)| {
+                *nonce == payload.nonce
+                    && made_boot == boot_id
+                    && monotonic_ms >= *made_at
+                    && monotonic_ms - *made_at <= KIT_NONCE_TTL_MS
+            })
+        };
         let (now_ms, anchor) = match clock {
             Clock::Given(now) => (now, None),
-            Clock::Trusted { wall_ms, monotonic_ms, boot_id } if answers_nonce => {
+            Clock::Trusted { wall_ms, monotonic_ms, boot_id } if answers_nonce(monotonic_ms, boot_id) => {
                 (payload.server_time_ms, Some((wall_ms, monotonic_ms, boot_id)))
             }
             Clock::Trusted { wall_ms, monotonic_ms, boot_id } => {
@@ -276,13 +298,6 @@ impl LocalStore {
             return Err(LocalStoreError::KitRollback);
         }
 
-        // Only a signed kit that answers the till's own nonce gets this far to
-        // set the clock, and the clock's own rollback check still applies: a
-        // server time far behind what the till already trusts refuses the install.
-        if let Some((wall_ms, monotonic_ms, boot_id)) = anchor {
-            self.record_trusted_time(payload.server_time_ms, wall_ms, monotonic_ms, boot_id)?;
-        }
-
         let terminal_json = serde_json::to_string(&payload.terminal)
             .map_err(|_| LocalStoreError::InvalidAuthorization)?;
         let transaction = self
@@ -296,7 +311,14 @@ impl LocalStore {
         if mark.is_some_and(|mark| payload.issued_at_ms < mark) {
             return Err(LocalStoreError::KitRollback);
         }
-        if anchor.is_some() {
+        // Only a signed kit that answers the till's own nonce sets the clock,
+        // and it does so here, in the same transaction as the kit and the use of
+        // the nonce: if anything after this fails, the clock has not moved and
+        // the nonce is still unused. The clock's own rollback check still
+        // applies: a server time far behind what the till already trusts
+        // refuses the install.
+        if let Some((wall_ms, monotonic_ms, boot_id)) = anchor {
+            Self::record_trusted_time_on(&transaction, payload.server_time_ms, wall_ms, monotonic_ms, boot_id)?;
             transaction
                 .execute("DELETE FROM sign_in_kit_nonce", [])
                 .map_err(classify_sql_error)?;
@@ -1202,7 +1224,7 @@ mod tests {
     #[test]
     fn a_kit_answering_the_tills_nonce_sets_the_clock_so_the_first_sign_in_works() {
         let mut store = paired_store();
-        let nonce = store.new_sign_in_kit_nonce().unwrap();
+        let nonce = store.new_sign_in_kit_nonce(19_000, "boot-a").unwrap();
         assert_eq!(URL_SAFE_NO_PAD.decode(&nonce).unwrap().len(), 32);
         let mut answer = kit(t(1_000), one_person());
         answer.nonce = &nonce;
@@ -1225,7 +1247,7 @@ mod tests {
     #[test]
     fn a_nonce_is_used_once_and_a_replayed_kit_never_moves_the_clock() {
         let mut store = paired_store();
-        let nonce = store.new_sign_in_kit_nonce().unwrap();
+        let nonce = store.new_sign_in_kit_nonce(19_000, "boot-a").unwrap();
         let mut answer = kit(t(1_000), one_person());
         answer.nonce = &nonce;
         let (signed_kit, signature) = signed(&answer);
@@ -1245,8 +1267,8 @@ mod tests {
         assert_eq!(server_time_row(&store), NOW, "a used nonce must not move the clock");
 
         // And a nonce only the latest request holds: an older one is no good.
-        let older = store.new_sign_in_kit_nonce().unwrap();
-        let newer = store.new_sign_in_kit_nonce().unwrap();
+        let older = store.new_sign_in_kit_nonce(22_000, "boot-a").unwrap();
+        let newer = store.new_sign_in_kit_nonce(22_100, "boot-a").unwrap();
         assert_ne!(older, newer);
         let mut stale = kit(t(3_000), one_person());
         stale.nonce = &older;
@@ -1261,7 +1283,7 @@ mod tests {
     #[test]
     fn a_kit_cannot_set_the_clock_backwards_past_the_rollback_detector() {
         let mut store = paired_store();
-        let nonce = store.new_sign_in_kit_nonce().unwrap();
+        let nonce = store.new_sign_in_kit_nonce(19_000, "boot-a").unwrap();
         let mut first = kit(NOW - 5_000_000, one_person());
         first.nonce = &nonce;
         let (signed_kit, signature) = signed(&first);
@@ -1269,7 +1291,7 @@ mod tests {
             .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW + 50, 20_000, "boot-a")
             .unwrap();
 
-        let nonce = store.new_sign_in_kit_nonce().unwrap();
+        let nonce = store.new_sign_in_kit_nonce(22_000, "boot-a").unwrap();
         let mut back = kit(NOW - 3_650_000, vec![member("staff-2", "Juma Said", Some("1357"))]);
         back.nonce = &nonce;
         back.server_time = NOW - 3_600_000;
@@ -1281,6 +1303,99 @@ mod tests {
             store.verify_sign_in_pin_trusted("staff-2", "1357".into(), NOW + 3_050, 23_000, "boot-a").unwrap(),
             SignInCheck::Unknown
         );
+    }
+
+    fn anchor_rows(store: &LocalStore) -> i64 {
+        store
+            .connection
+            .query_row("SELECT count(*) FROM trusted_time_state", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    fn nonce_rows(store: &LocalStore) -> i64 {
+        store
+            .connection
+            .query_row("SELECT count(*) FROM sign_in_kit_nonce", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    /// A kit answering `nonce`, signed, ready to install.
+    fn answer_to(nonce: &str, issued: i64) -> (String, String) {
+        let mut answer = kit(issued, one_person());
+        answer.nonce = nonce;
+        signed(&answer)
+    }
+
+    #[test]
+    fn a_failed_install_leaves_the_clock_and_the_nonce_as_they_were() {
+        let mut store = paired_store();
+        let nonce = store.new_sign_in_kit_nonce(19_000, "boot-a").unwrap();
+        // Force the kit's own writes to fail, after the clock and the nonce
+        // have been dealt with inside the install.
+        store
+            .connection
+            .execute_batch(
+                "CREATE TRIGGER force_failure BEFORE INSERT ON sign_in_kit_staff
+                 BEGIN SELECT RAISE(ABORT,'forced'); END;",
+            )
+            .unwrap();
+        let (signed_kit, signature) = answer_to(&nonce, t(1_000));
+        assert!(store
+            .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW + 50, 20_000, "boot-a")
+            .is_err());
+        assert_eq!(anchor_rows(&store), 0, "the clock moved though the install failed");
+        assert_eq!(nonce_rows(&store), 1, "the nonce was used up by a failed install");
+        // The same answer then works: nothing was spent.
+        store.connection.execute_batch("DROP TRIGGER force_failure").unwrap();
+        store
+            .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW + 50, 20_000, "boot-a")
+            .unwrap();
+        assert_eq!(anchor_rows(&store), 1);
+        assert_eq!(nonce_rows(&store), 0);
+    }
+
+    #[test]
+    fn a_nonce_from_another_boot_does_not_anchor() {
+        let mut store = paired_store();
+        let nonce = store.new_sign_in_kit_nonce(19_000, "boot-a").unwrap();
+        let (signed_kit, signature) = answer_to(&nonce, t(1_000));
+        assert!(store
+            .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW + 50, 20_000, "boot-b")
+            .is_err());
+        assert_eq!(anchor_rows(&store), 0);
+        assert_eq!(nonce_rows(&store), 1);
+    }
+
+    #[test]
+    fn a_nonce_older_than_its_time_does_not_anchor_and_one_in_time_does() {
+        // Too old: 30 s and a millisecond.
+        let mut store = paired_store();
+        let nonce = store.new_sign_in_kit_nonce(19_000, "boot-a").unwrap();
+        let (signed_kit, signature) = answer_to(&nonce, t(1_000));
+        assert!(store
+            .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW + 30_051, 49_001, "boot-a")
+            .is_err());
+        assert_eq!(anchor_rows(&store), 0);
+
+        // Just in time: exactly 30 s.
+        let mut store = paired_store();
+        let nonce = store.new_sign_in_kit_nonce(19_000, "boot-a").unwrap();
+        let (signed_kit, signature) = answer_to(&nonce, t(1_000));
+        store
+            .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW + 30_050, 49_000, "boot-a")
+            .unwrap();
+        assert_eq!(server_time_row(&store), NOW);
+
+        // Already anchored: a late answer still installs, but never moves the clock.
+        let nonce = store.new_sign_in_kit_nonce(22_000, "boot-a").unwrap();
+        let mut late = kit(t(2_000), one_person());
+        late.nonce = &nonce;
+        late.server_time = NOW + 9_000_000;
+        let (signed_kit, signature) = signed(&late);
+        store
+            .install_sign_in_kit_trusted(&signed_kit, &signature, "server-key-1", NOW + 62_050, 82_001, "boot-a")
+            .unwrap();
+        assert_eq!(server_time_row(&store), NOW);
     }
 
     #[test]

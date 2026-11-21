@@ -149,7 +149,9 @@ pub async fn retry_sync(
     if crate::yetu_http::pin_to_yetu(&base_url, &crate::yetu_http::yetu_of(&app)).is_none() {
         return Err(format!("refused: {base_url} is not this till's Yetu"));
     }
-    let client = reqwest::Client::new();
+    // The shared native client: it follows no redirect, so the bearer token
+    // cannot be carried to another address.
+    let client = crate::yetu_http::native_client()?;
     let operations = runtime
         .with_store(|store| store.pending_sync_batch(now_ms()))
         .map_err(|error| format!("{error:?}"))?;
@@ -295,7 +297,7 @@ pub fn verify_sign_in_pin(
 pub fn new_sign_in_kit_nonce(
     runtime: State<'_, LocalStoreRuntime>,
 ) -> Result<String, LocalStoreErrorKind> {
-    runtime.with_store(|store| store.new_sign_in_kit_nonce())
+    runtime.with_store(|store| store.new_sign_in_kit_nonce(monotonic_ms(), &boot_id()))
 }
 
 #[tauri::command]

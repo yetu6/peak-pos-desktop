@@ -230,14 +230,26 @@ impl LocalStore {
         monotonic: i64,
         boot_id: &str,
     ) -> Result<(), LocalStoreError> {
+        Self::record_trusted_time_on(&self.connection, server, wall, monotonic, boot_id)
+    }
+
+    /// The same, on a connection or a transaction the caller holds, so the
+    /// clock can be set in the same transaction as what vouches for it.
+    pub(super) fn record_trusted_time_on(
+        connection: &rusqlite::Connection,
+        server: i64,
+        wall: i64,
+        monotonic: i64,
+        boot_id: &str,
+    ) -> Result<(), LocalStoreError> {
         if server <= 0 || wall <= 0 || monotonic < 0 || boot_id.is_empty() {
             return Err(LocalStoreError::InvalidAuthorization);
         }
-        if let Some((old_server,old_wall,old_mono,old_boot))=self.connection.query_row("SELECT server_time_ms,local_wall_at_anchor_ms,monotonic_at_anchor_ms,boot_id FROM trusted_time_state WHERE singleton_id=1",[],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?,r.get::<_,i64>(2)?,r.get::<_,String>(3)?))).optional().map_err(classify_sql_error)?{
+        if let Some((old_server,old_wall,old_mono,old_boot))=connection.query_row("SELECT server_time_ms,local_wall_at_anchor_ms,monotonic_at_anchor_ms,boot_id FROM trusted_time_state WHERE singleton_id=1",[],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?,r.get::<_,i64>(2)?,r.get::<_,String>(3)?))).optional().map_err(classify_sql_error)?{
             let trusted_floor=if old_boot==boot_id&&monotonic>=old_mono{old_server.saturating_add(monotonic-old_mono)}else{old_server};
             if server+300_000<trusted_floor||wall+300_000<old_wall{return Err(LocalStoreError::AuthorizationRollback)}
         }
-        self.connection.execute("INSERT INTO trusted_time_state(singleton_id,server_time_ms,local_wall_at_anchor_ms,monotonic_at_anchor_ms,boot_id,backward_clock_suspected,updated_at_ms) VALUES(1,?1,?2,?3,?4,0,?2) ON CONFLICT(singleton_id) DO UPDATE SET server_time_ms=excluded.server_time_ms,local_wall_at_anchor_ms=excluded.local_wall_at_anchor_ms,monotonic_at_anchor_ms=excluded.monotonic_at_anchor_ms,boot_id=excluded.boot_id,backward_clock_suspected=0,updated_at_ms=excluded.updated_at_ms",params![server,wall,monotonic,boot_id]).map_err(classify_sql_error)?;
+        connection.execute("INSERT INTO trusted_time_state(singleton_id,server_time_ms,local_wall_at_anchor_ms,monotonic_at_anchor_ms,boot_id,backward_clock_suspected,updated_at_ms) VALUES(1,?1,?2,?3,?4,0,?2) ON CONFLICT(singleton_id) DO UPDATE SET server_time_ms=excluded.server_time_ms,local_wall_at_anchor_ms=excluded.local_wall_at_anchor_ms,monotonic_at_anchor_ms=excluded.monotonic_at_anchor_ms,boot_id=excluded.boot_id,backward_clock_suspected=0,updated_at_ms=excluded.updated_at_ms",params![server,wall,monotonic,boot_id]).map_err(classify_sql_error)?;
         Ok(())
     }
 

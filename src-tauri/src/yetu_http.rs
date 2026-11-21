@@ -35,18 +35,24 @@ const ALLOWED_HEADERS: [&str; 7] = [
 
 pub struct YetuHttp(reqwest::Client);
 
+/// The one client every native request to Yetu is made with: no redirects (a
+/// bearer token must never follow a redirect to another address), timeouts, and
+/// the till's user agent. `retry_sync` uses it too.
+pub(crate) fn native_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .pool_idle_timeout(IDLE_KEPT)
+        .tcp_keepalive(Duration::from_secs(30))
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(REQUEST_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent(concat!("Yetu-Till/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| error.to_string())
+}
+
 impl YetuHttp {
     pub fn new() -> Result<Self, String> {
-        reqwest::Client::builder()
-            .pool_idle_timeout(IDLE_KEPT)
-            .tcp_keepalive(Duration::from_secs(30))
-            .connect_timeout(CONNECT_TIMEOUT)
-            .timeout(REQUEST_TIMEOUT)
-            .redirect(reqwest::redirect::Policy::none())
-            .user_agent(concat!("Yetu-Till/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .map(Self)
-            .map_err(|error| error.to_string())
+        native_client().map(Self)
     }
 }
 
@@ -313,6 +319,15 @@ mod tests {
         let answer =
             tauri::async_runtime::block_on(send(&http, &yetu.yetu(), get(format!("{}/moved", yetu.address)))).unwrap();
         assert_eq!(answer.status, 302);
+        assert_eq!(yetu.seen.lock().unwrap().len(), 1, "the redirect was followed");
+    }
+
+    #[test]
+    fn the_client_retry_sync_uses_does_not_follow_a_redirect() {
+        let yetu = yetu_on_this_computer();
+        let client = native_client().unwrap();
+        let answer = tauri::async_runtime::block_on(client.get(format!("{}/moved", yetu.address)).send()).unwrap();
+        assert_eq!(answer.status().as_u16(), 302);
         assert_eq!(yetu.seen.lock().unwrap().len(), 1, "the redirect was followed");
     }
 

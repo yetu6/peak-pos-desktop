@@ -44,5 +44,7 @@ CREATE TABLE sign_in_kit_mark (
 -- kit answered to it (and only that) may set the till's trusted clock.
 CREATE TABLE sign_in_kit_nonce (
  singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
- nonce TEXT NOT NULL
+ nonce TEXT NOT NULL,
+ boot_id TEXT NOT NULL,
+ made_at_monotonic_ms INTEGER NOT NULL
 );
